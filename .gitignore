@@ -1,0 +1,228 @@
+# JARVISv5 .gitignore
+
+# ------------------------------------------------------------
+# Secrets and local environment
+# ------------------------------------------------------------
+# root env files
+/.env
+/.env.local
+/.env.*
+
+# tracked example
+!/.env.example
+
+# ------------------------------------------------------------
+# Python
+# ------------------------------------------------------------
+# bytecode / interpreter
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# packaging / build outputs
+build/
+dist/
+downloads/
+develop-eggs/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# tooling caches
+.mypy_cache/
+.ruff_cache/
+
+
+# ------------------------------------------------------------
+# Testing and coverage artifacts
+# ------------------------------------------------------------
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+coverage/
+
+
+# ------------------------------------------------------------
+# Frontend / Node
+# ------------------------------------------------------------
+# dependency dirs
+node_modules/
+
+# package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# build/cache outputs (repo-root anchored)
+/frontend/dist/
+/frontend/.vite/
+dist-ssr/
+
+# local overrides
+*.local
+
+
+# ------------------------------------------------------------
+# Docker overrides (local only)
+# ------------------------------------------------------------
+/docker-compose.override.yml
+
+
+# ------------------------------------------------------------
+# IDE / editor / OS
+# ------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+
+# ------------------------------------------------------------
+# Runtime data artifacts (local-first architecture)
+# ------------------------------------------------------------
+# base gate
+/data/*
+
+# keep runtime directory structure (tree roots)
+!/data/archives/
+!/data/cache/
+!/data/episodic/
+!/data/logs/
+!/data/memory/
+!/data/retrieval/
+!/data/search/
+!/data/semantic/
+!/data/working_state/
+
+# data/archives
+/data/archives/*
+!/data/archives/.gitkeep
+
+# data/cache
+/data/cache/*
+!/data/cache/.gitkeep
+/data/redis/*
+!/data/redis/.gitkeep
+/data/turns/*
+!/data/turns/.gitkeep
+
+# data/episodic
+/data/episodic/*
+!/data/episodic/.gitkeep
+
+# data/logs
+/data/logs/*
+/data/logs/*.jsonl
+!/data/logs/.gitkeep
+
+# data/memory
+/data/memory/*
+!/data/memory/.gitkeep
+!/data/memory/episodic/
+/data/memory/episodic/*
+!/data/memory/episodic/.gitkeep
+!/data/memory/semantic/
+/data/memory/semantic/*
+!/data/memory/semantic/.gitkeep
+!/data/memory/working/
+/data/memory/working/*
+!/data/memory/working/.gitkeep
+
+# data/search
+/data/search/*
+!/data/search/.gitkeep
+!/data/search/searxng/
+/data/search/searxng/*
+!/data/search/searxng/.gitkeep
+!/data/search/ddgs/
+/data/search/ddgs/*
+!/data/search/ddgs/.gitkeep
+!/data/search/tavily/
+/data/search/tavily/*
+!/data/search/tavily/.gitkeep
+
+# data/sessions
+/data/sessions/*
+!/data/sessions/.gitkeep
+
+# data/temp
+/data/temp/*
+!/data/temp/.gitkeep
+
+# generic runtime artifacts (fallback)
+/data/**/*.db
+/data/**/*.db-journal
+/data/**/*.db-wal
+/data/**/*.sqlite
+/data/**/*.sqlite3
+/data/**/*.log
+/data/**/embeddings/**
+
+
+# ------------------------------------------------------------
+# Logs
+# ------------------------------------------------------------
+# global logs
+*.log
+
+# root logs dir only
+/logs/
+
+# report outputs (repo-root anchored)
+/reports/*.txt
+/reports/*.err
+/reports/*.json
+reports/benchmarks/*
+!reports/benchmarks/.gitkeep
+reports/diagnogstics/*
+!reports/diagnogstics/.gitkeep
+reports/tests/*
+!reports/tests/.gitkeep
+reports/validation/*
+!reports/validation/.gitkeep
+!/reports/.gitkeep
+
+# ------------------------------------------------------------
+# Model artifacts (prevent large binary commits anywhere)
+# ------------------------------------------------------------
+# Downloaded model artifacts — do not commit
+models/llm/*
+!models/llm/.gitkeep
+models/stt/*
+!models/stt/.gitkeep
+models/tts/*
+!models/tts/.gitkeep
+models/wake/*
+!models/wake/.gitkeep
+
+# global heavy model artifacts
+**/*.gguf
+**/*.bin
+**/*.safetensors
+**/*.pt
+**/*.pth
+**/*.ckpt
+**/*.onnx
+**/*.ppn
