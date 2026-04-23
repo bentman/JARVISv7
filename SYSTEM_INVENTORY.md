@@ -13,7 +13,7 @@
   - Date/Time
   - State: Planned, Implemented, Verified, Deferred
   - Location: `Relative File Path(s)`
-  - Validation: Method &/or `Relative Script Path(s)`
+  - Validation: Method &/or `Relative Script Path(s)`; include host class(es) (e.g., `Windows x64`, `Windows ARM64`)
   - Notes: 
     - Optional (3 lines max).
 

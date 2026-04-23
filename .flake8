@@ -1,0 +1,25 @@
+[flake8]
+# Ruff is the primary linter (see pyproject.toml [tool.ruff]). This flake8
+# config exists only to align any legacy tooling (CI lint checks, IDE flake8
+# plugins) with the ruff rules so both produce the same verdict.
+
+max-line-length = 100
+extend-exclude =
+    backend/.venv,
+    backend/tests/fixtures,
+    models,
+    data,
+    cache,
+    reports,
+    dist,
+    build,
+    node_modules
+
+# Match ruff's ignore set
+extend-ignore =
+    E501,
+    W503,
+    E203
+
+per-file-ignores =
+    backend/tests/*:N802,N803,N806

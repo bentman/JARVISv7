@@ -10,6 +10,7 @@
   - Timestamp: `YYYY-MM-DD HH:MM`
   - Summary: 1–2 lines, past tense
   - Scope: files/areas touched
+  - Host class(es): validated on (e.g., `Windows x64`, `Windows ARM64`, or both)
   - Evidence: exact command(s) run + a minimal excerpt pointer (or embedded excerpt ≤10 lines)
 - If a change is reverted, append a new entry describing the revert and why.
 

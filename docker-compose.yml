@@ -1,0 +1,50 @@
+# JARVISv7 docker-compose.yml
+#
+# Local service substrate (Group E of slices.md). Redis + SearXNG stand up
+# here so Group E onward doesn't redraw infrastructure boundaries. Local
+# llama.cpp is added in Group H.1.
+#
+# Fail-closed: the backend runs without these services present; subsystems
+# that need them report unavailable. Durable authority stays in data/.
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    container_name: jarvisv7-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - ./cache/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: jarvisv7-searxng
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+      - UWSGI_WORKERS=2
+      - UWSGI_THREADS=2
+    volumes:
+      - ./config/cache/searxng:/etc/searxng:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+# Note: local llama.cpp service added in H.1 (Group H of slices.md).

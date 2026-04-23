@@ -24,7 +24,7 @@ JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative c
 ### Proposed Top-Level Tree
 
 ```text
-JARVIS/
+JARVISv7/
 ├─ backend/                           # backend runtime, APIs, orchestration, providers, artifacts, agents
 ├─ cache/                             # mutable cache and backing-store dev assets (redis state, temp); not source code
 ├─ config/                            # declarative config: app, hardware, models, agents, policies, personality, prompts
@@ -172,7 +172,7 @@ backend/
 │  │  │  └─ tts_runtime.py           # selector: (family, device) dispatch
 │  │  └─ wake/
 │  │     ├─ base.py                  # common wake runtime interface
-│  │     ├─ openwakeword_runtime.py  # openWakeWord over onnxruntime; pre-trained hey_JARVISv7 default (PRIMARY)
+│  │     ├─ openwakeword_runtime.py  # openWakeWord over onnxruntime; pre-trained hey_jarvis default (PRIMARY)
 │  │     ├─ porcupine_runtime.py     # pvporcupine; optional alternative behind hw-wake-porcupine extra
 │  │     └─ wake_runtime.py          # selector: provider ∈ {openwakeword, porcupine}; openwakeword default
 │  ├─ services/
@@ -252,7 +252,7 @@ config/
 │  ├─ search.yaml                    # search runtime/provider config (SearXNG primary, DDGS, Tavily)
 │  ├─ stt.yaml                       # STT runtime/model config (whisper-small-onnx, qnn-qdq variant, parakeet)
 │  ├─ tts.yaml                       # TTS runtime/model config (kokoro-v1.0-onnx)
-│  └─ wake.yaml                      # wake config (openwakeword hey_JARVISv7 default; porcupine optional;
+│  └─ wake.yaml                      # wake config (openwakeword hey_jarvis default; porcupine optional;
 │                                    #   future-custom-keyword caveat notes)
 ├─ personality/
 │  ├─ concise.yaml                   # concise personality profile

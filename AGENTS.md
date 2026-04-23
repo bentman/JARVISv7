@@ -7,34 +7,38 @@ This file is the authoritative operating contract for all AI and human agents wo
 - All Python commands must use `backend/.venv`.
 - Never use global Python packages for this project.
 - Never install Python dependencies globally.
+- All Python commands run from the **repo root** (where `pyproject.toml` lives). The virtual environment lives at `backend/.venv/` but the package metadata is at the repo root.
 
 Dependency source of truth:
 
-- `pyproject.toml` is the single source of truth for all Python dependencies and extras.
-- `backend/requirements.txt` is a **generated lockfile** of the base extra. Never edit it by hand; regenerate it via `scripts/provision.py lock`.
+- `pyproject.toml` (at repo root) is the single source of truth for all Python dependencies and extras.
+- `backend/requirements.txt` is a **generated lockfile** of the base extra, emitted by `scripts/provision.py lock` for CI consumers. Never edit it by hand.
 - Hardware-family packages are declared as extras in `pyproject.toml` under `[project.optional-dependencies]`. They are resolved and installed by the provisioning script, never by hand.
-- If a new package is required for an approved code change, declare it in the proposal. Add it to the correct extra in `pyproject.toml` (base dependencies or a named hardware extra) and re-provision before implementing code that depends on it.
+- If a new package is required for an approved code change, declare it in the proposal. Add it to the correct extra in `pyproject.toml` (base `[project].dependencies` for universal packages, or a named hardware extra for hardware-family packages) and re-provision before implementing code that depends on it.
 - Default version operator is `>=`. Use `==` only with a strong, documented reason.
 - No runtime-specific ML package belongs in base dependencies. ML packages enter through hardware extras only.
 
 Provisioning authority:
 
-- `scripts/provision.py` is the **only** entry point for installing Python dependencies. It reads the current hardware profile, resolves the correct extras, and composes the `pip install -e '.[...]'` invocation.
+- `scripts/provision.py` is the **only** entry point for installing Python dependencies. It reads the current hardware profile, resolves the correct extras, and composes the `pip install -e '.[...]'` invocation against the repo-root `pyproject.toml`.
 - To provision a new host: `backend/.venv/Scripts/python scripts/provision.py install`
 - To verify without installing: `backend/.venv/Scripts/python scripts/provision.py verify`
 - To regenerate the lockfile: `backend/.venv/Scripts/python scripts/provision.py lock`
 - To see why each extra was chosen: `backend/.venv/Scripts/python scripts/provision.py explain`
-- Never run `pip install -r backend/requirements.txt` directly; run the provisioning script instead.
+- Never run `pip install` or `pip install -r ...` directly; always go through the provisioning script.
 
-Required command pattern (Windows PowerShell):
+Required command pattern (Windows PowerShell, run from repo root):
 
 - `backend/.venv/Scripts/python <command>`
 
-If the virtual environment is missing:
+First-time setup (run from repo root; executed in order by `scripts/bootstrap.py`):
 
-- Create: `python -m venv backend/.venv`
-- Upgrade pip: `backend/.venv/Scripts/python -m pip install --upgrade pip`
-- Install: `backend/.venv/Scripts/python scripts/provision.py install`
+1. Create the virtual environment: `python -m venv backend/.venv`
+2. Upgrade pip inside the venv: `backend/.venv/Scripts/python -m pip install --upgrade pip`
+3. Install via the provisioning script (reads repo-root `pyproject.toml`, resolves extras from current host profile):
+   `backend/.venv/Scripts/python scripts/provision.py install`
+
+Prefer `scripts/bootstrap.py` for new-host setup; it enforces the full sequence (profile → provision → ensure models → preflight → readiness) with checkpoints.
 
 If `backend/.venv` is broken or inconsistent, stop and report minimal repair steps before continuing.
 
