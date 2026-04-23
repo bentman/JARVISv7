@@ -185,7 +185,7 @@ MIT License.
 
 Use it. Modify it. Improve it. Just understand that this is still an evolving system, not a finished one.
 
-> See [LICENSE](License.md).
+> See [LICENSE](LICENSE).
 
 ---
 
