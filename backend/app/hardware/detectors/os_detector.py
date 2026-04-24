@@ -1,13 +1,19 @@
 from __future__ import annotations
 
+import importlib
 import platform
 import subprocess
 from pathlib import Path
 
-import psutil
-
 
 _LAPTOP_CHASSIS_TYPES = {8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32}
+
+
+def _load_psutil():
+    try:
+        return importlib.import_module("psutil")
+    except Exception:
+        return None
 
 
 def _run_command(command: list[str]) -> str:
@@ -19,8 +25,10 @@ def _run_command(command: list[str]) -> str:
 
 def _detect_device_class(os_name: str) -> str:
     battery = None
+    psutil = _load_psutil()
     try:
-        battery = psutil.sensors_battery()
+        if psutil is not None:
+            battery = psutil.sensors_battery()
     except Exception:
         battery = None
 
