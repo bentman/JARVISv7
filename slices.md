@@ -80,7 +80,7 @@ No slice in a later group may reopen a decision owned by an earlier group withou
 
 ---
 
-# Group A — Host Reality & Provisioning
+~~# Group A — Host Reality & Provisioning~~ Completed
 
 **Why this group exists first.** Every runtime decision downstream consumes the outputs of this group. Provisioning is an application-level design concern — the set of packages a host installs is determined by detected hardware facts running through one authoritative resolver, not by developers editing a monolithic requirements file. Nothing else ships until A.1–A.5 are green on both Windows x64 and Windows ARM64 hosts.
 
