@@ -58,7 +58,7 @@ def _emit_header(profile, extras) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _parse_args(argv or sys.argv[1:])
+    args = _parse_args(sys.argv[1:] if argv is None else argv)
     configure_logging(level="DEBUG" if args.verbose else "INFO", trace_to=args.trace_to)
 
     total = 5

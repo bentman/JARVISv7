@@ -11,7 +11,7 @@ from backend.app.hardware.detectors import cpu_detector, cuda_detector, gpu_dete
 def test_os_detector_returns_required_keys(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(os_detector.platform, "system", lambda: "Windows")
     monkeypatch.setattr(os_detector.platform, "version", lambda: "10.0.22631")
-    monkeypatch.setattr(os_detector.psutil, "sensors_battery", lambda: None)
+    monkeypatch.setattr(os_detector, "_load_psutil", lambda: SimpleNamespace(sensors_battery=lambda: None))
     monkeypatch.setattr(os_detector, "_run_command", lambda command: "")
 
     result = os_detector.detect_os_info()
@@ -35,8 +35,14 @@ def test_cpu_detector_normalizes_arch_aliases(
 ) -> None:
     monkeypatch.setattr(cpu_detector.platform, "machine", lambda: machine)
     monkeypatch.setattr(cpu_detector.platform, "processor", lambda: "Test CPU")
-    monkeypatch.setattr(cpu_detector.psutil, "cpu_count", lambda logical=True: 8 if logical else 4)
-    monkeypatch.setattr(cpu_detector.psutil, "cpu_freq", lambda: SimpleNamespace(max=4200.0))
+    monkeypatch.setattr(
+        cpu_detector,
+        "_load_psutil",
+        lambda: SimpleNamespace(
+            cpu_count=lambda logical=True: 8 if logical else 4,
+            cpu_freq=lambda: SimpleNamespace(max=4200.0),
+        ),
+    )
 
     result = cpu_detector.detect_cpu_info()
 
@@ -48,9 +54,11 @@ def test_cpu_detector_normalizes_arch_aliases(
 
 def test_memory_detector_returns_positive_totals(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        memory_detector.psutil,
-        "virtual_memory",
-        lambda: SimpleNamespace(total=16 * 1024**3, available=10 * 1024**3),
+        memory_detector,
+        "_load_psutil",
+        lambda: SimpleNamespace(
+            virtual_memory=lambda: SimpleNamespace(total=16 * 1024**3, available=10 * 1024**3)
+        ),
     )
 
     result = memory_detector.detect_memory_info()
