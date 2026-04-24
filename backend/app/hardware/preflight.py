@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import importlib.metadata
 import json
 import os
 from dataclasses import asdict, dataclass
@@ -79,6 +80,10 @@ def _ordered_import_names(installed_extras: list[str]) -> list[str]:
     return ordered
 
 
+def _has_extra(installed_extras: list[str], extra: str) -> bool:
+    return extra in installed_extras
+
+
 def _available_dll_directory_api():
     return getattr(os, "add_dll_directory", None)
 
@@ -97,7 +102,7 @@ def _candidate_dll_roots(profile: HardwareProfile) -> list[tuple[str, Path]]:
     if profile.npu_vendor == "qualcomm":
         env_value = os.getenv("QAIRT_SDK_PATH")
         if env_value:
-            candidates.append(("qairt", Path(env_value)))
+            candidates.append(("QnnHtp", Path(env_value)))
     return candidates
 
 
@@ -113,6 +118,14 @@ def _bootstrap_dll_root(
         return
 
     discovery_paths = [root, root / "bin", root / "lib"]
+    if label == "QnnHtp":
+        candidate_files = [path / "QnnHtp.dll" for path in discovery_paths]
+        discovered_file = next((path for path in candidate_files if path.exists()), None)
+        if discovered_file is None:
+            dll_discovery_log.append(f"{label}:missing:{root}")
+            return
+        discovery_paths = [discovered_file.parent]
+
     added = False
     for path in discovery_paths:
         if not path.exists():
@@ -175,6 +188,58 @@ def _probe_execution_providers(tokens: list[str], probe_errors: dict[str, str]) 
             tokens.append(token)
 
 
+def _probe_distribution(
+    distribution_name: str,
+    tokens: list[str],
+    probe_errors: dict[str, str],
+) -> bool:
+    token = f"import:{distribution_name}"
+    try:
+        importlib.metadata.version(distribution_name)
+    except importlib.metadata.PackageNotFoundError as exc:
+        tokens.append(f"{token}:MISSING")
+        probe_errors[distribution_name] = str(exc)
+        return False
+    except Exception as exc:
+        tokens.append(f"{token}:MISSING")
+        probe_errors[distribution_name] = str(exc)
+        return False
+    else:
+        tokens.append(token)
+        return True
+
+
+def _probe_qnn_capability(
+    profile: HardwareProfile,
+    installed_extras: list[str],
+    tokens: list[str],
+    probe_errors: dict[str, str],
+) -> None:
+    if profile.npu_vendor != "qualcomm" or not _has_extra(installed_extras, "hw-npu-qualcomm-qnn"):
+        return
+
+    qnn_distribution_ready = _probe_distribution("onnxruntime-qnn", tokens, probe_errors)
+
+    if "ep:QNNExecutionProvider" not in tokens:
+        if "import:onnxruntime" in tokens and qnn_distribution_ready:
+            try:
+                onnxruntime = importlib.import_module("onnxruntime")
+                providers = list(onnxruntime.get_available_providers())
+            except Exception as exc:
+                probe_errors["onnxruntime.qnn.providers"] = str(exc)
+                tokens.append("ep:QNNExecutionProvider:MISSING")
+            else:
+                if "QNNExecutionProvider" in providers:
+                    tokens.append("ep:QNNExecutionProvider")
+                else:
+                    tokens.append("ep:QNNExecutionProvider:MISSING")
+        else:
+            tokens.append("ep:QNNExecutionProvider:MISSING")
+
+    if "dll:QnnHtp" not in tokens and "dll:QnnHtp:MISSING" not in tokens:
+        tokens.append("dll:QnnHtp:MISSING")
+
+
 def run_preflight(profile: HardwareProfile, installed_extras: list[str]) -> PreflightResult:
     cache_key = _profile_cache_key(profile, installed_extras)
     cached = _CACHE.get(cache_key)
@@ -190,6 +255,8 @@ def run_preflight(profile: HardwareProfile, installed_extras: list[str]) -> Pref
 
     if "import:onnxruntime" in tokens:
         _probe_execution_providers(tokens, probe_errors)
+
+    _probe_qnn_capability(profile, installed_extras, tokens, probe_errors)
 
     result = PreflightResult(
         tokens=tokens,

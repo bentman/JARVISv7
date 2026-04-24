@@ -16,6 +16,19 @@ def derive_stt_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
+    if profile.npu_available and profile.npu_vendor == "qualcomm":
+        qnn_tokens_present = all(
+            _has_token(preflight, token)
+            for token in (
+                "import:onnxruntime-qnn",
+                "ep:QNNExecutionProvider",
+                "dll:QnnHtp",
+            )
+        )
+        if qnn_tokens_present:
+            return ("cpu", True, "qnn proven but inference runtime pending (slice H.2); selecting cpu")
+        return ("cpu", True, "qnn defined; STT QNN inference pending H.2")
+
     if (
         profile.gpu_vendor == "nvidia"
         and profile.cuda_available
