@@ -59,7 +59,7 @@ SKIP_UNLESS_REDIS = shutil.which("redis-server") is None
 SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None
 SKIP_UNLESS_DOCKER = shutil.which("docker") is None
 SKIP_UNLESS_QAIRT = os.getenv("QAIRT_SDK_PATH") is None
-SKIP_UNLESS_LIVE = bool(_preflight_report().probe_errors or not _preflight_report().tokens)
+SKIP_UNLESS_LIVE = os.getenv("JARVISV7_LIVE_TESTS", "").strip().lower() not in {"1", "true", "yes"}
 
 
 @pytest.fixture(scope="session")
