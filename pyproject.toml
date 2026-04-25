@@ -56,6 +56,7 @@ dependencies = [
 
   # HTTP
   "httpx>=0.27",
+  "huggingface_hub>=0.22",
 
   # Numerics (universal baseline; version-bounded to stay cross-platform)
   "numpy>=1.26,<3.0",

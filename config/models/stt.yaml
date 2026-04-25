@@ -1,0 +1,15 @@
+default_model: whisper-small-onnx
+
+models:
+  whisper-small-onnx:
+    family: stt
+    runtime: onnx_whisper
+    devices: [cpu, cuda, directml]
+    source:
+      type: huggingface
+      repo_id: onnx-community/whisper-small
+      subfolder: onnx
+      files:
+        - encoder_model.onnx
+        - decoder_model_merged.onnx
+    local_path: models/stt/whisper-small-onnx

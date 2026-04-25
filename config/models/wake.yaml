@@ -1,0 +1,17 @@
+default_model: openwakeword-hey-jarvis
+
+models:
+  openwakeword-hey-jarvis:
+    family: wake
+    runtime: openwakeword
+    provider: openwakeword
+    model: hey_jarvis_v0.1
+    threshold: 0.5
+    device: cpu
+    source:
+      type: url
+      files:
+        hey_jarvis_v0.1.onnx: https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/hey_jarvis_v0.1.onnx
+        melspectrogram.onnx: https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx
+        embedding_model.onnx: https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx
+    local_path: models/wake/openwakeword
