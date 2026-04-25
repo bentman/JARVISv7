@@ -18,6 +18,21 @@
 
 ## Entries
 
+- 2026-04-25 10:03
+  - Summary: B.0 model catalog and model acquisition activation was validated on Windows ARM64. No code edits were made; provisioning, model acquisition, final verification, and regression all passed.
+  - Scope: Windows ARM64 B.0 validation evidence only; no repository files changed except this log entry
+  - Host class(es): Windows ARM64
+  - Evidence: `backend\.venv\Scripts\python scripts\provision.py install` PASS with `huggingface_hub-1.12.0` installed through provisioning; `backend\.venv\Scripts\python -m compileall scripts\ensure_models.py backend\app\models` PASS; `backend\.venv\Scripts\python scripts\ensure_models.py --family llm` PASS with `ollama_manages_models`; initial `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` reported missing STT/TTS/Wake files as expected; `backend\.venv\Scripts\python scripts\ensure_models.py --family wake` PASS; `backend\.venv\Scripts\python scripts\ensure_models.py --family tts` PASS; `backend\.venv\Scripts\python scripts\ensure_models.py --family stt` PASS; final `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with `ready=true` and `missing=[]`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `61 passed`.
+    ```text
+    arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev]
+    ollama_manages_models
+    acquired: hey_jarvis_v0.1.onnx, melspectrogram.onnx, embedding_model.onnx
+    acquired: kokoro-v1.0.onnx, voices-v1.0.bin
+    acquired: encoder_model.onnx, decoder_model_merged.onnx
+    final verify-only: ready=true, missing=[]
+    61 passed
+    ```
+  - Note: This records B.0 Windows ARM64 validation only. It does not claim Slice B completion.
 - 2026-04-25 09:50
   - Summary: B.0 model catalog and model acquisition activation was completed on Windows x64. `ensure_models.py` now verifies/acquires STT, TTS, and Wake model artifacts, LLM acquisition reports the Ollama-managed no-op, and Slice A regression remained green.
   - Scope: `scripts/ensure_models.py`, `backend/app/models/catalog.py`, `config/models/stt.yaml`, `config/models/tts.yaml`, `config/models/wake.yaml`, `pyproject.toml`
