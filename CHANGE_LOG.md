@@ -18,6 +18,16 @@
 
 ## Entries
 
+- 2026-04-26 07:49
+  - Summary: B.2 TTS runtime family was implemented and validated for CPU no-playback synthesis on Windows x64 and Windows ARM64.
+  - Scope: `backend/app/runtimes/tts/`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/voice/test_tts_live.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with TTS `ready=true` and `missing=[]`; `backend\.venv\Scripts\python -m compileall backend\app\runtimes\tts backend\app\models` PASS; `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\tts -q` PASS with `8 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families tts --devices cpu` PASS with `1 passed, 1 deselected`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 tests`. Windows ARM64: same command sequence PASS with TTS `ready=true` and `missing=[]`, compileall PASS, TTS unit `8 passed`, runtime `1 passed, 1 deselected`, and regression `63 passed`.
+    ```text
+    x64: TTS ready=true, missing=[]; 8 passed; runtime tts cpu: 1 passed, 1 deselected; regression: 63 tests
+    arm64: TTS ready=true, missing=[]; 8 passed; runtime tts cpu: 1 passed, 1 deselected; regression: 63 passed
+    ```
+  - Note: No audio playback validation was performed. No Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
 - 2026-04-26 07:12
   - Summary: B.1 STT live test fixture loading was corrected on Windows ARM64. `backend/tests/runtime/voice/test_stt_live.py` now loads `hello_world.wav` with stdlib `wave` plus `numpy` instead of `soundfile`.
   - Scope: `backend/tests/runtime/voice/test_stt_live.py`, ARM64 validation evidence
