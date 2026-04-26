@@ -18,6 +18,19 @@
 
 ## Entries
 
+- 2026-04-26 18:46
+  - Summary: B.4 Wake Runtime Family was validated on Windows x64. No implementation changes were required in this validation pass.
+  - Scope: `backend/app/runtimes/wake/`, `backend/tests/unit/runtimes/wake/test_wake_runtime.py`, `backend/tests/runtime/voice/test_wake_live.py`, existing `models/wake/openwakeword/*.onnx` artifacts and `backend/tests/fixtures/hey_jarvis.wav`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python.exe scripts\ensure_models.py --verify-only` PASS with wake `missing=[]`; `backend\.venv\Scripts\python.exe -m compileall backend\app\runtimes\wake` PASS; `backend\.venv\Scripts\python.exe -m pytest backend\tests\unit\runtimes\wake -q` PASS with `8 passed`; `backend\.venv\Scripts\python.exe scripts\validate_backend.py runtime --families wake` PASS with `1 passed, 3 deselected`; `backend\.venv\Scripts\python.exe scripts\validate_backend.py regression` PASS with `63 tests`.
+    ```text
+    Wake missing=[]; artifacts present: hey_jarvis_v0.1.onnx, melspectrogram.onnx, embedding_model.onnx
+    compileall backend/app/runtimes/wake: PASS
+    wake unit: 8 passed
+    runtime --families wake: 1 passed, 3 deselected
+    regression: 63 tests
+    ```
+  - Note: Existing openWakeWord CPU path was validated with 1280-sample streaming chunks, threshold `0.5`, `backend/tests/fixtures/hey_jarvis.wav`, and Porcupine structural-only posture. This does not claim ARM64 validation, Slice B completion, or B.5 start.
 - 2026-04-26 07:49
   - Summary: B.2 TTS runtime family was implemented and validated for CPU no-playback synthesis on Windows x64 and Windows ARM64.
   - Scope: `backend/app/runtimes/tts/`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/voice/test_tts_live.py`

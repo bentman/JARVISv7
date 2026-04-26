@@ -179,6 +179,7 @@ markers = [
   "slow: runtime greater than 5 seconds",
   # External services
   "requires_ollama: requires a running Ollama endpoint",
+  "requires_porcupine: requires PICOVOICE_ACCESS_KEY env var set",
   "requires_redis: requires a running Redis instance",
   "requires_searxng: requires a running SearXNG instance",
   "requires_docker: requires docker / docker-compose",

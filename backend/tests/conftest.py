@@ -54,6 +54,7 @@ SKIP_UNLESS_CUDA = not _has_token("ep:CUDAExecutionProvider")
 SKIP_UNLESS_DIRECTML = not _has_token("ep:DmlExecutionProvider")
 SKIP_UNLESS_QNN = not _has_token("ep:QNNExecutionProvider")
 SKIP_UNLESS_OLLAMA = os.getenv("JARVISV7_OLLAMA_URL", "").strip() == ""
+SKIP_UNLESS_PORCUPINE = os.getenv("PICOVOICE_ACCESS_KEY") is None
 SKIP_UNLESS_REDIS = shutil.which("redis-server") is None
 SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None
 SKIP_UNLESS_DOCKER = shutil.which("docker") is None
