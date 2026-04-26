@@ -8,8 +8,17 @@ models:
     source:
       type: huggingface
       repo_id: onnx-community/whisper-small
-      subfolder: onnx
       files:
-        - encoder_model.onnx
-        - decoder_model_merged.onnx
+        encoder_model.onnx: onnx/encoder_model.onnx
+        decoder_model_merged.onnx: onnx/decoder_model_merged.onnx
+        config.json: config.json
+        generation_config.json: generation_config.json
+        preprocessor_config.json: preprocessor_config.json
+        tokenizer.json: tokenizer.json
+        tokenizer_config.json: tokenizer_config.json
+        special_tokens_map.json: special_tokens_map.json
+        vocab.json: vocab.json
+        merges.txt: merges.txt
+        normalizer.json: normalizer.json
+        added_tokens.json: added_tokens.json
     local_path: models/stt/whisper-small-onnx

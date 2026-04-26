@@ -99,8 +99,13 @@ def _download_huggingface(entry: ModelEntry, dry_run: bool) -> list[str]:
     if not dry_run:
         entry.local_path.mkdir(parents=True, exist_ok=True)
 
-    for file_name, _source_ref in _source_files(entry):
-        repo_filename = f"{subfolder.strip('/')}/{file_name}" if isinstance(subfolder, str) and subfolder else file_name
+    for file_name, source_ref in _source_files(entry):
+        if source_ref != file_name:
+            repo_filename = source_ref
+        elif isinstance(subfolder, str) and subfolder:
+            repo_filename = f"{subfolder.strip('/')}/{file_name}"
+        else:
+            repo_filename = file_name
         target = entry.local_path / file_name
         if dry_run:
             acquired.append(file_name)

@@ -111,13 +111,12 @@ Use this precedence order:
 
 1. `AGENTS.md` (this file)
 2. `ProjectVision.md`
-3. `slices.md`
-4. `repo_tree.md`
-5. `SYSTEM_INVENTORY.md`
-6. `CHANGE_LOG.md`
+3. `repo_tree.md`
+4. `SYSTEM_INVENTORY.md`
+5. `CHANGE_LOG.md`
+6. `slices.md`
 
 If a conflict is observed between files and runtime behavior, report the conflict and propose the smallest correction.
-
 ## 7. Scripts
 
 All scripts live in `scripts/`. They are orchestrators over `backend/app/**` and never duplicate application logic.

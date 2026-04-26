@@ -168,6 +168,14 @@ def test_runtime_subcommand_accepts_families_and_devices_filters(monkeypatch, ca
     assert "live and (stt or wake) and (cuda or qnn)" in calls[0]
 
 
+def test_runtime_marker_expr_treats_cpu_as_baseline_device() -> None:
+    assert validate_backend._runtime_marker_expr("stt", "cpu") == "live and (stt)"
+
+
+def test_runtime_marker_expr_ignores_cpu_in_mixed_device_filters() -> None:
+    assert validate_backend._runtime_marker_expr("stt", "cpu,cuda") == "live and (stt) and (cuda)"
+
+
 def test_ci_subcommand_suppresses_live_markers(monkeypatch, capsys) -> None:
     calls: list[list[str]] = []
 

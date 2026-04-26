@@ -18,6 +18,62 @@
 
 ## Entries
 
+- 2026-04-25 19:50
+  - Summary: B.1 STT live CPU validation was tightened to use the supplied known-audio fixture. `backend/tests/runtime/voice/test_stt_live.py` now loads `backend/tests/fixtures/hello_world.wav` and validates a normalized `hello world` transcript through the repository validation authority.
+  - Scope: `backend/tests/runtime/voice/test_stt_live.py`, `backend/tests/fixtures/hello_world.wav`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with STT `ready=true` and `missing=[]`; `backend\.venv\Scripts\python -m compileall backend\tests\runtime\voice\test_stt_live.py` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt --devices cpu` PASS with `1 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 tests`.
+    ```text
+    STT ready=true, missing=[]
+    Compiling 'backend\\tests\\runtime\\voice\\test_stt_live.py'...
+    runtime --families stt --devices cpu: 1 passed
+    PASS: unit: 63 tests
+    ```
+  - Note: Validation was Windows x64 only. This does not claim ARM64 validation, full B.1 both-host closeout, `SYSTEM_INVENTORY.md` update, or Slice B completion.
+- 2026-04-25 19:25
+  - Summary: B.1 STT runtime boundary was validated on the current Windows x64 CPU path using the repository validation authority. The runtime package, unit boundary, and live STT smoke path were present and passed validation.
+  - Scope: `backend/app/runtimes/stt/`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/runtime/voice/test_stt_live.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with STT `ready=true` and `missing=[]`; `backend\.venv\Scripts\python -m compileall backend\app\runtimes\stt backend\app\models scripts\validate_backend.py` PASS; `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\stt -q` PASS with `10 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt --devices cpu` PASS with `1 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 tests`.
+    ```text
+    STT ready=true, missing=[]
+    10 passed
+    runtime --families stt --devices cpu: 1 passed
+    PASS: unit: 63 tests
+    ```
+  - Note: This validates the current Windows x64 CPU STT smoke path only. It does not claim full B.1 closeout, ARM64 validation, Slice B completion, or the planned known-audio fixture transcript acceptance.
+- 2026-04-25 19:20
+  - Summary: The backend validator CPU device filter was corrected so `--devices cpu` is treated as the baseline runtime device and no nonexistent `cpu` pytest marker is required.
+  - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_validate_backend_script.py -q` PASS with `9 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt --devices cpu` no longer deselected due to a nonexistent `cpu` marker and PASSed with `1 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 tests`.
+    ```text
+    9 passed
+    runtime --families stt --devices cpu: 1 passed
+    PASS: unit: 63 tests
+    ```
+- 2026-04-25 12:40
+  - Summary: B.0 STT model acquisition completeness was corrected to include the ONNX support metadata required by the installed `onnx_asr` helper.
+  - Scope: `scripts/ensure_models.py`, `config/models/stt.yaml`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --family stt` PASS; `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with STT `ready=true` and `missing=[]`; `backend\.venv\Scripts\python -m compileall scripts\ensure_models.py` PASS; `backend\.venv\Scripts\python -c "from pathlib import Path; import onnx_asr; m=onnx_asr.load_model('onnx-community/whisper-small', path=Path('models/stt/whisper-small-onnx'), providers=['CPUExecutionProvider']); print(type(m).__name__)"` PASS with `TextResultsAsrAdapter`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `61 passed`.
+    ```text
+    STT ready=true, missing=[]
+    TextResultsAsrAdapter
+    61 passed
+    ```
+- 2026-04-25 12:40
+  - Summary: B.0 STT model acquisition completeness was corrected on Windows x64. `models/stt/whisper-small-onnx` now includes the ONNX weights plus source-confirmed support files required by the installed `onnx_asr` helper, and `ensure_models.py --verify-only` requires those files before reporting STT ready.
+  - Scope: `scripts/ensure_models.py`, `config/models/stt.yaml`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --family stt` PASS; `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS; `backend\.venv\Scripts\python -m compileall scripts\ensure_models.py` PASS; `backend\.venv\Scripts\python -c "from pathlib import Path; import onnx_asr; m=onnx_asr.load_model('onnx-community/whisper-small', path=Path('models/stt/whisper-small-onnx'), providers=['CPUExecutionProvider']); print(type(m).__name__)"` PASS with `TextResultsAsrAdapter`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `61 passed`.
+    ```text
+    arch=amd64
+    acquired: encoder_model.onnx, decoder_model_merged.onnx, config/tokenizer support files
+    TextResultsAsrAdapter
+    61 passed
+    ```
+  - Note: Validation was Windows x64 only. No B.1 runtime implementation, `SYSTEM_INVENTORY.md` update, or Slice B closeout was introduced.
 - 2026-04-25 10:03
   - Summary: B.0 model catalog and model acquisition activation was validated on Windows ARM64. No code edits were made; provisioning, model acquisition, final verification, and regression all passed.
   - Scope: Windows ARM64 B.0 validation evidence only; no repository files changed except this log entry

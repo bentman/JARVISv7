@@ -328,7 +328,9 @@ def _runtime_marker_expr(families: str | None, devices: str | None) -> str:
         if family_terms:
             clauses.append("(" + " or ".join(family_terms) + ")")
     if devices:
-        device_terms = [item.strip() for item in devices.split(",") if item.strip()]
+        device_terms = [
+            item.strip() for item in devices.split(",") if item.strip() and item.strip() != "cpu"
+        ]
         if device_terms:
             clauses.append("(" + " or ".join(device_terms) + ")")
     return " and ".join(clauses)
