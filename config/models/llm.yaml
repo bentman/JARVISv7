@@ -1,0 +1,9 @@
+ollama:
+  base_url: ${OLLAMA_BASE_URL}
+  model: ${OLLAMA_MODEL}
+  num_ctx: ${OLLAMA_NUM_CTX}
+  version_note: "Ollama HTTP API validated with local phi4-mini; host-specific context is env-owned."
+
+local:
+  model_path: ${LLAMA_CPP_MODEL_PATH}
+  state: deferred

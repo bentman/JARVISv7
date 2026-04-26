@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 import shutil
 from functools import lru_cache
-from importlib import util as importlib_util
 from types import SimpleNamespace
 
 import pytest
@@ -54,7 +53,7 @@ SKIP_UNLESS_ARM64 = _profile_report().profile.arch != "arm64"
 SKIP_UNLESS_CUDA = not _has_token("ep:CUDAExecutionProvider")
 SKIP_UNLESS_DIRECTML = not _has_token("ep:DmlExecutionProvider")
 SKIP_UNLESS_QNN = not _has_token("ep:QNNExecutionProvider")
-SKIP_UNLESS_OLLAMA = importlib_util.find_spec("ollama") is None
+SKIP_UNLESS_OLLAMA = os.getenv("JARVISV7_OLLAMA_URL", "").strip() == ""
 SKIP_UNLESS_REDIS = shutil.which("redis-server") is None
 SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None
 SKIP_UNLESS_DOCKER = shutil.which("docker") is None
