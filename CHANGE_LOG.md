@@ -19,7 +19,7 @@
 ## Entries
 
 - 2026-04-26 10:17
-  - Summary: B.3 LLM runtime family was implemented and validated on Windows x64 and Windows ARM64.
+  - Summary: Sub-Slice B.3 LLM runtime family was implemented and validated on Windows x64 and Windows ARM64.
   - Scope: `backend/app/runtimes/llm/`, `backend/app/routing/runtime_selector.py`, `config/app/policies.yaml`, `config/models/llm.yaml`, `.env.example`, `backend/tests/conftest.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/routing/test_runtime_selector.py`, `backend/tests/runtime/voice/test_llm_live.py`
   - Host class(es): Windows x64, Windows ARM64
   - Evidence: Windows x64: `backend\.venv\Scripts\python -m compileall backend\app\runtimes\llm backend\app\routing` PASS; `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm backend\tests\unit\routing -q` PASS with `13 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families llm` PASS with `1 passed, 2 deselected`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 tests`. Windows ARM64: same command sequence PASS with compileall PASS, LLM/routing unit `13 passed`, runtime `1 passed, 2 deselected`, and regression `63 passed`.
