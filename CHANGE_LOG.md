@@ -18,6 +18,18 @@
 
 ## Entries
 
+- 2026-04-26 07:12
+  - Summary: B.1 STT live test fixture loading was corrected on Windows ARM64. `backend/tests/runtime/voice/test_stt_live.py` now loads `hello_world.wav` with stdlib `wave` plus `numpy` instead of `soundfile`.
+  - Scope: `backend/tests/runtime/voice/test_stt_live.py`, ARM64 validation evidence
+  - Host class(es): Windows ARM64
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with STT `missing=[]` and `ready=true`; `backend\.venv\Scripts\python -m compileall backend\tests\runtime\voice\test_stt_live.py` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt --devices cpu` PASS with `1 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 passed`.
+    ```text
+    STT missing=[], ready=true
+    Compiling 'backend\\tests\\runtime\\voice\\test_stt_live.py'...
+    runtime --families stt --devices cpu: 1 passed
+    regression: 63 passed
+    ```
+  - Note: The ARM64 `soundfile`/`libsndfile.dll` load failure was isolated to the test fixture loader. This does not claim Slice B completion.
 - 2026-04-25 19:50
   - Summary: B.1 STT live CPU validation was tightened to use the supplied known-audio fixture. `backend/tests/runtime/voice/test_stt_live.py` now loads `backend/tests/fixtures/hello_world.wav` and validates a normalized `hello world` transcript through the repository validation authority.
   - Scope: `backend/tests/runtime/voice/test_stt_live.py`, `backend/tests/fixtures/hello_world.wav`
