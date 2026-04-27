@@ -24,9 +24,14 @@ def _load_sounddevice() -> Any:
     return _sounddevice
 
 
-def play(audio: np.ndarray, sample_rate: int) -> None:
+def start(audio: np.ndarray, sample_rate: int) -> None:
     sounddevice = _load_sounddevice()
     sounddevice.play(audio, samplerate=sample_rate)
+
+
+def play(audio: np.ndarray, sample_rate: int) -> None:
+    sounddevice = _load_sounddevice()
+    start(audio, sample_rate)
     sounddevice.wait()
 
 

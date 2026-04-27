@@ -136,8 +136,27 @@ def test_catalog_model_path_resolves_existing_stt_catalog():
     assert runtime.model_path.name == "whisper-small-onnx"
 
 
-def test_barge_in_detector_stub_always_returns_false():
-    assert BargeInDetector().detect(np.ones(160, dtype=np.float32)) is False
+def test_barge_in_detector_uses_rms_threshold_and_guard_time():
+    now = 100.0
+
+    def time_source() -> float:
+        return now
+
+    detector = BargeInDetector(
+        energy_threshold=0.02,
+        guard_time_s=0.5,
+        time_source=time_source,
+    )
+
+    assert detector.detect(np.ones(160, dtype=np.float32)) is True
+    assert detector.detect(np.full(160, 0.01, dtype=np.float32)) is False
+    assert detector.detect(np.array([], dtype=np.float32)) is False
+
+    detector.reset()
+    assert detector.detect(np.ones(160, dtype=np.float32)) is False
+
+    now = 100.6
+    assert detector.detect(np.ones(160, dtype=np.float32)) is True
 
 
 def test_secondary_onnx_asr_runtime_boundary_is_unavailable():

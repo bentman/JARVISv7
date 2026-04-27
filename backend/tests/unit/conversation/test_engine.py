@@ -11,6 +11,7 @@ from backend.app.conversation.states import ConversationState
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts.base import TTSBase
 
@@ -75,6 +76,24 @@ class FakeLLM(LLMBase):
         return "fake"
 
 
+class FakePlayback:
+    def __init__(self) -> None:
+        self.started = False
+        self.stopped = False
+        self.play_calls = 0
+        self.start_calls = 0
+
+    def play(self, audio: np.ndarray, sample_rate: int) -> None:
+        self.play_calls += 1
+
+    def start(self, audio: np.ndarray, sample_rate: int) -> None:
+        self.started = True
+        self.start_calls += 1
+
+    def stop(self) -> None:
+        self.stopped = True
+
+
 def _personality() -> PersonalityProfile:
     return PersonalityProfile(
         profile_id="test",
@@ -92,6 +111,9 @@ def _engine(
     llm: FakeLLM | None = None,
     session_manager: SessionManager | None = None,
     write_policy: WritePolicy | None = None,
+    barge_in_detector: BargeInDetector | None = None,
+    interruption_audio_chunks: list[np.ndarray] | None = None,
+    playback_api: FakePlayback | None = None,
 ) -> TurnEngine:
     return TurnEngine(
         stt=stt or FakeSTT(),
@@ -100,6 +122,9 @@ def _engine(
         personality=_personality(),
         session_manager=session_manager,
         write_policy=write_policy,
+        barge_in_detector=barge_in_detector,
+        interruption_audio_chunks=interruption_audio_chunks,
+        playback_api=playback_api,
     )
 
 
@@ -295,3 +320,91 @@ def test_engine_with_session_manager_records_failed_turn_artifact(tmp_path):
     assert result.final_state == ConversationState.FAILED
     assert len(manager.turn_artifacts) == 1
     assert manager.turn_artifacts[0].failure_reason == "llm failed"
+
+
+def test_barge_in_detector_ignores_guard_time_input():
+    now = 0.0
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.5, time_source=lambda: now)
+    detector.reset()
+
+    assert detector.detect(np.ones(8, dtype=np.float32)) is False
+
+
+def test_barge_in_detector_fires_after_guard_time_for_above_threshold_rms():
+    now = 0.0
+
+    def time_source() -> float:
+        return now
+
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.5, time_source=time_source)
+    detector.reset()
+    now = 0.6
+
+    assert detector.detect(np.full(8, 0.1, dtype=np.float32)) is True
+    assert detector.detect(np.full(8, 0.001, dtype=np.float32)) is False
+    assert detector.detect(np.array([], dtype=np.float32)) is False
+
+
+def test_interruption_stops_playback_and_transitions_to_idle():
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    playback = FakePlayback()
+    result = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=[np.full(8, 0.1, dtype=np.float32)],
+        playback_api=playback,
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert playback.started is True
+    assert playback.stopped is True
+    assert result.final_state == ConversationState.IDLE
+    assert result.interrupted is True
+
+
+def test_interruption_event_recorded_in_turn_result():
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    result = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=[np.full(8, 0.1, dtype=np.float32)],
+        playback_api=FakePlayback(),
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.interruption_events
+    assert result.interruption_events[0]["type"] == "barge_in"
+    assert result.interruption_events[0]["recovery_state"] == "RECOVERING"
+    assert "timestamp" in result.interruption_events[0]
+
+
+def test_interrupted_turn_artifact_contains_interruption_event(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+
+    result = _engine(
+        tts=FakeTTS(available=True),
+        session_manager=manager,
+        barge_in_detector=detector,
+        interruption_audio_chunks=[np.full(8, 0.1, dtype=np.float32)],
+        playback_api=FakePlayback(),
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.interrupted is True
+    assert manager.turn_artifacts[0].interruption_events[0]["type"] == "barge_in"
+
+
+def test_no_interruption_path_remains_normal():
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    playback = FakePlayback()
+
+    result = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=[np.zeros(8, dtype=np.float32)],
+        playback_api=playback,
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert playback.started is True
+    assert playback.stopped is False
+    assert result.final_state == ConversationState.IDLE
+    assert result.interrupted is False
+    assert result.interruption_events == []

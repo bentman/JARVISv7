@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any, Iterable
 from uuid import uuid4
 
 import numpy as np
@@ -14,6 +15,7 @@ from backend.app.conversation.turn_manager import TurnContext
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts import playback
 from backend.app.runtimes.tts.base import TTSBase
@@ -29,6 +31,8 @@ class TurnResult:
     failure_reason: str | None = None
     tts_degraded: bool = False
     tts_degraded_reason: str | None = None
+    interrupted: bool = False
+    interruption_events: list[dict[str, object]] = field(default_factory=list)
 
 
 class TurnEngine:
@@ -42,6 +46,9 @@ class TurnEngine:
         session_id: str | None = None,
         session_manager: SessionManager | None = None,
         write_policy: WritePolicy | None = None,
+        barge_in_detector: BargeInDetector | None = None,
+        interruption_audio_chunks: Iterable[np.ndarray] | None = None,
+        playback_api: Any | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -50,6 +57,9 @@ class TurnEngine:
         self.session_manager = session_manager
         self.write_policy = write_policy or WritePolicy()
         self.session_id = session_manager.session_id if session_manager is not None else session_id or uuid4().hex
+        self.barge_in_detector = barge_in_detector
+        self.interruption_audio_chunks = interruption_audio_chunks
+        self.playback_api = playback_api or playback
 
     def run_text_turn(self, text: str) -> TurnResult:
         transcript = text.strip()
@@ -132,7 +142,64 @@ class TurnEngine:
         audio = self.tts.synthesize(response_text)
         sample_rate = self.tts.sample_rate()
         context.advance(ConversationState.SPEAKING)
-        playback.play(audio, sample_rate)
+        if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
+            return self._play_with_interruption_monitor(
+                context,
+                transcript=transcript,
+                response_text=response_text,
+                final_prompt_text=final_prompt_text,
+                audio=audio,
+                sample_rate=sample_rate,
+            )
+        self.playback_api.play(audio, sample_rate)
+        context.advance(ConversationState.IDLE)
+        result = TurnResult(
+            turn_id=context.turn_id,
+            session_id=context.session_id,
+            transcript=transcript,
+            response_text=response_text,
+            final_state=context.state,
+        )
+        self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+        return result
+
+    def _play_with_interruption_monitor(
+        self,
+        context: TurnContext,
+        *,
+        transcript: str,
+        response_text: str,
+        final_prompt_text: str,
+        audio: np.ndarray,
+        sample_rate: int,
+    ) -> TurnResult:
+        assert self.barge_in_detector is not None
+        self.barge_in_detector.reset()
+        self.playback_api.start(audio, sample_rate)
+        for chunk in self.interruption_audio_chunks or []:
+            if self.barge_in_detector.detect(chunk):
+                self.playback_api.stop()
+                event: dict[str, object] = {
+                    "type": "barge_in",
+                    "timestamp": timestamp_now(),
+                    "recovery_state": ConversationState.RECOVERING.value,
+                }
+                interruption_events: list[dict[str, object]] = [event]
+                context.advance(ConversationState.INTERRUPTED)
+                context.advance(ConversationState.RECOVERING)
+                context.advance(ConversationState.IDLE)
+                result = TurnResult(
+                    turn_id=context.turn_id,
+                    session_id=context.session_id,
+                    transcript=transcript,
+                    response_text=response_text,
+                    final_state=context.state,
+                    interrupted=True,
+                    interruption_events=interruption_events,
+                )
+                self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+                return result
+
         context.advance(ConversationState.IDLE)
         result = TurnResult(
             turn_id=context.turn_id,
@@ -191,8 +258,15 @@ class TurnEngine:
             failure_reason=result.failure_reason,
             tts_degraded=result.tts_degraded,
             tts_degraded_reason=result.tts_degraded_reason,
+            interruption_events=result.interruption_events,
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
         )
         self.session_manager.record_turn_artifact(artifact)
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
+
+
+def timestamp_now() -> str:
+    from backend.app.conversation.turn_manager import utc_now
+
+    return utc_now().isoformat()
