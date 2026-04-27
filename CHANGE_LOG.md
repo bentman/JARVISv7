@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-27 13:27
+  - Summary: Slice C.3 Session Continuity + Canonical Turn Artifact was completed. Added canonical `TurnArtifact` and `SessionArtifact` schemas, deterministic artifact storage under `data/turns/` and `data/sessions/`, bounded in-session `WorkingMemory`, `WritePolicy` for working-memory writes, and `SessionManager` for session ID ownership, turn tracking, working-memory context injection, artifact recording, and session close. `TurnEngine` was extended with optional `session_manager` and `write_policy`, preserving default artifact-free C.1/C.2 behavior when no `SessionManager` is provided. Integration evidence proved two text turns in one session write deterministic artifacts and inject prior working memory into the second prompt.
+  - Scope: `backend/app/artifacts/`, `backend/app/memory/`, `backend/app/conversation/`, `backend/tests/unit/artifacts/`, `backend/tests/unit/memory/`, `backend/tests/unit/conversation/`, `backend/tests/integration/services/test_two_turn_session.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: compileall PASS; focused C.3 pytest PASS (`40 passed in 0.28s`); `scripts\validate_backend.py unit` PASS (`165 passed in 0.38s`); `scripts\validate_backend.py integration` PASS (`3 passed in 0.13s`); `scripts\validate_backend.py regression` PASS (`63 passed in 0.10s`). Windows ARM64: compileall PASS; focused C.3 pytest PASS (`40 passed in 0.22s`); `scripts\validate_backend.py unit` PASS (`165 passed in 0.40s`); `scripts\validate_backend.py integration` PASS (`3 passed in 0.10s`); `scripts\validate_backend.py regression` PASS (`63 passed in 0.09s`); fingerprint excerpt: `[fingerprint] arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready; tokens=15`.
+  - Note: C.3 did not add episodic memory, retrieval, runtime-family changes, live runtime behavior, hardware/provisioning changes, API/desktop/tool/agent work, or inventory changes.
+
 - 2026-04-27 10:34
   - Summary: Slice C.2 Spoken Response + SPEAKING State was completed and validated on Windows x64 and Windows ARM64. Voice turns now synthesize/play spoken output through the injected TTS runtime when available, sanitize response text before synthesis, enter `SPEAKING` only when playback is attempted, return to `IDLE` after playback, and degrade cleanly to text with additive `TurnResult` fields `tts_degraded` and `tts_degraded_reason` when TTS is unavailable.
   - Scope: `backend/app/conversation/engine.py`, `backend/app/cognition/responder.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/runtime/turn/test_voice_turn_live.py`
