@@ -18,21 +18,16 @@
 
 ## Entries
 
-<<<<<<< HEAD
-- 2026-04-26 18:46
-  - Summary: B.4 Wake Runtime Family was validated on Windows x64. No implementation changes were required in this validation pass.
-  - Scope: `backend/app/runtimes/wake/`, `backend/tests/unit/runtimes/wake/test_wake_runtime.py`, `backend/tests/runtime/voice/test_wake_live.py`, existing `models/wake/openwakeword/*.onnx` artifacts and `backend/tests/fixtures/hey_jarvis.wav`
-  - Host class(es): Windows x64
-  - Evidence: `backend\.venv\Scripts\python.exe scripts\ensure_models.py --verify-only` PASS with wake `missing=[]`; `backend\.venv\Scripts\python.exe -m compileall backend\app\runtimes\wake` PASS; `backend\.venv\Scripts\python.exe -m pytest backend\tests\unit\runtimes\wake -q` PASS with `8 passed`; `backend\.venv\Scripts\python.exe scripts\validate_backend.py runtime --families wake` PASS with `1 passed, 3 deselected`; `backend\.venv\Scripts\python.exe scripts\validate_backend.py regression` PASS with `63 tests`.
+- 2026-04-26 18:57
+  - Summary: B.4 Wake Runtime Family was validated on Windows x64 and Windows ARM64. Existing openWakeWord CPU path validation passed on both hosts, and no implementation changes were required during the final validation pass.
+  - Scope: `backend/app/runtimes/wake/`, `backend/tests/unit/runtimes/wake/test_wake_runtime.py`, `backend/tests/runtime/voice/test_wake_live.py`, `backend/tests/fixtures/hey_jarvis.wav`, `backend/tests/conftest.py`, `pyproject.toml`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS with wake `missing=[]`; `backend\.venv\Scripts\python -m compileall backend\app\runtimes\wake` PASS; `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\wake -q` PASS with `8 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families wake` PASS with `1 passed, 3 deselected`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 tests`. Windows ARM64: `git status --short` clean before validation; same command sequence PASS with wake `missing=[]` and `ready=true`, compileall PASS, wake unit `8 passed`, runtime `1 passed, 3 deselected`, and regression `63 passed`.
     ```text
-    Wake missing=[]; artifacts present: hey_jarvis_v0.1.onnx, melspectrogram.onnx, embedding_model.onnx
-    compileall backend/app/runtimes/wake: PASS
-    wake unit: 8 passed
-    runtime --families wake: 1 passed, 3 deselected
-    regression: 63 tests
+    x64: wake missing=[]; 8 passed; runtime wake: 1 passed, 3 deselected; regression: 63 tests
+    arm64: clean status; wake missing=[], ready=true; 8 passed; runtime wake: 1 passed, 3 deselected; regression: 63 passed
     ```
-  - Note: Existing openWakeWord CPU path was validated with 1280-sample streaming chunks, threshold `0.5`, `backend/tests/fixtures/hey_jarvis.wav`, and Porcupine structural-only posture. This does not claim ARM64 validation, Slice B completion, or B.5 start.
-=======
+  - Note: Porcupine remained structural-only and was not live-validated. No Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
 - 2026-04-26 10:17
   - Summary: Sub-Slice B.3 LLM runtime family was implemented and validated on Windows x64 and Windows ARM64.
   - Scope: `backend/app/runtimes/llm/`, `backend/app/routing/runtime_selector.py`, `config/app/policies.yaml`, `config/models/llm.yaml`, `.env.example`, `backend/tests/conftest.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/routing/test_runtime_selector.py`, `backend/tests/runtime/voice/test_llm_live.py`
@@ -43,7 +38,6 @@
     arm64: compileall PASS; 13 passed; runtime llm: 1 passed, 2 deselected; regression: 63 passed
     ```
   - Note: Local Ollama live validation used `phi4-mini`. Cloud runtimes are policy-gated stubs only, llama.cpp remains deferred to H.1, and no Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
->>>>>>> f8effd28bb7839e46de79827404fd659b44987a9
 - 2026-04-26 07:49
   - Summary: B.2 TTS runtime family was implemented and validated for CPU no-playback synthesis on Windows x64 and Windows ARM64.
   - Scope: `backend/app/runtimes/tts/`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/voice/test_tts_live.py`
