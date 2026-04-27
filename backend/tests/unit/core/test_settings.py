@@ -26,7 +26,30 @@ ENV_NAMES = (
     "PVPORCUPINE_MODEL_PATH",
 )
 
-ENV_EXAMPLE_REQUIRED_NAMES: set[str] = set(ENV_NAMES)
+ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
+    "APP_NAME",
+    "CONFIG_PATH",
+    "DATA_PATH",
+    "MODEL_PATH",
+    "USE_LOCAL_MODEL",
+    "LOCAL_MODEL_FETCH",
+    "LLAMA_CPP_MODEL_PATH",
+    "USE_OLLAMA",
+    "OLLAMA_BASE_URL",
+    "OLLAMA_MODEL",
+    "OLLAMA_NUM_CTX",
+    "JARVISV7_LIVE_TESTS",
+    "TTS_MODELS",
+    "STT_MODELS",
+    "WAKE_MODEL",
+    "QAIRT_SDK_PATH",
+    "PICOVOICE_ACCESS_KEY",
+    "PVPORCUPINE_MODEL_PATH",
+}
+
+ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
+    "JARVISV7_OLLAMA_URL",
+}
 
 
 def _reload_settings(monkeypatch, tmp_path, env_text: str | None, example_text: str | None):
@@ -139,10 +162,11 @@ def test_env_example_covers_current_settings_env_variables():
 
     missing = sorted(ENV_EXAMPLE_REQUIRED_NAMES - set(values))
     assert missing == []
+    advertised_aliases = sorted(ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES & set(values))
+    assert advertised_aliases == []
     assert values["OLLAMA_BASE_URL"]
     assert values["OLLAMA_MODEL"]
     assert values["OLLAMA_NUM_CTX"]
     assert values["JARVISV7_LIVE_TESTS"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["LOCAL_MODEL_FETCH"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
-    assert values["JARVISV7_OLLAMA_URL"] == ""
     assert values["PICOVOICE_ACCESS_KEY"] in {"", "<placeholder>", "<secret>"}
