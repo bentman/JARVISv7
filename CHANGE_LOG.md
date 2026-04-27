@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-27 15:41
+  - Summary: Slice C.5 Interruption / Barge-In was completed. `BargeInDetector` was promoted from stub behavior to deterministic RMS/guard-time detection; a minimal non-blocking playback-start boundary was added while preserving existing blocking `play()` behavior; additive `TurnResult` interruption fields were added; interruption events are recorded into existing `TurnArtifact.interruption_events`; and unit coverage proves deterministic interruption behavior including playback stop invocation, interruption-event recording, and recovery to `IDLE`. Existing non-interrupted C.2/C.3/C.4 behavior was preserved.
+  - Scope: `backend/app/runtimes/stt/barge_in.py`, `backend/app/runtimes/tts/playback.py`, `backend/app/conversation/engine.py`, `backend/app/artifacts/turn_artifact.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/runtime/turn/test_interruption_live.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 and Windows ARM64: focused STT detector unit PASS; focused engine unit PASS; unit validator PASS; runtime validator PASS; regression PASS. Counts — x64: `10 passed`, `24 passed`, `171 passed`, `5 passed, 4 deselected`, `63 passed`; ARM64: `10 passed`, `24 passed`, `171 passed`, `5 passed, 4 deselected`, `63 passed`; fingerprint excerpt: `[fingerprint] arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready; tokens=15`.
+  - Note: C.5 does not claim full acoustic microphone barge-in validation or physical audio-output validation.
+
 - 2026-04-27 14:11
   - Summary: Slice C.4 Live Multi-Turn Spoken Continuity was completed by adding live-gated runtime acceptance coverage in `backend/tests/runtime/turn/test_multiturn_live.py`. The test validates two spoken turns in one `SessionManager`, validates both turns complete without error, validates turn artifacts are written only under `tmp_path`, and validates second-turn working-memory injection through persisted `final_prompt_text`.
   - Scope: `backend/tests/runtime/turn/test_multiturn_live.py`
