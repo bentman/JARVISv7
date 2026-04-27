@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-27 14:11
+  - Summary: Slice C.4 Live Multi-Turn Spoken Continuity was completed by adding live-gated runtime acceptance coverage in `backend/tests/runtime/turn/test_multiturn_live.py`. The test validates two spoken turns in one `SessionManager`, validates both turns complete without error, validates turn artifacts are written only under `tmp_path`, and validates second-turn working-memory injection through persisted `final_prompt_text`.
+  - Scope: `backend/tests/runtime/turn/test_multiturn_live.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: compileall PASS; runtime validator PASS (`5 passed, 3 deselected in 36.09s`); regression PASS (`63 passed in 0.09s`). Windows ARM64: compileall PASS; runtime validator PASS (`5 passed, 3 deselected in 30.15s`); regression PASS (`63 passed in 0.09s`); fingerprint excerpt: `[fingerprint] arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready; tokens=15`.
+  - Note: C.4 explicitly uses `NullTTSRuntime` degraded behavior and does not claim real TTS playback/audio-output/device-state proof. No engine, session manager, artifacts, memory, runtime-family, playback, hardware/provisioning, routing, docs, inventory, desktop/API, tools, or agents changes were made.
+
 - 2026-04-27 13:27
   - Summary: Slice C.3 Session Continuity + Canonical Turn Artifact was completed. Added canonical `TurnArtifact` and `SessionArtifact` schemas, deterministic artifact storage under `data/turns/` and `data/sessions/`, bounded in-session `WorkingMemory`, `WritePolicy` for working-memory writes, and `SessionManager` for session ID ownership, turn tracking, working-memory context injection, artifact recording, and session close. `TurnEngine` was extended with optional `session_manager` and `write_policy`, preserving default artifact-free C.1/C.2 behavior when no `SessionManager` is provided. Integration evidence proved two text turns in one session write deterministic artifacts and inject prior working memory into the second prompt.
   - Scope: `backend/app/artifacts/`, `backend/app/memory/`, `backend/app/conversation/`, `backend/tests/unit/artifacts/`, `backend/tests/unit/memory/`, `backend/tests/unit/conversation/`, `backend/tests/integration/services/test_two_turn_session.py`
