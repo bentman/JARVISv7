@@ -18,6 +18,18 @@
 
 ## Entries
 
+- 2026-04-27 10:34
+  - Summary: Slice C.2 Spoken Response + SPEAKING State was completed and validated on Windows x64 and Windows ARM64. Voice turns now synthesize/play spoken output through the injected TTS runtime when available, sanitize response text before synthesis, enter `SPEAKING` only when playback is attempted, return to `IDLE` after playback, and degrade cleanly to text with additive `TurnResult` fields `tts_degraded` and `tts_degraded_reason` when TTS is unavailable.
+  - Scope: `backend/app/conversation/engine.py`, `backend/app/cognition/responder.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/runtime/turn/test_voice_turn_live.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: `backend\.venv\Scripts\python -m compileall backend/app/conversation backend/tests/unit/conversation backend/tests/runtime/turn` PASS; `backend\.venv\Scripts\python -m pytest backend/tests/unit/conversation/test_engine.py -q` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn,tts` PASS with `3 passed, 4 deselected in 54.82s`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 passed in 0.10s`. Windows ARM64: fresh-clone bootstrap completed through profile/provision/ensure_models/preflight/validate_profile checkpoints; `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn,tts` PASS with `3 passed, 4 deselected in 14.97s`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 passed in 0.08s`.
+    ```text
+    x64: runtime --families turn,tts: 3 passed, 4 deselected in 54.82s; regression: 63 passed in 0.10s
+    arm64: bootstrap checkpoints complete; verify-only PASS; runtime --families turn,tts: 3 passed, 4 deselected in 14.97s; regression: 63 passed in 0.08s
+    arm64 note: initial runtime validation failed with Ollama not running; rerun PASS after starting Ollama (environment prerequisite, not C.2 code defect)
+    ```
+  - Note: Text-turn behavior was preserved. No changes were made to TTS runtime families, playback implementation, hardware/provisioning, routing, desktop/API, artifacts, memory, tools, agents, or `SYSTEM_INVENTORY.md`.
+
 - 2026-04-27 07:30
   - Summary: Env/settings template cleanup reduced `.env.example` to a concise operator-facing template. `JARVISV7_OLLAMA_URL` was removed from the template while remaining code-supported as a compatibility alias; settings tests now split readable settings variables from public-template variables.
   - Scope: `.env.example`, `backend/tests/unit/core/test_settings.py`; `backend/app/core/settings.py` was not modified.
