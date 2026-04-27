@@ -52,3 +52,5 @@ def test_voice_turn_transcribes_fixture_and_returns_response():
     assert result.response_text is not None
     assert result.response_text.strip()
     assert result.failure_reason is None
+    assert result.tts_degraded is True
+    assert result.tts_degraded_reason == "TTS runtime is unavailable"
