@@ -18,6 +18,18 @@
 
 ## Entries
 
+- 2026-04-27 05:36
+  - Summary: The repo environment template coverage correction was recorded after the prior x64 env-standard entry. `.env.example` now includes `QAIRT_SDK_PATH=` so the committed fallback/template aligns with the settings coverage test, while `.env` remained local/gitignored and was not committed.
+  - Scope: `.env.example`, ARM64 validation evidence for `backend/app/core/settings.py` / C.1 runtime path
+  - Host class(es): Windows ARM64
+  - Evidence: `.env.example` includes `QAIRT_SDK_PATH=`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families llm` PASS with `1 passed, 6 deselected`; `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn` PASS with `2 passed, 5 deselected`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 passed`; regression report `reports\validation\20260427023948-regression.txt`.
+    ```text
+    arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready; tokens=15
+    llm runtime: 1 passed, 6 deselected
+    turn runtime: 2 passed, 5 deselected
+    regression: 63 passed
+    ```
+  - Note: No C.2, playback, artifacts, memory continuity, interruption, tools, agents, desktop, API routes, or Group D+ work was introduced.
 - 2026-04-26 21:18
   - Summary: Repo-wide env/config loading was standardized through `backend/app/core/settings.py`. Shell environment variables now take precedence over `.env`, which takes precedence over `.env.example`; `.env` remains local/gitignored runtime config, and `.env.example` is the committed safe template/fallback.
   - Scope: `backend/app/core/settings.py`, `.env.example`, `backend/tests/unit/core/test_settings.py`, `backend/app/runtimes/llm/ollama_runtime.py`, `backend/tests/conftest.py`, `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_text_turn_live.py`, `backend/tests/runtime/turn/test_voice_turn_live.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
