@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from uuid import uuid4
 
 import numpy as np
 
 from backend.app.cognition.prompt_assembler import assemble_prompt
 from backend.app.cognition.responder import sanitize_for_tts
+from backend.app.artifacts.turn_artifact import TurnArtifact
+from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import TurnContext
+from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.base import STTBase
@@ -38,22 +40,26 @@ class TurnEngine:
         llm: LLMBase,
         personality: PersonalityProfile,
         session_id: str | None = None,
+        session_manager: SessionManager | None = None,
+        write_policy: WritePolicy | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
         self.llm = llm
         self.personality = personality
-        self.session_id = session_id or uuid4().hex
+        self.session_manager = session_manager
+        self.write_policy = write_policy or WritePolicy()
+        self.session_id = session_manager.session_id if session_manager is not None else session_id or uuid4().hex
 
     def run_text_turn(self, text: str) -> TurnResult:
         transcript = text.strip()
-        context = TurnContext(session_id=self.session_id, modality="text")
+        context = self._create_context("text")
         if not transcript:
             return self._fail(context, transcript=None, response_text=None, reason="text input is empty")
         return self._run_reasoning_path(context, transcript, speak_response=False)
 
     def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
-        context = TurnContext(session_id=self.session_id, modality="voice")
+        context = self._create_context("voice")
         try:
             context.advance(ConversationState.LISTENING)
             context.advance(ConversationState.TRANSCRIBING)
@@ -74,29 +80,44 @@ class TurnEngine:
     def _run_reasoning_path(self, context: TurnContext, transcript: str, *, speak_response: bool) -> TurnResult:
         try:
             context.advance(ConversationState.REASONING)
-            prompt = assemble_prompt(transcript, self.personality)
+            working_memory = self.session_manager.get_working_context(self.write_policy) if self.session_manager else None
+            prompt = assemble_prompt(transcript, self.personality, working_memory=working_memory)
             response = self.llm.generate(prompt)
             if not response.strip():
                 return self._fail(context, transcript=transcript, response_text=response, reason="LLM returned empty response")
             context.advance(ConversationState.RESPONDING)
             response_text = sanitize_for_tts(response)
             if speak_response:
-                return self._speak_or_degrade(context, transcript=transcript, response_text=response_text)
+                return self._speak_or_degrade(
+                    context,
+                    transcript=transcript,
+                    response_text=response_text,
+                    final_prompt_text=prompt,
+                )
             context.advance(ConversationState.IDLE)
-            return TurnResult(
+            result = TurnResult(
                 turn_id=context.turn_id,
                 session_id=context.session_id,
                 transcript=transcript,
                 response_text=response_text,
                 final_state=context.state,
             )
+            self._record_artifact(context, result, final_prompt_text=prompt)
+            return result
         except Exception as exc:
             return self._fail(context, transcript=transcript, response_text=None, reason=str(exc))
 
-    def _speak_or_degrade(self, context: TurnContext, *, transcript: str, response_text: str) -> TurnResult:
+    def _speak_or_degrade(
+        self,
+        context: TurnContext,
+        *,
+        transcript: str,
+        response_text: str,
+        final_prompt_text: str,
+    ) -> TurnResult:
         if not self.tts.is_available():
             context.advance(ConversationState.IDLE)
-            return TurnResult(
+            result = TurnResult(
                 turn_id=context.turn_id,
                 session_id=context.session_id,
                 transcript=transcript,
@@ -105,19 +126,23 @@ class TurnEngine:
                 tts_degraded=True,
                 tts_degraded_reason="TTS runtime is unavailable",
             )
+            self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+            return result
 
         audio = self.tts.synthesize(response_text)
         sample_rate = self.tts.sample_rate()
         context.advance(ConversationState.SPEAKING)
         playback.play(audio, sample_rate)
         context.advance(ConversationState.IDLE)
-        return TurnResult(
+        result = TurnResult(
             turn_id=context.turn_id,
             session_id=context.session_id,
             transcript=transcript,
             response_text=response_text,
             final_state=context.state,
         )
+        self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+        return result
 
     def _fail(
         self,
@@ -129,7 +154,7 @@ class TurnEngine:
     ) -> TurnResult:
         if context.state != ConversationState.FAILED:
             context.advance(ConversationState.FAILED)
-        return TurnResult(
+        result = TurnResult(
             turn_id=context.turn_id,
             session_id=context.session_id,
             transcript=transcript,
@@ -137,3 +162,37 @@ class TurnEngine:
             final_state=context.state,
             failure_reason=reason,
         )
+        self._record_artifact(context, result, final_prompt_text=None)
+        return result
+
+    def _create_context(self, modality: str) -> TurnContext:
+        if self.session_manager is not None:
+            if modality not in {"voice", "text"}:
+                raise ValueError("modality must be voice or text")
+            return self.session_manager.create_turn_context(modality)  # type: ignore[arg-type]
+        if modality == "voice":
+            return TurnContext(session_id=self.session_id, modality="voice")
+        if modality == "text":
+            return TurnContext(session_id=self.session_id, modality="text")
+        raise ValueError("modality must be voice or text")
+
+    def _record_artifact(self, context: TurnContext, result: TurnResult, *, final_prompt_text: str | None) -> None:
+        if self.session_manager is None:
+            return
+        artifact = TurnArtifact(
+            turn_id=result.turn_id,
+            session_id=result.session_id,
+            input_modality=context.modality,
+            active_personality_profile_id=self.personality.profile_id,
+            transcript=result.transcript,
+            final_prompt_text=final_prompt_text,
+            response_text=result.response_text,
+            final_state=result.final_state.value,
+            failure_reason=result.failure_reason,
+            tts_degraded=result.tts_degraded,
+            tts_degraded_reason=result.tts_degraded_reason,
+            phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
+        )
+        self.session_manager.record_turn_artifact(artifact)
+        if result.failure_reason is None:
+            self.session_manager.update_working_memory(result.response_text, self.write_policy)

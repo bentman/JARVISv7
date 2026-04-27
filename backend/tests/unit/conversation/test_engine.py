@@ -6,7 +6,9 @@ import numpy as np
 import pytest
 
 from backend.app.conversation.engine import TurnEngine
+from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
+from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.base import STTBase
@@ -84,8 +86,21 @@ def _personality() -> PersonalityProfile:
     )
 
 
-def _engine(stt: FakeSTT | None = None, tts: FakeTTS | None = None, llm: FakeLLM | None = None) -> TurnEngine:
-    return TurnEngine(stt=stt or FakeSTT(), tts=tts or FakeTTS(), llm=llm or FakeLLM(), personality=_personality())
+def _engine(
+    stt: FakeSTT | None = None,
+    tts: FakeTTS | None = None,
+    llm: FakeLLM | None = None,
+    session_manager: SessionManager | None = None,
+    write_policy: WritePolicy | None = None,
+) -> TurnEngine:
+    return TurnEngine(
+        stt=stt or FakeSTT(),
+        tts=tts or FakeTTS(),
+        llm=llm or FakeLLM(),
+        personality=_personality(),
+        session_manager=session_manager,
+        write_policy=write_policy,
+    )
 
 
 def test_text_turn_returns_response_for_known_prompt():
@@ -236,3 +251,47 @@ def test_tts_or_playback_error_closes_to_failed(monkeypatch: pytest.MonkeyPatch,
 
     assert result.final_state == ConversationState.FAILED
     assert result.failure_reason == expected
+
+
+def test_engine_without_session_manager_preserves_artifact_free_behavior():
+    engine = _engine()
+
+    result = engine.run_text_turn("hello")
+
+    assert result.final_state == ConversationState.IDLE
+    assert engine.session_manager is None
+
+
+def test_engine_with_session_manager_writes_text_turn_artifact(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    result = _engine(session_manager=manager, llm=FakeLLM(response="first response")).run_text_turn("first")
+
+    artifact_path = tmp_path / "turns" / "session-1" / f"{result.turn_id}.json"
+
+    assert artifact_path.exists()
+    assert len(manager.turn_artifacts) == 1
+    assert manager.turn_artifacts[0].response_text == "first response"
+    assert manager.turn_artifacts[0].final_prompt_text is not None
+
+
+def test_engine_with_session_manager_injects_working_memory_on_second_turn(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    llm = FakeLLM(response="first memory")
+    engine = _engine(session_manager=manager, llm=llm)
+
+    engine.run_text_turn("first")
+    llm.response = "second response"
+    engine.run_text_turn("second")
+
+    assert "Working memory:" in llm.prompts[1]
+    assert "- first memory" in llm.prompts[1]
+    assert len(manager.turn_artifacts) == 2
+
+
+def test_engine_with_session_manager_records_failed_turn_artifact(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    result = _engine(session_manager=manager, llm=FakeLLM(error=RuntimeError("llm failed"))).run_text_turn("hello")
+
+    assert result.final_state == ConversationState.FAILED
+    assert len(manager.turn_artifacts) == 1
+    assert manager.turn_artifacts[0].failure_reason == "llm failed"
