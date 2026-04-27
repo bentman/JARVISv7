@@ -167,11 +167,11 @@ Thumbs.db
 # ------------------------------------------------------------
 /cache/*
 !/cache/.gitkeep
-!/cache/redis/
 /cache/redis/*
+!/cache/redis/
 !/cache/redis/.gitkeep
-!/cache/temp/
 /cache/temp/*
+!/cache/temp/
 !/cache/temp/.gitkeep
 
 
