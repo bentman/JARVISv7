@@ -4,7 +4,26 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from backend.app.core.paths import CONFIG_DIR, DATA_DIR, MODELS_DIR
+from backend.app.core.paths import CONFIG_DIR, DATA_DIR, MODELS_DIR, REPO_ROOT
+
+
+ENV_FILE = REPO_ROOT / ".env"
+ENV_EXAMPLE_FILE = REPO_ROOT / ".env.example"
+
+
+def _load_dotenv_if_present() -> None:
+    try:
+        from dotenv import load_dotenv
+    except Exception:
+        return
+    if ENV_FILE.exists():
+        load_dotenv(ENV_FILE, override=False)
+        return
+    if ENV_EXAMPLE_FILE.exists():
+        load_dotenv(ENV_EXAMPLE_FILE, override=False)
+
+
+_load_dotenv_if_present()
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
@@ -12,6 +31,13 @@ def _env_bool(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int(name: str) -> int | None:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+    return int(value)
 
 
 @dataclass(slots=True)
@@ -29,9 +55,13 @@ class Settings:
     )
     use_ollama: bool = field(default_factory=lambda: _env_bool("USE_OLLAMA", False))
     ollama_base_url: str = field(
-        default_factory=lambda: os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+        default_factory=lambda: os.getenv("OLLAMA_BASE_URL")
+        or os.getenv("JARVISV7_OLLAMA_URL")
+        or "http://127.0.0.1:11434"
     )
     ollama_model: str | None = field(default_factory=lambda: os.getenv("OLLAMA_MODEL"))
+    ollama_num_ctx: int | None = field(default_factory=lambda: _env_int("OLLAMA_NUM_CTX"))
+    live_tests: bool = field(default_factory=lambda: _env_bool("JARVISV7_LIVE_TESTS", False))
     tts_models: str | None = field(default_factory=lambda: os.getenv("TTS_MODELS"))
     stt_models: str | None = field(default_factory=lambda: os.getenv("STT_MODELS"))
     wake_model: str | None = field(default_factory=lambda: os.getenv("WAKE_MODEL"))
@@ -45,4 +75,5 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    _load_dotenv_if_present()
     return Settings()

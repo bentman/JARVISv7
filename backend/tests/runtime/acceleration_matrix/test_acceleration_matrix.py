@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -9,6 +8,7 @@ import pytest
 
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.paths import REPO_ROOT
+from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.tests.conftest import SKIP_UNLESS_LIVE
@@ -53,7 +53,7 @@ def _directml_state(preflight: PreflightResult) -> str:
 
 
 def _ollama_state() -> str:
-    if not os.getenv("JARVISV7_OLLAMA_URL", "").strip():
+    if not load_settings().ollama_base_url.strip():
         return "SKIP-no-ollama"
     return "PASS"
 
@@ -75,7 +75,7 @@ def _matrix_for_current_host(profile: HardwareProfile, preflight: PreflightResul
         MatrixCell("tts", "cuda", _cuda_state(preflight), "ep:CUDAExecutionProvider"),
         MatrixCell("tts", "directml", _directml_state(preflight), "ep:DmlExecutionProvider"),
         MatrixCell("tts", "qnn", "N/A", "no QNN TTS in Slice B"),
-        MatrixCell("llm", "ollama/local", _ollama_state(), "JARVISV7_OLLAMA_URL env gate"),
+        MatrixCell("llm", "ollama/local", _ollama_state(), "OLLAMA_BASE_URL settings gate"),
         MatrixCell("llm", "cuda", "N/A", "LLM device is runtime, not EP"),
         MatrixCell("llm", "directml", "N/A", "LLM device is runtime, not EP"),
         MatrixCell("llm", "qnn", "N/A", "LLM device is runtime, not EP"),

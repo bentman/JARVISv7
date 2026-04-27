@@ -18,6 +18,26 @@
 
 ## Entries
 
+- 2026-04-26 21:18
+  - Summary: Repo-wide env/config loading was standardized through `backend/app/core/settings.py`. Shell environment variables now take precedence over `.env`, which takes precedence over `.env.example`; `.env` remains local/gitignored runtime config, and `.env.example` is the committed safe template/fallback.
+  - Scope: `backend/app/core/settings.py`, `.env.example`, `backend/tests/unit/core/test_settings.py`, `backend/app/runtimes/llm/ollama_runtime.py`, `backend/tests/conftest.py`, `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_text_turn_live.py`, `backend/tests/runtime/turn/test_voice_turn_live.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python -m compileall backend/app/core backend/app/runtimes/llm backend/tests` PASS; `backend\.venv\Scripts\python -m pytest backend/tests/unit/core/test_settings.py -q` PASS with `6 passed`; `backend\.venv\Scripts\python scripts/validate_backend.py unit` PASS with `135 passed`; `$env:JARVISV7_LIVE_TESTS="1"` then `backend\.venv\Scripts\python scripts/validate_backend.py runtime --families llm` PASS with `1 passed, 6 deselected`; `$env:JARVISV7_LIVE_TESTS="1"` then `backend\.venv\Scripts\python scripts/validate_backend.py runtime --families turn` PASS with `2 passed, 5 deselected`; `backend\.venv\Scripts\python scripts/validate_backend.py regression` PASS with `63 passed`.
+    ```text
+    canonical Ollama vars: OLLAMA_BASE_URL, OLLAMA_MODEL
+    legacy alias only: JARVISV7_OLLAMA_URL
+    settings fields added: OLLAMA_NUM_CTX, JARVISV7_LIVE_TESTS
+    runtime/test Ollama gates consume settings where in scope; .env.example contains safe non-secret/default values
+    ```
+- 2026-04-26 21:17
+  - Summary: Slice C.1 Minimal Voice/Text Turn was implemented and validated on Windows x64. A canonical conversation state guard, `TurnContext`, synchronous `TurnEngine` with shared text/voice reasoning path, explicit failure-to-`FAILED` behavior, minimal personality boundary, prompt/responder helpers, thin turn/task/voice services, default personality config, and focused unit/runtime turn tests were added.
+  - Scope: `backend/app/conversation/`, `backend/app/cognition/`, `backend/app/personality/`, `backend/app/services/`, `config/personality/default.yaml`, `backend/tests/unit/conversation/`, `backend/tests/unit/cognition/`, `backend/tests/unit/personality/`, `backend/tests/unit/services/`, `backend/tests/runtime/turn/`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python -m compileall backend/app/conversation backend/app/cognition backend/app/personality backend/app/services` PASS; focused C.1 unit suite PASS with `27 passed`; after env standardization, `backend\.venv\Scripts\python scripts/validate_backend.py unit` PASS with `135 passed`; `backend\.venv\Scripts\python scripts/validate_backend.py runtime --families turn` PASS with `2 passed, 5 deselected`; `backend\.venv\Scripts\python scripts/validate_backend.py regression` PASS with `63 passed`.
+    ```text
+    C.1 scope only: no playback, artifacts, memory continuity, interruption, tools, agents, desktop, API routes, or Group D+ work introduced
+    Windows x64 only; no ARM64 validation or full cross-host C.1 closeout claimed
+    ```
 - 2026-04-26 19:45
   - Summary: B.5 Acceleration Vetting Gate was implemented as a known-state matrix/reporting gate and validated on Windows x64 and Windows ARM64.
   - Scope: `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`

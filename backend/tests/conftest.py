@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import shutil
 from functools import lru_cache
 from types import SimpleNamespace
@@ -8,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
+from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult, run_preflight
 from backend.app.hardware.provisioning import resolve_required_extras
 
@@ -48,18 +48,27 @@ def _observed_installed_extras() -> list[str]:
     return resolve_required_extras(_profile_report().profile)
 
 
+def ollama_base_url() -> str:
+    return load_settings().ollama_base_url.strip()
+
+
+@lru_cache(maxsize=1)
+def _settings():
+    return load_settings()
+
+
 SKIP_UNLESS_X64 = _profile_report().profile.arch != "amd64"
 SKIP_UNLESS_ARM64 = _profile_report().profile.arch != "arm64"
 SKIP_UNLESS_CUDA = not _has_token("ep:CUDAExecutionProvider")
 SKIP_UNLESS_DIRECTML = not _has_token("ep:DmlExecutionProvider")
 SKIP_UNLESS_QNN = not _has_token("ep:QNNExecutionProvider")
-SKIP_UNLESS_OLLAMA = os.getenv("JARVISV7_OLLAMA_URL", "").strip() == ""
-SKIP_UNLESS_PORCUPINE = os.getenv("PICOVOICE_ACCESS_KEY") is None
+SKIP_UNLESS_OLLAMA = ollama_base_url() == ""
+SKIP_UNLESS_PORCUPINE = not bool(_settings().picovoice_access_key)
 SKIP_UNLESS_REDIS = shutil.which("redis-server") is None
 SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None
 SKIP_UNLESS_DOCKER = shutil.which("docker") is None
-SKIP_UNLESS_QAIRT = os.getenv("QAIRT_SDK_PATH") is None
-SKIP_UNLESS_LIVE = os.getenv("JARVISV7_LIVE_TESTS", "").strip().lower() not in {"1", "true", "yes"}
+SKIP_UNLESS_QAIRT = not bool(_settings().qairt_sdk_path)
+SKIP_UNLESS_LIVE = not _settings().live_tests
 
 
 @pytest.fixture(scope="session")
