@@ -15,7 +15,7 @@ from backend.tests.conftest import SKIP_UNLESS_LIVE
 
 
 ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "PENDING-H.2", "N/A", "BLOCKED-")
-REPORT_PATH = REPO_ROOT / "reports" / "validation" / "b5-x64-acceleration-matrix-current.txt"
+REPORT_PATH = REPO_ROOT / "reports" / "validation" / "b5-acceleration-matrix-current-host.txt"
 
 
 @dataclass(frozen=True)
@@ -95,10 +95,8 @@ def _format_matrix(cells: list[MatrixCell]) -> str:
 
 @pytest.mark.live
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
-def test_b5_x64_known_state_acceleration_matrix(profiler_fixture, preflight_fixture):
+def test_b5_known_state_acceleration_matrix_current_host(profiler_fixture, preflight_fixture):
     profile = profiler_fixture.profile
-    if profile.arch != "amd64":
-        pytest.skip(f"B.5 first pass is Windows x64 only; current arch={profile.arch}")
 
     _assert_stt_qnn_defers_to_h2()
     cells = _matrix_for_current_host(profile, preflight_fixture)
