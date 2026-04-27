@@ -18,6 +18,18 @@
 
 ## Entries
 
+- 2026-04-26 19:45
+  - Summary: B.5 Acceleration Vetting Gate was implemented as a known-state matrix/reporting gate and validated on Windows x64 and Windows ARM64.
+  - Scope: `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: `git status --short` was clean before final validation; `backend\.venv\Scripts\python -m compileall backend\tests\runtime\acceleration_matrix` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py matrix` PASS with `1 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 passed`; matrix excerpt included `host,class,PASS,arch=amd64` and no `BLOCKED-*` cells. Windows ARM64: `backend\.venv\Scripts\python -m compileall backend\tests\runtime\acceleration_matrix` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py matrix` PASS with `1 passed`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `63 passed`; matrix excerpt included `host,class,PASS,arch=arm64` and no `BLOCKED-*` cells.
+    ```text
+    x64: matrix 1 passed; regression 63 passed; host,class,PASS,arch=amd64; no BLOCKED-* cells
+    arm64: matrix 1 passed; regression 63 passed; host,class,PASS,arch=arm64; no BLOCKED-* cells
+    notable states: STT/TTS/Wake CPU PASS; STT QNN PENDING-H.2; TTS QNN and Wake acceleration N/A
+    CUDA/DirectML: SKIP when execution provider not proven; LLM Ollama/local: SKIP-no-ollama when env gate unset
+    ```
+  - Note: Matrix cells are classified from profiler/preflight/runtime/env evidence. The gate does not duplicate B.1-B.4 live runtime probes, download models, play audio, or start/stop services; any `BLOCKED-*` cell fails the gate. No Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
 - 2026-04-26 18:57
   - Summary: B.4 Wake Runtime Family was validated on Windows x64 and Windows ARM64. Existing openWakeWord CPU path validation passed on both hosts, and no implementation changes were required during the final validation pass.
   - Scope: `backend/app/runtimes/wake/`, `backend/tests/unit/runtimes/wake/test_wake_runtime.py`, `backend/tests/runtime/voice/test_wake_live.py`, `backend/tests/fixtures/hey_jarvis.wav`, `backend/tests/conftest.py`, `pyproject.toml`
