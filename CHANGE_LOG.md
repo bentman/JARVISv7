@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-28 06:04
+  - Summary: Slice C.6 Developer Usability Surface / Proving Host was completed by adding `scripts/run_jarvis.py` as a developer/proving-host diagnostic script. It emits host fingerprint as first stdout line; supports `--verbose`, `--dry-run`, `--trace-to`, `--profile`, `--turns`, `--voice-only`, `--text-only`, and `--policy-override`; runs startup diagnostics through existing profiler/extras-resolver/preflight/readiness surfaces; uses existing text/voice service boundaries including `voice_service.capture_audio`; uses existing trace writer for `--trace-to`; reports named failures (`STT_UNAVAILABLE`, `LLM_UNAVAILABLE`, `AUDIO_DEVICE_ERROR`); and keeps `--policy-override` parsed but not applied.
+  - Scope: `scripts/run_jarvis.py`, `backend/tests/unit/scripts/test_run_jarvis_script.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 and Windows ARM64: compileall PASS; focused C.6 script unit PASS; dry-run PASS with fingerprint first; profile PASS with fingerprint first; unit validator PASS; regression PASS. Counts — x64: `11 passed`, `182 passed`, `74 passed`; ARM64: `11 passed`, `182 passed`, `74 passed`; fingerprint excerpt: `[fingerprint] arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready; tokens=15`.
+  - Note: C.6 does not create a durable application surface, API, desktop shell, resident loop, tools, agents, new runtime family, routing/policy implementation, or inventory change.
+
 - 2026-04-27 15:41
   - Summary: Slice C.5 Interruption / Barge-In was completed. `BargeInDetector` was promoted from stub behavior to deterministic RMS/guard-time detection; a minimal non-blocking playback-start boundary was added while preserving existing blocking `play()` behavior; additive `TurnResult` interruption fields were added; interruption events are recorded into existing `TurnArtifact.interruption_events`; and unit coverage proves deterministic interruption behavior including playback stop invocation, interruption-event recording, and recovery to `IDLE`. Existing non-interrupted C.2/C.3/C.4 behavior was preserved.
   - Scope: `backend/app/runtimes/stt/barge_in.py`, `backend/app/runtimes/tts/playback.py`, `backend/app/conversation/engine.py`, `backend/app/artifacts/turn_artifact.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/runtime/turn/test_interruption_live.py`
