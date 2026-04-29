@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-29 13:18
+  - Summary: D.3 first-pass resident session continuity progress was validated (not full D.3 completion). Backend-owned `SessionService` and `GET /session/status` were added; session create/close and text turns now run through the active resident-session boundary; supplied `session_id` is validated when present; and desktop now displays session id and turn count through Tauri `get_session_status`.
+  - Scope: `backend/app/services/session_service.py`, `backend/app/api/routes/session.py`, `backend/app/api/schemas/session.py`, `backend/app/api/dependencies.py`, `backend/app/api/routes/task.py`, `desktop/src-tauri/src/{backend.rs,lib.rs}`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/tests/unit/services/test_session_service.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/integration/api/test_headless_client.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Service unit PASS on both hosts (x64 `6 passed in 1.03s`; ARM64 `6 passed in 0.12s`); API unit PASS on both hosts (x64 `15 passed in 0.91s`; ARM64 `15 passed in 0.44s`); API integration PASS on both hosts (x64 `5 passed in 0.38s`; ARM64 `5 passed in 0.36s`); desktop static PASS on both hosts (x64 `9 passed in 0.18s`; ARM64 `9 passed in 0.04s`); validator unit PASS on both hosts (x64 `233 passed`; ARM64 `233 passed`); validator integration PASS on both hosts (x64 `8 passed`; ARM64 `8 passed`); regression PASS on both hosts (x64 `95 passed`; ARM64 `95 tests`). D.3-specific proof: integration test drove three text turns with one `session_id`, and `/session/status` returned `active=true` with `turn_count=3`.
+  - Note: This is D.3 first-pass progress only, not full D.3 completion. No live human voice test was run in Cline; voice multi-turn proof remains future D.3 work via user-run live evidence. No `SYSTEM_INVENTORY.md` update is claimed in this step.
+
 - 2026-04-29 10:15
   - Summary: D.2 Durable Desktop Host was closed across Windows x64 and Windows ARM64 using the previously recorded D.2 progress evidence.
   - Scope: `CHANGE_LOG.md` only; closeout delta referencing prior D.2 progress entries.
@@ -136,6 +143,7 @@
     settings fields added: OLLAMA_NUM_CTX, JARVISV7_LIVE_TESTS
     runtime/test Ollama gates consume settings where in scope; .env.example contains safe non-secret/default values
     ```
+
 - 2026-04-26 21:17
   - Summary: Slice C.1 Minimal Voice/Text Turn was implemented and validated on Windows x64. A canonical conversation state guard, `TurnContext`, synchronous `TurnEngine` with shared text/voice reasoning path, explicit failure-to-`FAILED` behavior, minimal personality boundary, prompt/responder helpers, thin turn/task/voice services, default personality config, and focused unit/runtime turn tests were added.
   - Scope: `backend/app/conversation/`, `backend/app/cognition/`, `backend/app/personality/`, `backend/app/services/`, `config/personality/default.yaml`, `backend/tests/unit/conversation/`, `backend/tests/unit/cognition/`, `backend/tests/unit/personality/`, `backend/tests/unit/services/`, `backend/tests/runtime/turn/`
@@ -145,6 +153,7 @@
     C.1 scope only: no playback, artifacts, memory continuity, interruption, tools, agents, desktop, API routes, or Group D+ work introduced
     Windows x64 only; no ARM64 validation or full cross-host C.1 closeout claimed
     ```
+
 - 2026-04-26 19:45
   - Summary: B.5 Acceleration Vetting Gate was implemented as a known-state matrix/reporting gate and validated on Windows x64 and Windows ARM64.
   - Scope: `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
@@ -157,6 +166,7 @@
     CUDA/DirectML: SKIP when execution provider not proven; LLM Ollama/local: SKIP-no-ollama when env gate unset
     ```
   - Note: Matrix cells are classified from profiler/preflight/runtime/env evidence. The gate does not duplicate B.1-B.4 live runtime probes, download models, play audio, or start/stop services; any `BLOCKED-*` cell fails the gate. No Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
+
 - 2026-04-26 18:57
   - Summary: B.4 Wake Runtime Family was validated on Windows x64 and Windows ARM64. Existing openWakeWord CPU path validation passed on both hosts, and no implementation changes were required during the final validation pass.
   - Scope: `backend/app/runtimes/wake/`, `backend/tests/unit/runtimes/wake/test_wake_runtime.py`, `backend/tests/runtime/voice/test_wake_live.py`, `backend/tests/fixtures/hey_jarvis.wav`, `backend/tests/conftest.py`, `pyproject.toml`
@@ -167,6 +177,7 @@
     arm64: clean status; wake missing=[], ready=true; 8 passed; runtime wake: 1 passed, 3 deselected; regression: 63 passed
     ```
   - Note: Porcupine remained structural-only and was not live-validated. No Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
+
 - 2026-04-26 10:17
   - Summary: Sub-Slice B.3 LLM runtime family was implemented and validated on Windows x64 and Windows ARM64.
   - Scope: `backend/app/runtimes/llm/`, `backend/app/routing/runtime_selector.py`, `config/app/policies.yaml`, `config/models/llm.yaml`, `.env.example`, `backend/tests/conftest.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/routing/test_runtime_selector.py`, `backend/tests/runtime/voice/test_llm_live.py`
@@ -177,6 +188,7 @@
     arm64: compileall PASS; 13 passed; runtime llm: 1 passed, 2 deselected; regression: 63 passed
     ```
   - Note: Local Ollama live validation used `phi4-mini`. Cloud runtimes are policy-gated stubs only, llama.cpp remains deferred to H.1, and no Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
+
 - 2026-04-26 07:49
   - Summary: B.2 TTS runtime family was implemented and validated for CPU no-playback synthesis on Windows x64 and Windows ARM64.
   - Scope: `backend/app/runtimes/tts/`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/voice/test_tts_live.py`
@@ -187,6 +199,7 @@
     arm64: TTS ready=true, missing=[]; 8 passed; runtime tts cpu: 1 passed, 1 deselected; regression: 63 passed
     ```
   - Note: No audio playback validation was performed. No Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
+
 - 2026-04-26 07:12
   - Summary: B.1 STT live test fixture loading was corrected on Windows ARM64. `backend/tests/runtime/voice/test_stt_live.py` now loads `hello_world.wav` with stdlib `wave` plus `numpy` instead of `soundfile`.
   - Scope: `backend/tests/runtime/voice/test_stt_live.py`, ARM64 validation evidence
@@ -199,6 +212,7 @@
     regression: 63 passed
     ```
   - Note: The ARM64 `soundfile`/`libsndfile.dll` load failure was isolated to the test fixture loader. This does not claim Slice B completion.
+
 - 2026-04-25 19:50
   - Summary: B.1 STT live CPU validation was tightened to use the supplied known-audio fixture. `backend/tests/runtime/voice/test_stt_live.py` now loads `backend/tests/fixtures/hello_world.wav` and validates a normalized `hello world` transcript through the repository validation authority.
   - Scope: `backend/tests/runtime/voice/test_stt_live.py`, `backend/tests/fixtures/hello_world.wav`
@@ -211,6 +225,7 @@
     PASS: unit: 63 tests
     ```
   - Note: Validation was Windows x64 only. This does not claim ARM64 validation, full B.1 both-host closeout, `SYSTEM_INVENTORY.md` update, or Slice B completion.
+
 - 2026-04-25 19:25
   - Summary: B.1 STT runtime boundary was validated on the current Windows x64 CPU path using the repository validation authority. The runtime package, unit boundary, and live STT smoke path were present and passed validation.
   - Scope: `backend/app/runtimes/stt/`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/runtime/voice/test_stt_live.py`
@@ -223,6 +238,7 @@
     PASS: unit: 63 tests
     ```
   - Note: This validates the current Windows x64 CPU STT smoke path only. It does not claim full B.1 closeout, ARM64 validation, Slice B completion, or the planned known-audio fixture transcript acceptance.
+
 - 2026-04-25 19:20
   - Summary: The backend validator CPU device filter was corrected so `--devices cpu` is treated as the baseline runtime device and no nonexistent `cpu` pytest marker is required.
   - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`
@@ -233,6 +249,7 @@
     runtime --families stt --devices cpu: 1 passed
     PASS: unit: 63 tests
     ```
+
 - 2026-04-25 12:40
   - Summary: B.0 STT model acquisition completeness was corrected to include the ONNX support metadata required by the installed `onnx_asr` helper.
   - Scope: `scripts/ensure_models.py`, `config/models/stt.yaml`
@@ -243,6 +260,7 @@
     TextResultsAsrAdapter
     61 passed
     ```
+
 - 2026-04-25 12:40
   - Summary: B.0 STT model acquisition completeness was corrected on Windows x64. `models/stt/whisper-small-onnx` now includes the ONNX weights plus source-confirmed support files required by the installed `onnx_asr` helper, and `ensure_models.py --verify-only` requires those files before reporting STT ready.
   - Scope: `scripts/ensure_models.py`, `config/models/stt.yaml`
@@ -255,6 +273,7 @@
     61 passed
     ```
   - Note: Validation was Windows x64 only. No B.1 runtime implementation, `SYSTEM_INVENTORY.md` update, or Slice B closeout was introduced.
+
 - 2026-04-25 10:03
   - Summary: B.0 model catalog and model acquisition activation was validated on Windows ARM64. No code edits were made; provisioning, model acquisition, final verification, and regression all passed.
   - Scope: Windows ARM64 B.0 validation evidence only; no repository files changed except this log entry
@@ -270,6 +289,7 @@
     61 passed
     ```
   - Note: This records B.0 Windows ARM64 validation only. It does not claim Slice B completion.
+
 - 2026-04-25 09:50
   - Summary: B.0 model catalog and model acquisition activation was completed on Windows x64. `ensure_models.py` now verifies/acquires STT, TTS, and Wake model artifacts, LLM acquisition reports the Ollama-managed no-op, and Slice A regression remained green.
   - Scope: `scripts/ensure_models.py`, `backend/app/models/catalog.py`, `config/models/stt.yaml`, `config/models/tts.yaml`, `config/models/wake.yaml`, `pyproject.toml`
@@ -282,6 +302,7 @@
     61 passed
     ```
   - Note: Validation was Windows x64 only. No B.1-B.5 runtime implementation, tests, fixtures, markers, sentinel changes, `SYSTEM_INVENTORY.md` update, or Slice B closeout was introduced.
+
 - 2026-04-24 17:16
   - Summary: A.6 QNN capability definition was completed on Windows ARM64 as structural metadata/readiness only. QNN definition now emits metadata-only structural tokens, while STT readiness remains CPU-selected with the H.2-named QNN inference pending reason.
   - Scope: `backend/app/hardware/preflight.py`, `backend/app/hardware/readiness.py`, `backend/tests/unit/hardware/test_qnn_slot.py`, ARM64 validation evidence
@@ -294,6 +315,7 @@
     reports\validation\20260424171638-regression.txt
     ```
   - Note: `ep:QNNExecutionProvider` and `dll:QnnHtp` remained missing/not proven, which was expected for definition-only A.6 and did not imply QNN runtime execution. No Group B runtime/model/voice work was introduced.
+
 - 2026-04-24 15:43
   - Summary: A.5 ARM64 local validation proof was recorded from repo-local profile and regression artifacts. Windows ARM64 local profile and regression validation passed, and the ARM64 profile/regression artifacts now exist locally.
   - Scope: `CHANGE_LOG.md`, ARM64 local validation evidence for Slice A.5
@@ -304,6 +326,7 @@
     reports/validation/20260424154318-regression.txt
     ```
   - Note: No Group B runtime/model/voice work was introduced.
+
 - 2026-04-24 10:30
   - Summary: A.5 provisioning gate was accepted from manual clean-venv validation on Windows x64 and Windows ARM64. Both host classes completed provisioning, profile, and regression checks, and the Codex temp-cleanup failures were classified as tooling-context only.
   - Scope: `scripts/provision.py`, `scripts/validate_backend.py`, manual Windows x64/ARM64 provisioning and regression validation evidence
@@ -314,6 +337,7 @@
     52 passed in 0.07s
     ```
   - Note: No ARM64 profile report artifact was present in the repo-local `reports/diagnostics/` tree at the time of this entry. No Group B runtime/model/voice work was introduced.
+
 - 2026-04-23 14:31
   - Summary: Sub-Slice A.4 added the arch-aware test harness scaffolding and the script-level validator/bootstrap/ensure-models entry points.
   - Scope: `backend/tests/conftest.py`, `backend/tests/integration/__init__.py`, `backend/tests/runtime/__init__.py`, `backend/tests/runtime/hardware/__init__.py`, `backend/tests/runtime/acceleration_matrix/__init__.py`, `backend/tests/fixtures/__init__.py`, `scripts/validate_backend.py`, `scripts/bootstrap.py`, `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`, `backend/tests/unit/scripts/test_bootstrap_script.py`
@@ -324,6 +348,7 @@
     No module named pytest
     ```
   - Note: `pytest` was still missing in `backend/.venv` during validation.
+
 - 2026-04-23 14:31
   - Summary: Sub-Slice A.3 added the hardware preflight rail and readiness derivation helpers.
   - Scope: `backend/app/hardware/preflight.py`, `backend/app/hardware/readiness.py`, `backend/tests/unit/hardware/test_preflight.py`, `backend/tests/unit/hardware/test_readiness.py`
@@ -333,6 +358,7 @@
     ('cuda', True, 'ep:CUDAExecutionProvider proven; selecting cuda')
     ```
   - Note: `pytest` was still missing in `backend/.venv` during validation.
+
 - 2026-04-23 14:31
   - Summary: Sub-Slice A.2 added the declarative provisioning resolver, provisioning script, and supporting core helpers.
   - Scope: `backend/app/core/paths.py`, `backend/app/core/logging.py`, `backend/app/core/settings.py`, `backend/app/hardware/provisioning.py`, `scripts/provision.py`, `backend/tests/unit/hardware/test_provisioning.py`, `backend/tests/unit/scripts/test_provision_script.py`
@@ -345,6 +371,7 @@
     lock_code= 0
     ```
   - Note: `pytest` was still missing in `backend/.venv` during validation.
+
 - 2026-04-23 14:31
   - Summary: Sub-Slice A.1 added the hardware capability profile and detector layer.
   - Scope: `backend/app/core/capabilities.py`, `backend/app/hardware/__init__.py`, `backend/app/hardware/detectors/__init__.py`, `backend/app/hardware/detectors/cpu_detector.py`, `backend/app/hardware/detectors/memory_detector.py`, `backend/app/hardware/detectors/os_detector.py`, `backend/app/hardware/detectors/gpu_detector.py`, `backend/app/hardware/detectors/cuda_detector.py`, `backend/app/hardware/detectors/npu_detector.py`, `backend/app/hardware/profiler.py`, `backend/tests/unit/hardware/test_profiler.py`
