@@ -14,6 +14,7 @@ from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.services.session_service import SessionService
 
 
 class _FakeSTT:
@@ -101,7 +102,7 @@ def _state() -> ApiState:
         requires_degraded_mode=False,
     )
     session_manager = _FakeSessionManager()
-    return ApiState(
+    state = ApiState(
         report=FullCapabilityReport(profile=profile, flags=flags),
         profile=profile,
         extras=["dev"],
@@ -124,7 +125,14 @@ def _state() -> ApiState:
         llm=_FakeLLM(),  # type: ignore[arg-type]
         session_manager=session_manager,  # type: ignore[arg-type]
         engine=_FakeEngine(),  # type: ignore[arg-type]
+        session_service=None,  # type: ignore[arg-type]
     )
+    state.session_service = SessionService(
+        session_manager=state.session_manager,  # type: ignore[arg-type]
+        engine=state.engine,
+        engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type]
+    )
+    return state
 
 
 def _client() -> TestClient:
@@ -163,6 +171,14 @@ def test_session_create_returns_session_id() -> None:
     assert response.json()["state"] == "IDLE"
 
 
+def test_session_status_returns_active_session() -> None:
+    client = _client()
+    session_id = client.app.state.jarvis_state.session_service.status().session_id
+    response = client.get("/session/status")
+    assert response.status_code == 200
+    assert response.json() == {"session_id": session_id, "active": True, "state": "IDLE", "turn_count": 0}
+
+
 def test_session_close_returns_closed() -> None:
     client = _client()
     session_id = client.app.state.jarvis_state.session_manager.session_id
@@ -182,6 +198,20 @@ def test_text_turn_returns_turn_result() -> None:
     assert response.status_code == 200
     assert payload["turn_id"] == "turn-text"
     assert payload["response_text"] == "text response"
+
+
+def test_text_turn_accepts_active_session_id() -> None:
+    client = _client()
+    session_id = client.app.state.jarvis_state.session_service.status().session_id
+    response = client.post("/task/text", json={"text": "hello", "session_id": session_id})
+    assert response.status_code == 200
+    assert response.json()["session_id"] == "session-test"
+
+
+def test_text_turn_rejects_mismatched_session_id() -> None:
+    response = _client().post("/task/text", json={"text": "hello", "session_id": "missing"})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "session_id is not active"
 
 
 def test_text_turn_rejects_empty_text() -> None:

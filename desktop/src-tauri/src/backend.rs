@@ -199,6 +199,10 @@ pub fn create_session(base_url: &str) -> Result<SessionCreateResponse, String> {
     serde_json::from_str(&body).map_err(|err| format!("invalid /session/create response: {err}; body={body}"))
 }
 
+pub fn get_session_status(base_url: &str) -> Result<String, String> {
+    get_json(base_url, "/session/status")
+}
+
 pub fn close_session(base_url: &str, session_id: &str) -> Result<(), String> {
     let response = Client::new().post(format!("{base_url}/session/close")).json(&json!({"session_id": session_id, "final_state": "IDLE"})).send().map_err(|err| format!("POST /session/close failed: {err}"))?;
     if response.status().is_success() { Ok(()) } else { Err(format!("POST /session/close returned {}", response.status())) }

@@ -26,6 +26,7 @@ from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
+from backend.app.services.session_service import SessionService
 
 
 ReadinessMap = dict[str, tuple[str, bool, str]]
@@ -44,6 +45,7 @@ class ApiState:
     llm: LLMBase
     session_manager: SessionManager
     engine: TurnEngine
+    session_service: SessionService
 
 
 def _derive_readiness(preflight: PreflightResult, profile: HardwareProfile) -> ReadinessMap:
@@ -64,6 +66,12 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         personality=state.personality,
         session_manager=manager,
     )
+
+
+def bind_session(state: ApiState, session_manager: SessionManager) -> TurnEngine:
+    state.session_manager = session_manager
+    state.engine = build_engine(state, session_manager)
+    return state.engine
 
 
 def build_startup_state() -> ApiState:
@@ -89,8 +97,14 @@ def build_startup_state() -> ApiState:
         llm=llm,
         session_manager=session_manager,
         engine=None,  # type: ignore[arg-type]
+        session_service=None,  # type: ignore[arg-type]
     )
     state.engine = build_engine(state, session_manager)
+    state.session_service = SessionService(
+        session_manager=session_manager,
+        engine=state.engine,
+        engine_factory=lambda manager: bind_session(state, manager),
+    )
     return state
 
 

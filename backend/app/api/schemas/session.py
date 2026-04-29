@@ -13,6 +13,13 @@ class CreateSessionResponse(BaseModel):
     turn_count: int
 
 
+class SessionStatusResponse(BaseModel):
+    session_id: str | None
+    active: bool
+    state: str
+    turn_count: int
+
+
 class CloseSessionRequest(BaseModel):
     session_id: str
     final_state: str = "IDLE"

@@ -1,6 +1,7 @@
 const stateEl = document.querySelector("#startup-state");
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
+const turnCountEl = document.querySelector("#session-turn-count");
 const readinessEl = document.querySelector("#readiness-panel");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
@@ -81,6 +82,13 @@ function renderReadiness(readiness) {
   setState(readiness.requires_degraded_mode || readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
 }
 
+async function refreshSessionStatus() {
+  const status = JSON.parse(await invoke("get_session_status"));
+  sessionEl.textContent = status.session_id || "not active";
+  if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
+  return status;
+}
+
 async function startDesktop() {
   clearError();
   setState("STARTING");
@@ -98,9 +106,11 @@ async function startDesktop() {
   try {
     const startPayload = JSON.parse(await invoke("start_backend"));
     sessionEl.textContent = startPayload.session_id || "created";
+    if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
     healthEl.textContent = "ok";
     const readiness = JSON.parse(await invoke("get_readiness"));
     renderReadiness(readiness);
+    await refreshSessionStatus();
     appendMessage("system", "Backend started and readiness loaded.");
     sendButton.disabled = false;
     inputEl.disabled = false;
@@ -232,6 +242,7 @@ async function submitText(text) {
       showError(response.failure_reason);
     }
     appendMessage("assistant", response.response_text || response.failure_reason);
+    await refreshSessionStatus();
   } catch (error) {
     turnStateEl.textContent = "FAILED";
     showError(String(error));

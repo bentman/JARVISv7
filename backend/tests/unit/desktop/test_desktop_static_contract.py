@@ -70,11 +70,26 @@ def test_desktop_references_only_approved_d1_endpoints_for_first_pass() -> None:
             DESKTOP / "src" / "main.js",
         ]
     )
-    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/task/text", "/task/voice"]:
+    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/task/text", "/task/voice"]:
         assert endpoint in source
     assert "/session/tick" not in source
     assert "/session/ptt" not in source
     assert "websocket" not in source.lower()
+
+
+def test_desktop_displays_resident_session_status() -> None:
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    main_js = _read("desktop/src/main.js")
+    index_html = _read("desktop/src/index.html")
+    assert "get_session_status" in backend_rs
+    assert "/session/status" in backend_rs
+    assert "get_session_status" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status" in lib_rs
+    assert 'invoke("get_session_status")' in main_js
+    assert "refreshSessionStatus" in main_js
+    assert "session-turn-count" in main_js
+    assert "session-turn-count" in index_html
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:

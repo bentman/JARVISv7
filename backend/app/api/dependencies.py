@@ -8,6 +8,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.services.session_service import SessionService
 
 
 def get_api_state(request: Request) -> ApiState:
@@ -20,6 +21,10 @@ def get_engine(request: Request) -> TurnEngine:
 
 def get_session_manager(request: Request) -> SessionManager:
     return get_api_state(request).session_manager
+
+
+def get_session_service(request: Request) -> SessionService:
+    return get_api_state(request).session_service
 
 
 def get_personality(request: Request) -> PersonalityProfile:
