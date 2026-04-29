@@ -81,6 +81,9 @@ JARVISv7 supports multiple host classes (Windows x64, Windows ARM64 at minimum).
 - Use smallest viable validation first, then broaden only when required.
 - If repeated attempts do not change failure mode, stop and report.
 - Do not silently iterate after failed validation.
+- Run commands one at a time; do not chain steps with `&&`, `;`, `;;`, or one-liners.
+- Compound syntax is allowed only inside one required command, e.g. `cmd /c "<vcvarsall> && set"`.
+- Keep command boundaries clear so failures and evidence map to one command.
 
 ## 5. Approval-Gated Change Control
 
