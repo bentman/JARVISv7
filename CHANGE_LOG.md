@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-28 21:22
+  - Summary: D.2-enabling method-viability tooling was added (not D.2 desktop implementation): stdlib-only `scripts/dev_runner.py` and `backend/tests/unit/scripts/test_dev_runner.py`. The runner validates architecture-sensitive desktop prerequisites before Tauri work, supports `check --arch x64`, `check --arch arm64`, and `check --arch x64-arm64`, dynamically discovers Visual Studio/MSVC via `vswhere`/candidate installs, captures full MSVC environment with `vcvarsall.bat <arg> && set`, checks Node/npm/Rust/Cargo/selected Rust target/MSVC env/`cl`/`link`/WebView2, treats pnpm as optional/non-failing, and treats uncertain WebView2 detection as WARN rather than false hard fail.
+  - Scope: `scripts/dev_runner.py`, `backend/tests/unit/scripts/test_dev_runner.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 and Windows ARM64: compileall PASS; focused dev_runner unit PASS; runner check PASS where applicable; regression PASS. x64: focused unit `18 passed in 0.04s`; `check --arch x64` PASS (`SUMMARY arch=x64 failures=0 warnings=1`); `check --arch x64-arm64` expected method evidence with `FAIL:rust-target-missing` for missing `aarch64-pc-windows-msvc` while MSVC cross env passed with `target=arm64`; regression `95 passed in 0.53s`. ARM64: focused unit `18 passed in 0.06s`; `check --arch arm64` PASS (`SUMMARY arch=arm64 failures=0 warnings=1`); selected VS path `C:\Program Files\Microsoft Visual Studio\18\Community`; captured target `target=arm64`; regression `95 passed in 0.23s`.
+  - Note: This validates the runner method only and does not validate or implement the D.2 desktop/Tauri host. x64-to-ARM64 cross-target remains unavailable until `aarch64-pc-windows-msvc` is installed through separately approved action.
+
 - 2026-04-28 11:36
   - Summary: Slice D.1 Application Shell Contract was completed by adding the backend FastAPI shell contract under `backend/app/api/`, including typed shell-facing schemas and route groups for health, readiness, session create/close, text turn, voice turn, diagnostics, disabled/read-only agents status, and wake status. `scripts/run_backend.py` was added as the backend-only API launcher, preserving fingerprint-first dry-run behavior; `/session/tick` remains excluded; route handlers remain thin service/engine/app-state adapters; and uploaded WAV decoding uses stdlib `wave` plus `numpy`.
   - Scope: `backend/app/api/`, `scripts/run_backend.py`, `backend/tests/unit/api/`, `backend/tests/integration/api/`, `backend/tests/unit/scripts/test_run_backend_script.py`
