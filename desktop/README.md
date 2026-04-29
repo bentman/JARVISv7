@@ -81,8 +81,8 @@ desktop/
 
 Once the shell is implemented, standard Tauri commands apply:
 
-- Dev: `cd desktop && pnpm tauri dev`
-- Build (native): `cd desktop && pnpm tauri build`
+- Dev: `npm --prefix desktop run dev`
+- Build (native): `npm --prefix desktop run build`
 - Build (cross x64 → ARM64): see Cross-compile section above.
 
 No shell-side orchestration logic. All runtime selection, model acquisition,

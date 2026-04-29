@@ -1,0 +1,48 @@
+:root {
+  color-scheme: dark;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: #0d1117;
+  color: #e6edf3;
+  --accent: #00bfff;
+  --muted: #8b949e;
+  --panel: #161b22;
+  --border: #30363d;
+  --danger: #ff6b6b;
+  --ok: #00ff99;
+}
+
+body { margin: 0; min-height: 100vh; background: #0d1117; }
+button, input { font: inherit; }
+.shell { max-width: 1180px; margin: 0 auto; padding: 24px; }
+.header, .conversation-header, .text-form, .voice-controls { display: flex; align-items: center; gap: 12px; }
+.header { justify-content: space-between; margin-bottom: 16px; }
+h1, h2, p { margin-top: 0; }
+.subtitle, .deferred-note, .stamp { color: var(--muted); }
+.grid { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 16px; }
+.panel, .state-card, .error-panel { background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 16px; }
+.state-card { min-width: 180px; }
+.label, dt, .stamp { display: block; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+#startup-state, .turn-state { color: var(--accent); font-family: Consolas, "Cascadia Mono", monospace; }
+.error-panel { border-color: var(--danger); color: var(--danger); margin-bottom: 16px; white-space: pre-wrap; }
+.hidden { display: none; }
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; }
+dd { margin: 0; word-break: break-word; }
+.families { list-style: none; padding: 0; margin: 12px 0 0; }
+.family { border-left: 3px solid var(--border); padding: 8px 0 8px 10px; }
+.family.ready { border-left-color: var(--ok); }
+.family.degraded { border-left-color: var(--danger); }
+.family span, .family small { display: block; color: var(--muted); }
+.conversation-panel { min-height: 620px; display: flex; flex-direction: column; }
+.conversation-header { justify-content: space-between; }
+.conversation-log { flex: 1; min-height: 420px; overflow-y: auto; border: 1px solid var(--border); background: #010409; padding: 12px; font-family: Consolas, "Cascadia Mono", monospace; }
+.message { border-bottom: 1px solid #21262d; padding: 10px 0; }
+.message strong { color: var(--accent); text-transform: uppercase; }
+.message.user strong { color: var(--ok); }
+.message.system strong { color: var(--muted); }
+.message p { margin: 4px 0 0; white-space: pre-wrap; }
+.text-form { margin-top: 12px; }
+.voice-controls { margin-top: 12px; }
+.voice-detail { min-height: 88px; margin: 12px 0 0; padding: 10px; white-space: pre-wrap; color: #e6edf3; background: #010409; border: 1px solid var(--border); border-radius: 4px; }
+#text-input { flex: 1; color: #e6edf3; background: #010409; border: 1px solid var(--border); border-radius: 4px; padding: 10px; }
+button { color: #001018; background: var(--accent); border: 0; border-radius: 4px; padding: 10px 16px; font-weight: 700; cursor: pointer; }
+button:disabled, input:disabled { cursor: not-allowed; opacity: 0.55; }

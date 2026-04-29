@@ -1,0 +1,268 @@
+const stateEl = document.querySelector("#startup-state");
+const healthEl = document.querySelector("#backend-health");
+const sessionEl = document.querySelector("#session-id");
+const readinessEl = document.querySelector("#readiness-panel");
+const errorEl = document.querySelector("#error-panel");
+const logEl = document.querySelector("#conversation-log");
+const turnStateEl = document.querySelector("#turn-state");
+const formEl = document.querySelector("#text-form");
+const inputEl = document.querySelector("#text-input");
+const sendButton = document.querySelector("#send-button");
+const pttButton = document.querySelector("#ptt-button");
+const voiceStatusEl = document.querySelector("#voice-status");
+const voiceDetailEl = document.querySelector("#voice-detail");
+
+const invoke = window.__TAURI__?.core?.invoke;
+let mediaStream = null;
+let mediaRecorder = null;
+let audioChunks = [];
+
+function setState(value, degraded = false) {
+  stateEl.textContent = value;
+  stateEl.dataset.state = value;
+  document.body.dataset.degraded = degraded ? "true" : "false";
+}
+
+function showError(message) {
+  errorEl.textContent = message;
+  errorEl.classList.remove("hidden");
+  setState("FAILED");
+}
+
+function clearError() {
+  errorEl.textContent = "";
+  errorEl.classList.add("hidden");
+}
+
+function appendMessage(role, text) {
+  const entry = document.createElement("article");
+  entry.className = `message ${role}`;
+  const stamp = new Date().toLocaleTimeString();
+  entry.innerHTML = `<span class="stamp">${stamp}</span><strong>${role}</strong><p></p>`;
+  entry.querySelector("p").textContent = text || "(no text returned)";
+  logEl.appendChild(entry);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setVoiceDetail(result) {
+  const lines = [
+    `transcript: ${result.transcript ?? ""}`,
+    `response: ${result.response_text ?? ""}`,
+    `final_state: ${result.final_state ?? ""}`,
+    `failure_reason: ${result.failure_reason ?? ""}`,
+    `tts_degraded: ${Boolean(result.tts_degraded)}`,
+    `tts_degraded_reason: ${result.tts_degraded_reason ?? ""}`,
+    `interrupted: ${Boolean(result.interrupted)}`,
+    `interruption_events: ${JSON.stringify(result.interruption_events ?? [])}`,
+  ];
+  voiceDetailEl.textContent = lines.join("\n");
+}
+
+function renderReadiness(readiness) {
+  const families = Object.values(readiness.families || {});
+  const familyMarkup = families.map((family) => `
+    <li class="family ${family.ready ? "ready" : "degraded"}">
+      <strong>${family.family.toUpperCase()}</strong>
+      <span>${family.runtime} / ${family.device}</span>
+      <small>${family.ready ? "ready" : "degraded"}: ${family.reason}</small>
+    </li>`).join("");
+
+  readinessEl.classList.remove("empty");
+  readinessEl.innerHTML = `
+    <dl class="facts">
+      <dt>Arch</dt><dd>${readiness.arch}</dd>
+      <dt>Profile</dt><dd>${readiness.profile_id}</dd>
+      <dt>Personality</dt><dd>${readiness.active_personality_profile_id}</dd>
+      <dt>LLM</dt><dd>${readiness.active_llm_runtime}</dd>
+      <dt>Status</dt><dd>${readiness.status}</dd>
+    </dl>
+    <ul class="families">${familyMarkup}</ul>
+  `;
+  setState(readiness.requires_degraded_mode || readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
+}
+
+async function startDesktop() {
+  clearError();
+  setState("STARTING");
+  healthEl.textContent = "starting";
+  sendButton.disabled = true;
+  inputEl.disabled = true;
+  pttButton.disabled = true;
+
+  if (!invoke) {
+    showError("Tauri command bridge is unavailable; desktop backend lifecycle cannot start.");
+    healthEl.textContent = "error";
+    return;
+  }
+
+  try {
+    const startPayload = JSON.parse(await invoke("start_backend"));
+    sessionEl.textContent = startPayload.session_id || "created";
+    healthEl.textContent = "ok";
+    const readiness = JSON.parse(await invoke("get_readiness"));
+    renderReadiness(readiness);
+    appendMessage("system", "Backend started and readiness loaded.");
+    sendButton.disabled = false;
+    inputEl.disabled = false;
+    pttButton.disabled = false;
+    inputEl.focus();
+  } catch (error) {
+    healthEl.textContent = "error";
+    showError(String(error));
+  }
+}
+
+async function blobToAudioBuffer(blob) {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioContext = new AudioContext();
+  try {
+    return await audioContext.decodeAudioData(arrayBuffer);
+  } finally {
+    await audioContext.close();
+  }
+}
+
+function encodeWav(audioBuffer) {
+  const sampleRate = audioBuffer.sampleRate;
+  const channelData = audioBuffer.getChannelData(0);
+  const dataSize = channelData.length * 2;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  writeAscii(view, 0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeAscii(view, 8, "WAVE");
+  writeAscii(view, 12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeAscii(view, 36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (const sample of channelData) {
+    const clamped = Math.max(-1, Math.min(1, sample));
+    view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+    offset += 2;
+  }
+  return new Uint8Array(buffer);
+}
+
+function writeAscii(view, offset, value) {
+  for (let index = 0; index < value.length; index += 1) {
+    view.setUint8(offset + index, value.charCodeAt(index));
+  }
+}
+
+async function startVoiceCapture() {
+  clearError();
+  if (!navigator.mediaDevices?.getUserMedia) {
+    showError("Microphone capture is unavailable in this WebView.");
+    voiceStatusEl.textContent = "Voice failed";
+    return;
+  }
+  try {
+    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioChunks = [];
+    mediaRecorder = new MediaRecorder(mediaStream);
+    mediaRecorder.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) audioChunks.push(event.data);
+    });
+    mediaRecorder.addEventListener("stop", handleVoiceCaptureStop, { once: true });
+    mediaRecorder.start();
+    voiceStatusEl.textContent = "Recording… release to submit";
+    setState("LISTENING");
+  } catch (error) {
+    voiceStatusEl.textContent = "Voice failed";
+    showError(`Microphone permission/capture failed: ${String(error)}`);
+  }
+}
+
+function stopVoiceCapture() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    voiceStatusEl.textContent = "Encoding WAV…";
+    mediaRecorder.stop();
+  }
+}
+
+async function handleVoiceCaptureStop() {
+  try {
+    for (const track of mediaStream?.getTracks() || []) track.stop();
+    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+    const audioBuffer = await blobToAudioBuffer(audioBlob);
+    const wavBytes = encodeWav(audioBuffer);
+    voiceStatusEl.textContent = `Posting WAV (${wavBytes.byteLength} bytes)…`;
+    const response = JSON.parse(await invoke("submit_voice", { audioBytes: Array.from(wavBytes) }));
+    setVoiceDetail(response);
+    turnStateEl.textContent = response.final_state;
+    setState(response.failure_reason ? "FAILED" : response.final_state, response.tts_degraded);
+    if (response.failure_reason || response.tts_degraded) {
+      const reason = response.failure_reason || response.tts_degraded_reason || "Voice turn degraded.";
+      showError(reason);
+    }
+    appendMessage("user", response.transcript || "(voice transcript unavailable)");
+    appendMessage("assistant", response.response_text || response.failure_reason || response.tts_degraded_reason);
+    voiceStatusEl.textContent = "Voice complete";
+  } catch (error) {
+    voiceStatusEl.textContent = "Voice failed";
+    showError(`Voice turn failed: ${String(error)}`);
+  } finally {
+    mediaStream = null;
+    mediaRecorder = null;
+    audioChunks = [];
+  }
+}
+
+async function submitText(text) {
+  clearError();
+  appendMessage("user", text);
+  setState("REASONING");
+  turnStateEl.textContent = "REASONING";
+  sendButton.disabled = true;
+
+  try {
+    const response = JSON.parse(await invoke("submit_text", { text }));
+    turnStateEl.textContent = response.final_state;
+    setState(response.failure_reason ? "FAILED" : response.final_state);
+    if (response.failure_reason) {
+      showError(response.failure_reason);
+    }
+    appendMessage("assistant", response.response_text || response.failure_reason);
+  } catch (error) {
+    turnStateEl.textContent = "FAILED";
+    showError(String(error));
+  } finally {
+    sendButton.disabled = false;
+    inputEl.focus();
+  }
+}
+
+formEl.addEventListener("submit", (event) => {
+  event.preventDefault();
+  const text = inputEl.value.trim();
+  if (!text) return;
+  inputEl.value = "";
+  submitText(text);
+});
+
+pttButton.addEventListener("pointerdown", (event) => {
+  event.preventDefault();
+  startVoiceCapture();
+});
+
+pttButton.addEventListener("pointerup", (event) => {
+  event.preventDefault();
+  stopVoiceCapture();
+});
+
+pttButton.addEventListener("pointercancel", stopVoiceCapture);
+
+window.addEventListener("beforeunload", () => {
+  invoke("stop_backend").catch(() => undefined);
+});
+
+startDesktop();

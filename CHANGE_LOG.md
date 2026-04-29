@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-29 05:32
+  - Summary: D.2 Windows x64 desktop progress was validated, not full D.2 completion. An npm/Tauri desktop host was added under `desktop/`; it starts the backend through `scripts/run_backend.py`, includes desktop lifecycle startup diagnostics/logging, displays readiness/runtime state, supports visible text turns, provides an operational tray menu (`Start Backend`, `Stop Backend`, `Show Window`, `Quit`), uses the robot `.ico` for desktop/tray icon, and includes a development-cycle Hold-to-Talk proof path using browser `getUserMedia`, frontend WAV encoding, raw WAV POST to `/task/voice`, and visible transcript/response/degraded/failure fields. HTT is not the final intended PTT UX and will be built upon in later D work.
+  - Scope: `desktop/`, `backend/tests/unit/desktop/`
+  - Host class(es): Windows x64 only
+  - Evidence: x64 dev runner PASS (`SUMMARY arch=x64 failures=0 warnings=1`); desktop static tests PASS (`8 passed`); npm static voice checks PASS; `cargo check --manifest-path desktop\src-tauri\Cargo.toml` PASS; `backend\.venv\Scripts\python scripts\run_backend.py --dry-run` PASS; backend regression PASS (`95 passed`); Tauri dev smoke PASS by user confirmation: app launched, backend health/session/readiness OK, text turn visible in UI, tray menu operational, and `/task/voice` reached with visible voice result.
+  - Note: No full D.2 completion or ARM64 validation is claimed. No backend API/runtime behavior, scripts, provisioning, routing/policy, tools, agents, wake, resident loop, WebSockets, audio streaming, or shell-side playback was added.
+
 - 2026-04-28 21:22
   - Summary: D.2-enabling method-viability tooling was added (not D.2 desktop implementation): stdlib-only `scripts/dev_runner.py` and `backend/tests/unit/scripts/test_dev_runner.py`. The runner validates architecture-sensitive desktop prerequisites before Tauri work, supports `check --arch x64`, `check --arch arm64`, and `check --arch x64-arm64`, dynamically discovers Visual Studio/MSVC via `vswhere`/candidate installs, captures full MSVC environment with `vcvarsall.bat <arg> && set`, checks Node/npm/Rust/Cargo/selected Rust target/MSVC env/`cl`/`link`/WebView2, treats pnpm as optional/non-failing, and treats uncertain WebView2 detection as WARN rather than false hard fail.
   - Scope: `scripts/dev_runner.py`, `backend/tests/unit/scripts/test_dev_runner.py`

@@ -1,0 +1,18 @@
+import { readFileSync } from "node:fs";
+import { strict as assert } from "node:assert";
+
+const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
+
+for (const token of ["RIFF", "WAVE", "fmt ", "data"]) {
+  assert.ok(main.includes(token), `missing WAV token ${token}`);
+}
+
+assert.ok(main.includes("getUserMedia"), "PTT must request microphone capture");
+assert.ok(main.includes("MediaRecorder"), "PTT must record microphone audio");
+assert.ok(backend.includes("/task/voice"), "backend bridge must call /task/voice");
+assert.ok(backend.includes("application/octet-stream"), "voice upload must be raw bytes");
+assert.ok(!backend.toLowerCase().includes("multipart"), "voice upload must not use multipart");
+assert.ok(!main.toLowerCase().includes("websocket"), "desktop must not use WebSockets");
+
+console.log("desktop static voice checks passed");

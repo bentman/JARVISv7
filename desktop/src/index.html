@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JARVISv7</title>
+    <link rel="stylesheet" href="./style.css" />
+    <script type="module" src="./main.js"></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div>
+          <h1>JARVISv7</h1>
+          <p class="subtitle">Durable desktop host</p>
+        </div>
+        <div class="state-card">
+          <span class="label">State</span>
+          <strong id="startup-state">BOOTSTRAP</strong>
+        </div>
+      </header>
+
+      <section id="error-panel" class="error-panel hidden" aria-live="polite"></section>
+
+      <section class="grid">
+        <aside class="panel">
+          <h2>Backend</h2>
+          <dl class="facts">
+            <dt>Health</dt>
+            <dd id="backend-health">starting</dd>
+            <dt>Session</dt>
+            <dd id="session-id">not created</dd>
+            <dt>Endpoint</dt>
+            <dd>127.0.0.1:8765</dd>
+          </dl>
+
+          <h2>Readiness</h2>
+          <div id="readiness-panel" class="readiness empty">Waiting for backend readiness…</div>
+        </aside>
+
+        <section class="panel conversation-panel">
+          <div class="conversation-header">
+            <h2>Conversation</h2>
+            <span id="turn-state" class="turn-state">IDLE</span>
+          </div>
+          <div id="conversation-log" class="conversation-log" aria-live="polite"></div>
+          <form id="text-form" class="text-form">
+            <input id="text-input" type="text" autocomplete="off" placeholder="Type a message to JARVIS…" />
+            <button id="send-button" type="submit">Send</button>
+          </form>
+          <div class="voice-controls">
+            <button id="ptt-button" type="button">Hold to Talk</button>
+            <span id="voice-status">Voice idle</span>
+          </div>
+          <pre id="voice-detail" class="voice-detail" aria-live="polite"></pre>
+          <p class="deferred-note">Shell audio playback, wake integration, resident loop, and global hotkeys are deferred in this pass.</p>
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
