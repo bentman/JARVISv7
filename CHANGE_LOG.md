@@ -18,6 +18,20 @@
 
 ## Entries
 
+- 2026-04-29 10:15
+  - Summary: D.2 Durable Desktop Host was closed across Windows x64 and Windows ARM64 using the previously recorded D.2 progress evidence.
+  - Scope: `CHANGE_LOG.md` only; closeout delta referencing prior D.2 progress entries.
+  - Host class(es): Windows x64 and Windows ARM64
+  - Evidence: Prior D.2 progress entries are the evidence source: `2026-04-29 05:32` for Windows x64 and `2026-04-29 06:00` for Windows ARM64.
+  - Note: HTT validated the D.2 voice path, but HTT is not the final intended PTT UX; final PTT interaction semantics continue in later D work. Browser capture/WAV path worked, but idealized 16 kHz PCM/downsample quality is not claimed. No `SYSTEM_INVENTORY.md` update was made in this step.
+
+- 2026-04-29 09:36
+  - Summary: D.2 Durable Desktop Host was closed across Windows x64 and Windows ARM64 by accepting the previously recorded host-specific progress evidence. The durable npm/Tauri desktop host, backend lifecycle through `scripts/run_backend.py`, readiness display, visible text turn, tray lifecycle menu, robot `.ico`, and HTT voice-path proof are now the D.2 closeout baseline.
+  - Scope: `CHANGE_LOG.md` only; closeout delta over prior D.2 evidence in `desktop/` and `backend/tests/unit/desktop/`
+  - Host class(es): Windows x64 and Windows ARM64
+  - Evidence: Prior D.2 progress entries are the evidence source: `2026-04-29 05:32` for Windows x64 and `2026-04-29 06:00` for Windows ARM64.
+  - Note: HTT validated the D.2 voice path, but HTT is not the final intended PTT UX; final PTT interaction semantics continue in later D work. Browser capture/WAV path worked, but idealized 16 kHz PCM/downsample quality is not claimed. No `SYSTEM_INVENTORY.md` update was made in this step.
+
 - 2026-04-29 06:00
   - Summary: D.2 desktop progress previously validated on Windows x64 was also validated on Windows ARM64. Validation confirmed current desktop host progress only (not full D.2 completion): ARM64 dev-runner/toolchain readiness, desktop static/unit checks, lockfile-based npm install, cargo check, backend dry-run/regression, and Tauri dev launch with user-confirmed ARM64 smoke.
   - Scope: `desktop/`, `backend/tests/unit/desktop/`

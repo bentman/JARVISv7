@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice D.2 durable desktop host - 2026-04-29 10:30
+  - State: Verified
+  - Location: `desktop/`, `backend/tests/unit/desktop/`
+  - Validation: Windows x64 and Windows ARM64 D.2 evidence recorded in `CHANGE_LOG.md`: `2026-04-29 05:32` Windows x64 desktop progress validation, `2026-04-29 06:00` Windows ARM64 desktop progress validation, and `2026-04-29 10:15` D.2 closeout delta. npm/Tauri desktop host validated on both host classes; backend starts through `scripts/run_backend.py`; readiness/runtime display, text turn, tray lifecycle menu, and HTT voice path through `/task/voice` validated; regression remained green on both host classes.
+  - Notes: HTT is not the final intended PTT UX; final PTT interaction semantics continue in later D work. Browser capture/WAV path worked, but idealized 16 kHz PCM/downsample quality is not claimed. No resident loop, wake integration, tools/agents, routing policy, WebSockets, audio streaming, or shell-side playback is claimed.
+
 - Capability: Slice C canonical turn/session engine and proving host - 2026-04-28 06:04
   - State: Verified
   - Location: `backend/app/conversation/`, `backend/app/cognition/`, `backend/app/personality/`, `backend/app/services/`, `backend/app/artifacts/`, `backend/app/memory/`, `backend/app/runtimes/stt/barge_in.py`, `backend/app/runtimes/tts/playback.py`, `config/personality/default.yaml`, `scripts/run_jarvis.py`, `backend/tests/unit/conversation/`, `backend/tests/unit/cognition/`, `backend/tests/unit/personality/`, `backend/tests/unit/services/`, `backend/tests/unit/artifacts/`, `backend/tests/unit/memory/`, `backend/tests/unit/scripts/test_run_jarvis_script.py`, `backend/tests/integration/services/test_two_turn_session.py`, `backend/tests/runtime/turn/`
