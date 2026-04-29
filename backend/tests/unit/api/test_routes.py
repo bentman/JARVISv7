@@ -260,4 +260,67 @@ def test_agents_status_is_disabled_read_only() -> None:
 def test_wake_status_uses_readiness_without_starting_monitor() -> None:
     response = _client().get("/status/wake")
     assert response.status_code == 200
-    assert response.json() == {"provider": "openwakeword", "available": True, "reason": "wake ready"}
+    assert response.json() == {
+        "provider": "openwakeword",
+        "available": True,
+        "reason": "wake ready",
+        "monitoring": False,
+        "last_detected": False,
+        "detection_count": 0,
+        "last_error": None,
+    }
+
+
+def test_wake_status_reflects_deterministic_detection_state() -> None:
+    client = _client()
+
+    class WakeRuntime:
+        def is_available(self) -> bool:
+            return True
+
+        def detect(self, audio_chunk: np.ndarray) -> bool:
+            _ = audio_chunk
+            return True
+
+    client.app.state.jarvis_state.session_service.configure_wake_status(
+        provider="openwakeword",
+        available=True,
+        reason="wake ready",
+    )
+    client.app.state.jarvis_state.session_service.process_wake_chunk(WakeRuntime(), np.zeros(4))
+    response = client.get("/status/wake")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["provider"] == "openwakeword"
+    assert payload["available"] is True
+    assert payload["reason"] == "wake detected"
+    assert payload["last_detected"] is True
+    assert payload["detection_count"] == 1
+    assert payload["last_error"] is None
+
+
+def test_wake_status_reflects_error_state() -> None:
+    client = _client()
+
+    class WakeRuntime:
+        def is_available(self) -> bool:
+            return True
+
+        def detect(self, audio_chunk: np.ndarray) -> bool:
+            _ = audio_chunk
+            raise RuntimeError("wake failed")
+
+    client.app.state.jarvis_state.session_service.configure_wake_status(
+        provider="openwakeword",
+        available=True,
+        reason="wake ready",
+    )
+    client.app.state.jarvis_state.session_service.process_wake_chunk(WakeRuntime(), np.zeros(4))
+    response = client.get("/status/wake")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["available"] is False
+    assert payload["reason"] == "wake detection error; PTT-only fallback is active"
+    assert payload["last_detected"] is False
+    assert payload["detection_count"] == 0
+    assert payload["last_error"] == "wake failed"

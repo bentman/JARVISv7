@@ -70,7 +70,7 @@ def test_desktop_references_only_approved_d1_endpoints_for_first_pass() -> None:
             DESKTOP / "src" / "main.js",
         ]
     )
-    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/task/text", "/task/voice"]:
+    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/status/wake", "/task/text", "/task/voice"]:
         assert endpoint in source
     assert "/session/tick" not in source
     assert "/session/ptt" not in source
@@ -90,6 +90,22 @@ def test_desktop_displays_resident_session_status() -> None:
     assert "refreshSessionStatus" in main_js
     assert "session-turn-count" in main_js
     assert "session-turn-count" in index_html
+
+
+def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    main_js = _read("desktop/src/main.js")
+    index_html = _read("desktop/src/index.html")
+    assert "get_wake_status" in backend_rs
+    assert "/status/wake" in backend_rs
+    assert "get_wake_status" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status" in lib_rs
+    assert 'invoke("get_wake_status")' in main_js
+    assert "refreshWakeStatus" in main_js
+    assert "PTT-only fallback" in main_js
+    assert "wake-status" in index_html
+    assert "wake-detail" in index_html
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:

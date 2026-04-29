@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterable, Protocol
+
+import numpy as np
 
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
@@ -23,6 +25,25 @@ class SessionCloseResult:
     artifact_path: Path
 
 
+@dataclass(frozen=True, slots=True)
+class WakeMonitorStatus:
+    provider: str
+    available: bool
+    reason: str
+    monitoring: bool = False
+    last_detected: bool = False
+    detection_count: int = 0
+    last_error: str | None = None
+
+
+class WakeRuntime(Protocol):
+    def is_available(self) -> bool:
+        ...
+
+    def detect(self, audio_chunk: np.ndarray) -> bool:
+        ...
+
+
 class SessionService:
     def __init__(
         self,
@@ -37,6 +58,11 @@ class SessionService:
         self._engine_factory = engine_factory
         self._active = active
         self._state = "IDLE"
+        self._wake_status = WakeMonitorStatus(
+            provider="openwakeword",
+            available=False,
+            reason="wake readiness has not been configured",
+        )
 
     @property
     def session_manager(self) -> SessionManager:
@@ -78,3 +104,81 @@ class SessionService:
             raise ValueError("no active resident session")
         if session_id is not None and session_id != self._session_manager.session_id:
             raise ValueError("session_id is not active")
+
+    def configure_wake_status(self, *, provider: str, available: bool, reason: str) -> WakeMonitorStatus:
+        if self._wake_status.last_detected or self._wake_status.last_error is not None or "PTT-only fallback" in self._wake_status.reason:
+            return self._wake_status
+        self._wake_status = WakeMonitorStatus(
+            provider=provider,
+            available=available,
+            reason=reason,
+            monitoring=False,
+            last_detected=self._wake_status.last_detected,
+            detection_count=self._wake_status.detection_count,
+            last_error=self._wake_status.last_error,
+        )
+        return self._wake_status
+
+    def wake_status(self) -> WakeMonitorStatus:
+        return self._wake_status
+
+    def process_wake_chunk(self, wake_runtime: WakeRuntime, audio_chunk: np.ndarray) -> WakeMonitorStatus:
+        return self.process_wake_chunks(wake_runtime, [audio_chunk])
+
+    def process_wake_chunks(self, wake_runtime: WakeRuntime, audio_chunks: Iterable[np.ndarray]) -> WakeMonitorStatus:
+        if not wake_runtime.is_available():
+            self._wake_status = WakeMonitorStatus(
+                provider=self._wake_status.provider,
+                available=False,
+                reason="wake runtime is unavailable; PTT-only fallback is active",
+                monitoring=False,
+                last_detected=False,
+                detection_count=self._wake_status.detection_count,
+                last_error=None,
+            )
+            return self._wake_status
+
+        self._wake_status = WakeMonitorStatus(
+            provider=self._wake_status.provider,
+            available=True,
+            reason=self._wake_status.reason,
+            monitoring=True,
+            last_detected=False,
+            detection_count=self._wake_status.detection_count,
+            last_error=None,
+        )
+        try:
+            for chunk in audio_chunks:
+                if wake_runtime.detect(np.asarray(chunk)):
+                    self._wake_status = WakeMonitorStatus(
+                        provider=self._wake_status.provider,
+                        available=True,
+                        reason="wake detected",
+                        monitoring=False,
+                        last_detected=True,
+                        detection_count=self._wake_status.detection_count + 1,
+                        last_error=None,
+                    )
+                    return self._wake_status
+        except Exception as exc:
+            self._wake_status = WakeMonitorStatus(
+                provider=self._wake_status.provider,
+                available=False,
+                reason="wake detection error; PTT-only fallback is active",
+                monitoring=False,
+                last_detected=False,
+                detection_count=self._wake_status.detection_count,
+                last_error=str(exc),
+            )
+            return self._wake_status
+
+        self._wake_status = WakeMonitorStatus(
+            provider=self._wake_status.provider,
+            available=True,
+            reason="wake not detected",
+            monitoring=False,
+            last_detected=False,
+            detection_count=self._wake_status.detection_count,
+            last_error=None,
+        )
+        return self._wake_status

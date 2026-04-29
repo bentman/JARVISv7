@@ -46,6 +46,22 @@ class _FakeLLM:
         return f"response to {prompt}"
 
 
+class _FakeWakeRuntime:
+    def __init__(self, *, available: bool = True, detections: list[bool] | None = None, error: Exception | None = None) -> None:
+        self.available = available
+        self.detections = detections or []
+        self.error = error
+
+    def is_available(self) -> bool:
+        return self.available
+
+    def detect(self, audio_chunk: np.ndarray) -> bool:
+        _ = audio_chunk
+        if self.error is not None:
+            raise self.error
+        return self.detections.pop(0) if self.detections else False
+
+
 def _engine(manager: SessionManager) -> TurnEngine:
     return TurnEngine(
         stt=_FakeSTT(),  # type: ignore[arg-type]
@@ -123,3 +139,59 @@ def test_engine_is_bound_to_active_session_manager(tmp_path: Path) -> None:
     session_id = service.status().session_id
     result = service.engine().run_text_turn("bound session")
     assert result.session_id == session_id
+
+
+def test_wake_status_defaults_to_configured_readiness(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    status = service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
+    assert status.provider == "openwakeword"
+    assert status.available is True
+    assert status.reason == "wake ready"
+    assert status.monitoring is False
+    assert status.last_detected is False
+    assert status.detection_count == 0
+    assert status.last_error is None
+
+
+def test_process_wake_chunks_records_positive_detection(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
+    runtime = _FakeWakeRuntime(detections=[False, True])
+    status = service.process_wake_chunks(runtime, [np.zeros(4), np.ones(4)])
+    assert status.available is True
+    assert status.last_detected is True
+    assert status.detection_count == 1
+    assert status.reason == "wake detected"
+
+
+def test_process_wake_chunks_records_no_detection_without_error(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
+    status = service.process_wake_chunks(_FakeWakeRuntime(detections=[False]), [np.zeros(4)])
+    assert status.available is True
+    assert status.last_detected is False
+    assert status.detection_count == 0
+    assert status.reason == "wake not detected"
+    assert status.last_error is None
+
+
+def test_wake_unavailable_degrades_to_ptt_only_without_error(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.configure_wake_status(provider="openwakeword", available=False, reason="wake unavailable")
+    status = service.process_wake_chunks(_FakeWakeRuntime(available=False), [np.zeros(4)])
+    assert status.available is False
+    assert status.monitoring is False
+    assert status.last_detected is False
+    assert status.reason == "wake runtime is unavailable; PTT-only fallback is active"
+    assert status.last_error is None
+
+
+def test_wake_detection_error_records_last_error(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
+    status = service.process_wake_chunks(_FakeWakeRuntime(error=RuntimeError("mic failed")), [np.zeros(4)])
+    assert status.available is False
+    assert status.monitoring is False
+    assert status.last_detected is False
+    assert status.reason == "wake detection error; PTT-only fallback is active"
+    assert status.last_error == "mic failed"

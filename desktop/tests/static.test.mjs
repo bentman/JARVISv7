@@ -20,5 +20,11 @@ assert.ok(backend.includes("/session/status"), "backend bridge must call /sessio
 assert.ok(lib.includes("get_session_status"), "Tauri command must expose get_session_status");
 assert.ok(main.includes('invoke("get_session_status")'), "desktop must invoke get_session_status");
 assert.ok(index.includes("session-turn-count"), "desktop must display session turn count");
+assert.ok(backend.includes("/status/wake"), "backend bridge must call /status/wake");
+assert.ok(lib.includes("get_wake_status"), "Tauri command must expose get_wake_status");
+assert.ok(main.includes('invoke("get_wake_status")'), "desktop must invoke get_wake_status");
+assert.ok(main.includes("PTT-only fallback"), "desktop must display PTT-only fallback state");
+assert.ok(index.includes("wake-status"), "desktop must display wake status");
+assert.ok(index.includes("wake-detail"), "desktop must display wake detail");
 
 console.log("desktop static voice checks passed");

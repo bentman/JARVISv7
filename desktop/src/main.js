@@ -2,6 +2,8 @@ const stateEl = document.querySelector("#startup-state");
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
 const turnCountEl = document.querySelector("#session-turn-count");
+const wakeStatusEl = document.querySelector("#wake-status");
+const wakeDetailEl = document.querySelector("#wake-detail");
 const readinessEl = document.querySelector("#readiness-panel");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
@@ -89,6 +91,25 @@ async function refreshSessionStatus() {
   return status;
 }
 
+async function refreshWakeStatus() {
+  try {
+    const status = JSON.parse(await invoke("get_wake_status"));
+    const provider = status.provider || "unknown";
+    const available = Boolean(status.available);
+    wakeStatusEl.textContent = available ? `${provider} available` : "PTT-only fallback";
+    wakeDetailEl.textContent = available
+      ? `Wake provider ${provider} is available. PTT remains available. Reason: ${status.reason || "ready"}`
+      : `Wake unavailable; PTT-only fallback is active. Reason: ${status.reason || "unknown"}`;
+    wakeStatusEl.dataset.available = String(available);
+    return status;
+  } catch (error) {
+    wakeStatusEl.textContent = "PTT-only fallback";
+    wakeStatusEl.dataset.available = "false";
+    wakeDetailEl.textContent = `Wake status unavailable; PTT-only fallback is active. Reason: ${String(error)}`;
+    return null;
+  }
+}
+
 async function startDesktop() {
   clearError();
   setState("STARTING");
@@ -111,6 +132,7 @@ async function startDesktop() {
     const readiness = JSON.parse(await invoke("get_readiness"));
     renderReadiness(readiness);
     await refreshSessionStatus();
+    await refreshWakeStatus();
     appendMessage("system", "Backend started and readiness loaded.");
     sendButton.disabled = false;
     inputEl.disabled = false;
