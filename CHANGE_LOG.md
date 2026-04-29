@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-29 06:00
+  - Summary: D.2 desktop progress previously validated on Windows x64 was also validated on Windows ARM64. Validation confirmed current desktop host progress only (not full D.2 completion): ARM64 dev-runner/toolchain readiness, desktop static/unit checks, lockfile-based npm install, cargo check, backend dry-run/regression, and Tauri dev launch with user-confirmed ARM64 smoke.
+  - Scope: `desktop/`, `backend/tests/unit/desktop/`
+  - Host class(es): Windows ARM64
+  - Evidence: `backend\.venv\Scripts\python scripts\dev_runner.py check --arch arm64` PASS (`SUMMARY arch=arm64 failures=0 warnings=1`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop -q` PASS (`8 passed in 0.03s`); `npm --prefix desktop install` PASS using committed `desktop/package-lock.json`; `npm --prefix desktop test` PASS (desktop static voice checks); `cargo check --manifest-path desktop\src-tauri\Cargo.toml` PASS; `backend\.venv\Scripts\python scripts\run_backend.py --dry-run` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 tests`); `npm --prefix desktop run dev` launch PASS. User-confirmed ARM64 desktop smoke: window opened, backend health/session/readiness loaded, text turn visible, tray menu operational, and HTT voice path reached `/task/voice` with visible result.
+  - Note: This is D.2 progress validation only, not full D.2 completion. HTT remains a development-cycle proof path, not final intended PTT UX. No backend API/runtime behavior, scripts, provisioning, routing/policy, tools, agents, wake, resident loop, WebSockets, audio streaming, or shell-side playback was added; no `SYSTEM_INVENTORY.md` promotion is claimed.
+
 - 2026-04-29 05:32
   - Summary: D.2 Windows x64 desktop progress was validated, not full D.2 completion. An npm/Tauri desktop host was added under `desktop/`; it starts the backend through `scripts/run_backend.py`, includes desktop lifecycle startup diagnostics/logging, displays readiness/runtime state, supports visible text turns, provides an operational tray menu (`Start Backend`, `Stop Backend`, `Show Window`, `Quit`), uses the robot `.ico` for desktop/tray icon, and includes a development-cycle Hold-to-Talk proof path using browser `getUserMedia`, frontend WAV encoding, raw WAV POST to `/task/voice`, and visible transcript/response/degraded/failure fields. HTT is not the final intended PTT UX and will be built upon in later D work.
   - Scope: `desktop/`, `backend/tests/unit/desktop/`
