@@ -27,6 +27,31 @@ def load_personality(path: Path) -> PersonalityProfile:
     return PersonalityProfile.from_dict(data)
 
 
+def _profile_path(profile_id: str) -> Path:
+    normalized = profile_id.strip()
+    if not normalized or normalized != profile_id or any(part in normalized for part in ("/", "\\", "..")):
+        raise ValueError("invalid personality profile_id")
+    return CONFIG_DIR / "personality" / f"{normalized}.yaml"
+
+
+def load_personality_profile(profile_id: str) -> PersonalityProfile:
+    path = _profile_path(profile_id)
+    if not path.exists():
+        raise FileNotFoundError(f"personality profile not found: {profile_id}")
+    profile = load_personality(path)
+    if profile.profile_id != profile_id:
+        raise ValueError(f"personality profile id mismatch: {path}")
+    return profile
+
+
+def list_personality_profiles() -> list[PersonalityProfile]:
+    directory = CONFIG_DIR / "personality"
+    if not directory.exists():
+        return [DEFAULT_PERSONALITY]
+    profiles = [load_personality(path) for path in sorted(directory.glob("*.yaml"))]
+    return sorted(profiles, key=lambda profile: profile.profile_id)
+
+
 def load_default_personality() -> PersonalityProfile:
     path = CONFIG_DIR / "personality" / "default.yaml"
     if not path.exists():

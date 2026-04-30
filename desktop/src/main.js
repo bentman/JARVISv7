@@ -4,6 +4,9 @@ const sessionEl = document.querySelector("#session-id");
 const turnCountEl = document.querySelector("#session-turn-count");
 const wakeStatusEl = document.querySelector("#wake-status");
 const wakeDetailEl = document.querySelector("#wake-detail");
+const personalityCurrentEl = document.querySelector("#personality-current");
+const personalitySelectEl = document.querySelector("#personality-select");
+const personalityDetailEl = document.querySelector("#personality-detail");
 const readinessEl = document.querySelector("#readiness-panel");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
@@ -19,6 +22,13 @@ const invoke = window.__TAURI__?.core?.invoke;
 let mediaStream = null;
 let mediaRecorder = null;
 let audioChunks = [];
+let activePersonalityId = "default";
+
+const presenceByProfile = {
+  default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
+  concise: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "On it." },
+  warm: { listening: "Go ahead.", transcribing: "I’m transcribing that.", reasoning: "I’m on it." },
+};
 
 function setState(value, degraded = false) {
   stateEl.textContent = value;
@@ -45,6 +55,21 @@ function appendMessage(role, text) {
   entry.querySelector("p").textContent = text || "(no text returned)";
   logEl.appendChild(entry);
   logEl.scrollTop = logEl.scrollHeight;
+}
+
+function presenceText(stateName) {
+  const profile = presenceByProfile[activePersonalityId] || presenceByProfile.default;
+  return profile[stateName] || presenceByProfile.default[stateName];
+}
+
+function appendPresence(stateName) {
+  appendMessage("presence", presenceText(stateName));
+}
+
+function updatePersonalityDisplay(profile) {
+  activePersonalityId = profile.profile_id || activePersonalityId;
+  personalityCurrentEl.textContent = activePersonalityId;
+  personalityDetailEl.textContent = `${profile.display_name || "JARVIS"}: tone=${profile.tone || ""}; brevity=${profile.brevity || ""}; formality=${profile.formality || ""}`;
 }
 
 function setVoiceDetail(result) {
@@ -110,6 +135,30 @@ async function refreshWakeStatus() {
   }
 }
 
+async function refreshPersonalityProfiles() {
+  const payload = JSON.parse(await invoke("get_personality_list"));
+  activePersonalityId = payload.active_profile_id || "default";
+  personalitySelectEl.innerHTML = "";
+  for (const profile of payload.profiles || []) {
+    const option = document.createElement("option");
+    option.value = profile.profile_id;
+    option.textContent = `${profile.display_name} (${profile.profile_id})`;
+    option.selected = profile.profile_id === activePersonalityId;
+    personalitySelectEl.appendChild(option);
+    if (option.selected) updatePersonalityDisplay(profile);
+  }
+  personalitySelectEl.disabled = false;
+  return payload;
+}
+
+async function selectPersonality(profileId) {
+  const before = await refreshSessionStatus();
+  const payload = JSON.parse(await invoke("select_personality", { profileId }));
+  updatePersonalityDisplay(payload.active);
+  const after = await refreshSessionStatus();
+  appendMessage("system", `Personality switched to ${payload.active.profile_id}; applies to the next turn. Session preserved: ${before.session_id === after.session_id}.`);
+}
+
 async function startDesktop() {
   clearError();
   setState("STARTING");
@@ -133,6 +182,7 @@ async function startDesktop() {
     renderReadiness(readiness);
     await refreshSessionStatus();
     await refreshWakeStatus();
+    await refreshPersonalityProfiles();
     appendMessage("system", "Backend started and readiness loaded.");
     sendButton.disabled = false;
     inputEl.disabled = false;
@@ -208,6 +258,7 @@ async function startVoiceCapture() {
     mediaRecorder.start();
     voiceStatusEl.textContent = "Recording… release to submit";
     setState("LISTENING");
+    appendPresence("listening");
   } catch (error) {
     voiceStatusEl.textContent = "Voice failed";
     showError(`Microphone permission/capture failed: ${String(error)}`);
@@ -217,6 +268,7 @@ async function startVoiceCapture() {
 function stopVoiceCapture() {
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
     voiceStatusEl.textContent = "Encoding WAV…";
+    appendPresence("transcribing");
     mediaRecorder.stop();
   }
 }
@@ -228,6 +280,7 @@ async function handleVoiceCaptureStop() {
     const audioBuffer = await blobToAudioBuffer(audioBlob);
     const wavBytes = encodeWav(audioBuffer);
     voiceStatusEl.textContent = `Posting WAV (${wavBytes.byteLength} bytes)…`;
+    appendPresence("reasoning");
     const response = JSON.parse(await invoke("submit_voice", { audioBytes: Array.from(wavBytes) }));
     setVoiceDetail(response);
     turnStateEl.textContent = response.final_state;
@@ -253,6 +306,7 @@ async function submitText(text) {
   clearError();
   appendMessage("user", text);
   setState("REASONING");
+  appendPresence("reasoning");
   turnStateEl.textContent = "REASONING";
   sendButton.disabled = true;
 
@@ -293,6 +347,10 @@ pttButton.addEventListener("pointerup", (event) => {
 });
 
 pttButton.addEventListener("pointercancel", stopVoiceCapture);
+
+personalitySelectEl.addEventListener("change", (event) => {
+  selectPersonality(event.target.value).catch((error) => showError(String(error)));
+});
 
 window.addEventListener("beforeunload", () => {
   invoke("stop_backend").catch(() => undefined);

@@ -8,6 +8,7 @@ import numpy as np
 
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
+from backend.app.personality.schema import PersonalityProfile
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,11 +53,13 @@ class SessionService:
         engine: TurnEngine,
         engine_factory: Callable[[SessionManager], TurnEngine],
         active: bool = True,
+        personality: PersonalityProfile | None = None,
     ) -> None:
         self._session_manager = session_manager
         self._engine = engine
         self._engine_factory = engine_factory
         self._active = active
+        self._personality = personality or engine.personality
         self._state = "IDLE"
         self._wake_status = WakeMonitorStatus(
             provider="openwakeword",
@@ -73,10 +76,19 @@ class SessionService:
             raise RuntimeError("no active resident session")
         return self._engine
 
+    def active_personality(self) -> PersonalityProfile:
+        return self._personality
+
+    def select_personality(self, profile: PersonalityProfile) -> PersonalityProfile:
+        self._personality = profile
+        self._engine.personality = profile
+        return self._personality
+
     def start_session(self, client_id: str | None = None) -> SessionStatus:
         _ = client_id
         self._session_manager = SessionManager()
         self._engine = self._engine_factory(self._session_manager)
+        self._engine.personality = self._personality
         self._active = True
         self._state = "IDLE"
         return self.status()

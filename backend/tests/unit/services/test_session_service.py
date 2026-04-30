@@ -141,6 +141,30 @@ def test_engine_is_bound_to_active_session_manager(tmp_path: Path) -> None:
     assert result.session_id == session_id
 
 
+def test_select_personality_updates_engine_without_resetting_session_or_wake(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
+    before = service.status()
+    selected = PersonalityProfile(
+        profile_id="warm",
+        display_name="JARVIS",
+        tone="warm",
+        brevity="balanced",
+        formality="conversational",
+        system_prompt_addendum="Use a supportive style.",
+    )
+
+    active = service.select_personality(selected)
+    after = service.status()
+
+    assert active == selected
+    assert service.active_personality() == selected
+    assert service.engine().personality == selected
+    assert after.session_id == before.session_id
+    assert after.turn_count == before.turn_count
+    assert service.wake_status().reason == "wake ready"
+
+
 def test_wake_status_defaults_to_configured_readiness(tmp_path: Path) -> None:
     service = _service(tmp_path)
     status = service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")

@@ -26,5 +26,15 @@ assert.ok(main.includes('invoke("get_wake_status")'), "desktop must invoke get_w
 assert.ok(main.includes("PTT-only fallback"), "desktop must display PTT-only fallback state");
 assert.ok(index.includes("wake-status"), "desktop must display wake status");
 assert.ok(index.includes("wake-detail"), "desktop must display wake detail");
+assert.ok(backend.includes("/personality/list"), "backend bridge must call /personality/list");
+assert.ok(backend.includes("/personality/select"), "backend bridge must call /personality/select");
+assert.ok(lib.includes("get_personality_list"), "Tauri command must expose get_personality_list");
+assert.ok(lib.includes("select_personality"), "Tauri command must expose select_personality");
+assert.ok(main.includes('invoke("get_personality_list")'), "desktop must invoke get_personality_list");
+assert.ok(main.includes('invoke("select_personality"'), "desktop must invoke select_personality");
+assert.ok(index.includes("personality-select"), "desktop must display personality selector");
+assert.ok(index.includes("personality-current"), "desktop must display active personality");
+assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
+assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
 
 console.log("desktop static voice checks passed");

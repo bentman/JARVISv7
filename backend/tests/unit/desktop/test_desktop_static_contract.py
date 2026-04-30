@@ -70,7 +70,7 @@ def test_desktop_references_only_approved_d1_endpoints_for_first_pass() -> None:
             DESKTOP / "src" / "main.js",
         ]
     )
-    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/status/wake", "/task/text", "/task/voice"]:
+    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/status/wake", "/personality/list", "/personality/select", "/task/text", "/task/voice"]:
         assert endpoint in source
     assert "/session/tick" not in source
     assert "/session/ptt" not in source
@@ -106,6 +106,24 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "PTT-only fallback" in main_js
     assert "wake-status" in index_html
     assert "wake-detail" in index_html
+
+
+def test_desktop_displays_personality_selector_and_presence_ui() -> None:
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    main_js = _read("desktop/src/main.js")
+    index_html = _read("desktop/src/index.html")
+    assert "/personality/list" in backend_rs
+    assert "/personality/select" in backend_rs
+    assert "get_personality_list" in lib_rs
+    assert "select_personality" in lib_rs
+    assert 'invoke("get_personality_list")' in main_js
+    assert 'invoke("select_personality"' in main_js
+    assert "personality-select" in index_html
+    assert "personality-current" in index_html
+    assert "appendPresence" in main_js
+    assert "presenceByProfile" in main_js
+    assert "submit_text_turn" in backend_rs
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:

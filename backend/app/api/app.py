@@ -113,12 +113,13 @@ def install_state(app: FastAPI, state: ApiState) -> None:
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
-    from backend.app.api.routes import agents, diagnostics, health, readiness, session, status, task, voice
+    from backend.app.api.routes import agents, diagnostics, health, personality, readiness, session, status, task, voice
 
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1")
     install_state(app, startup_state or build_startup_state())
     app.include_router(health.router)
     app.include_router(readiness.router)
+    app.include_router(personality.router)
     app.include_router(session.router)
     app.include_router(task.router)
     app.include_router(voice.router)

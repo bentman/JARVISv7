@@ -13,6 +13,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import TurnContext
 from backend.app.memory.write_policy import WritePolicy
+from backend.app.personality.adapter import apply_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
@@ -92,6 +93,7 @@ class TurnEngine:
             context.advance(ConversationState.REASONING)
             working_memory = self.session_manager.get_working_context(self.write_policy) if self.session_manager else None
             prompt = assemble_prompt(transcript, self.personality, working_memory=working_memory)
+            prompt = apply_personality(prompt, self.personality)
             response = self.llm.generate(prompt)
             if not response.strip():
                 return self._fail(context, transcript=transcript, response_text=response, reason="LLM returned empty response")

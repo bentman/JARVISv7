@@ -36,9 +36,17 @@
             <dd id="wake-status">checking</dd>
             <dt>Wake detail</dt>
             <dd id="wake-detail">Waiting for wake status…</dd>
+            <dt>Personality</dt>
+            <dd id="personality-current">default</dd>
             <dt>Endpoint</dt>
             <dd>127.0.0.1:8765</dd>
           </dl>
+
+          <label class="selector-label" for="personality-select">Personality profile</label>
+          <select id="personality-select" disabled>
+            <option value="default">default</option>
+          </select>
+          <p id="personality-detail" class="profile-detail">Waiting for personality profiles…</p>
 
           <h2>Readiness</h2>
           <div id="readiness-panel" class="readiness empty">Waiting for backend readiness…</div>

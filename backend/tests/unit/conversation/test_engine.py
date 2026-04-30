@@ -139,6 +139,22 @@ def test_text_turn_returns_response_for_known_prompt():
     assert "Prefer direct answers." in llm.prompts[0]
 
 
+def test_personality_adapter_reaches_live_prompt_path_without_duplication():
+    llm = FakeLLM(response="styled")
+
+    result = _engine(llm=llm).run_text_turn("style check")
+
+    prompt = llm.prompts[0]
+    assert result.final_state == ConversationState.IDLE
+    assert "Tone: professional" in prompt
+    assert "Brevity: concise" in prompt
+    assert "Prefer direct answers." in prompt
+    assert "Maintain a professional tone." in prompt
+    assert "Keep responses concise." in prompt
+    assert "Use semi-formal formality." in prompt
+    assert prompt.count("Prefer direct answers.") == 1
+
+
 def test_voice_turn_calls_stt_then_llm():
     stt = FakeSTT(transcript="hello world")
     llm = FakeLLM(response="ready")

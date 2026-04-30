@@ -39,6 +39,14 @@ class _SessionManager:
 
 
 class _Engine:
+    personality = PersonalityProfile(
+        profile_id="default",
+        display_name="JARVIS",
+        tone="professional",
+        brevity="concise",
+        formality="semi-formal",
+    )
+
     def run_text_turn(self, text: str) -> TurnResult:
         return TurnResult(
             turn_id="turn-integration",

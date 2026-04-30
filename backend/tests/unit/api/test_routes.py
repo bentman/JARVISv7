@@ -64,6 +64,14 @@ class _FakeSessionManager:
 
 
 class _FakeEngine:
+    personality = PersonalityProfile(
+        profile_id="default",
+        display_name="JARVIS",
+        tone="professional",
+        brevity="concise",
+        formality="semi-formal",
+    )
+
     def run_text_turn(self, text: str) -> TurnResult:
         return TurnResult(
             turn_id="turn-text",
@@ -162,6 +170,37 @@ def test_readiness_returns_family_readiness() -> None:
     assert payload["profile_id"] == "profile-test"
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
     assert payload["families"]["wake"]["ready"] is True
+
+
+def test_personality_list_returns_available_profiles() -> None:
+    response = _client().get("/personality/list")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["active_profile_id"] == "default"
+    assert {profile["profile_id"] for profile in payload["profiles"]} >= {"default", "concise", "warm"}
+
+
+def test_personality_select_switches_active_profile_without_session_reset() -> None:
+    client = _client()
+    before = client.get("/session/status").json()
+
+    response = client.post("/personality/select", json={"profile_id": "warm"})
+    after = client.get("/session/status").json()
+    readiness = client.get("/readiness").json()
+
+    assert response.status_code == 200
+    assert response.json()["active"]["profile_id"] == "warm"
+    assert after["session_id"] == before["session_id"]
+    assert after["turn_count"] == before["turn_count"]
+    assert readiness["active_personality_profile_id"] == "warm"
+    assert client.app.state.jarvis_state.session_service.engine().personality.profile_id == "warm"
+
+
+def test_personality_select_rejects_unknown_profile() -> None:
+    response = _client().post("/personality/select", json={"profile_id": "missing"})
+
+    assert response.status_code == 404
 
 
 def test_session_create_returns_session_id() -> None:

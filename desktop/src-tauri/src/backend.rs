@@ -207,6 +207,20 @@ pub fn get_wake_status(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/status/wake")
 }
 
+pub fn get_personality_list(base_url: &str) -> Result<String, String> {
+    get_json(base_url, "/personality/list")
+}
+
+pub fn select_personality(base_url: &str, profile_id: &str) -> Result<String, String> {
+    let response = Client::new().post(format!("{base_url}/personality/select")).json(&json!({"profile_id": profile_id})).send().map_err(|err| format!("POST /personality/select failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("POST /personality/select body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("POST /personality/select returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
 pub fn close_session(base_url: &str, session_id: &str) -> Result<(), String> {
     let response = Client::new().post(format!("{base_url}/session/close")).json(&json!({"session_id": session_id, "final_state": "IDLE"})).send().map_err(|err| format!("POST /session/close failed: {err}"))?;
     if response.status().is_success() { Ok(()) } else { Err(format!("POST /session/close returned {}", response.status())) }
