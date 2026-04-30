@@ -15,7 +15,7 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "allkeys-lru"]
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     volumes:
       - ./cache/redis:/data
     healthcheck:
@@ -30,13 +30,17 @@ services:
     container_name: jarvisv7-searxng
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
     environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:8080/}
+      - SEARXNG_PORT=8080
+      - SEARXNG_BIND_ADDRESS=0.0.0.0
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-jarvisv7-local-dev-secret}
       - UWSGI_WORKERS=2
       - UWSGI_THREADS=2
     volumes:
-      - ./config/cache/searxng:/etc/searxng:ro
+      - ./config/search/searxng:/etc/searxng:rw
+      - ./config/search/searxng/cache:/var/cache/searxng:rw
     depends_on:
       redis:
         condition: service_healthy
