@@ -50,7 +50,7 @@ JARVISv7/
 **Root-file ownership notes:**
 - `pyproject.toml` — provisioning authority (PEP 621 metadata, extras, pytest markers, ruff/mypy/coverage config). The only place package sets are declared.
 - `docker-compose.yml` — Redis, SearXNG, and later local llama.cpp. Declared at the root so one `docker compose up` stands up the substrate.
-- `.env.example` — operator-supplied values: API keys for cloud LLM escalation, QAIRT SDK path, `PVPORCUPINE_MODEL_PATH`, Ollama endpoint override, etc. Never checked in as `.env`.
+- `.env.example` — committed template for all operator-supplied runtime settings: service URLs, ports, API keys, enable flags, model paths. `.env` is the local-only runtime file and is gitignored.
 - `ProjectVision.md` / `SYSTEM_INVENTORY.md` / `CHANGE_LOG.md` / `slices.md` / `repo_tree.md` — four separate governance docs, intentionally not conflated.
 
 ### Backend Runtime Domains
@@ -264,6 +264,12 @@ config/
    ├─ planner/                       # turn-level planner prompt assets (distinct from agents/planner)
    ├─ responder/                     # responder prompt assets
    └─ system/                        # system prompt assets
+└─ search/                            # search escalation service config (Group E)
+   ├─ searxng/                        # SearXNG service config (repo-owned; mounted into container)
+   │  ├─ settings.yml               # SearXNG settings; JSON format enabled
+   │  └─ cache/                      # SearXNG runtime cache (gitignored contents)
+   ├─ ddgs/                           # DDGS config placeholder
+   └─ tavily/                         # Tavily config placeholder
 ```
 
 **Config-domain ownership notes:**
@@ -277,7 +283,7 @@ config/
 
 ```text
 cache/                               # mutable data only; no source code lives here
-├─ redis/                            # local redis persistence and dev data
+├─ redis/                            # local Redis persistent data (Group E substrate; gitignored contents)
 └─ temp/                             # cache-related temp outputs
 
 data/
