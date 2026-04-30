@@ -27,7 +27,7 @@ JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative c
 JARVISv7/
 ├─ backend/                           # backend runtime, APIs, orchestration, providers, artifacts, agents
 ├─ cache/                             # mutable cache and backing-store dev assets (redis state, temp); not source code
-├─ config/                            # declarative config: app, hardware, models, agents, policies, personality, prompts
+├─ config/                            # declarative config: app, hardware, models, redis, search, agents, personality, prompts
 ├─ data/                              # mutable runtime state: memory, sessions, turns, agents (ledger), temp
 ├─ desktop/                           # desktop shell (tauri/native integration, overlays, tray, hotkeys)
 ├─ docs/                              # architecture, runtime, and decision records
@@ -240,8 +240,15 @@ config/
 │  │                                 #   agent-opt-in, filesystem-sandbox-path policies
 │  └─ profiles.yaml                  # runtime profiles derived from capability flags
 ├─ cache/
-│  ├─ policies.yaml                  # cache TTL / eviction / namespace policy
-│  └─ redis.yaml                     # redis cache config
+│  └─ policies.yaml                  # application cache TTL / eviction / namespace policy (not Redis service config)
+├─ redis/
+│  └─ redis.conf                     # Redis service configuration files (container/service ownership)
+├─ search/                           # search escalation service config (Group E)
+│  ├─ searxng/                       # SearXNG service config (repo-owned; mounted into container)
+│  │  ├─ settings.yml                # SearXNG settings; JSON format enabled
+│  │  └─ cache/                      # SearXNG runtime cache (gitignored contents)
+│  ├─ ddgs/                          # DDGS config placeholder
+│  └─ tavily/                        # Tavily config placeholder
 ├─ hardware/
 │  └─ notes.md                       # human-readable notes on system prerequisites (QAIRT SDK path, DirectML caveats,
 │                                    #   PVPORCUPINE_MODEL_PATH, espeak-ng install, QNN quantization on x64,
@@ -264,18 +271,14 @@ config/
    ├─ planner/                       # turn-level planner prompt assets (distinct from agents/planner)
    ├─ responder/                     # responder prompt assets
    └─ system/                        # system prompt assets
-└─ search/                            # search escalation service config (Group E)
-   ├─ searxng/                        # SearXNG service config (repo-owned; mounted into container)
-   │  ├─ settings.yml               # SearXNG settings; JSON format enabled
-   │  └─ cache/                      # SearXNG runtime cache (gitignored contents)
-   ├─ ddgs/                           # DDGS config placeholder
-   └─ tavily/                         # Tavily config placeholder
 ```
 
 **Config-domain ownership notes:**
 - Package sets are declared in `pyproject.toml` under `[project.optional-dependencies]` with PEP 508 environment markers where markers suffice. Vendor-specific gating that markers cannot express (NPU vendor, CUDA presence) is applied by `backend/app/hardware/provisioning.py::resolve_required_extras()`. `config/hardware/notes.md` holds only human-facing operator notes about non-pip prerequisites.
 - `config/app/policies.yaml` is the escalation and opt-in surface. Adding a cloud LLM provider, enabling the agent framework, or changing the search escalation order is a policy edit — not code.
-- `config/models/*.yaml` catalogs are the only place model identities, repo IDs, local paths, and device-preferred variants are declared. Runtimes read from the catalog; they never hardcode model names.
+- `config/models/*.yaml` catalogs are the only place model identities, repo IDs, local paths, and device-preferred variants are declared. Runtimes read from the catalog; they never hardcode model names. `config/models/search.yaml` is provider/routing only and carries no credentials.
+- `config/redis/` owns Redis service configuration files; `cache/redis/` holds Redis runtime data only.
+- `.env` / `.env.example` own Redis/search connection settings, URLs, enable flags, and API-key placeholders.
 - `config/personality/` carries structured personality profiles. The `personality` domain in `backend/app/` loads them; the prompts themselves are structured config, not free-form prompt fragments.
 - `config/prompts/` is split by consumer: `agents/` for the role framework, `planner/` + `responder/` for the turn-level cognition layer, `system/` for shared assets. Each role/layer has its own subdirectory so prompt edits have a single obvious location.
 
