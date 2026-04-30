@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 11:12
+  - Summary: Slice D live-evidence closeout delta was captured for the previously missing D.3/D.4 runtime desktop gap. User-run runtime desktop evidence confirmed D.3 resident session continuity and D.4 deterministic wake integration behavior.
+  - Scope: `CHANGE_LOG.md` only; evidence references `backend/tests/runtime/desktop/test_resident_loop_live.py` and `backend/tests/runtime/desktop/test_wake_integration_live.py`.
+  - Host class(es): Windows x64
+  - Evidence: User-run in a normal terminal (not run by Cline). D.3: `backend\.venv\Scripts\python -m pytest backend\tests\runtime\desktop\test_resident_loop_live.py -q -s` PASS; three `/task/text` turns completed in one active session with the same `session_id`; `/session/status` returned `active=True`, `state='IDLE'`, `turn_count=3`; `/session/close` returned `closed=True` and wrote the session artifact. D.4: `backend\.venv\Scripts\python -m pytest backend\tests\runtime\desktop\test_wake_integration_live.py -q -s` PASS; wake provider configured `openwakeword available=true`; nondetect path reported cleanly; unavailable runtime reported explicit `PTT-only fallback`; deterministic detection set `last_detected=True` and `detection_count=1`; deterministic error reported fallback with `last_error`.
+  - Note: This entry records User-run live/runtime evidence only. No open-microphone live wake phrase test is claimed. No `SYSTEM_INVENTORY.md` update was made in this step.
+
 - 2026-04-30 07:56
   - Summary: D.5 Personality / Presence Polish was completed across Windows x64 and Windows ARM64. Selectable `default`, `concise`, and `warm` profiles were validated; all six current personality fields load schema-compatibly; `adapter.py` reaches the live prompt path through `TurnEngine`; prompt guidance includes tone, brevity, formality, and addendum without duplication; `/personality/list` and `/personality/select` were added; profile selection applies to subsequent turns without resident-session reset; and desktop personality selector plus active-profile display with UI-only presence acknowledgments were validated.
   - Scope: `backend/app/personality/{loader.py,adapter.py,schema.py}`, `backend/app/conversation/engine.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`, `backend/app/services/session_service.py`, `desktop/src-tauri/src/{backend.rs,lib.rs}`, `desktop/src/{main.js,index.html}`, `backend/tests/unit/{personality/test_personality.py,conversation/test_engine.py,services/test_session_service.py,api/test_routes.py,desktop/test_desktop_static_contract.py}`

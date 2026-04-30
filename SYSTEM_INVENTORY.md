@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice D durable application surface - 2026-04-30 11:13
+  - State: Verified
+  - Location: `desktop/`, `backend/app/api/`, `backend/app/services/`, `backend/app/personality/`, `backend/tests/runtime/desktop/`
+  - Validation: Windows x64 and Windows ARM64 evidence recorded in `CHANGE_LOG.md` D.1 through D.5 entries, including D.2 desktop inventory-linked evidence and the `2026-04-30 11:12` live-evidence closeout delta. Verified capability includes backend FastAPI shell contract, durable npm/Tauri desktop host, backend child lifecycle through `scripts/run_backend.py`, resident session continuity, wake status and deterministic wake detection, selectable personality profiles and presence UI, and runtime desktop live evidence for D.3/D.4.
+  - Notes:
+
 - Capability: Slice D.2 durable desktop host - 2026-04-29 10:30
   - State: Verified
   - Location: `desktop/`, `backend/tests/unit/desktop/`
