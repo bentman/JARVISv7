@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 18:43
+  - Summary: E.1 Docker Service Substrate Verification was completed across Windows x64 and Windows ARM64. Docker Compose Redis and SearXNG services were validated; Redis runtime data mount `cache/redis:/data`, SearXNG config mount `config/search/searxng:/etc/searxng`, and SearXNG cache mount `config/search/searxng/cache:/var/cache/searxng` were confirmed; Redis responded `PONG`; SearXNG `settings.yml` enabled `html` and `json`; SearXNG JSON search endpoint returned valid JSON; and `.env.example` documented E.1 Redis/search service settings.
+  - Scope: `docker-compose.yml`, `.env.example`, `config/search/searxng/settings.yml`, `config/search/searxng/cache/.gitkeep`, Docker Compose runtime behavior for Redis/SearXNG.
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: `docker compose config` PASS; `docker compose up -d` PASS; `docker compose ps` healthy; `docker exec jarvisv7-redis redis-cli ping` -> `PONG`; `curl.exe "http://127.0.0.1:8080/search?q=test&format=json"` PASS (valid JSON); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 passed`). Windows ARM64: `docker compose config` PASS; `docker compose up -d` PASS; `docker compose ps` healthy; `docker exec jarvisv7-redis redis-cli ping` -> `PONG`; `curl.exe "http://127.0.0.1:8080/search?q=test&format=json"` PASS (valid JSON); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 passed in 0.18s`).
+  - Note: No backend cache wiring, Redis client/app cache layer, search runtime, search wiring, changelog/inventory behavior, or Python dependency change was added.
+
 - 2026-04-30 11:12
   - Summary: Slice D live-evidence closeout delta was captured for the previously missing D.3/D.4 runtime desktop gap. User-run runtime desktop evidence confirmed D.3 resident session continuity and D.4 deterministic wake integration behavior.
   - Scope: `CHANGE_LOG.md` only; evidence references `backend/tests/runtime/desktop/test_resident_loop_live.py` and `backend/tests/runtime/desktop/test_wake_integration_live.py`.
