@@ -18,6 +18,20 @@
 
 ## Entries
 
+- 2026-05-01 01:05
+  - Summary: Slice E grouped closeout was recorded as verified across Windows x64 and Windows ARM64 for E.1-E.5. Slice E infrastructure and internet-search substrate evidence includes 95 passing regression on both hosts, live Redis roundtrip, live SearXNG search, and live DDGS/Tavily provider proof.
+  - Scope: `docker-compose.yml`, `config/search/searxng/`, `backend/app/core/settings.py`, `backend/app/cache/`, `backend/app/runtimes/internetsearch/`, `backend/app/routing/runtime_selector.py`, `backend/tests/runtime/services/`, `backend/tests/unit/runtimes/internetsearch/`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: E.1 through E.5 entries in `CHANGE_LOG.md` record x64+ARM64 validation with URL grep checks no hits for scoped SearXNG hardcoded locals, internetsearch unit `6 passed`, validator unit `269 passed`, regression `95 passed` on both hosts, and live search tests `3 passed` (`3 passed in 2.70s` on x64).
+  - Note: No F/G/H/I scope was introduced; no prompt/turn/conversation behavior, tool-call/agent behavior, or memory-retrieval behavior was added.
+
+- 2026-05-01 00:29
+  - Summary: E.5 Search Wiring was completed across Windows x64 and Windows ARM64. A fail-closed internet search runtime family was added under `backend/app/runtimes/internetsearch/` with `SearchResult`, `SearchBase`, and `NullSearchRuntime`; SearXNG runtime uses `httpx` and `settings.searxng_base_url`; DDGS runtime uses `from ddgs import DDGS`; Tavily runtime uses `httpx`, `USE_TAVILY`, and `TAVILY_API_KEY`; `select_search_runtime(settings)` was added with provider priority SearXNG → DDGS → Tavily → Null; provider unavailable/error paths fail closed to empty results; hardcoded SearXNG local URL values were removed from scoped E.5 tests so URL ownership flows through settings; and live provider proof passed for SearXNG, DDGS, and Tavily.
+  - Scope: `backend/app/runtimes/internetsearch/`, `backend/app/routing/runtime_selector.py`, `backend/tests/unit/runtimes/internetsearch/test_search_runtime.py`, `backend/tests/runtime/services/test_search_live.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows ARM64: URL grep checks no hits; internetsearch unit `6 passed`; validator unit `269 passed`; regression `95 passed`; live search tests `3 passed`. Windows x64: URL grep checks no hits; internetsearch unit `6 passed`; validator unit `269 passed`; regression `95 passed`; live search tests `3 passed in 2.70s`.
+  - Note: No prompt/turn/conversation behavior, tools/agents behavior, memory retrieval behavior, Docker Compose, `.env`, `.env.example`, or `SYSTEM_INVENTORY.md` update was added; Tavily key was not printed or logged.
+
 - 2026-04-30 23:20
   - Summary: Corrective Slice E search wiring alignment was completed on Windows x64. `duckduckgo-search>=6.0` was replaced with `ddgs>=9.10` in `pyproject.toml`, and `20260430-slice_e.md` was corrected to preserve old package references only as strikethrough while documenting `ddgs` and `from ddgs import DDGS`.
   - Scope: `pyproject.toml`, `20260430-slice_e.md`
