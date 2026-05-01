@@ -40,6 +40,13 @@ def _env_int(name: str) -> int | None:
     return int(value)
 
 
+def _env_float(name: str) -> float | None:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return None
+    return float(value)
+
+
 @dataclass(slots=True)
 class Settings:
     app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "JARVISv7"))
@@ -71,6 +78,15 @@ class Settings:
     )
     pvporcupine_model_path: str | None = field(
         default_factory=lambda: os.getenv("PVPORCUPINE_MODEL_PATH")
+    )
+    redis_host: str = field(default_factory=lambda: os.getenv("REDIS_HOST", "127.0.0.1"))
+    redis_port: int = field(default_factory=lambda: _env_int("REDIS_PORT") or 6379)
+    redis_db: int = field(default_factory=lambda: _env_int("REDIS_DB") or 0)
+    redis_max_connections: int = field(
+        default_factory=lambda: _env_int("REDIS_MAX_CONNECTIONS") or 10
+    )
+    redis_socket_timeout: float = field(
+        default_factory=lambda: _env_float("REDIS_SOCKET_TIMEOUT") or 2.0
     )
 
 

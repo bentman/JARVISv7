@@ -24,6 +24,11 @@ ENV_NAMES = (
     "QAIRT_SDK_PATH",
     "PICOVOICE_ACCESS_KEY",
     "PVPORCUPINE_MODEL_PATH",
+    "REDIS_HOST",
+    "REDIS_PORT",
+    "REDIS_DB",
+    "REDIS_MAX_CONNECTIONS",
+    "REDIS_SOCKET_TIMEOUT",
 )
 
 ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
@@ -45,6 +50,11 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "QAIRT_SDK_PATH",
     "PICOVOICE_ACCESS_KEY",
     "PVPORCUPINE_MODEL_PATH",
+    "REDIS_HOST",
+    "REDIS_PORT",
+    "REDIS_DB",
+    "REDIS_MAX_CONNECTIONS",
+    "REDIS_SOCKET_TIMEOUT",
 }
 
 ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
@@ -144,6 +154,35 @@ def test_settings_allow_legacy_jarvisv7_ollama_url_alias(monkeypatch, tmp_path):
 
     assert settings.ollama_base_url == "http://legacy:11434"
     assert settings.ollama_model == "env-model"
+
+
+def test_redis_settings_read_from_env(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "REDIS_HOST=10.0.0.8\nREDIS_PORT=6380\nREDIS_DB=2\nREDIS_MAX_CONNECTIONS=42\nREDIS_SOCKET_TIMEOUT=1.5\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.redis_host == "10.0.0.8"
+    assert settings.redis_port == 6380
+    assert settings.redis_db == 2
+    assert settings.redis_max_connections == 42
+    assert settings.redis_socket_timeout == 1.5
+
+
+def test_redis_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, None, None)
+
+    settings = settings_module.load_settings()
+
+    assert settings.redis_host == "127.0.0.1"
+    assert settings.redis_port == 6379
+    assert settings.redis_db == 0
+    assert settings.redis_max_connections == 10
+    assert settings.redis_socket_timeout == 2.0
 
 
 def _parse_env_template(path: Path) -> dict[str, str]:

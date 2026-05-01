@@ -71,6 +71,9 @@ dependencies = [
   # Local system introspection for profiler
   "psutil>=5.9",
 
+  # Redis runtime prerequisite (Group E.2)
+  "redis>=5.0",
+
   # Logging
   "structlog>=24.1",
 ]
