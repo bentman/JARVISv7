@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 19:16
+  - Summary: E.2 Redis Configuration and Runtime Prerequisite was completed across Windows x64 and Windows ARM64. Redis settings were added in `backend/app/core/settings.py`, settings load path honors `.env` with `.env.example` fallback, `.env.example` documents `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_MAX_CONNECTIONS`, and `REDIS_SOCKET_TIMEOUT`, `redis>=5.0` was added to base dependencies in `pyproject.toml`, Redis import was validated as `7.4.0`, and focused settings tests cover env-loaded values and defaults.
+  - Scope: `backend/app/core/settings.py`, `.env.example`, `pyproject.toml`, `backend/tests/unit/core/test_settings.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: `backend\.venv\Scripts\python -m pytest backend\tests\unit\core -q` PASS (`8 passed`); `backend\.venv\Scripts\python -c "import redis; print(redis.__version__)"` PASS (`7.4.0`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 passed`). Windows ARM64: `backend\.venv\Scripts\python -m pytest backend\tests\unit\core -q` PASS (`8 passed in 0.05s`); `backend\.venv\Scripts\python -c "import redis; print(redis.__version__)"` PASS (`7.4.0`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 passed in 0.19s`).
+  - Note: No backend cache wiring, Redis cache client layer, search runtime, search wiring, Docker Compose changes, or `SYSTEM_INVENTORY.md` update was added.
+
 - 2026-04-30 18:43
   - Summary: E.1 Docker Service Substrate Verification was completed across Windows x64 and Windows ARM64. Docker Compose Redis and SearXNG services were validated; Redis runtime data mount `cache/redis:/data`, SearXNG config mount `config/search/searxng:/etc/searxng`, and SearXNG cache mount `config/search/searxng/cache:/var/cache/searxng` were confirmed; Redis responded `PONG`; SearXNG `settings.yml` enabled `html` and `json`; SearXNG JSON search endpoint returned valid JSON; and `.env.example` documented E.1 Redis/search service settings.
   - Scope: `docker-compose.yml`, `.env.example`, `config/search/searxng/settings.yml`, `config/search/searxng/cache/.gitkeep`, Docker Compose runtime behavior for Redis/SearXNG.
