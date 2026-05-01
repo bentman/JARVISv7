@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 20:26
+  - Summary: E.3 Cache Wiring was completed across Windows x64 and Windows ARM64. The `backend/app/cache/` package was added with a Redis-backed `CacheManager`, cache key helpers, and cache policy constants/dataclass; cache manager behavior is fail-closed when Redis is unavailable; FastAPI `ApiState` now includes `cache_manager`; `get_cache_manager` dependency was added; and runtime Redis live proof was added under `backend/tests/runtime/services/`.
+  - Scope: `backend/app/cache/`, `backend/app/api/app.py`, `backend/app/api/dependencies.py`, `backend/tests/unit/cache/test_cache_manager.py`, `backend/tests/runtime/services/test_cache_live.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: unit cache `7 passed`; unit API `21 passed`; validator unit `260 passed`; regression `95 passed`; Redis `PONG`; runtime cache live `3 passed`. Windows ARM64: unit cache `7 passed in 0.06s`; unit API `21 passed in 0.58s`; validator unit `260 passed in 0.84s`; regression `95 passed in 0.19s`; Redis `PONG`; runtime cache live `3 passed in 0.06s`.
+  - Note: Default unit/regression validation does not require Redis or Docker. No search runtime, search wiring, memory retrieval behavior, prompt/turn behavior, Docker Compose, or `SYSTEM_INVENTORY.md` update was added.
+
 - 2026-04-30 19:16
   - Summary: E.2 Redis Configuration and Runtime Prerequisite was completed across Windows x64 and Windows ARM64. Redis settings were added in `backend/app/core/settings.py`, settings load path honors `.env` with `.env.example` fallback, `.env.example` documents `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_MAX_CONNECTIONS`, and `REDIS_SOCKET_TIMEOUT`, `redis>=5.0` was added to base dependencies in `pyproject.toml`, Redis import was validated as `7.4.0`, and focused settings tests cover env-loaded values and defaults.
   - Scope: `backend/app/core/settings.py`, `.env.example`, `pyproject.toml`, `backend/tests/unit/core/test_settings.py`
