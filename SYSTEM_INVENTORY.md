@@ -27,6 +27,13 @@
 
 ## Inventory
 
+- Capability: Slice E local service substrate foundation - 2026-05-01 01:19
+  - State: Verified
+  - Location: `docker-compose.yml`, `.env.example`, `config/search/searxng/`, `config/search/ddgs/`, `config/search/tavily/`, `config/models/search.yaml`, `backend/app/cache/`, `backend/app/runtimes/internetsearch/`, `backend/app/routing/runtime_selector.py`, `backend/app/core/settings.py`, `backend/tests/runtime/services/`
+  - Validation: Existing Slice E evidence recorded in `CHANGE_LOG.md` E.1 through E.5 entries (Windows x64 and Windows ARM64): regression `95 passed` on both host classes; Redis and SearXNG Docker substrate healthy on both host classes; live Redis cache roundtrip proven; live SearXNG, DDGS, and Tavily search evidence proven as recorded; Docker SKIP-no-docker is not the active state because both host classes have Docker-backed validation evidence.
+  - Slice E established a repo-owned, `.env`-driven Redis/SearXNG local service substrate, one injectable Redis-backed `CacheManager`, and one fail-closed internet-search runtime interface with SearXNG primary, DDGS fallback, Tavily policy-gated tertiary, and a null/empty-results path when providers are unavailable or error.
+  - Notes: This is substrate/runtime capability for later consumers; no user-facing tool behavior is claimed. No F/G/H/I behavior is included in this capability entry.
+
 - Capability: Slice D durable application surface - 2026-04-30 11:13
   - State: Verified
   - Location: `desktop/`, `backend/app/api/`, `backend/app/services/`, `backend/app/personality/`, `backend/tests/runtime/desktop/`
