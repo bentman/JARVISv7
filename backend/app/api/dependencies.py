@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import Request
 
 from backend.app.api.app import ApiState
+from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
@@ -25,6 +26,10 @@ def get_session_manager(request: Request) -> SessionManager:
 
 def get_session_service(request: Request) -> SessionService:
     return get_api_state(request).session_service
+
+
+def get_cache_manager(request: Request) -> CacheManager:
+    return get_api_state(request).cache_manager
 
 
 def get_personality(request: Request) -> PersonalityProfile:

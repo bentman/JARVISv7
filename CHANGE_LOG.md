@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 19:52
+  - Summary: E.3 Cache Wiring progress was validated on Windows x64 (not full E.3 completion). A new cache package was added under `backend/app/cache/`; a Redis-backed `CacheManager` was added with fail-closed behavior when Redis is unavailable; cache key helpers and cache policy constants/dataclass were added; `CacheManager` was wired into FastAPI `ApiState`; `get_cache_manager` dependency was added; no-Redis unit tests were added; and Redis live proof tests were added under `backend/tests/runtime/services/`.
+  - Scope: `backend/app/cache/{__init__.py,keys.py,policies.py,redis_client.py,manager.py}`, `backend/app/api/{app.py,dependencies.py}`, `backend/tests/unit/cache/test_cache_manager.py`, `backend/tests/unit/api/{test_routes.py,test_dependencies_cache.py}`, `backend/tests/runtime/services/{__init__.py,test_cache_live.py}`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\cache -q` PASS (`7 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\api -q` PASS (`21 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`260 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 passed`); `docker exec jarvisv7-redis redis-cli ping` PASS (`PONG`); `backend\.venv\Scripts\python -m pytest backend\tests\runtime\services\test_cache_live.py -q` PASS (`3 passed`).
+  - Note: Windows ARM64 validation is pending. No search runtime/wiring, memory retrieval behavior, Docker Compose changes, dependency changes, or `SYSTEM_INVENTORY.md` update was added.
+
 - 2026-04-30 19:16
   - Summary: E.2 Redis Configuration and Runtime Prerequisite was completed across Windows x64 and Windows ARM64. Redis settings were added in `backend/app/core/settings.py`, settings load path honors `.env` with `.env.example` fallback, `.env.example` documents `REDIS_HOST`, `REDIS_PORT`, `REDIS_DB`, `REDIS_MAX_CONNECTIONS`, and `REDIS_SOCKET_TIMEOUT`, `redis>=5.0` was added to base dependencies in `pyproject.toml`, Redis import was validated as `7.4.0`, and focused settings tests cover env-loaded values and defaults.
   - Scope: `backend/app/core/settings.py`, `.env.example`, `pyproject.toml`, `backend/tests/unit/core/test_settings.py`

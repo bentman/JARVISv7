@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from fastapi import FastAPI
 
 
+from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
@@ -46,6 +47,7 @@ class ApiState:
     session_manager: SessionManager
     engine: TurnEngine
     session_service: SessionService
+    cache_manager: CacheManager
 
 
 def _derive_readiness(preflight: PreflightResult, profile: HardwareProfile) -> ReadinessMap:
@@ -85,6 +87,7 @@ def build_startup_state() -> ApiState:
     tts = select_tts_runtime(preflight, profile)
     llm = OllamaLLM()
     session_manager = SessionManager()
+    cache_manager = CacheManager()
     state = ApiState(
         report=report,
         profile=profile,
@@ -98,6 +101,7 @@ def build_startup_state() -> ApiState:
         session_manager=session_manager,
         engine=None,  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        cache_manager=cache_manager,
     )
     state.engine = build_engine(state, session_manager)
     state.session_service = SessionService(

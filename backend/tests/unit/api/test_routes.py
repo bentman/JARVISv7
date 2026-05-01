@@ -9,6 +9,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 from backend.app.api.app import ApiState, create_app
+from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
@@ -134,6 +135,7 @@ def _state() -> ApiState:
         session_manager=session_manager,  # type: ignore[arg-type]
         engine=_FakeEngine(),  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        cache_manager=CacheManager(),
     )
     state.session_service = SessionService(
         session_manager=state.session_manager,  # type: ignore[arg-type]
