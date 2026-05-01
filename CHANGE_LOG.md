@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 21:08
+  - Summary: E.4 Search Escalation Service Configuration was completed across Windows x64 and Windows ARM64. Search settings were added to `backend/app/core/settings.py`, settings loading follows `.env` with `.env.example` fallback, `.env.example` coverage includes `USE_SEARXNG`, `SEARXNG_BASE_URL`, `USE_DDGS`, `USE_TAVILY`, and `TAVILY_API_KEY`, `duckduckgo-search>=6.0` was added to base dependencies, dependency provisioning was validated through `scripts/provision.py install`, import/version was validated as `8.1.1`, and placeholder config directories were added at `config/search/ddgs/.gitkeep` and `config/search/tavily/.gitkeep`.
+  - Scope: `backend/app/core/settings.py`, `pyproject.toml`, `backend/tests/unit/core/test_settings.py`, `config/search/ddgs/.gitkeep`, `config/search/tavily/.gitkeep`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64: core tests `11 passed`; provision install PASS; import `8.1.1`; regression `95 passed`. Windows ARM64: core tests `11 passed in 0.05s`; provision install PASS; import `8.1.1`; regression `95 passed in 0.19s`.
+  - Note: No search runtime, search wiring, Docker Compose change, backend cache wiring, or `SYSTEM_INVENTORY.md` update was added.
+
 - 2026-04-30 20:26
   - Summary: E.3 Cache Wiring was completed across Windows x64 and Windows ARM64. The `backend/app/cache/` package was added with a Redis-backed `CacheManager`, cache key helpers, and cache policy constants/dataclass; cache manager behavior is fail-closed when Redis is unavailable; FastAPI `ApiState` now includes `cache_manager`; `get_cache_manager` dependency was added; and runtime Redis live proof was added under `backend/tests/runtime/services/`.
   - Scope: `backend/app/cache/`, `backend/app/api/app.py`, `backend/app/api/dependencies.py`, `backend/tests/unit/cache/test_cache_manager.py`, `backend/tests/runtime/services/test_cache_live.py`
