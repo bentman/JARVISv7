@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-04-30 23:20
+  - Summary: Corrective Slice E search wiring alignment was completed on Windows x64. `duckduckgo-search>=6.0` was replaced with `ddgs>=9.10` in `pyproject.toml`, and `20260430-slice_e.md` was corrected to preserve old package references only as strikethrough while documenting `ddgs` and `from ddgs import DDGS`.
+  - Scope: `pyproject.toml`, `20260430-slice_e.md`
+  - Host class(es): Windows x64
+  - Evidence: `git grep -n --fixed-strings "duckduckgo_search"` PASS (no tracked hits); `git grep -n --fixed-strings "duckduckgo-search"` PASS (remaining hits only in intentional strikethrough text in `20260430-slice_e.md` and historical `CHANGE_LOG.md`); `backend\.venv\Scripts\python scripts\provision.py install` PASS with `Collecting ddgs>=9.10`; `backend\.venv\Scripts\python -c "from ddgs import DDGS; import importlib.metadata as m; print(m.version('ddgs'), DDGS)"` PASS with `9.14.1 <class 'ddgs._DDGSProxy'>`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS with `95 passed in 0.19s`.
+  - Note: No source search runtime, tests, `SYSTEM_INVENTORY.md`, or Slice E implementation behavior was changed. Historical `CHANGE_LOG.md` references to `duckduckgo-search` were intentionally preserved.
+
 - 2026-04-30 21:08
   - Summary: E.4 Search Escalation Service Configuration was completed across Windows x64 and Windows ARM64. Search settings were added to `backend/app/core/settings.py`, settings loading follows `.env` with `.env.example` fallback, `.env.example` coverage includes `USE_SEARXNG`, `SEARXNG_BASE_URL`, `USE_DDGS`, `USE_TAVILY`, and `TAVILY_API_KEY`, `duckduckgo-search>=6.0` was added to base dependencies, dependency provisioning was validated through `scripts/provision.py install`, import/version was validated as `8.1.1`, and placeholder config directories were added at `config/search/ddgs/.gitkeep` and `config/search/tavily/.gitkeep`.
   - Scope: `backend/app/core/settings.py`, `pyproject.toml`, `backend/tests/unit/core/test_settings.py`, `config/search/ddgs/.gitkeep`, `config/search/tavily/.gitkeep`

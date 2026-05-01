@@ -75,7 +75,7 @@ dependencies = [
   "redis>=5.0",
 
   # Search escalation prerequisite (Group E.4)
-  "duckduckgo-search>=6.0",
+  "ddgs>=9.10",
 
   # Logging
   "structlog>=24.1",
