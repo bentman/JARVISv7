@@ -74,6 +74,9 @@ dependencies = [
   # Redis runtime prerequisite (Group E.2)
   "redis>=5.0",
 
+  # Search escalation prerequisite (Group E.4)
+  "duckduckgo-search>=6.0",
+
   # Logging
   "structlog>=24.1",
 ]

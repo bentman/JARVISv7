@@ -88,6 +88,13 @@ class Settings:
     redis_socket_timeout: float = field(
         default_factory=lambda: _env_float("REDIS_SOCKET_TIMEOUT") or 2.0
     )
+    use_searxng: bool = field(default_factory=lambda: _env_bool("USE_SEARXNG", True))
+    searxng_base_url: str = field(
+        default_factory=lambda: os.getenv("SEARXNG_BASE_URL", "http://127.0.0.1:8080")
+    )
+    use_ddgs: bool = field(default_factory=lambda: _env_bool("USE_DDGS", True))
+    use_tavily: bool = field(default_factory=lambda: _env_bool("USE_TAVILY", False))
+    tavily_api_key: str = field(default_factory=lambda: os.getenv("TAVILY_API_KEY", ""))
 
 
 def load_settings() -> Settings:

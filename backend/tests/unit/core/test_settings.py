@@ -29,6 +29,11 @@ ENV_NAMES = (
     "REDIS_DB",
     "REDIS_MAX_CONNECTIONS",
     "REDIS_SOCKET_TIMEOUT",
+    "USE_SEARXNG",
+    "SEARXNG_BASE_URL",
+    "USE_DDGS",
+    "USE_TAVILY",
+    "TAVILY_API_KEY",
 )
 
 ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
@@ -55,6 +60,11 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "REDIS_DB",
     "REDIS_MAX_CONNECTIONS",
     "REDIS_SOCKET_TIMEOUT",
+    "USE_SEARXNG",
+    "SEARXNG_BASE_URL",
+    "USE_DDGS",
+    "USE_TAVILY",
+    "TAVILY_API_KEY",
 }
 
 ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
@@ -183,6 +193,50 @@ def test_redis_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
     assert settings.redis_db == 0
     assert settings.redis_max_connections == 10
     assert settings.redis_socket_timeout == 2.0
+
+
+def test_search_settings_read_from_env(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "USE_SEARXNG=false\nSEARXNG_BASE_URL=http://searxng:9999\nUSE_DDGS=no\nUSE_TAVILY=1\nTAVILY_API_KEY=test-key\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.use_searxng is False
+    assert settings.searxng_base_url == "http://searxng:9999"
+    assert settings.use_ddgs is False
+    assert settings.use_tavily is True
+    assert settings.tavily_api_key == "test-key"
+
+
+def test_search_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, None, None)
+
+    settings = settings_module.load_settings()
+
+    assert settings.use_searxng is True
+    assert settings.searxng_base_url == "http://127.0.0.1:8080"
+    assert settings.use_ddgs is True
+    assert settings.use_tavily is False
+    assert settings.tavily_api_key == ""
+
+
+def test_search_bool_settings_parse_common_truthy_falsey_values(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "USE_SEARXNG=on\nUSE_DDGS=off\nUSE_TAVILY=yes\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.use_searxng is True
+    assert settings.use_ddgs is False
+    assert settings.use_tavily is True
 
 
 def _parse_env_template(path: Path) -> dict[str, str]:
