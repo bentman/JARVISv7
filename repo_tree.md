@@ -251,8 +251,8 @@ config/
 │  └─ tavily/                        # Tavily config placeholder
 ├─ hardware/
 │  └─ notes.md                       # human-readable notes on system prerequisites (QAIRT SDK path, DirectML caveats,
-│                                    #   PVPORCUPINE_MODEL_PATH, espeak-ng install, QNN quantization on x64,
-│                                    #   ARM64 Tauri toolchain) — package sets live in pyproject.toml
+│                                    #   espeak-ng install, QNN quantization on x64, ARM64 Tauri toolchain)
+│                                    #   — package sets live in pyproject.toml
 ├─ models/
 │  ├─ llm.yaml                       # LLM catalog and selection config (local llama.cpp, Ollama, cloud)
 │  ├─ models.yaml                    # top-level model registry catalog
@@ -298,6 +298,7 @@ data/
 │  └─ working/                       # working memory data (in-session)
 ├─ sessions/                         # session artifacts and persisted state (durable authority)
 ├─ temp/                             # runtime temp files
+├─ tool_sandbox/                     # FilesystemReadTool sandbox
 └─ turns/                            # turn artifacts (durable authority; C.3 schema)
 
 reports/

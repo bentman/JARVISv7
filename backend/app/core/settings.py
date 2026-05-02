@@ -54,6 +54,9 @@ class Settings:
         default_factory=lambda: Path(os.getenv("CONFIG_PATH", str(CONFIG_DIR)))
     )
     data_path: Path = field(default_factory=lambda: Path(os.getenv("DATA_PATH", str(DATA_DIR))))
+    tool_filesystem_sandbox_path: Path = field(
+        default_factory=lambda: Path(os.getenv("TOOL_FILESYSTEM_SANDBOX_PATH", "data/tool_sandbox/"))
+    )
     model_path: Path = field(default_factory=lambda: Path(os.getenv("MODEL_PATH", str(MODELS_DIR))))
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", False))
     local_model_fetch: bool = field(default_factory=lambda: _env_bool("LOCAL_MODEL_FETCH", False))
