@@ -27,6 +27,13 @@
 
 ## Inventory
 
+- Capability: Slice F deterministic tool execution and result presentation foundation - 2026-05-03 18:03
+  - State: Verified
+  - Location: `backend/app/cognition/executor.py`, `backend/app/tools/`, `backend/app/api/schemas/tools.py`, `backend/app/api/schemas/task.py`, `backend/app/api/schemas/voice.py`, `backend/app/api/routes/task.py`, `backend/app/api/routes/voice.py`, `scripts/run_jarvis.py`, `desktop/src/main.js`, `backend/tests/runtime/turn/test_acting_live.py`
+  - Validation: F.1 validated on Windows x64 and Windows ARM64 with executor unit `4 passed`, conversation engine unit `29 passed`, unit validator `277 passed`, and regression `95 passed`; F.2 validated on Windows x64 and Windows ARM64 with tools/full unit `289 passed` and regression `95 passed`; F.3 validated on Windows x64 and Windows ARM64 with unit `292 passed` and regression `96 passed`; missed live ACTING/tool gate recovered on Windows x64 in `backend/tests/runtime/turn/test_acting_live.py` using explicit deterministic `tool_name="time"` dispatch, where the live turn reached ACTING and invoked the registered `time` tool, and both result evidence plus persisted artifact evidence captured tool invocation metadata.
+  - Slice F added deterministic ACTING lifecycle wiring through explicit `tool_name` dispatch, the cognition executor surface, a bounded tool registry and first tool set, read-only sandboxed filesystem access, an internet-search tool adapter over the existing Slice E internet-search runtime, additive tool-call metadata propagation through task/voice API responses, and text/desktop shell presentation of tool-call metadata.
+  - Notes: Tool invocation is deterministic and explicit with no LLM-driven tool selection or model-side function calling; `filesystem.read` is read-only and sandboxed under `data/tool_sandbox/`; internet search remains an adapter over existing Slice E runtime/provider boundaries with no Slice E boundary changes; shell/API changes are presentation-only and do not invoke tools; no Group G memory retrieval, Group I agent behavior, autonomous agents, write tools, filesystem search/indexing, new providers, new packages, new runtimes, or new services were introduced.
+
 - Capability: Slice E local service substrate foundation - 2026-05-01 01:19
   - State: Verified
   - Location: `docker-compose.yml`, `.env.example`, `config/search/searxng/`, `config/search/ddgs/`, `config/search/tavily/`, `config/models/search.yaml`, `backend/app/cache/`, `backend/app/runtimes/internetsearch/`, `backend/app/routing/runtime_selector.py`, `backend/app/core/settings.py`, `backend/tests/runtime/services/`
