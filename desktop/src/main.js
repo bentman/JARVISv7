@@ -57,6 +57,15 @@ function appendMessage(role, text) {
   logEl.scrollTop = logEl.scrollHeight;
 }
 
+function appendToolCalls(toolCalls) {
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return;
+  for (const call of toolCalls) {
+    const toolName = call.tool_name || "unknown";
+    const summary = String(call.tool_output_summary || "").slice(0, 200);
+    appendMessage("system", `Tool used: ${toolName} | ${summary}`);
+  }
+}
+
 function presenceText(stateName) {
   const profile = presenceByProfile[activePersonalityId] || presenceByProfile.default;
   return profile[stateName] || presenceByProfile.default[stateName];
@@ -318,6 +327,7 @@ async function submitText(text) {
       showError(response.failure_reason);
     }
     appendMessage("assistant", response.response_text || response.failure_reason);
+    appendToolCalls(response.tool_calls);
     await refreshSessionStatus();
   } catch (error) {
     turnStateEl.textContent = "FAILED";

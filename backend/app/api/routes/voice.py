@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import io
 import wave
+from typing import cast
 
 import numpy as np
 from fastapi import APIRouter, Depends, HTTPException, Request
 
 from backend.app.api.dependencies import get_engine
+from backend.app.api.schemas.tools import ToolCallSummary
 from backend.app.api.schemas.voice import VoiceTurnResponse
 from backend.app.conversation.engine import TurnEngine, TurnResult
 from backend.app.services import turn_service
@@ -39,6 +41,19 @@ def decode_wav_bytes(payload: bytes) -> tuple[np.ndarray, int]:
 
 
 def voice_turn_response(result: TurnResult) -> VoiceTurnResponse:
+    tool_calls = None
+    if result.tool_results:
+        tool_calls = [
+            ToolCallSummary(
+                tool_name=str(item.get("tool_name", "")),
+                tool_input=cast(dict[str, object], item.get("tool_input", {}))
+                if isinstance(item.get("tool_input"), dict)
+                else {},
+                tool_output_summary=str(item.get("tool_output", ""))[:200],
+                success=bool(item.get("success", False)),
+            )
+            for item in result.tool_results
+        ]
     return VoiceTurnResponse(
         turn_id=result.turn_id,
         session_id=result.session_id,
@@ -50,6 +65,7 @@ def voice_turn_response(result: TurnResult) -> VoiceTurnResponse:
         tts_degraded_reason=result.tts_degraded_reason,
         interrupted=result.interrupted,
         interruption_events=result.interruption_events,
+        tool_calls=tool_calls,
     )
 
 

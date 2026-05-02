@@ -80,6 +80,15 @@ class _FakeEngine:
             transcript=text.strip(),
             response_text="text response",
             final_state=ConversationState.IDLE,
+            tool_results=[
+                {
+                    "tool_name": "time",
+                    "tool_input": {},
+                    "tool_output": "2026-05-03T00:00:00Z",
+                    "success": True,
+                    "error": None,
+                }
+            ],
         )
 
     def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
@@ -239,6 +248,17 @@ def test_text_turn_returns_turn_result() -> None:
     assert response.status_code == 200
     assert payload["turn_id"] == "turn-text"
     assert payload["response_text"] == "text response"
+    assert payload["tool_calls"][0]["tool_name"] == "time"
+
+
+def test_voice_turn_response_tool_calls_none_when_absent() -> None:
+    response = _client().post(
+        "/task/voice",
+        content=_wav_bytes(),
+        headers={"content-type": "audio/wav"},
+    )
+    assert response.status_code == 200
+    assert response.json()["tool_calls"] is None
 
 
 def test_text_turn_accepts_active_session_id() -> None:

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from backend.app.api.schemas.tools import ToolCallSummary
+
 
 class TextTurnRequest(BaseModel):
     text: str
@@ -15,3 +17,4 @@ class TextTurnResponse(BaseModel):
     response_text: str | None
     final_state: str
     failure_reason: str | None = None
+    tool_calls: list[ToolCallSummary] | None = None

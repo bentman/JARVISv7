@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from backend.app.api.schemas.tools import ToolCallSummary
+
 
 class VoiceTurnResponse(BaseModel):
     turn_id: str
@@ -14,3 +16,4 @@ class VoiceTurnResponse(BaseModel):
     tts_degraded_reason: str | None = None
     interrupted: bool = False
     interruption_events: list[dict[str, object]]
+    tool_calls: list[ToolCallSummary] | None = None
