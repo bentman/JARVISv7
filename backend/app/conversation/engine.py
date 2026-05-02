@@ -8,6 +8,7 @@ import numpy as np
 
 from backend.app.cognition.prompt_assembler import assemble_prompt
 from backend.app.cognition.responder import sanitize_for_tts
+from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -34,6 +35,8 @@ class TurnResult:
     tts_degraded_reason: str | None = None
     interrupted: bool = False
     interruption_events: list[dict[str, object]] = field(default_factory=list)
+    tool_calls: list[dict[str, object]] = field(default_factory=list)
+    tool_results: list[dict[str, object]] = field(default_factory=list)
 
 
 class TurnEngine:
@@ -50,6 +53,8 @@ class TurnEngine:
         barge_in_detector: BargeInDetector | None = None,
         interruption_audio_chunks: Iterable[np.ndarray] | None = None,
         playback_api: Any | None = None,
+        executor: ToolExecutor | None = None,
+        tool_registry: Any | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -61,15 +66,30 @@ class TurnEngine:
         self.barge_in_detector = barge_in_detector
         self.interruption_audio_chunks = interruption_audio_chunks
         self.playback_api = playback_api or playback
+        self.executor = executor or ToolExecutor()
+        self.tool_registry = tool_registry
 
-    def run_text_turn(self, text: str) -> TurnResult:
+    def run_text_turn(self, text: str, *, tool_name: str | None = None, tool_input: dict[str, object] | None = None) -> TurnResult:
         transcript = text.strip()
         context = self._create_context("text")
         if not transcript:
             return self._fail(context, transcript=None, response_text=None, reason="text input is empty")
-        return self._run_reasoning_path(context, transcript, speak_response=False)
+        return self._run_reasoning_path(
+            context,
+            transcript,
+            speak_response=False,
+            tool_name=tool_name,
+            tool_input=tool_input,
+        )
 
-    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        tool_name: str | None = None,
+        tool_input: dict[str, object] | None = None,
+    ) -> TurnResult:
         context = self._create_context("voice")
         try:
             context.advance(ConversationState.LISTENING)
@@ -77,7 +97,13 @@ class TurnEngine:
             transcript = self.stt.transcribe(np.asarray(audio, dtype=np.float32), sample_rate)
             if not transcript.strip():
                 return self._fail(context, transcript=transcript, response_text=None, reason="STT returned empty transcript")
-            return self._run_reasoning_path(context, transcript, speak_response=True)
+            return self._run_reasoning_path(
+                context,
+                transcript,
+                speak_response=True,
+                tool_name=tool_name,
+                tool_input=tool_input,
+            )
         except Exception as exc:
             return self._fail(context, transcript=None, response_text=None, reason=str(exc))
 
@@ -88,12 +114,30 @@ class TurnEngine:
             raise NotImplementedError(f"{state.value} behavior pending C.2 / C.5")
         raise ValueError(f"state is not stubbed in C.1: {state.value}")
 
-    def _run_reasoning_path(self, context: TurnContext, transcript: str, *, speak_response: bool) -> TurnResult:
+    def _run_reasoning_path(
+        self,
+        context: TurnContext,
+        transcript: str,
+        *,
+        speak_response: bool,
+        tool_name: str | None = None,
+        tool_input: dict[str, object] | None = None,
+    ) -> TurnResult:
         try:
             context.advance(ConversationState.REASONING)
             working_memory = self.session_manager.get_working_context(self.write_policy) if self.session_manager else None
             prompt = assemble_prompt(transcript, self.personality, working_memory=working_memory)
             prompt = apply_personality(prompt, self.personality)
+
+            tool_results: list[ToolResult] = []
+            if tool_name is not None:
+                context.advance(ConversationState.ACTING)
+                normalized_input = dict(tool_input or {})
+                tool_result = self._execute_tool(tool_name, normalized_input)
+                tool_results.append(tool_result)
+                tool_context = self._format_tool_result_for_prompt(tool_result)
+                prompt = f"{prompt}\n\nTool execution context:\n{tool_context}"
+
             response = self.llm.generate(prompt)
             if not response.strip():
                 return self._fail(context, transcript=transcript, response_text=response, reason="LLM returned empty response")
@@ -105,6 +149,7 @@ class TurnEngine:
                     transcript=transcript,
                     response_text=response_text,
                     final_prompt_text=prompt,
+                    tool_results=tool_results,
                 )
             context.advance(ConversationState.IDLE)
             result = TurnResult(
@@ -113,6 +158,8 @@ class TurnEngine:
                 transcript=transcript,
                 response_text=response_text,
                 final_state=context.state,
+                tool_calls=self._to_tool_calls(tool_results),
+                tool_results=self._to_tool_results(tool_results),
             )
             self._record_artifact(context, result, final_prompt_text=prompt)
             return result
@@ -126,6 +173,7 @@ class TurnEngine:
         transcript: str,
         response_text: str,
         final_prompt_text: str,
+        tool_results: list[ToolResult] | None = None,
     ) -> TurnResult:
         if not self.tts.is_available():
             context.advance(ConversationState.IDLE)
@@ -137,6 +185,8 @@ class TurnEngine:
                 final_state=context.state,
                 tts_degraded=True,
                 tts_degraded_reason="TTS runtime is unavailable",
+                tool_calls=self._to_tool_calls(tool_results or []),
+                tool_results=self._to_tool_results(tool_results or []),
             )
             self._record_artifact(context, result, final_prompt_text=final_prompt_text)
             return result
@@ -174,6 +224,7 @@ class TurnEngine:
         final_prompt_text: str,
         audio: np.ndarray,
         sample_rate: int,
+        tool_results: list[ToolResult] | None = None,
     ) -> TurnResult:
         assert self.barge_in_detector is not None
         self.barge_in_detector.reset()
@@ -198,6 +249,8 @@ class TurnEngine:
                     final_state=context.state,
                     interrupted=True,
                     interruption_events=interruption_events,
+                    tool_calls=self._to_tool_calls(tool_results or []),
+                    tool_results=self._to_tool_results(tool_results or []),
                 )
                 self._record_artifact(context, result, final_prompt_text=final_prompt_text)
                 return result
@@ -209,6 +262,8 @@ class TurnEngine:
             transcript=transcript,
             response_text=response_text,
             final_state=context.state,
+            tool_calls=self._to_tool_calls(tool_results or []),
+            tool_results=self._to_tool_results(tool_results or []),
         )
         self._record_artifact(context, result, final_prompt_text=final_prompt_text)
         return result
@@ -261,11 +316,44 @@ class TurnEngine:
             tts_degraded=result.tts_degraded,
             tts_degraded_reason=result.tts_degraded_reason,
             interruption_events=result.interruption_events,
+            tools_invoked=[str(call["tool_name"]) for call in result.tool_calls if isinstance(call.get("tool_name"), str)],
+            agent_trace={"tool_calls": result.tool_calls, "tool_results": result.tool_results} if result.tool_calls else None,
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
         )
         self.session_manager.record_turn_artifact(artifact)
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
+
+    def _execute_tool(self, tool_name: str, tool_input: dict[str, object]) -> ToolResult:
+        if self.tool_registry is None:
+            return ToolResult(
+                tool_name=tool_name,
+                tool_input=tool_input,
+                tool_output="",
+                error="tool registry is not configured",
+                success=False,
+            )
+        return self.executor.execute(tool_name, tool_input, self.tool_registry)
+
+    def _format_tool_result_for_prompt(self, result: ToolResult) -> str:
+        if result.success:
+            return f"tool={result.tool_name}\ninput={result.tool_input}\noutput={result.tool_output}"
+        return f"tool={result.tool_name}\ninput={result.tool_input}\nerror={result.error or 'unknown error'}"
+
+    def _to_tool_calls(self, results: list[ToolResult]) -> list[dict[str, object]]:
+        return [{"tool_name": r.tool_name, "tool_input": r.tool_input} for r in results]
+
+    def _to_tool_results(self, results: list[ToolResult]) -> list[dict[str, object]]:
+        return [
+            {
+                "tool_name": r.tool_name,
+                "tool_input": r.tool_input,
+                "tool_output": r.tool_output,
+                "error": r.error,
+                "success": r.success,
+            }
+            for r in results
+        ]
 
 
 def timestamp_now() -> str:

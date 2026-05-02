@@ -94,6 +94,18 @@ class FakePlayback:
         self.stopped = True
 
 
+class FakeToolRegistry:
+    def __init__(self, *, should_raise: bool = False) -> None:
+        self.should_raise = should_raise
+        self.calls: list[tuple[str, dict[str, object]]] = []
+
+    def invoke(self, tool_name: str, tool_input: dict[str, object]) -> str:
+        self.calls.append((tool_name, tool_input))
+        if self.should_raise:
+            raise RuntimeError("tool failed")
+        return f"tool-output:{tool_name}"
+
+
 def _personality() -> PersonalityProfile:
     return PersonalityProfile(
         profile_id="test",
@@ -114,6 +126,7 @@ def _engine(
     barge_in_detector: BargeInDetector | None = None,
     interruption_audio_chunks: list[np.ndarray] | None = None,
     playback_api: FakePlayback | None = None,
+    tool_registry: FakeToolRegistry | None = None,
 ) -> TurnEngine:
     return TurnEngine(
         stt=stt or FakeSTT(),
@@ -125,6 +138,7 @@ def _engine(
         barge_in_detector=barge_in_detector,
         interruption_audio_chunks=interruption_audio_chunks,
         playback_api=playback_api,
+        tool_registry=tool_registry,
     )
 
 
@@ -196,13 +210,59 @@ def test_speaking_state_no_longer_raises_not_implemented_in_c2():
     _engine().enter_stub_state(ConversationState.SPEAKING)
 
 
-def test_acting_and_interrupted_states_raise_not_implemented_in_c1():
+def test_interrupted_state_raises_not_implemented_stub():
     engine = _engine()
 
     with pytest.raises(NotImplementedError):
-        engine.enter_stub_state(ConversationState.ACTING)
-    with pytest.raises(NotImplementedError):
         engine.enter_stub_state(ConversationState.INTERRUPTED)
+
+
+def test_acting_state_entered_when_tool_requested():
+    llm = FakeLLM(response="ready")
+    registry = FakeToolRegistry()
+    result = _engine(llm=llm, tool_registry=registry).run_text_turn(
+        "hello",
+        tool_name="stub.echo",
+        tool_input={"value": 1},
+    )
+
+    assert result.final_state == ConversationState.IDLE
+    assert registry.calls == [("stub.echo", {"value": 1})]
+    assert result.tool_calls == [{"tool_name": "stub.echo", "tool_input": {"value": 1}}]
+    assert result.tool_results[0]["success"] is True
+
+
+def test_acting_state_not_entered_when_no_tool_request():
+    result = _engine().run_text_turn("hello")
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.tool_calls == []
+    assert result.tool_results == []
+
+
+def test_tool_invocation_recorded_in_turn_artifact(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    registry = FakeToolRegistry()
+    result = _engine(session_manager=manager, tool_registry=registry).run_text_turn(
+        "hello",
+        tool_name="stub.echo",
+        tool_input={"value": "x"},
+    )
+
+    assert result.tool_calls[0]["tool_name"] == "stub.echo"
+    artifact = manager.turn_artifacts[0]
+    assert artifact.tools_invoked == ["stub.echo"]
+    assert artifact.agent_trace is not None
+    assert artifact.agent_trace["tool_calls"][0]["tool_name"] == "stub.echo"
+
+
+def test_tool_error_is_fail_closed_and_recorded():
+    registry = FakeToolRegistry(should_raise=True)
+    result = _engine(tool_registry=registry).run_text_turn("hello", tool_name="stub.echo", tool_input={})
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.tool_results[0]["success"] is False
+    assert result.tool_results[0]["error"] == "tool failed"
 
 
 def test_speaking_state_entered_when_tts_available(monkeypatch: pytest.MonkeyPatch):
