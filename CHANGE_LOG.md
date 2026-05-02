@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-02 16:33
+  - Summary: Sub-Slice F.1 (Executor + ACTING State) was closed with deterministic ACTING wiring in the live `_run_reasoning_path()` lifecycle using explicit `tool_name` and optional tool input, while preserving normal non-tool turn behavior. Additive `TurnResult` tool metadata defaults were introduced, tool execution now populates `TurnArtifact.tools_invoked` and `agent_trace`, and missing-tool/tool-exception paths fail closed.
+  - Scope: `backend/app/cognition/executor.py`, `backend/app/conversation/engine.py`, `backend/tests/unit/cognition/test_executor.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 — `backend\.venv\Scripts\python -m compileall backend\app\cognition\executor.py backend\app\conversation\engine.py` PASS; `backend\.venv\Scripts\python -m pytest backend\tests\unit\cognition\test_executor.py -q` PASS (`4 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py -q` PASS (`29 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`277 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`95 passed`). Windows ARM64 — fingerprint `arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`; same command sequence PASS with `4 passed`, `29 passed`, `277 passed`, and regression `95 passed`.
+  - Note: F.2/F.3 scope was not introduced: no `backend/app/tools/`, no real tool registry/toolset, no search/filesystem/time/hardware tools, no API schema/route expansion, no desktop/text shell rendering, no LLM-driven tool selection, and no Group I agent behavior.
+
 - 2026-05-01 01:05
   - Summary: Slice E grouped closeout was recorded as verified across Windows x64 and Windows ARM64 for E.1-E.5. Slice E infrastructure and internet-search substrate evidence includes 95 passing regression on both hosts, live Redis roundtrip, live SearXNG search, and live DDGS/Tavily provider proof.
   - Scope: `docker-compose.yml`, `config/search/searxng/`, `backend/app/core/settings.py`, `backend/app/cache/`, `backend/app/runtimes/internetsearch/`, `backend/app/routing/runtime_selector.py`, `backend/tests/runtime/services/`, `backend/tests/unit/runtimes/internetsearch/`
