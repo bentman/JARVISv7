@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-03 17:04
+  - Summary: Sub-Slice H.1 (STT CPU Baseline Reconfirmation Post-G) was closed as an explicit, redundant reconfirmation gate that kept acceleration sequencing honest before H.2-H.7. It added no new durable capability and reconfirmed that the existing CPU STT fallback path remains green on both Windows x64 and Windows ARM64.
+  - Scope: `CHANGE_LOG.md` only; H.1 closeout documentation from existing validation evidence.
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 — `backend/.venv/Scripts/python scripts/validate_backend.py profile` PASS with fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`; `$env:JARVISV7_LIVE_TESTS="1"; backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices cpu` PASS (`3 passed, 20 deselected`); `$env:JARVISV7_LIVE_TESTS="1"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/voice/test_stt_live.py -q` PASS (`1 passed`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`96 passed`). Windows ARM64 — `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS with fingerprint `arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`; `$env:JARVISV7_LIVE_TESTS="1"; backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt --devices cpu` PASS (`3 passed, 20 deselected`); `$env:JARVISV7_LIVE_TESTS="1"; backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_stt_live.py -q` PASS (`1 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`96 passed`).
+  - Note: H.1 did not close CUDA/QNN/DirectML or any TTS acceleration path, and did not change readiness derivation, runtime selection, models, packages, source, tests, reports, inventory, or slice docs. No CUDA/QNN/DirectML activation was attempted, no TTS acceleration was attempted, and no model export/download/mutation occurred. CPU STT remains fallback authority; next acceleration work should treat x64 CUDA as a code/runtime activation gap rather than a missing-hardware assumption.
+
 - 2026-05-03 16:24
   - Summary: Sub-Slice H.0 (Voice Acceleration Viability Census) was closed as a read-only cross-host census on Windows x64 and Windows ARM64. Durable H.0 closeout is now recorded here, based on captured evidence reports `reports/validation/slice_h/h0-x64.md` and `reports/validation/slice_h/h0-arm64.md`.
   - Scope: `CHANGE_LOG.md` only; records H.0 closeout summary and combined close-state matrix from captured host reports.
