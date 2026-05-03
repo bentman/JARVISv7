@@ -14,6 +14,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import TurnContext
 from backend.app.memory.write_policy import WritePolicy
+from backend.app.memory.episodic import EpisodicMemory
 from backend.app.personality.adapter import apply_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
@@ -55,6 +56,7 @@ class TurnEngine:
         playback_api: Any | None = None,
         executor: ToolExecutor | None = None,
         tool_registry: Any | None = None,
+        episodic: EpisodicMemory | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -68,6 +70,7 @@ class TurnEngine:
         self.playback_api = playback_api or playback
         self.executor = executor or ToolExecutor()
         self.tool_registry = tool_registry
+        self.episodic = episodic
 
     def run_text_turn(self, text: str, *, tool_name: str | None = None, tool_input: dict[str, object] | None = None) -> TurnResult:
         transcript = text.strip()
@@ -321,6 +324,11 @@ class TurnEngine:
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
         )
         self.session_manager.record_turn_artifact(artifact)
+        if self.episodic is not None:
+            try:
+                self.episodic.write_entry(artifact, self.write_policy)
+            except Exception:
+                pass
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
 

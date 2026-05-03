@@ -198,6 +198,7 @@ markers = [
   "turn: turn engine tests",
   "desktop: desktop shell tests",
   "agents: agent framework tests",
+  "g2_required: tests that are intentionally gated until Sub-Slice G.2 behavior is implemented",
 ]
 asyncio_mode = "auto"
 

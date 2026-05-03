@@ -9,6 +9,7 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.memory.write_policy import WritePolicy
+from backend.app.memory.episodic import EpisodicMemory
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
@@ -106,6 +107,18 @@ class FakeToolRegistry:
         return f"tool-output:{tool_name}"
 
 
+class FakeEpisodic(EpisodicMemory):
+    def __init__(self) -> None:
+        self.calls = 0
+        self.raise_on_write = False
+
+    def write_entry(self, artifact, policy):  # type: ignore[override]
+        self.calls += 1
+        if self.raise_on_write:
+            raise RuntimeError("episodic failed")
+        return None
+
+
 def _personality() -> PersonalityProfile:
     return PersonalityProfile(
         profile_id="test",
@@ -127,6 +140,7 @@ def _engine(
     interruption_audio_chunks: list[np.ndarray] | None = None,
     playback_api: FakePlayback | None = None,
     tool_registry: FakeToolRegistry | None = None,
+    episodic: FakeEpisodic | None = None,
 ) -> TurnEngine:
     return TurnEngine(
         stt=stt or FakeSTT(),
@@ -139,6 +153,7 @@ def _engine(
         interruption_audio_chunks=interruption_audio_chunks,
         playback_api=playback_api,
         tool_registry=tool_registry,
+        episodic=episodic,
     )
 
 
@@ -396,6 +411,23 @@ def test_engine_with_session_manager_records_failed_turn_artifact(tmp_path):
     assert result.final_state == ConversationState.FAILED
     assert len(manager.turn_artifacts) == 1
     assert manager.turn_artifacts[0].failure_reason == "llm failed"
+
+
+def test_engine_calls_episodic_write_after_artifact_write_when_injected(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    episodic = FakeEpisodic()
+    result = _engine(session_manager=manager, episodic=episodic).run_text_turn("hello")
+    assert result.final_state == ConversationState.IDLE
+    assert len(manager.turn_artifacts) == 1
+    assert episodic.calls == 1
+
+
+def test_engine_episodic_write_exception_does_not_fail_turn(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    episodic = FakeEpisodic()
+    episodic.raise_on_write = True
+    result = _engine(session_manager=manager, episodic=episodic).run_text_turn("hello")
+    assert result.final_state == ConversationState.IDLE
 
 
 def test_barge_in_detector_ignores_guard_time_input():
