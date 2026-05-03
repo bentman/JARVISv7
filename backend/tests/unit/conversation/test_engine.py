@@ -10,6 +10,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
+from backend.app.memory.retrieval import RetrievedFact
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
@@ -117,6 +118,19 @@ class FakeEpisodic(EpisodicMemory):
         if self.raise_on_write:
             raise RuntimeError("episodic failed")
         return None
+
+
+class FakeRetrieval:
+    def __init__(self, facts: list[RetrievedFact] | None = None, error: Exception | None = None) -> None:
+        self.facts = facts or []
+        self.error = error
+        self.calls: list[tuple[str | None, int, object | None]] = []
+
+    def retrieve(self, query: str | None, n: int = 3, cache_manager: object | None = None, episodic: object | None = None):
+        self.calls.append((query, n, episodic))
+        if self.error is not None:
+            raise self.error
+        return self.facts
 
 
 def _personality() -> PersonalityProfile:
@@ -428,6 +442,98 @@ def test_engine_episodic_write_exception_does_not_fail_turn(tmp_path: Path) -> N
     episodic.raise_on_write = True
     result = _engine(session_manager=manager, episodic=episodic).run_text_turn("hello")
     assert result.final_state == ConversationState.IDLE
+
+
+def test_engine_calls_retrieval_when_episodic_is_set(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    episodic = FakeEpisodic()
+    retrieval = FakeRetrieval(
+        facts=[
+            RetrievedFact(
+                turn_id="prior-turn",
+                session_id="prior-session",
+                content="prior content",
+                source_field="response_text",
+                relevance_method="keyword",
+            )
+        ]
+    )
+    engine = _engine(session_manager=manager, episodic=episodic, llm=FakeLLM(response="ok"))
+    engine.retrieval = retrieval
+
+    result = engine.run_text_turn("hello")
+
+    assert result.final_state == ConversationState.IDLE
+    assert retrieval.calls == [("hello", 3, episodic)]
+    assert "Relevant prior context:" in engine.llm.prompts[0]
+
+
+def test_engine_skips_retrieval_when_episodic_is_none() -> None:
+    retrieval = FakeRetrieval(
+        facts=[
+            RetrievedFact(
+                turn_id="prior-turn",
+                session_id="prior-session",
+                content="prior content",
+                source_field="response_text",
+                relevance_method="keyword",
+            )
+        ]
+    )
+    engine = _engine(llm=FakeLLM(response="ok"))
+    engine.retrieval = retrieval
+
+    result = engine.run_text_turn("hello")
+
+    assert result.final_state == ConversationState.IDLE
+    assert retrieval.calls == []
+    assert "Relevant prior context:" not in engine.llm.prompts[0]
+
+
+def test_engine_populates_retrieved_memory_refs_in_artifact(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    episodic = FakeEpisodic()
+    retrieval = FakeRetrieval(
+        facts=[
+            RetrievedFact(
+                turn_id="turn-a",
+                session_id="session-a",
+                content="first",
+                source_field="response_text",
+                relevance_method="keyword",
+            ),
+            RetrievedFact(
+                turn_id="turn-b",
+                session_id="session-b",
+                content="second",
+                source_field="transcript",
+                relevance_method="keyword",
+            ),
+        ]
+    )
+    engine = _engine(session_manager=manager, episodic=episodic, llm=FakeLLM(response="ok"))
+    engine.retrieval = retrieval
+
+    result = engine.run_text_turn("hello")
+
+    assert result.final_state == ConversationState.IDLE
+    artifact = manager.turn_artifacts[0]
+    assert artifact.retrieved_memory_refs == ["turn-a", "turn-b"]
+
+
+def test_engine_retrieval_failure_does_not_fail_turn(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    episodic = FakeEpisodic()
+    retrieval = FakeRetrieval(error=RuntimeError("retrieval failed"))
+    engine = _engine(session_manager=manager, episodic=episodic, llm=FakeLLM(response="ok"))
+    engine.retrieval = retrieval
+
+    result = engine.run_text_turn("hello")
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.failure_reason is None
+    assert retrieval.calls == [("hello", 3, episodic)]
+    assert "Relevant prior context:" not in engine.llm.prompts[0]
 
 
 def test_barge_in_detector_ignores_guard_time_input():

@@ -15,6 +15,7 @@ from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import TurnContext
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
+from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
 from backend.app.personality.adapter import apply_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
@@ -71,6 +72,7 @@ class TurnEngine:
         self.executor = executor or ToolExecutor()
         self.tool_registry = tool_registry
         self.episodic = episodic
+        self.retrieval = RetrievalManager()
 
     def run_text_turn(self, text: str, *, tool_name: str | None = None, tool_input: dict[str, object] | None = None) -> TurnResult:
         transcript = text.strip()
@@ -129,7 +131,18 @@ class TurnEngine:
         try:
             context.advance(ConversationState.REASONING)
             working_memory = self.session_manager.get_working_context(self.write_policy) if self.session_manager else None
-            prompt = assemble_prompt(transcript, self.personality, working_memory=working_memory)
+            retrieved_context: list[RetrievedFact] = []
+            if self.episodic is not None:
+                try:
+                    retrieved_context = self.retrieval.retrieve(query=transcript, n=3, episodic=self.episodic)
+                except Exception:
+                    retrieved_context = []
+            prompt = assemble_prompt(
+                transcript,
+                self.personality,
+                working_memory=working_memory,
+                retrieved_context=retrieved_context,
+            )
             prompt = apply_personality(prompt, self.personality)
 
             tool_results: list[ToolResult] = []
@@ -153,6 +166,7 @@ class TurnEngine:
                     response_text=response_text,
                     final_prompt_text=prompt,
                     tool_results=tool_results,
+                    retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
                 )
             context.advance(ConversationState.IDLE)
             result = TurnResult(
@@ -164,7 +178,12 @@ class TurnEngine:
                 tool_calls=self._to_tool_calls(tool_results),
                 tool_results=self._to_tool_results(tool_results),
             )
-            self._record_artifact(context, result, final_prompt_text=prompt)
+            self._record_artifact(
+                context,
+                result,
+                final_prompt_text=prompt,
+                retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
+            )
             return result
         except Exception as exc:
             return self._fail(context, transcript=transcript, response_text=None, reason=str(exc))
@@ -177,6 +196,7 @@ class TurnEngine:
         response_text: str,
         final_prompt_text: str,
         tool_results: list[ToolResult] | None = None,
+        retrieved_memory_refs: list[str] | None = None,
     ) -> TurnResult:
         if not self.tts.is_available():
             context.advance(ConversationState.IDLE)
@@ -191,7 +211,12 @@ class TurnEngine:
                 tool_calls=self._to_tool_calls(tool_results or []),
                 tool_results=self._to_tool_results(tool_results or []),
             )
-            self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+            self._record_artifact(
+                context,
+                result,
+                final_prompt_text=final_prompt_text,
+                retrieved_memory_refs=retrieved_memory_refs,
+            )
             return result
 
         audio = self.tts.synthesize(response_text)
@@ -203,6 +228,7 @@ class TurnEngine:
                 transcript=transcript,
                 response_text=response_text,
                 final_prompt_text=final_prompt_text,
+                retrieved_memory_refs=retrieved_memory_refs,
                 audio=audio,
                 sample_rate=sample_rate,
             )
@@ -215,7 +241,12 @@ class TurnEngine:
             response_text=response_text,
             final_state=context.state,
         )
-        self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+        self._record_artifact(
+            context,
+            result,
+            final_prompt_text=final_prompt_text,
+            retrieved_memory_refs=retrieved_memory_refs,
+        )
         return result
 
     def _play_with_interruption_monitor(
@@ -228,6 +259,7 @@ class TurnEngine:
         audio: np.ndarray,
         sample_rate: int,
         tool_results: list[ToolResult] | None = None,
+        retrieved_memory_refs: list[str] | None = None,
     ) -> TurnResult:
         assert self.barge_in_detector is not None
         self.barge_in_detector.reset()
@@ -255,7 +287,12 @@ class TurnEngine:
                     tool_calls=self._to_tool_calls(tool_results or []),
                     tool_results=self._to_tool_results(tool_results or []),
                 )
-                self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+                self._record_artifact(
+                    context,
+                    result,
+                    final_prompt_text=final_prompt_text,
+                    retrieved_memory_refs=retrieved_memory_refs,
+                )
                 return result
 
         context.advance(ConversationState.IDLE)
@@ -268,7 +305,12 @@ class TurnEngine:
             tool_calls=self._to_tool_calls(tool_results or []),
             tool_results=self._to_tool_results(tool_results or []),
         )
-        self._record_artifact(context, result, final_prompt_text=final_prompt_text)
+        self._record_artifact(
+            context,
+            result,
+            final_prompt_text=final_prompt_text,
+            retrieved_memory_refs=retrieved_memory_refs,
+        )
         return result
 
     def _fail(
@@ -303,7 +345,14 @@ class TurnEngine:
             return TurnContext(session_id=self.session_id, modality="text")
         raise ValueError("modality must be voice or text")
 
-    def _record_artifact(self, context: TurnContext, result: TurnResult, *, final_prompt_text: str | None) -> None:
+    def _record_artifact(
+        self,
+        context: TurnContext,
+        result: TurnResult,
+        *,
+        final_prompt_text: str | None,
+        retrieved_memory_refs: list[str] | None = None,
+    ) -> None:
         if self.session_manager is None:
             return
         artifact = TurnArtifact(
@@ -313,6 +362,7 @@ class TurnEngine:
             active_personality_profile_id=self.personality.profile_id,
             transcript=result.transcript,
             final_prompt_text=final_prompt_text,
+            retrieved_memory_refs=list(retrieved_memory_refs or []),
             response_text=result.response_text,
             final_state=result.final_state.value,
             failure_reason=result.failure_reason,

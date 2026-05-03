@@ -8,6 +8,7 @@ import pytest
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.memory.episodic import EpisodicMemory
+from backend.app.memory.retrieval import RetrievedFact
 from backend.app.personality.loader import load_default_personality
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.base import STTBase
@@ -73,5 +74,53 @@ def test_retrieve_recent_returns_entry_from_prior_session(tmp_path: Path) -> Non
 
 
 @pytest.mark.g2_required
-def test_turn_artifact_retrieved_memory_refs_populated_after_retrieval() -> None:
-    pytest.skip("G.2 scope: retrieved_memory_refs population")
+@pytest.mark.live
+@pytest.mark.turn
+@pytest.mark.requires_ollama
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
+def test_turn_artifact_retrieved_memory_refs_populated_after_retrieval(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="retrieval-live-2", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    episodic = EpisodicMemory(base_dir=tmp_path / "episodic", sessions_base_dir=tmp_path / "sessions")
+    prior_session_dir = tmp_path / "episodic" / "prior-session"
+    prior_session_dir.mkdir(parents=True)
+    (prior_session_dir / "prior-turn.json").write_text(
+        """{
+  \"turn_id\": \"prior-turn\",
+  \"session_id\": \"prior-session\",
+  \"session_started_at\": \"2026-01-01T00:00:00+00:00\",
+  \"transcript\": \"remember this reference\",
+  \"response_text\": \"remember this reference response\",
+  \"tools_invoked\": [],
+  \"written_at\": \"2026-01-01T00:00:00+00:00\"
+}
+""",
+        encoding="utf-8",
+    )
+
+    engine = TurnEngine(
+        stt=UnusedSTT(),
+        tts=NullTTSRuntime(reason="not used"),
+        llm=OllamaLLM(base_url=ollama_base_url()),
+        personality=load_default_personality(),
+        session_manager=manager,
+        episodic=episodic,
+    )
+
+    engine.retrieval.retrieve = lambda query, n=3, cache_manager=None, episodic=None: [
+        RetrievedFact(
+            turn_id="prior-turn",
+            session_id="prior-session",
+            content="remember this reference response",
+            source_field="response_text",
+            relevance_method="keyword",
+        )
+    ]
+
+    result = engine.run_text_turn("Please use remembered reference")
+    assert result.failure_reason is None
+    artifact = manager.turn_artifacts[-1]
+    assert artifact.retrieved_memory_refs == ["prior-turn"]
+    assert artifact.final_prompt_text is not None
+    assert "Relevant prior context:" in artifact.final_prompt_text
+    assert "[prior-se/prior-tu] remember this reference response" in artifact.final_prompt_text
