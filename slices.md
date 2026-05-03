@@ -347,7 +347,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group B — Cross-Platform Voice Runtime Strategy
+~~# Group B — Cross-Platform Voice Runtime Strategy~~ Completed
 
 **Why this group exists here.** Runtime family choice is an application-level decision made once, up front, for all supported hardware. Every family treats `device` as a parameter. Acceleration is exercised within this group so no GPU/NPU support needs retrofitting later.
 
@@ -548,7 +548,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group C — Canonical Turn Engine
+~~# Group C — Canonical Turn Engine~~ Completed
 
 ## C.1 — Minimal Voice Turn
 
@@ -686,7 +686,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group D — Durable Application Surface
+~~# Group D — Durable Application Surface~~ Completed
 
 ## D.1 — Application Shell Contract
 
@@ -798,7 +798,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group E — Local Service Substrate
+~~# Group E — Local Service Substrate~~ Completed
 
 ## E.1 — Redis + SearXNG via docker-compose
 
@@ -852,7 +852,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group F — Tool Foundation + ACTING Path
+~~# Group F — Tool Foundation + ACTING Path~~ Completed
 
 ## F.1 — Executor + ACTING State
 
@@ -909,7 +909,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group G — Cross-Session Episodic Retrieval
+~~# Group G — Cross-Session Episodic Retrieval~~ Completed
 
 ## G.1 — Episodic Write + Retrieve
 

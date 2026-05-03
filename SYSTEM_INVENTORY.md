@@ -27,6 +27,13 @@
 
 ## Inventory
 
+- Capability: Slice G cross-session episodic retrieval and cached recall foundation - 2026-05-02 22:10
+  - State: Verified
+  - Location: `backend/app/memory/episodic.py`, `backend/app/memory/retrieval.py`, `backend/app/memory/write_policy.py`, `backend/app/conversation/engine.py`, `backend/app/cognition/prompt_assembler.py`, `backend/tests/unit/memory/`, `backend/tests/runtime/turn/test_retrieval_live.py`, `backend/tests/runtime/services/test_retrieval_cached_live.py`
+  - Validation: G.1 validated on Windows x64 and Windows ARM64 with memory unit `17 passed`, engine unit `31 passed`, unit validator `306 passed`, regression `96 passed`, and live G.1 retrieval subset `2 passed, 1 deselected`; G.2 validated on Windows x64 and Windows ARM64 with prompt assembler unit `6 passed`, engine unit `35 passed`, unit validator `313 passed`, regression `96 passed`, and live retrieval suite `3 passed`; G.3 validated on Windows x64 and Windows ARM64 with retrieval unit `13 passed`, unit validator `322 passed`, regression `96 passed`, and live Redis cached retrieval `2 passed`; Redis cache miss/hit behavior and Redis-stopped disk-fallback behavior were proven, and Redis was restored healthy after stopped-fallback tests.
+  - Slice G added a disk-backed episodic memory write/read substrate, explicit episodic write-policy controls, post-turn episodic writes from the turn lifecycle, recency/keyword retrieval, additive retrieved-context injection into prompt assembly, retrieval provenance recording in `TurnArtifact.retrieved_memory_refs`, and Redis-backed retrieval-cache acceleration with fail-closed fallback to direct episodic disk retrieval.
+  - Notes: Durable memory authority remains disk-backed episodic entries under `data/memory/episodic/`, not Redis; Redis is retrieval acceleration only and fails closed to disk-backed retrieval; retrieval is recency+keyword only with semantic/vector memory deferred; retrieval is not a Slice F tool; no API/schema/route changes, desktop/text-shell rendering changes, Slice F tool/executor behavior changes, Group H acceleration behavior, Group I agent behavior, autonomous memory decisions, new packages, new providers, new runtimes, or new services were introduced.
+
 - Capability: Slice F deterministic tool execution and result presentation foundation - 2026-05-03 18:03
   - State: Verified
   - Location: `backend/app/cognition/executor.py`, `backend/app/tools/`, `backend/app/api/schemas/tools.py`, `backend/app/api/schemas/task.py`, `backend/app/api/schemas/voice.py`, `backend/app/api/routes/task.py`, `backend/app/api/routes/voice.py`, `scripts/run_jarvis.py`, `desktop/src/main.js`, `backend/tests/runtime/turn/test_acting_live.py`
