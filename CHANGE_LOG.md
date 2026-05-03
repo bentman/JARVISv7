@@ -320,7 +320,7 @@
     x64: compileall PASS; 13 passed; runtime llm: 1 passed, 2 deselected; regression: 63 tests
     arm64: compileall PASS; 13 passed; runtime llm: 1 passed, 2 deselected; regression: 63 passed
     ```
-  - Note: Local Ollama live validation used `phi4-mini`. Cloud runtimes are policy-gated stubs only, llama.cpp remains deferred to H.1, and no Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
+  - Note: Local Ollama live validation used `phi4-mini`. Cloud runtimes are policy-gated stubs only, llama.cpp remains deferred to ~~H.1~~ M.1, and no Slice B completion or `SYSTEM_INVENTORY.md` update is claimed.
 
 - 2026-04-26 07:49
   - Summary: B.2 TTS runtime family was implemented and validated for CPU no-playback synthesis on Windows x64 and Windows ARM64.
