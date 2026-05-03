@@ -64,16 +64,29 @@ Group G — Cross-Session Episodic Retrieval
   G.2  Retrieval Injected into Prompt Assembly
   G.3  Redis-Cached Retrieval
 
-Group H — Local LLM Activation + Acceleration Uplift
-  H.1  Local llama.cpp Runtime + LLM Readiness Rail
-  H.2  QNN Uplift for STT (consumes A.6 definition)
-  H.3  DirectML + ROCm Uplift
+Group H — Voice Acceleration
+  H.0  Voice acceleration viability census (non-mutating; produces device/host state table)
+  H.1  STT CPU baseline reconfirmation post-G
+  H.2  ARM64 QNN prerequisite gate (QAIRT SDK, quantized Whisper on x64 first)
+  H.3  ARM64 QNN STT activation
+  H.4  x64 CUDA STT readiness / regression guard
+  H.5  Windows DirectML voice viability gate
+  H.6  DirectML STT/TTS device option activation where H.5 proved viable
+  H.7  TTS acceleration viability / device slot normalization
+  H.8  Voice acceleration live turn matrix
 
-Group I — Agent Framework (Explicit Cognition)
-  I.1  Agent Role Contracts + Typed Message Protocol
-  I.2  Agent Ledger (persisted coordination substrate)
-  I.3  Planner + Executor + Critic Roles on Live Path
-  I.4  Curator + Learner Roles (training data + adapter lifecycle)
+Group I — Hardware Path Normalization
+  I.1  ARM acceleration sequence normalization (CPU / QNN / NPU fallback chain)
+  I.2  x64 acceleration sequence normalization (CPU / CUDA / DirectML / non-NVIDIA fallback chain)
+  I.3  Live mic/audio user-interaction matrix on both host classes
+
+Group J — Runtime/Readiness UX + Degraded-State Surfacing
+
+Group K — UI Controls + Operator Settings
+
+Group L — Agent Framework
+
+Group M — Ollama.cpp / Local LLM Runtime
 ```
 
 No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
@@ -958,183 +971,332 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group H — Local LLM Activation + Acceleration Uplift
+# Group H — Voice Acceleration
 
-## H.1 — Local llama.cpp Runtime + LLM Readiness Rail
+**Why this group exists here.** Voice acceleration (STT/TTS on GPU/NPU) belongs after the core loop, tools, memory, and episodic retrieval are stable. Acceleration work at this stage is a clean device-branch substitution inside already-proven runtime families — not new architecture. Local LLM service work is deferred to Group M because it has distinct resource and build constraints that must be assessed independently after acceleration is proven.
 
-**Why here.** By this point desktop, tools, and memory are established; local LLM is an upgrade into a mature system, not new architecture.
+**Voice-first ordering.** H works only on STT and TTS device uplift. LLM runtime selection (Ollama) is unchanged. Wake remains CPU-only.
 
-**Goal.** Local llama.cpp is the preferred LLM runtime when ready; Ollama remains explicit fallback.
+**Viability-gate discipline.** Each acceleration variant (QNN, CUDA, DirectML) begins with a non-mutating viability gate that produces documented evidence before any wiring code is written. An unproven host or missing prerequisite closes as `SKIP-no-host`, `SKIP-prereq-missing`, or `Deferred` — never as `BLOCKED-*`.
+
+**Close states for hardware/provider sub-slices:**
+- `PASS` — proven on the target host with the target device
+- `SKIP-no-host` — no host with the required hardware was available
+- `SKIP-prereq-missing` — required SDK, DLL, or package not present; not a blocker if clearly documented
+- `Deferred` — capability is defined and slotted; activation explicitly moved to a named later sub-slice
+- `Degraded-memory-constrained` — host hardware present but insufficient for the target model size; documented with memory parameters
+
+## H.0 — Voice Acceleration Viability Census
+
+**Why here.** Before writing any acceleration wiring code, produce a complete `(family × device × host_class)` state table from existing profiler/preflight evidence. Non-mutating. No package installs, no session creation, no model downloads.
+
+**Goal.** A documented table stating what is currently provable per device per host for STT and TTS, and what prerequisites are missing.
 
 **Scope.**
-- Local `llama.cpp` deployed via Docker (same pattern as Redis/SearXNG in E.1).
-- `backend/app/runtimes/llm/local_runtime.py` `LlamaCppLLM` inference activated (was `NotImplementedError` placeholder since B.3).
-- `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- `runtime_selector.py` prefers local llama.cpp when verified ready, explicit Ollama fallback.
-- Startup summary surfaces LLM readiness alongside STT/TTS readiness.
+- Run `validate_backend.py profile` on both host classes.
+- Enumerate `(STT × {cpu, cuda, directml, qnn}) × {x64, arm64}` and `(TTS × {cpu, cuda, directml}) × {x64, arm64}`.
+- Record the result state for each cell using the close-state vocabulary above.
+- Output is the input to H.1–H.8 planning; no code changes.
 
-**Out of scope.** LLM device acceleration (future; llama.cpp has its own device story that would be its own slice if pursued).
+**Acceptance.** Census table recorded in `CHANGE_LOG.md` with both host classes. Table uses close-state vocabulary only — no ambiguous cell states.
 
-**Boundaries.**
-- Owns: local LLM runtime activation, LLM readiness fields in preflight, selector preference logic.
-- Must not touch: tool, memory, shell, or other-runtime behavior.
-
-**Assumptions.**
-- Local llama.cpp Docker image exposes an HTTP/gRPC API the runtime can speak.
-- Model artifacts available via catalog ensure-path.
-
-**Acceptance.** Runtime live: turn completes via local llama.cpp; another completes via Ollama when local stopped; selector reports correct active runtime.
+**Finish line.** Architect / Advisor / User agree on which H sub-slices are implementation and which are SKIP before H.1 begins.
 
 ---
 
-## H.2 — QNN Uplift for STT
+## H.1 — STT CPU Baseline Reconfirmation
 
-**Why here.** Activates the QNN slot defined in A.6. By this point desktop + tools + memory are stable, so QNN is a clean runtime substitution inside an existing boundary.
-
-**Goal.** Voice turn on a Qualcomm host completes with `selected_device="qnn"` for STT. CPU-EP regression still green on the same host.
+**Goal.** STT CPU path green on both host classes post-G. Confirms the regression baseline before any acceleration wiring.
 
 **Scope.**
-- Extend `onnx_whisper_runtime.py` to accept `device="qnn"`; sessions built with `QNNExecutionProvider` + `provider_options: [{"backend_path": "QnnHtp.dll"}]` per ORT QNN docs.
-- Quantized Whisper ONNX / QNN context-binary catalog entry populated (`whisper-small-onnx-qnn-qdq`).
-- Preflight owns QAIRT DLL discovery symmetrically with the CUDA DLL bootstrap established in A.3.
+- Run existing STT live tests on both host classes.
+- Record any regressions from the B.5 / G-era baseline.
+- No code changes unless a regression is found.
+
+**Acceptance.** `validate_backend.py runtime --families stt --devices cpu` green on both host classes. Regression ≥ 96.
+
+---
+
+## H.2 — ARM64 QNN Prerequisite Gate
+
+**Why here.** QNN slot was defined in A.6. Before activation code is written, the operator prerequisites must be confirmed present and the quantized model artifact must exist.
+
+**Goal.** Confirmed: QAIRT SDK installed, `QnnHtp.dll` discoverable, quantized Whisper ONNX artifact available.
+
+**Scope.**
+- Non-mutating verification: `QAIRT_SDK_PATH` set, DLL probe succeeds, `onnxruntime-qnn` imports on ARM64.
+- Quantized Whisper generation must be done on x64 (per ORT QNN docs — the `onnx` package has ARM64 install issues). Document the operator workflow in `config/hardware/notes.md`.
+- If any prerequisite is missing: close H.2 as `SKIP-prereq-missing` with an explicit checklist of what is missing. H.3 cannot start until H.2 closes as `PASS`.
+
+**Acceptance.** Gate closes as `PASS` (all prerequisites confirmed) or `SKIP-prereq-missing` (missing items documented). `BLOCKED-*` is not an acceptable state.
+
+---
+
+## H.3 — ARM64 QNN STT Activation
+
+**Depends on:** H.2 `PASS`.
+
+**Goal.** Voice turn on the Qualcomm ARM64 host completes with `selected_device="qnn"` for STT. CPU-EP regression still green on the same host.
+
+**Scope.**
+- Extend `onnx_whisper_runtime.py` to accept `device="qnn"` with `QNNExecutionProvider` + `provider_options: [{"backend_path": "QnnHtp.dll"}]`.
+- Populate the `whisper-small-onnx-qnn-qdq` catalog entry.
+- Preflight owns QAIRT DLL discovery (extends A.3 pattern).
 - Selector prefers QNN when ready; CPU-EP remains baseline fallback.
 
-**Out of scope.** QNN TTS (no verified quantized Kokoro for HTP). QNN LLM or wake.
+**Out of scope.** QNN TTS (no verified Kokoro HTP quantization). QNN LLM or Wake.
 
-**Assumptions.**
-- `onnxruntime-qnn>=2.0.0` loads `QNNExecutionProvider` with `backend_path: QnnHtp.dll`.
-- Quantized Whisper artifact available — generated on an x64 host per ORT QNN docs (the `onnx` package has ARM64 install issues, so quantization must run on x64).
-- QAIRT SDK installed by operator; path configured via env var.
-
-**Boundaries.**
-- Owns: QNN branch in `onnx_whisper_runtime.py`, QNN catalog entry, QAIRT DLL discovery in `preflight.py`.
-- Must not touch: other runtimes; CPU-EP baseline must remain selectable.
-
-**Acceptance.** Runtime live: voice turn on Qualcomm host with `selected_device="qnn"` for STT. CPU-EP regression passes on the same host.
+**Acceptance.** Runtime live: voice turn with `selected_device="qnn"` on ARM64 Qualcomm host. CPU-EP regression green on the same host.
 
 **Risks.**
 - QNN HTP op coverage is a subset of ONNX; session creation may succeed but partition unexpectedly to CPU. Document probe method in readiness evidence.
-- QAIRT SDK version drift; pin compatible range.
 
 ---
 
-## H.3 — DirectML + ROCm Uplift
+## H.4 — x64 CUDA STT Readiness / Regression Guard
 
-**Goal.** Voice turn on AMD GPU Windows host completes with DirectML selected.
+**Goal.** Confirm CUDA EP status on available x64 NVIDIA host and protect the regression baseline.
 
 **Scope.**
-- DirectML device slot activated (already accepted by B.1/B.2 runtime signatures).
-- ROCm same pattern for Linux AMD (best-effort; not blocking closeout).
-- Each is a device option, not a new runtime family.
+- Run existing CUDA STT live test or viability probe on x64 NVIDIA host.
+- If no NVIDIA CUDA host is available: close H.4 as `SKIP-no-host`.
+- If CUDA EP is missing or not proven: close H.4 as `SKIP-prereq-missing`.
+- No new wiring code unless CUDA STT is currently broken (regression only).
 
-**Acceptance.** Runtime live on AMD Windows host: voice turn with DirectML device.
+**Acceptance.** `PASS`, `SKIP-no-host`, or `SKIP-prereq-missing` — all acceptable. Regression ≥ 96 either way.
 
 ---
 
-# Group I — Agent Framework (Explicit Cognition)
+## H.5 — Windows DirectML Voice Viability Gate
 
-**Why this group exists here.** Agents belong after the core loop, tools, memory, and acceleration are stable. The agent framework is not an alternative architecture — it is a role-separated layer on top of the canonical turn engine that consumes the LLM runtime, tool registry, memory, and turn artifacts already proven in C/F/G. Aligns with Explicit Cognition Framework principles in `ProjectVision.md`.
-
-## I.1 — Agent Role Contracts + Typed Message Protocol
-
-**Why here.** Before running any agent live, the role interfaces and message shapes must be fixed. Retrofitting message schemas later breaks every role simultaneously.
-
-**Goal.** Five canonical agent roles with stable input/output schemas and a typed message protocol between them.
+**Goal.** Confirm whether `DmlExecutionProvider` is loadable and usable for STT/TTS on any available Windows GPU host.
 
 **Scope.**
-- Canonical roles under `backend/app/agents/`:
-  - **Planner** — decomposes a goal into a DAG of sub-tasks; never invokes tools. Output: plan artifact (YAML/JSON) with acyclic dependencies.
-  - **Executor** — runs one atomic task via the F.2 tool registry; never plans, never validates. Output: execution result + artifacts.
-  - **Critic** — validates executor output against requirements + guardrails; never fixes. Output: pass/fail + specific violations.
-  - **Curator** — mines turn artifacts + agent ledger for high-quality training examples; scores and deduplicates; never executes tasks. Output: curated dataset.
-  - **Learner** — orchestrates training cycles gated by regression suite; never executes user tasks. Output: adapter candidate or rejection with reason.
-- Typed `AgentMessage` (sender, recipient, message_type, payload, timestamp, trace_id). Message types fixed here: `PLAN_READY`, `EXECUTION_COMPLETE`, `VALIDATION_PASSED`, `VALIDATION_FAILED`, `CURATION_READY`, `TRAINING_CYCLE_COMPLETE`, plus error variants.
-- JSON-schema validation of payloads per message type in `backend/app/agents/schemas.py`.
-- Roles communicate via ledger message (I.2), not conversation — prevents context accumulation.
-- Role configs in `config/agents/roles.yaml`: system prompt refs, input/output schema names, policy constraints (what the role may never do).
-- Role system prompts live in `config/prompts/agents/`, one directory per role.
+- Non-mutating probe: attempt `onnxruntime-directml` import + EP registration on available host.
+- If no DirectML-capable host available: close H.5 as `SKIP-no-host`.
+- If EP fails to load or register: close H.5 as `SKIP-prereq-missing` with reason.
+- Result is the gate for H.6.
 
-**Out of scope.** Live execution (I.3). Training pipeline (I.4).
+**Acceptance.** `PASS` or `SKIP-*` with documented reason. No implementation unless `PASS`.
 
-**Boundaries.**
-- Owns: `backend/app/agents/{base,messages,schemas,planner,executor,critic,curator,learner}.py`, `config/agents/roles.yaml`, `config/prompts/agents/`.
-- Must not touch: turn engine, runtimes, services (consumes them).
+---
 
-**Key design decisions.**
-- Roles communicate via typed message only, never conversation — aligns with ECF "no hidden long-term assistant state inside the model."
-- Each role has one job and the policy constraint is explicit in config. Cross-role responsibility is a design violation.
-- Curator and Learner are defined here even though their live behavior waits for I.4 — fixing their shape early prevents retrofit.
+## H.6 — DirectML STT/TTS Device Option Activation
+
+**Depends on:** H.5 `PASS`.
+
+**Goal.** Voice turn on a Windows DirectML host completes with `selected_device="directml"` for STT and/or TTS.
+
+**Scope.**
+- Activate DirectML branch in `onnx_whisper_runtime.py` and `kokoro_onnx_runtime.py` where H.5 proved the EP loadable.
+- Selector updates to prefer DirectML when ready.
+- If H.5 was `SKIP-*`: H.6 closes as `Deferred` without any code change.
+
+**Acceptance.** Runtime live with DirectML device on proven host, or `Deferred` if H.5 was `SKIP-*`.
+
+---
+
+## H.7 — TTS Acceleration Viability / Device Slot Normalization
+
+**Goal.** TTS device options normalized alongside STT. CPU proven on both hosts. CUDA/DirectML where H.4/H.6 proved viable. QNN TTS explicitly deferred.
+
+**Scope.**
+- TTS CPU live test reconfirmation on both host classes.
+- TTS CUDA / DirectML branches activated where the corresponding STT gate (H.4 / H.6) proved the EP.
+- QNN TTS: explicitly `Deferred` — no verified Kokoro HTP quantization exists. Document in `config/hardware/notes.md`.
+
+**Acceptance.** TTS CPU `PASS` on both hosts. Acceleration variants `PASS` or `Deferred` with reason.
+
+---
+
+## H.8 — Voice Acceleration Live Turn Matrix
+
+**Goal.** All H sub-slices reconciled into a recorded `(family × device × host_class)` state table. No `BLOCKED-*` cells at closeout.
+
+**Scope.**
+- Run `validate_backend.py matrix` on both host classes.
+- Every cell is `PASS`, `SKIP-*`, or `Deferred`. Any `FAIL` blocks Group H closeout.
+- Matrix recorded in `SYSTEM_INVENTORY.md` as the Group H gate entry.
+
+**Acceptance.** Matrix green on both host classes (allowing SKIP/Deferred cells with reasons). Regression ≥ 96.
+
+**Finish line.** Group I hardware-path normalization may begin.
+
+---
+
+# Group I — Hardware Path Normalization
+
+**Why this group exists here.** Group H produces evidence of what actually works per device per host class. Group I consumes that evidence to normalize the selector, readiness deriver, and preflight reporting into coherent, documented acceleration paths for both host classes. Future hardware variants (Intel NPU, additional AMD GPUs) are represented as defined-but-deferred slots following the A.6 / H.2 pattern — not over-built.
+
+## I.1 — ARM Acceleration Sequence Normalization
+
+**Goal.** ARM64 path fully documented and normalized: CPU → QNN (if H.3 passed) → fallback chain. Selector and readiness deriver reflect the proven evidence from H.
+
+**Scope.**
+- Normalize `derive_stt_device_readiness()` and `derive_tts_device_readiness()` to prefer QNN when H.3 proved it, fall back to CPU cleanly.
+- Intel NPU (future) and other ARM NPU variants represented as defined-but-deferred slots.
+- No new runtime families; this is selector and readiness normalization only.
+- Document the ARM64 path in `config/hardware/notes.md`.
+
+**Acceptance.** Unit: ARM64 readiness derivation correct for all acceleration states from H. Runtime live: ARM64 host selects the best proven device and falls back cleanly.
+
+---
+
+## I.2 — x64 Acceleration Sequence Normalization
+
+**Goal.** x64 path fully normalized: CPU → CUDA (if H.4 passed) → DirectML (if H.6 passed) → fallback chain.
+
+**Scope.**
+- Normalize x64 readiness derivers to prefer CUDA → DirectML → CPU in documented order.
+- Non-NVIDIA GPU variants (Intel iGPU, AMD without DirectML) represented as defined-but-deferred slots.
+- Document the x64 path in `config/hardware/notes.md`.
+
+**Acceptance.** Unit: x64 readiness derivation correct for all acceleration states from H. Runtime live: x64 host selects the best proven device.
+
+---
+
+## I.3 — Live Mic/Audio User-Interaction Matrix
+
+**Goal.** Full end-to-end voice turn (mic in → STT → LLM → TTS → speaker out) validated on both host classes with the best available device from I.1/I.2.
+
+**Scope.**
+- Live voice turn with microphone and speaker on both host classes.
+- STT uses the normalized device from I.1/I.2 (best proven device, not forced CPU).
+- Interruption path exercised.
+- Results recorded in `CHANGE_LOG.md` per host class.
+
+**Acceptance.** Desktop live: mic-in → spoken-response on both host classes. Regression ≥ 96.
+
+**Finish line.** Hardware acceleration path is normalized and proven end-to-end on both host classes. Group J readiness/UX work may begin.
+
+---
+
+# Group J — Runtime/Readiness UX + Degraded-State Surfacing
+
+**Why this group exists here.** After acceleration is normalized (H+I), the readiness surface expands significantly: more devices, more prerequisites, more possible degraded states. Before UI controls land (K), the readiness data must be accurate, visible, and surfaced with explicit reasons. This is a backend-and-API concern that must be stable before K adds interactive controls that depend on it.
+
+**Goal.** Every runtime family shows its selected device, readiness state, and degraded/fallback reason in the desktop shell and in `GET /readiness`. Operator can diagnose any degraded state from the UI without reading source code.
+
+**Scope.**
+- Extend `GET /readiness` response to surface per-family: selected device, ready flag, reason string, fallback chain taken.
+- Desktop shell readiness panel updated to render the extended readiness data.
+- Degraded-mode indicators visible per family (e.g., "STT: CPU (QNN prereq missing)", "LLM: Ollama (local not configured)").
+- Readiness trace accessible from `GET /diagnostics/preflight`.
+- `scripts/run_jarvis.py --profile` and `validate_backend.py profile` updated to emit the extended readiness summary.
+
+**Out of scope.** Interactive controls or `.env` editing (K). Agent framework (L). Local LLM (M).
+
+**Acceptance.** Desktop live: readiness panel shows correct device/reason for each family on both host classes. Degraded state induced artificially shows the correct reason.
+
+---
+
+# Group K — UI Controls + Operator Settings
+
+**Why this group exists here.** With readiness data accurate and visible (J), interactive controls can be added safely. Controls that modify operator settings must have explicit guardrails so the UI cannot silently mutate runtime state or policy.
+
+**Goal.** Operator can adjust configurable settings from the UI and see the effect after backend restart. No live runtime mutation.
+
+**Scope.**
+- App size, font size, button layout, settings flyout, icon polish.
+- Capability/selector controls: display and switch between proven runtime options (device, personality, LLM runtime) via existing backend API.
+- **Operator-configurable `.env` editing**: UI may write only fields explicitly declared as operator-configurable in `config/hardware/notes.md`. All writes target `.env` only — not `settings.py`, `pyproject.toml`, or any config YAML. The existing settings precedence (shell env > `.env` > `.env.example`) is preserved.
+- **Restart-required semantics**: all `.env` changes require backend restart to take effect. The UI makes this explicit ("Restart required" label + restart button). No live runtime switching from the UI.
+- **Bootstrap toggles** (Docker/Redis/SearXNG enable/disable): these are startup-time settings, not live switches. UI presents them as restart-required; the backend startup sequence reads them and configures accordingly. Toggling does not trigger a live service start/stop.
+- No new routes or backend logic required beyond what J exposes.
+
+**Out of scope.** Agent framework (L). Local LLM (M). Advanced policy editing.
+
+**Acceptance.** Desktop live: operator changes an allowed `.env` field, restarts backend, and sees the effect reflected in the readiness panel. An attempt to write a non-operator-configurable field is rejected or silently ignored.
+
+---
+
+# Group L — Agent Framework
+
+**Why this group exists here.** Agents belong after the core loop, tools, memory, acceleration normalization, readiness surfacing, and UI controls are stable. The agent framework is a role-separated orchestration layer on top of the turn engine, tool registry, memory, and turn artifacts already proven in C/F/G/H/I. Placing it here reduces the risk of agents being built against an unstable acceleration or readiness surface.
+
+Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
+
+## L.1 — Agent Role Contracts + Typed Message Protocol
+
+**Goal.** Five canonical agent roles with stable input/output schemas and a typed message protocol.
+
+**Scope.** Canonical roles: Planner, Executor, Critic, Curator, Learner. Typed `AgentMessage` protocol. Role configs in `config/agents/roles.yaml`. Role system prompts in `config/prompts/agents/`.
 
 **Acceptance.** Unit: message schema validation + role contract surface for all five roles.
 
 ---
 
-## I.2 — Agent Ledger
+## L.2 — Agent Ledger
 
-**Why here.** Before any role runs live, the coordination substrate must exist so state is in the ledger, not in LLM context windows.
+**Goal.** Persisted, queryable, restart-surviving message substrate for agent coordination.
 
-**Goal.** Persisted, queryable, restart-surviving message bus for agent coordination.
+**Scope.** `backend/app/agents/ledger.py` — SQLite-backed. E.2 Redis used for caching; Redis-unavailable falls back to direct SQLite. Trace IDs connect a goal through the role chain.
 
-**Scope.**
-- `backend/app/agents/ledger.py` — SQLite-backed message bus. Durable authority in `data/agents/ledger.db`.
-- Columns: `id`, `sender`, `recipient`, `message_type`, `payload` (JSON), `timestamp`, `trace_id`, `processed`.
-- Operations: post, query by recipient, query by trace_id, mark processed.
-- Redis (from E.2) used for lookup caching; Redis-unavailable falls back to direct SQLite reads.
-- Trace IDs connect a goal through planner → executor → critic so a full episode is reconstructable.
-
-**Acceptance.** Unit + runtime live: messages post, query, mark processed; survive process restart; trace assembly works.
+**Acceptance.** Unit + runtime live: messages post, query, survive restart; trace assembly works.
 
 ---
 
-## I.3 — Planner + Executor + Critic on Live Path
+## L.3 — Planner + Executor + Critic on Live Path
 
-**Why here.** With contracts (I.1) and substrate (I.2) in place, the three per-turn roles can run live.
+**Goal.** A multi-step request completes via Planner → Executor → Critic with all messages in the ledger and a full trace reconstructable.
 
-**Goal.** A multi-step request (e.g., "search for X and summarize the top three results to a file") completes via planner → executor(search) → critic → executor(filesystem write) → critic, with all messages in the ledger.
+**Scope.** Turn engine consults `config/app/policies.yaml` for agent-opt-in. Non-agent turns continue to work unchanged. Agent decisions in turn artifacts via the optional `agent_trace` field.
 
-**Scope.**
-- Turn engine consults `config/app/policies.yaml` for agent-opt-in policy; non-agent turns continue to work exactly as after C+F+G.
-- Planner produces plan artifact; Executor runs each task via F.2 registry; Critic validates each output; turn engine consumes final validated artifact.
-- Agent decisions captured in turn artifact (extending the C.3 artifact schema with optional `agent_trace` field — not renaming existing fields).
-- Regression requirement: non-agent turns unchanged; agent turns produce traceable ledger entries.
-
-**Out of scope.** Curator/Learner live (I.4).
-
-**Boundaries.**
-- Owns: agent-aware branches in turn engine; `agents/planner.py`, `agents/executor.py`, `agents/critic.py` live behavior.
-
-**Key design decisions.**
-- Agent opt-in is per-policy, not per-turn — keeps the default turn path simple.
-- Plan artifact is validated (DAG, schema) before executor sees it; validation failure is a clear error, not a silent fall-through.
-- Critic is strict: ambiguous validation is fail, not pass.
-
-**Acceptance.** Runtime live: multi-step request completes via full planner → executor → critic chain with all messages in ledger and full trace reconstructable.
+**Acceptance.** Runtime live: multi-step request completes via full planner → executor → critic chain.
 
 ---
 
-## I.4 — Curator + Learner Roles
+## L.4 — Curator + Learner Roles
 
 **Goal.** Curator and Learner run end-to-end in dry-run, producing a mixed training dataset and a proposed (not deployed) adapter.
 
+**Scope.** Curator mines turn artifacts; Learner orchestrates training cycle gated by regression suite. Regression gate (`validate_backend.py regression`) is non-negotiable before any adapter deploys.
+
+**Acceptance.** Unit: curator scoring + dedup. Runtime live: dry-run cycle produces a mixed dataset.
+
+**Finish line.** Agent framework runnable end-to-end as an optional orchestration layer. Non-agent turns unchanged.
+
+---
+
+# Group M — Ollama.cpp / Local LLM Runtime
+
+**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. Deferring to M ensures that ARM64 memory limits, model quantization choices, and server binary availability are evaluated against a mature, stable system — not retrofitted into Group H.
+
+**Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
+
+## M.0 — Local LLM Viability Census
+
+**Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
+
 **Scope.**
-- Curator mines successful turn artifacts + agent ledger entries for training examples; scores by quality (retry count, validation failures, test coverage, clean execution); deduplicates via embeddings; applies guardrail filters.
-- Learner orchestrates training cycle: dataset mix (curated + basal ratio configurable), train call against trainer interface, regression-suite gate before deploy, versioned adapter path.
-- Trainer implementation out of scope for this slice — interface defined so later slice can plug in a training toolchain.
-- Regression gate uses `scripts/validate_backend.py regression` as the acceptance threshold — no adapter deploys unless regression is green.
-- Adapter deployment is a runtime-substitution operation consumed by B.3/H.1 LLM runtime family.
+- Enumerate available GGUF quantization levels (Q4, Q5, Q8) against ARM64 memory budget.
+- Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
+- If a prebuilt binary is available for Windows ARM64: document operator install path.
+- If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
+- Census recorded in `CHANGE_LOG.md` before M.1 begins.
 
-**Out of scope.** Actual training execution (separate future slice once training toolchain is chosen).
+**Acceptance.** Census table produced with close states for both host classes. No code changes.
 
-**Boundaries.**
-- Owns: `agents/curator.py` + `agents/learner.py` live behavior; `config/agents/roles.yaml` curator/learner config.
+---
 
-**Key design decisions.**
-- Regression gate is non-negotiable — no auto-deploy without it.
-- Training is dry-run-only in this slice — proves the pipeline end-to-end without consuming GPU time.
+## M.1 — Local LLM Service + Runtime Adapter
 
-**Acceptance.** Unit: curator scoring + dedup. Runtime live: dry-run training cycle produces a mixed dataset and would produce an adapter.
+**Depends on:** M.0 census closes as viable on at least one host class.
 
-**Finish line.** Agent framework runnable end-to-end as an optional orchestration layer. Turns that don't opt in continue to work exactly as they did after C+F+G.
+**Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
+
+**Scope.**
+- Activate `LlamaCppLLM.is_available()` and `generate()` in `backend/app/runtimes/llm/local_runtime.py` (was `NotImplementedError` since B.3).
+- Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
+- Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
+- `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
+- ARM64 acceptance: if model runs but is memory-constrained, close M.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+
+**Out of scope.** LLM device acceleration (separate future decision).
+
+**Acceptance.** Runtime live: turn completes via local LLM on at least x64; Ollama fallback proven. ARM64: `PASS`, `Degraded-memory-constrained`, or `SKIP-no-viable-binary` — all acceptable with documentation.
+
+**Finish line.** Local LLM is the preferred runtime on hosts where it is viable. Ollama remains the reliable fallback everywhere.
 
 ---
 
