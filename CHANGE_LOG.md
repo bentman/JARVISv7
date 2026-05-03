@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-03 18:52
+  - Summary: Sub-Slice H.4 (x64 CUDA STT Readiness / Regression Guard) was closed by resolving the x64 CUDA ONNX Runtime ownership/provisioning conflict and restoring a CUDA-capable ORT state for the x64 NVIDIA CUDA profile. `CUDAExecutionProvider` became visible in `backend/.venv`, profile evidence included `ep:CUDAExecutionProvider`, `kokoro_onnx` import viability remained intact under GPU ORT ownership, and CUDA STT live validation was added and executed (not all-deselected).
+  - Scope: `CHANGE_LOG.md` only; H.4 closeout documentation from existing validation evidence.
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 — `backend/.venv/Scripts/python -m pytest backend/tests/runtime/voice/test_stt_live.py -q` PASS (`2 passed`); `$env:JARVISV7_LIVE_TESTS='1'; backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices cuda` PASS (`1 passed, 23 deselected`); `$env:JARVISV7_LIVE_TESTS='1'; backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices cpu` PASS (`4 passed, 20 deselected`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`96 passed`); provider evidence: `onnxruntime.get_available_providers()` included `CUDAExecutionProvider` and `CPUExecutionProvider`. Windows ARM64 — fingerprint `arch=arm64 python=3.12.10 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`; `$env:JARVISV7_LIVE_TESTS='1'; backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt --devices cpu` PASS (`4 passed, 20 deselected, 1 warning`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`96 passed`).
+  - Note: H.4 scope was x64 CUDA STT only. No QNN, DirectML, or TTS acceleration was implemented; no model export/download/mutation occurred; CPU STT remains fallback authority; ARM64 CUDA was not attempted.
+
 - 2026-05-03 17:04
   - Summary: Sub-Slice H.1 (STT CPU Baseline Reconfirmation Post-G) was closed as an explicit, redundant reconfirmation gate that kept acceleration sequencing honest before H.2-H.7. It added no new durable capability and reconfirmed that the existing CPU STT fallback path remains green on both Windows x64 and Windows ARM64.
   - Scope: `CHANGE_LOG.md` only; H.1 closeout documentation from existing validation evidence.
