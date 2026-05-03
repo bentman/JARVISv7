@@ -9,6 +9,7 @@ import numpy as np
 from backend.app.cognition.prompt_assembler import assemble_prompt
 from backend.app.cognition.responder import sanitize_for_tts
 from backend.app.cognition.executor import ToolExecutor, ToolResult
+from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -58,6 +59,7 @@ class TurnEngine:
         executor: ToolExecutor | None = None,
         tool_registry: Any | None = None,
         episodic: EpisodicMemory | None = None,
+        cache_manager: CacheManager | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -72,6 +74,7 @@ class TurnEngine:
         self.executor = executor or ToolExecutor()
         self.tool_registry = tool_registry
         self.episodic = episodic
+        self.cache_manager = cache_manager
         self.retrieval = RetrievalManager()
 
     def run_text_turn(self, text: str, *, tool_name: str | None = None, tool_input: dict[str, object] | None = None) -> TurnResult:
@@ -134,7 +137,12 @@ class TurnEngine:
             retrieved_context: list[RetrievedFact] = []
             if self.episodic is not None:
                 try:
-                    retrieved_context = self.retrieval.retrieve(query=transcript, n=3, episodic=self.episodic)
+                    retrieved_context = self.retrieval.retrieve(
+                        query=transcript,
+                        n=3,
+                        cache_manager=self.cache_manager,
+                        episodic=self.episodic,
+                    )
                 except Exception:
                     retrieved_context = []
             prompt = assemble_prompt(

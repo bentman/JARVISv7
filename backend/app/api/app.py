@@ -67,6 +67,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         llm=state.llm,
         personality=state.personality,
         session_manager=manager,
+        cache_manager=state.cache_manager,
     )
 
 
