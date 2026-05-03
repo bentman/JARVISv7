@@ -7,7 +7,7 @@ from backend.app.hardware.provisioning import resolve_required_extras
 def test_resolver_returns_base_plus_arch_for_cpu_only_x64() -> None:
     profile = HardwareProfile(arch="amd64")
 
-    assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-x64-base", "dev"]
+    assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu", "dev"]
 
 
 def test_resolver_returns_base_plus_arch_for_cpu_only_arm64() -> None:
@@ -30,7 +30,7 @@ def test_resolver_adds_cuda_for_nvidia_with_cuda() -> None:
 def test_resolver_omits_cuda_for_nvidia_without_cuda() -> None:
     profile = HardwareProfile(arch="amd64", gpu_available=True, gpu_vendor="nvidia", cuda_available=False)
 
-    assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-x64-base", "dev"]
+    assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu", "dev"]
 
 
 def test_resolver_adds_amd_for_amd_gpu() -> None:

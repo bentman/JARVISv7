@@ -96,10 +96,15 @@ hw-cpu-base = []
 # x64 acceleration family defaults (primary voice runtime backbone).
 # Applies when platform_machine is AMD64 (Windows) or x86_64 (Linux/macOS).
 hw-x64-base = [
-  "onnxruntime>=1.17; platform_machine=='AMD64' or platform_machine=='x86_64'",
   "onnx-asr>=0.8; platform_machine=='AMD64' or platform_machine=='x86_64'",
   "kokoro-onnx>=0.4; platform_machine=='AMD64' or platform_machine=='x86_64'",
   "openwakeword>=0.6; platform_machine=='AMD64' or platform_machine=='x86_64'",
+]
+
+# x64 CPU ONNX Runtime baseline.
+# Selected by provisioning only when no x64 accelerator-specific ORT package is selected.
+hw-x64-ort-cpu = [
+  "onnxruntime>=1.17; platform_machine=='AMD64' or platform_machine=='x86_64'",
 ]
 
 # ARM64 base. onnxruntime publishes win_arm64 wheels for CPython 3.11-3.14.

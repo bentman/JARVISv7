@@ -11,7 +11,8 @@ _REQUIREMENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]+")
 
 _EXTRA_REQUIREMENT_NAMES: dict[str, tuple[str, ...]] = {
     "hw-cpu-base": (),
-    "hw-x64-base": ("onnxruntime", "onnx-asr", "kokoro-onnx", "openwakeword"),
+    "hw-x64-base": ("onnx-asr", "kokoro-onnx", "openwakeword"),
+    "hw-x64-ort-cpu": ("onnxruntime",),
     "hw-arm64-base": ("onnxruntime", "onnx-asr", "kokoro-onnx", "openwakeword"),
     "hw-gpu-nvidia-cuda": ("onnxruntime-gpu",),
     "hw-gpu-amd": ("onnxruntime-directml",),
@@ -63,6 +64,13 @@ def resolve_required_extras(
         extras.append("hw-arm64-base")
     elif profile.arch == "amd64":
         extras.append("hw-x64-base")
+        has_accel_ort = (
+            (profile.gpu_available and profile.gpu_vendor == "nvidia" and profile.cuda_available)
+            or (profile.gpu_available and profile.gpu_vendor in {"amd", "intel"})
+            or (profile.npu_available and profile.npu_vendor == "qualcomm")
+        )
+        if not has_accel_ort:
+            extras.append("hw-x64-ort-cpu")
 
     if profile.gpu_available and profile.gpu_vendor == "nvidia" and profile.cuda_available:
         extras.append("hw-gpu-nvidia-cuda")

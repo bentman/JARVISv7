@@ -153,7 +153,26 @@ def _expected_distribution_names(profile: HardwareProfile, include_porcupine: bo
 
 def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine: bool) -> int:
     command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
-    return _run_pip_install(command)
+    install_rc = _run_pip_install(command)
+    if install_rc != 0:
+        return install_rc
+
+    cuda_profile = (
+        profile.arch == "amd64"
+        and profile.gpu_available
+        and profile.gpu_vendor == "nvidia"
+        and profile.cuda_available
+    )
+    if not cuda_profile:
+        return 0
+
+    uninstall_cpu_ort = [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime"]
+    uninstall_rc = _run_pip_install(uninstall_cpu_ort)
+    if uninstall_rc != 0:
+        return uninstall_rc
+
+    reinstall_gpu_ort = [sys.executable, "-m", "pip", "install", "--force-reinstall", "onnxruntime-gpu>=1.17"]
+    return _run_pip_install(reinstall_gpu_ort)
 
 
 def _run_verify(profile: HardwareProfile, extras: list[str], include_porcupine: bool) -> int:

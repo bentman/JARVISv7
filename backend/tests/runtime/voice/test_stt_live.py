@@ -46,3 +46,18 @@ def test_stt_cpu_transcribes_hello_world_fixture_on_current_host():
     transcript = runtime.transcribe(audio, sample_rate)
 
     assert "hello world" in _normalize_transcript(transcript)
+
+
+@pytest.mark.live
+@pytest.mark.stt
+@pytest.mark.cuda
+@pytest.mark.x64
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+def test_stt_cuda_transcribes_hello_world_fixture_on_current_host():
+    runtime = OnnxWhisperRuntime(device="cuda")
+
+    assert runtime.is_available()
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+    transcript = runtime.transcribe(audio, sample_rate)
+
+    assert "hello world" in _normalize_transcript(transcript)
