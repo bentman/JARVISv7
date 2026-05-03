@@ -199,7 +199,7 @@ Thumbs.db
 /reports/validation/*
 !/reports/validation/.gitkeep
 !/reports/.gitkeep
-
+!/reports/validation/slice_h
 
 # ------------------------------------------------------------
 # Model artifacts (per-folder allowlist; prevent large binary commits
