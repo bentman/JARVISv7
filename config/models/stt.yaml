@@ -22,3 +22,12 @@ models:
         normalizer.json: normalizer.json
         added_tokens.json: added_tokens.json
     local_path: models/stt/whisper-small-onnx
+
+  whisper-small-onnx-qnn-int8:
+    family: stt
+    runtime: onnx_whisper
+    devices: [qnn]
+    source:
+      type: placeholder
+      note: "H.2 prerequisite catalog entry for future quantized Whisper QDQ artifact; artifact not yet present"
+    local_path: models/stt/whisper-small-onnx-qnn-int8
