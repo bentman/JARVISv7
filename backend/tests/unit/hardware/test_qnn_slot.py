@@ -69,12 +69,22 @@ def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) ->
         preflight_module.importlib,
         "import_module",
         lambda name: SimpleNamespace(
-            get_available_providers=lambda: ["QNNExecutionProvider"]
+            get_available_providers=lambda: ["QNNExecutionProvider"],
+            register_execution_provider_library=lambda ep, path: None,
+            unregister_execution_provider_library=lambda ep: None,
+            get_ep_devices=lambda: [SimpleNamespace(ep_name="QNNExecutionProvider")],
         )
         if name == "onnxruntime"
+        else SimpleNamespace(
+            __name__=name,
+            get_library_path=lambda: "C:/qnn/onnxruntime_providers_qnn.dll",
+            get_qnn_htp_path=lambda: "C:/qnn/QnnHtp.dll",
+        )
+        if name == "onnxruntime_qnn"
         else SimpleNamespace(__name__=name),
     )
     monkeypatch.setattr(preflight_module.importlib.metadata, "version", lambda name: "2.0.0")
+    monkeypatch.setattr(Path, "exists", lambda self: True)
 
     result = preflight_module.run_preflight(
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
@@ -82,6 +92,9 @@ def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) ->
     )
 
     assert "import:onnxruntime-qnn" in result.tokens
+    assert "qnn:plugin_library" in result.tokens
+    assert "qnn:htp_path" in result.tokens
+    assert "qnn:ep_device" in result.tokens
 
 
 def test_preflight_emits_qnn_ep_missing_token_when_ep_not_registered(monkeypatch) -> None:
@@ -90,11 +103,23 @@ def test_preflight_emits_qnn_ep_missing_token_when_ep_not_registered(monkeypatch
 
     def fake_import(name: str):
         if name == "onnxruntime":
-            return SimpleNamespace(get_available_providers=lambda: ["CPUExecutionProvider"])
+            return SimpleNamespace(
+                get_available_providers=lambda: ["CPUExecutionProvider"],
+                register_execution_provider_library=lambda ep, path: None,
+                unregister_execution_provider_library=lambda ep: None,
+                get_ep_devices=lambda: [SimpleNamespace(ep_name="CPUExecutionProvider")],
+            )
+        if name == "onnxruntime_qnn":
+            return SimpleNamespace(
+                __name__=name,
+                get_library_path=lambda: "C:/qnn/onnxruntime_providers_qnn.dll",
+                get_qnn_htp_path=lambda: "C:/qnn/QnnHtp.dll",
+            )
         return SimpleNamespace(__name__=name)
 
     monkeypatch.setattr(preflight_module.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight_module.importlib.metadata, "version", lambda name: "2.0.0")
+    monkeypatch.setattr(Path, "exists", lambda self: True)
 
     result = preflight_module.run_preflight(
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
@@ -102,6 +127,7 @@ def test_preflight_emits_qnn_ep_missing_token_when_ep_not_registered(monkeypatch
     )
 
     assert "ep:QNNExecutionProvider:MISSING" in result.tokens
+    assert "qnn:ep_device:MISSING" in result.tokens
 
 
 def test_preflight_emits_qnn_dll_token_when_qnnhtp_is_discoverable(monkeypatch) -> None:

@@ -13,7 +13,8 @@ _EXTRA_REQUIREMENT_NAMES: dict[str, tuple[str, ...]] = {
     "hw-cpu-base": (),
     "hw-x64-base": ("onnx-asr", "kokoro-onnx", "openwakeword"),
     "hw-x64-ort-cpu": ("onnxruntime",),
-    "hw-arm64-base": ("onnxruntime", "onnx-asr", "kokoro-onnx", "openwakeword"),
+    "hw-arm64-base": ("onnx-asr", "kokoro-onnx", "openwakeword"),
+    "hw-arm64-ort-cpu": ("onnxruntime",),
     "hw-gpu-nvidia-cuda": ("onnxruntime-gpu",),
     "hw-gpu-amd": ("onnxruntime-directml",),
     "hw-gpu-intel": ("onnxruntime-directml",),
@@ -39,6 +40,8 @@ def _extra_reason(profile: HardwareProfile, extra: str) -> str:
         return f"arch={profile.arch}"
     if extra == "hw-arm64-base":
         return f"arch={profile.arch}"
+    if extra == "hw-arm64-ort-cpu":
+        return "arm64 cpu onnxruntime baseline"
     if extra == "hw-gpu-nvidia-cuda":
         return "nvidia gpu with cuda available"
     if extra == "hw-gpu-amd":
@@ -62,6 +65,9 @@ def resolve_required_extras(
 
     if profile.arch == "arm64":
         extras.append("hw-arm64-base")
+        has_accel_ort = profile.npu_available and profile.npu_vendor == "qualcomm"
+        if not has_accel_ort:
+            extras.append("hw-arm64-ort-cpu")
     elif profile.arch == "amd64":
         extras.append("hw-x64-base")
         has_accel_ort = (

@@ -13,7 +13,12 @@ def test_resolver_returns_base_plus_arch_for_cpu_only_x64() -> None:
 def test_resolver_returns_base_plus_arch_for_cpu_only_arm64() -> None:
     profile = HardwareProfile(arch="arm64")
 
-    assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-arm64-base", "dev"]
+    assert resolve_required_extras(profile) == [
+        "hw-cpu-base",
+        "hw-arm64-base",
+        "hw-arm64-ort-cpu",
+        "dev",
+    ]
 
 
 def test_resolver_adds_cuda_for_nvidia_with_cuda() -> None:
@@ -59,7 +64,12 @@ def test_resolver_adds_qnn_for_qualcomm_npu() -> None:
 def test_resolver_omits_qnn_for_non_qualcomm_npu() -> None:
     profile = HardwareProfile(arch="arm64", npu_available=True, npu_vendor="intel")
 
-    assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-arm64-base", "dev"]
+    assert resolve_required_extras(profile) == [
+        "hw-cpu-base",
+        "hw-arm64-base",
+        "hw-arm64-ort-cpu",
+        "dev",
+    ]
 
 
 def test_resolver_never_adds_porcupine_without_opt_in() -> None:

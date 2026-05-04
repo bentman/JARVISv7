@@ -110,10 +110,15 @@ hw-x64-ort-cpu = [
 # ARM64 base. onnxruntime publishes win_arm64 wheels for CPython 3.11-3.14.
 # Applies when platform_machine is ARM64 (Windows) or aarch64 (Linux).
 hw-arm64-base = [
-  "onnxruntime>=1.17; platform_machine=='ARM64' or platform_machine=='aarch64'",
   "onnx-asr>=0.8; platform_machine=='ARM64' or platform_machine=='aarch64'",
   "kokoro-onnx>=0.4; platform_machine=='ARM64' or platform_machine=='aarch64'",
   "openwakeword>=0.6; platform_machine=='ARM64' or platform_machine=='aarch64'",
+]
+
+# ARM64 CPU ONNX Runtime baseline.
+# Selected by provisioning only when ARM64 accelerator-specific ORT package is not selected.
+hw-arm64-ort-cpu = [
+  "onnxruntime>=1.17; platform_machine=='ARM64' or platform_machine=='aarch64'",
 ]
 
 # NVIDIA + CUDA. Resolver applies on NVIDIA hosts with CUDA present.

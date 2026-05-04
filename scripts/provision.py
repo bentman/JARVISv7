@@ -163,6 +163,33 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
         and profile.gpu_vendor == "nvidia"
         and profile.cuda_available
     )
+    arm64_qnn_profile = (
+        profile.arch == "arm64"
+        and profile.npu_available
+        and profile.npu_vendor == "qualcomm"
+    )
+
+    if not cuda_profile and not arm64_qnn_profile:
+        return 0
+
+    if arm64_qnn_profile:
+        uninstall_cpu_ort = [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime"]
+        uninstall_rc = _run_pip_install(uninstall_cpu_ort)
+        if uninstall_rc != 0:
+            return uninstall_rc
+
+        reinstall_qnn_ort = [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "--force-reinstall",
+            "onnxruntime-qnn>=2.0",
+        ]
+        reinstall_rc = _run_pip_install(reinstall_qnn_ort)
+        if reinstall_rc != 0:
+            return reinstall_rc
+
     if not cuda_profile:
         return 0
 
