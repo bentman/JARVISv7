@@ -121,6 +121,7 @@ Thumbs.db
 !/data/memory/
 !/data/sessions/
 !/data/temp/
+!/data/tool_sandbox/
 !/data/turns/
 
 # data/agents (agent ledger; I.2)
@@ -147,6 +148,10 @@ Thumbs.db
 # data/temp
 /data/temp/*
 !/data/temp/.gitkeep
+
+# data/tool_sandbox
+/data/tool_sandbox/*
+!/data/tool_sandbox/.gitkeep
 
 # data/turns
 /data/turns/*
