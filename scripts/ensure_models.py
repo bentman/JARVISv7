@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import io
 import json
 import shutil
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +54,50 @@ def _source_files(entry: ModelEntry) -> list[tuple[str, str]]:
 
 
 def _verify_entry(entry: ModelEntry) -> dict[str, Any]:
+    source = entry.source
+    source_type = source.get("type")
+
+    if source_type == "url_zip":
+        required_files = source.get("required_files_anywhere", [])
+        required_exts = source.get("required_extensions_anywhere", [])
+        if not isinstance(required_files, list) or not all(isinstance(item, str) for item in required_files):
+            raise ValueError(
+                f"model '{entry.name}' has invalid required_files_anywhere metadata for url_zip source"
+            )
+        if not isinstance(required_exts, list) or not all(isinstance(item, str) for item in required_exts):
+            raise ValueError(
+                f"model '{entry.name}' has invalid required_extensions_anywhere metadata for url_zip source"
+            )
+
+        discovered_files = [
+            path for path in entry.local_path.rglob("*") if path.is_file() and path.stat().st_size > 0
+        ]
+        discovered_names = {path.name for path in discovered_files}
+        discovered_exts = {path.suffix.lower() for path in discovered_files}
+
+        missing: list[str] = []
+        for file_name in required_files:
+            if file_name not in discovered_names:
+                missing.append(file_name)
+        for ext in required_exts:
+            normalized = ext.lower()
+            if normalized not in discovered_exts:
+                missing.append(f"*{normalized}")
+
+        present = sorted(str(path.relative_to(entry.local_path)).replace("\\", "/") for path in discovered_files)
+        try:
+            local_path_rel = str(entry.local_path.relative_to(REPO_ROOT))
+        except ValueError:
+            local_path_rel = str(entry.local_path)
+        return {
+            "family": entry.family,
+            "model": entry.name,
+            "local_path": local_path_rel,
+            "present": present,
+            "missing": missing,
+            "ready": not missing,
+        }
+
     missing: list[str] = []
     present: list[str] = []
     for file_name, _source_ref in _source_files(entry):
@@ -143,12 +189,45 @@ def _download_urls(entry: ModelEntry, dry_run: bool) -> list[str]:
     return acquired
 
 
+def _download_url_zip(entry: ModelEntry, dry_run: bool) -> list[str]:
+    source = entry.source
+    url = source.get("url")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError(f"model '{entry.name}' has invalid url for url_zip source")
+
+    if dry_run:
+        required_files = source.get("required_files_anywhere", [])
+        if isinstance(required_files, list) and required_files:
+            return [str(item) for item in required_files if isinstance(item, str)]
+        return ["<archive-extracted>"]
+
+    entry.local_path.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(follow_redirects=True, timeout=300.0) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        payload = response.content
+
+    extracted: list[str] = []
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        for member in archive.infolist():
+            archive.extract(member, path=entry.local_path)
+            if member.is_dir():
+                continue
+            extracted.append(member.filename.replace("\\", "/"))
+
+    if not extracted:
+        raise RuntimeError(f"zip source for model '{entry.name}' extracted no files")
+    return extracted
+
+
 def _ensure_entry(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
     source_type = entry.source.get("type")
     if source_type == "huggingface":
         acquired = _download_huggingface(entry, dry_run)
     elif source_type == "url":
         acquired = _download_urls(entry, dry_run)
+    elif source_type == "url_zip":
+        acquired = _download_url_zip(entry, dry_run)
     else:
         raise ValueError(f"model '{entry.name}' has unsupported source type '{source_type}'")
 

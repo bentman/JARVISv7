@@ -15,7 +15,7 @@ def test_local_runtime_is_available_returns_false():
 
 
 def test_local_runtime_generate_raises_not_implemented():
-    with pytest.raises(NotImplementedError, match="H.1"):
+    with pytest.raises(NotImplementedError, match="M.1"):
         LlamaCppLLM().generate("hello")
 
 

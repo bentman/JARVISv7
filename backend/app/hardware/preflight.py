@@ -232,6 +232,7 @@ def _probe_qnn_capability(
         else:
             if qnn_library_path.exists():
                 tokens.append("qnn:plugin_library")
+                tokens.append(f"qnn:backend_path:{qnn_library_path}")
             else:
                 tokens.append("qnn:plugin_library:MISSING")
 
