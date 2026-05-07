@@ -26,7 +26,9 @@ $env:TMPDIR = "$PWD\cache\temp"
 $env:PIP_CACHE_DIR = "$PWD\cache\pip"
 New-Item -ItemType Directory -Force $env:TEMP, $env:PIP_CACHE_DIR | Out-Null
 
-py -3.12 -m venv backend\.venv
+$pyVersionRaw = (py --version)                         # e.g., "Python 3.13.13"
+$pyVersionMM = (($pyVersionRaw -split '\s+')[-1] -split '\.')[0..1] -join '.'
+py -$pyVersionMM -m venv backend\.venv
 backend\.venv\Scripts\python -m pip install --upgrade pip
 backend\.venv\Scripts\python scripts\bootstrap.py
 backend\.venv\Scripts\python scripts\ensure_models.py --verify-only
