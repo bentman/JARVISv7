@@ -10,7 +10,7 @@ from backend.app.models.catalog import get_model_path
 from backend.app.runtimes.stt.base import STTBase
 
 
-QNN_STT_DEFERRED_REASON = "QNN STT inference deferred to H.2"
+QNN_STT_DEFERRED_REASON = "QNN STT inference deferred to H.3.2"
 
 
 def providers_for_device(device: str) -> list[str]:
@@ -144,5 +144,5 @@ class QnnWhisperRuntime(STTBase):
         _ = self._load_decoder_session()
 
         # Full transcription (audio preprocessing, tokenization, decoder loop)
-        # deferred to H.2 when inference logic is implemented
+        # deferred to H.3.2 when inference logic is implemented
         raise NotImplementedError("QNN Whisper transcription deferred to H.3.2")

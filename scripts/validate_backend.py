@@ -494,7 +494,7 @@ def main(argv: list[str] | None = None) -> int:
         started_at = _current_timestamp()
         report_path = VALIDATION_DIR / f"{_timestamp_slug()}-regression.txt"
         xml_path = _regression_temp_xml_path()
-        command = _build_pytest_command(_regression_targets())
+        command = _build_pytest_command(_regression_targets(), marker_expr="not live")
         command.extend(["--junitxml", str(xml_path)])
 
         print(f"JARVISv7 Backend Regression Validation started at {started_at}")
