@@ -20,6 +20,11 @@ from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
 from backend.app.hardware.preflight import run_preflight
 from backend.app.hardware.provisioning import resolve_required_extras
+from backend.app.hardware.readiness import (
+    derive_stt_device_readiness,
+    derive_tts_device_readiness,
+    derive_wake_device_readiness,
+)
 
 REPORTS_DIR = APP_REPO_ROOT / "reports"
 DIAGNOSTICS_DIR = REPORTS_DIR / "diagnostics"
@@ -43,8 +48,19 @@ def _load_context():
     return report, extras, preflight
 
 
-def _current_readiness_summary(preflight) -> str:
-    status = "ready" if not preflight.probe_errors else "degraded"
+def _current_readiness_summary(profile, preflight) -> str:
+    stt_device, stt_ready, _ = derive_stt_device_readiness(preflight, profile)
+    _tts_device, tts_ready, _ = derive_tts_device_readiness(preflight, profile)
+    _wake_device, wake_ready, _ = derive_wake_device_readiness(preflight, profile)
+
+    selected_path_ready = stt_ready and tts_ready and wake_ready
+
+    stt_path_probe_error = stt_device == "qnn" and any(
+        key.startswith("onnxruntime.qnn") or key == "onnxruntime-qnn"
+        for key in preflight.probe_errors
+    )
+
+    status = "ready" if selected_path_ready and not stt_path_probe_error else "degraded"
     return f"{status}; tokens={len(preflight.tokens)}"
 
 
@@ -434,7 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(level="DEBUG" if args.verbose else "INFO", trace_to=args.trace_to)
 
     report, extras, preflight = _load_context()
-    readiness = _current_readiness_summary(preflight)
+    readiness = _current_readiness_summary(report.profile, preflight)
     fingerprint_line = _capture_host_fingerprint(report.profile, extras, readiness=readiness)
     print(fingerprint_line)
 

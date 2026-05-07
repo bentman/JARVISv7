@@ -172,11 +172,11 @@ def test_stt_readiness_reports_qnn_defined_and_selects_cpu_with_h2_reason() -> N
     assert "H.2" in reason
 
 
-def test_stt_readiness_reason_string_names_slice_h2_by_identifier() -> None:
+def test_stt_readiness_selects_qnn_when_all_qnn_tokens_proven() -> None:
     selected_device, ready, reason = derive_stt_device_readiness(
         _preflight("import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"),
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
     )
 
-    assert (selected_device, ready) == ("cpu", True)
-    assert reason == "qnn proven but inference runtime pending (slice H.2); selecting cpu"
+    assert (selected_device, ready) == ("qnn", True)
+    assert reason == "qnn prerequisites proven; selecting qnn"

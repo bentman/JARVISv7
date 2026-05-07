@@ -111,34 +111,24 @@ class QnnWhisperRuntime(STTBase):
     def _load_encoder_session(self) -> Any:
         """Load encoder session with QNN provider."""
         if self._encoder_session is None:
-            encoder_path = self._find_model_file("encoder_model.onnx")
+            encoder_path = self._find_model_file("encoder.onnx")
             self._encoder_session, _ = create_qnn_session(encoder_path, disable_cpu_fallback=True)
         return self._encoder_session
 
     def _load_decoder_session(self) -> Any:
         """Load decoder session with QNN provider."""
         if self._decoder_session is None:
-            decoder_path = self._find_model_file("decoder_model_merged.onnx")
+            decoder_path = self._find_model_file("decoder.onnx")
             self._decoder_session, _ = create_qnn_session(decoder_path, disable_cpu_fallback=True)
         return self._decoder_session
 
     def is_available(self) -> bool:
         """Check if all required model files are present."""
         required = (
-            "encoder_model.onnx",
-            "decoder_model_merged.onnx",
-            "config.json",
-            "generation_config.json",
-            "preprocessor_config.json",
-            "tokenizer.json",
-            "tokenizer_config.json",
-            "special_tokens_map.json",
-            "vocab.json",
-            "merges.txt",
-            "normalizer.json",
-            "added_tokens.json",
+            "encoder.onnx",
+            "decoder.onnx",
         )
-        return all((self.model_path / filename).is_file() for filename in required)
+        return all(any(path.is_file() for path in self.model_path.rglob(filename)) for filename in required)
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         """Transcribe audio using QNN-accelerated Whisper encoder/decoder.
@@ -155,4 +145,4 @@ class QnnWhisperRuntime(STTBase):
 
         # Full transcription (audio preprocessing, tokenization, decoder loop)
         # deferred to H.2 when inference logic is implemented
-        raise NotImplementedError("QNN Whisper transcription deferred to H.2")
+        raise NotImplementedError("QNN Whisper transcription deferred to H.3.2")

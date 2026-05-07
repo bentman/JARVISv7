@@ -8,7 +8,7 @@ from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.hardware.readiness import derive_stt_device_readiness
 from backend.app.runtimes.stt.base import STTBase
-from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
+from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime, QnnWhisperRuntime
 
 
 class DegradedSTTRuntime(STTBase):
@@ -27,4 +27,6 @@ def select_stt_runtime(preflight: PreflightResult, profile: HardwareProfile) -> 
     device, ready, reason = derive_stt_device_readiness(preflight, profile)
     if not ready:
         return DegradedSTTRuntime(reason=reason, device=device)
+    if device == "qnn":
+        return QnnWhisperRuntime(model_name="whisper-tiny-qnn-precompiled-snapdragon-x-elite")
     return OnnxWhisperRuntime(device=device)
