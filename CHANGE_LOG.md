@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-07 19:22
+  - Summary: Windows x64 H.2 live-gate collection behavior was corrected by removing module-scope `onnx` import from `backend/tests/runtime/hardware/test_qnn_gate_live.py` and moving `onnx` imports into ONNX-dependent helper execution paths so ARM64/live/QNN gating can skip correctly on x64 during collection. H.2 strict proof semantics were preserved (CPU fallback disabled, QNN primary-provider assertion, EPContext diagnostics, helper/direct comparison diagnostics).
+  - Scope: `backend/tests/runtime/hardware/test_qnn_gate_live.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`101 passed, 3 deselected in 0.91s`); `backend\.venv\Scripts\python -m pytest backend/tests/runtime/hardware/test_qnn_gate_live.py -q` PASS (`3 skipped in 0.57s`); `backend\.venv\Scripts\python -m pytest backend/tests/unit/hardware/test_qnn_prerequisite.py backend/tests/unit/hardware/test_qnn_slot.py -q` PASS (`11 passed in 0.02s`).
+  - Note: This entry records only the x64 collection/skip fix and does not claim H.3 work.
+
 - 2026-05-07 15:05
   - Summary: Final H.2 corrective/pass was completed on Windows ARM64: the H.2 live-gate provider assertion was corrected from an exact-provider-list requirement to a primary-provider requirement, matching ONNX Runtime provider-priority semantics. H.2 QNN prerequisite/live gate is now PASS with CPU fallback still disabled, QNN primary for encoder/decoder, and regression remained PASS; H.3 may resume.
   - Scope: `pyproject.toml`, `scripts/validate_backend.py`, `backend/app/hardware/qnn_provider.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/unit/hardware/test_qnn_prerequisite.py`, `backend/tests/unit/hardware/test_qnn_slot.py` (preserved intact), `backend/tests/runtime/hardware/test_qnn_session_init_live.py` (removed)

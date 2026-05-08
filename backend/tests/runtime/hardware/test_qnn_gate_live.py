@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import onnx
 import onnxruntime
 import pytest
 
@@ -19,6 +18,8 @@ def _find_required_model_file(root: Path, filename: str) -> Path:
 
 
 def _summarize_onnx_model(path: Path) -> dict[str, object]:
+    import onnx
+
     model = onnx.load(str(path))
     op_types = sorted({node.op_type for node in model.graph.node})
     epcontext_present = any(node.op_type == "EPContext" for node in model.graph.node)
@@ -43,6 +44,8 @@ def _normalize_attribute_value(value: object) -> object:
 
 
 def _collect_epcontext_diagnostics(onnx_path: Path, artifact_root: Path) -> dict[str, object]:
+    import onnx
+
     model = onnx.load(str(onnx_path))
     ep_nodes = [node for node in model.graph.node if node.op_type == "EPContext"]
 
