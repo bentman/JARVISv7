@@ -21,6 +21,7 @@ def test_selector_returns_cpu_runtime_when_readiness_says_cpu():
 
     assert isinstance(runtime, KokoroOnnxRuntime)
     assert runtime.device == "cpu"
+    assert runtime.voice == "bf_isabella"
 
 
 def test_selector_returns_null_runtime_when_tts_not_ready():
@@ -82,6 +83,16 @@ def test_kokoro_runtime_uses_kokoro_helper(monkeypatch, tmp_path):
         (str(model_path / "kokoro-v1.0.onnx"), str(model_path / "voices-v1.0.bin")),
         ("hello world", "af_heart"),
     ]
+
+
+def test_selector_uses_configured_yaml_voice_for_kokoro_runtime():
+    preflight = PreflightResult(tokens=["import:kokoro_onnx"], dll_discovery_log=[], probe_errors={})
+    profile = HardwareProfile()
+
+    runtime = select_tts_runtime(preflight, profile)
+
+    assert isinstance(runtime, KokoroOnnxRuntime)
+    assert runtime.voice == "bf_isabella"
 
 
 def test_kokoro_runtime_is_unavailable_when_model_files_missing(tmp_path):

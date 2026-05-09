@@ -18,6 +18,28 @@
 
 ## Entries
 
+- 2026-05-09 13:10
+  - Summary: Removed personality-derived text injection from the active final prompt path while preserving personality as structured metadata for loading, selection, desktop display, session state, and turn artifacts. Prompt/response engine architecture was preserved.
+  - Scope: `backend/app/cognition/prompt_assembler.py`, `backend/app/conversation/engine.py`, `backend/app/personality/adapter.py`, `config/personality/concise.yaml`, `config/personality/warm.yaml`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/unit/personality/test_personality.py`
+  - Host class(es): Windows ARM64
+  - Evidence: `backend/.venv/Scripts/python -m pytest backend/tests/unit/cognition/test_prompt_assembler.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/personality/test_personality.py -q` PASS (`48 passed in 0.31s`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`102 passed, 2 deselected in 1.07s`); validator summary `[PASS] JARVISv7 backend regression is validated!`.
+  - Note: Removed prompt lines for Assistant/Tone/Brevity/system_prompt_addendum, removed active `apply_personality(...)` mutation from reasoning path, converted `apply_personality(...)` to pass-through, and cleared prompt-instruction residue in concise/warm personality configs. Personality metadata behavior remains intact, including `active_personality_profile_id` in turn artifacts. Prompt assembly still preserves working memory, retrieved context, tool execution context, and user transcript.
+
+- 2026-05-09 12:34
+  - Summary: Completed documentation of a focused cleanup batch covering normal readiness wording/user-facing copy, TTS configured-voice wiring, and desktop layout usability compaction. Runtime guardrails and diagnostics/preflight strings were preserved.
+  - Scope:
+    - Readiness wording cleanup: `backend/app/hardware/readiness.py`, `backend/tests/unit/hardware/test_qnn_slot.py`, `backend/tests/unit/hardware/test_readiness.py`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+    - TTS configured voice wiring: `config/models/tts.yaml`, `backend/app/runtimes/tts/tts_runtime.py`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`
+    - Desktop layout usability cleanup (CSS-only): `desktop/src/style.css`
+  - Host class(es): Windows ARM64
+  - Evidence:
+    - `backend\\.venv\\Scripts\\python -m pytest backend/tests/unit/hardware/test_qnn_slot.py backend/tests/unit/hardware/test_readiness.py -q` PASS (`15 passed in 0.03s`)
+    - `backend\\.venv\\Scripts\\python -m pytest backend/tests/unit/hardware/test_qnn_slot.py backend/tests/unit/hardware/test_readiness.py backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (`27 passed in 0.10s`)
+    - `backend\\.venv\\Scripts\\python -m pytest backend/tests/unit/runtimes/tts/test_tts_runtime.py -q` PASS (`9 passed in 0.06s`)
+    - `backend\\.venv\\Scripts\\python -m pytest backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (`12 passed in 0.02s`)
+    - `backend\\.venv\\Scripts\\python scripts/validate_backend.py regression` PASS (`102 passed, 2 deselected in 1.02s`)
+  - Note: ARM64 STT normal readiness now reports effective usable CPU-path wording (instead of QNN prerequisite/deferred/H.3 user-facing wording), and LLM normal readiness now reports `local runtime unavailable`; desktop deferred shell-audio/wake/resident/global-hotkeys footer wording was removed. QNN STT activation was not revisited. Runtime behavior and selector behavior were preserved except that configured TTS voice is now passed from YAML into `KokoroOnnxRuntime` construction (direct runtime constructor default remains fallback-only). Desktop layout cleanup was CSS-only. Personality prompt behavior was not changed in this cleanup batch.
+
 - 2026-05-09 20:37
   - Summary: Completed STT/QNN cleanup by removing the QNN Tiny STT catalog artifact dependency from active runtime/test paths and preserving QNN STT as explicitly deferred. Also removed catalog-owned model-ID constructor defaults in STT/TTS/Wake runtimes so defaults resolve through model catalogs when `model_name` is unset.
   - Scope: `config/models/stt.yaml`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/stt/stt_runtime.py`, `backend/app/runtimes/tts/kokoro_onnx_runtime.py`, `backend/app/runtimes/wake/openwakeword_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`

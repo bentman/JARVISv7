@@ -15,13 +15,8 @@ def assemble_prompt(
     *,
     retrieved_context: list[RetrievedFact] | None = None,
 ) -> str:
-    parts: list[str] = [
-        f"Assistant: {personality.display_name}",
-        f"Tone: {personality.tone}",
-        f"Brevity: {personality.brevity}",
-    ]
-    if personality.system_prompt_addendum.strip():
-        parts.append(personality.system_prompt_addendum.strip())
+    _ = personality
+    parts: list[str] = []
     if working_memory:
         parts.append("Working memory:")
         parts.extend(f"- {line}" for line in working_memory)
