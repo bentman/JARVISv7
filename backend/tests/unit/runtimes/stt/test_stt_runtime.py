@@ -75,10 +75,10 @@ def test_qnn_branch_raises_not_implemented_without_loading_session():
 
     assert not runtime.is_available()
     assert runtime._model is None
-    with pytest.raises(NotImplementedError, match="H.2"):
+    with pytest.raises(NotImplementedError, match="H.3.2"):
         runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000)
     assert runtime._model is None
-    assert QNN_STT_DEFERRED_REASON.endswith("H.2")
+    assert QNN_STT_DEFERRED_REASON.endswith("H.3.2")
 
 
 def test_onnx_whisper_runtime_accepts_device_parameter():

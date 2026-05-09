@@ -22,19 +22,3 @@ models:
         normalizer.json: normalizer.json
         added_tokens.json: added_tokens.json
     local_path: models/stt/whisper-small-onnx
-
-  whisper-tiny-qnn-precompiled-snapdragon-x-elite:
-    family: stt
-    runtime: qnn_whisper
-    devices: [qnn]
-    source:
-      type: url_zip
-      url: https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/whisper_tiny/releases/v0.52.0/whisper_tiny-precompiled_qnn_onnx-float-qualcomm_snapdragon_x_elite.zip
-      required_files_anywhere:
-        - encoder.onnx
-        - decoder.onnx
-      required_extensions_anywhere:
-        - .onnx
-        - .bin
-      note: "Qualcomm Whisper-Tiny PRECOMPILED_QNN_ONNX artifact for Snapdragon X Elite; preserve extracted layout"
-    local_path: models/stt/whisper-tiny-qnn-precompiled-snapdragon-x-elite

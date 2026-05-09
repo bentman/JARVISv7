@@ -18,6 +18,12 @@
 
 ## Entries
 
+- 2026-05-09 20:37
+  - Summary: Completed STT/QNN cleanup by removing the QNN Tiny STT catalog artifact dependency from active runtime/test paths and preserving QNN STT as explicitly deferred. Also removed catalog-owned model-ID constructor defaults in STT/TTS/Wake runtimes so defaults resolve through model catalogs when `model_name` is unset.
+  - Scope: `config/models/stt.yaml`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/stt/stt_runtime.py`, `backend/app/runtimes/tts/kokoro_onnx_runtime.py`, `backend/app/runtimes/wake/openwakeword_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`
+  - Host class(es): Windows ARM64
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS (`ready=true`); `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families stt,tts,wake` PASS (`11 passed, 15 deselected, 1 warning`); `backend\.venv\Scripts\python -m pytest backend/tests/unit/runtimes/stt/test_stt_runtime.py backend/tests/unit/runtimes/tts/test_tts_runtime.py backend/tests/unit/runtimes/wake/test_wake_runtime.py -q` PASS (`26 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`102 passed, 2 deselected`).
+
 - 2026-05-09 18:58
   - Summary: Fixed `scripts/provision.py verify` false missing-package drift by applying consistent canonical package-name normalization for expected and installed requirement names.
   - Scope: `scripts/provision.py`, `backend/tests/unit/scripts/test_provision_script.py`

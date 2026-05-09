@@ -19,7 +19,7 @@ class OpenWakeWordRuntime(WakeBase):
         device: str = "cpu",
         model_path: Path | None = None,
         threshold: float | None = None,
-        model_name: str = "openwakeword-hey-jarvis",
+        model_name: str | None = None,
     ) -> None:
         entry = get_model_entry("wake", model_name)
         super().__init__(device=device, model_path=model_path or entry.local_path)

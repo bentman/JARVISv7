@@ -30,7 +30,7 @@ class OnnxWhisperRuntime(STTBase):
         self,
         device: str = "cpu",
         model_path: Path | None = None,
-        model_name: str = "whisper-small-onnx",
+        model_name: str | None = None,
     ) -> None:
         super().__init__(device=device, model_path=model_path or get_model_path("stt", model_name))
         self.model_name = model_name
@@ -92,7 +92,7 @@ class QnnWhisperRuntime(STTBase):
         self,
         device: str = "qnn",
         model_path: Path | None = None,
-        model_name: str = "whisper-tiny-qnn-precompiled-snapdragon-x-elite",
+        model_name: str | None = None,
     ) -> None:
         if device != "qnn":
             raise ValueError(f"QnnWhisperRuntime requires device='qnn', got '{device}'")

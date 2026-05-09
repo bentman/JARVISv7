@@ -17,7 +17,7 @@ class KokoroOnnxRuntime(TTSBase):
         self,
         device: str = "cpu",
         model_path: Path | None = None,
-        model_name: str = "kokoro-v1.0-onnx",
+        model_name: str | None = None,
         voice: str = "af_heart",
     ) -> None:
         super().__init__(device=device, model_path=model_path or get_model_path("tts", model_name))
