@@ -89,3 +89,23 @@ def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) ->
 
     assert exit_code == 1
     assert "missing" in output
+
+
+def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("arm64")))
+    monkeypatch.setattr(
+        provision,
+        "_expected_distribution_names",
+        lambda profile, include_porcupine: {"pre_commit", "huggingface_hub", "python_dotenv"},
+    )
+    monkeypatch.setattr(
+        provision,
+        "_installed_distribution_names",
+        lambda: {"pre_commit", "huggingface_hub", "python_dotenv"},
+    )
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "missing" not in output

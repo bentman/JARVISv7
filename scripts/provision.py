@@ -53,8 +53,12 @@ def _installed_distribution_names() -> set[str]:
         metadata = distribution.metadata
         name = metadata.get("Name")
         if name:
-            names.add(str(name).strip().lower())
+            names.add(_canonicalize_package_name(str(name)))
     return names
+
+
+def _canonicalize_package_name(name: str) -> str:
+    return name.strip().lower().replace("-", "_").replace(".", "_")
 
 
 def _normalize_requirement_name(requirement: str) -> str:
@@ -64,7 +68,7 @@ def _normalize_requirement_name(requirement: str) -> str:
     for separator in ("<", ">", "=", "!", " "):
         if separator in candidate:
             candidate = candidate.split(separator, 1)[0]
-    return candidate.strip().lower()
+    return _canonicalize_package_name(candidate)
 
 
 def _build_pip_install_command(extras: list[str], include_porcupine: bool = False) -> list[str]:
@@ -146,7 +150,9 @@ def _expected_distribution_names(profile: HardwareProfile, include_porcupine: bo
         if _normalize_requirement_name(requirement)
     }
     expected.update(
-        resolve_required_requirement_names(profile, include_porcupine=include_porcupine)
+        _canonicalize_package_name(name)
+        for name in resolve_required_requirement_names(profile, include_porcupine=include_porcupine)
+        if _canonicalize_package_name(name)
     )
     return expected
 

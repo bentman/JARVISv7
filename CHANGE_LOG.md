@@ -18,6 +18,12 @@
 
 ## Entries
 
+- 2026-05-09 18:58
+  - Summary: Fixed `scripts/provision.py verify` false missing-package drift by applying consistent canonical package-name normalization for expected and installed requirement names.
+  - Scope: `scripts/provision.py`, `backend/tests/unit/scripts/test_provision_script.py`
+  - Host class(es): Windows ARM64
+  - Evidence: Pre-changelog status `git status --short` showed only `M backend/tests/unit/scripts/test_provision_script.py` and `M scripts/provision.py`; `backend\.venv\Scripts\python scripts\provision.py verify` PASS with no `missing` output; `backend\.venv\Scripts\python -m pytest backend/tests/unit/scripts/test_provision_script.py -q` PASS (`6 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`102 passed, 3 deselected`).
+
 - 2026-05-07 19:22
   - Summary: Windows x64 H.2 live-gate collection behavior was corrected by removing module-scope `onnx` import from `backend/tests/runtime/hardware/test_qnn_gate_live.py` and moving `onnx` imports into ONNX-dependent helper execution paths so ARM64/live/QNN gating can skip correctly on x64 during collection. H.2 strict proof semantics were preserved (CPU fallback disabled, QNN primary-provider assertion, EPContext diagnostics, helper/direct comparison diagnostics).
   - Scope: `backend/tests/runtime/hardware/test_qnn_gate_live.py`
