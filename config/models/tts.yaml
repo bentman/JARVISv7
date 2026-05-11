@@ -5,7 +5,7 @@ models:
     family: tts
     runtime: kokoro_onnx
     devices: [cpu, cuda, directml]
-    voice: af_heart
+    voice: bf_isabella
     sample_rate: 24000
     source:
       type: url

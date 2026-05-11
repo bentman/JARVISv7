@@ -70,14 +70,14 @@ def test_tts_readiness_selects_cpu_when_kokoro_onnx_imported() -> None:
     assert "import:kokoro_onnx" in reason
 
 
-def test_llm_readiness_is_pending_in_slice_a_reports_unavailable_with_reason() -> None:
+def test_llm_readiness_reports_plain_unavailable_reason() -> None:
     selected_device, ready, reason = derive_llm_device_readiness(
         _preflight("import:onnxruntime"),
         _profile(os_name="linux", arch="amd64"),
     )
 
     assert (selected_device, ready) == ("cpu", False)
-    assert "deferred in slice_a" in reason
+    assert reason == "local runtime unavailable"
 
 
 def test_wake_readiness_selects_cpu_when_openwakeword_imported() -> None:

@@ -162,21 +162,21 @@ def test_preflight_emits_qnn_dll_token_when_qnnhtp_is_discoverable(monkeypatch) 
     assert "dll:QnnHtp" in result.tokens
 
 
-def test_stt_readiness_reports_qnn_defined_and_selects_cpu_with_h2_reason() -> None:
+def test_stt_readiness_reports_qnn_defined_and_selects_cpu_with_deferred_qnn_reason() -> None:
     selected_device, ready, reason = derive_stt_device_readiness(
         _preflight("import:onnxruntime-qnn:MISSING", "ep:QNNExecutionProvider:MISSING", "dll:QnnHtp:MISSING"),
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
     )
 
     assert (selected_device, ready) == ("cpu", True)
-    assert "H.2" in reason
+    assert reason == "selecting cpu"
 
 
-def test_stt_readiness_selects_qnn_when_all_qnn_tokens_proven() -> None:
+def test_stt_readiness_reports_cpu_when_qnn_tokens_are_proven_but_inference_is_deferred() -> None:
     selected_device, ready, reason = derive_stt_device_readiness(
         _preflight("import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"),
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
     )
 
-    assert (selected_device, ready) == ("qnn", True)
-    assert reason == "qnn prerequisites proven; selecting qnn"
+    assert (selected_device, ready) == ("cpu", True)
+    assert reason == "selecting cpu"

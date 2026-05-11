@@ -26,8 +26,8 @@ def derive_stt_device_readiness(
             )
         )
         if qnn_tokens_present:
-            return ("qnn", True, "qnn prerequisites proven; selecting qnn")
-        return ("cpu", True, "qnn defined; STT QNN inference pending H.2")
+            return ("cpu", True, "selecting cpu")
+        return ("cpu", True, "selecting cpu")
 
     if (
         profile.gpu_vendor == "nvidia"
@@ -63,8 +63,8 @@ def derive_llm_device_readiness(
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
     if _has_token(preflight, "import:onnxruntime"):
-        return ("cpu", False, "llm runtime deferred in slice_a; import:onnxruntime present")
-    return ("cpu", False, "llm runtime deferred in slice_a; import:onnxruntime:MISSING")
+        return ("cpu", False, "local runtime unavailable")
+    return ("cpu", False, "local runtime unavailable")
 
 
 def derive_wake_device_readiness(

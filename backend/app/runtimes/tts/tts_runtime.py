@@ -7,6 +7,7 @@ import numpy as np
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.hardware.readiness import derive_tts_device_readiness
+from backend.app.models.catalog import get_model_entry
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.kokoro_onnx_runtime import KOKORO_SAMPLE_RATE, KokoroOnnxRuntime
 
@@ -37,4 +38,8 @@ def select_tts_runtime(preflight: PreflightResult, profile: HardwareProfile) -> 
     device, ready, reason = derive_tts_device_readiness(preflight, profile)
     if not ready:
         return NullTTSRuntime(reason=reason, device=device)
+    model_entry = get_model_entry("tts")
+    configured_voice = model_entry.config.get("voice")
+    if isinstance(configured_voice, str) and configured_voice.strip():
+        return KokoroOnnxRuntime(device=device, voice=configured_voice.strip())
     return KokoroOnnxRuntime(device=device)

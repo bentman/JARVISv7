@@ -36,10 +36,7 @@ def test_adapter_appends_all_behavioral_guidance_without_profile_id():
 
     prompt = apply_personality("prompt", profile)
 
-    assert "Maintain a direct tone" in prompt
-    assert "Keep responses terse" in prompt
-    assert "Use semi-formal formality" in prompt
-    assert "concise" not in prompt
+    assert prompt == "prompt"
 
 
 def test_adapter_uses_non_empty_addendum_once():
@@ -48,7 +45,7 @@ def test_adapter_uses_non_empty_addendum_once():
 
     prompt = apply_personality(f"prompt\n{addendum}", profile)
 
-    assert prompt.count(addendum) == 1
+    assert prompt == f"prompt\n{addendum}"
 
 
 def test_list_personality_profiles_loads_all_configured_profiles():

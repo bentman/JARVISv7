@@ -17,7 +17,6 @@ from backend.app.conversation.turn_manager import TurnContext
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
-from backend.app.personality.adapter import apply_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
@@ -151,7 +150,6 @@ class TurnEngine:
                 working_memory=working_memory,
                 retrieved_context=retrieved_context,
             )
-            prompt = apply_personality(prompt, self.personality)
 
             tool_results: list[ToolResult] = []
             if tool_name is not None:

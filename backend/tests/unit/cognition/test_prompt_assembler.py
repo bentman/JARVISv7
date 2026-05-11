@@ -15,10 +15,10 @@ def test_assemble_includes_transcript():
     assert "User: hello world" in prompt
 
 
-def test_assemble_includes_personality_addendum_when_set():
+def test_assemble_ignores_personality_addendum_for_prompt_content():
     prompt = assemble_prompt("hello", _profile("Use a calm voice."))
 
-    assert "Use a calm voice." in prompt
+    assert "Use a calm voice." not in prompt
 
 
 def test_assemble_includes_working_memory_lines_when_provided():

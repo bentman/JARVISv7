@@ -179,23 +179,17 @@ def test_text_turn_returns_response_for_known_prompt():
     assert result.transcript == "hello world"
     assert result.response_text == "hello"
     assert result.failure_reason is None
-    assert "Prefer direct answers." in llm.prompts[0]
+    assert llm.prompts[0] == "User: hello world"
 
 
-def test_personality_adapter_reaches_live_prompt_path_without_duplication():
+def test_personality_prompt_injection_is_not_applied_in_live_prompt_path():
     llm = FakeLLM(response="styled")
 
     result = _engine(llm=llm).run_text_turn("style check")
 
     prompt = llm.prompts[0]
     assert result.final_state == ConversationState.IDLE
-    assert "Tone: professional" in prompt
-    assert "Brevity: concise" in prompt
-    assert "Prefer direct answers." in prompt
-    assert "Maintain a professional tone." in prompt
-    assert "Keep responses concise." in prompt
-    assert "Use semi-formal formality." in prompt
-    assert prompt.count("Prefer direct answers.") == 1
+    assert prompt == "User: style check"
 
 
 def test_voice_turn_calls_stt_then_llm():
