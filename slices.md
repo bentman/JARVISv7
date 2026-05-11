@@ -68,7 +68,7 @@ Group H — Voice Acceleration
   H.0  Voice acceleration viability census (non-mutating; produces device/host state table)
   H.1  STT CPU baseline reconfirmation post-G
   H.2  ARM64 QNN prerequisite gate (QNN provider/HTP discovery + proven QNN-compatible Whisper artifact path)
-  H.3  ARM64 QNN STT activation
+  H.3  ARM64 QNN STT activation (requires H.2 PASS + pre-qual: 2026-05-11-slice_h.3_pre-qual.md)
   H.4  x64 CUDA STT readiness / regression guard
   H.5  Windows DirectML voice viability gate
   H.6  DirectML STT/TTS device option activation where H.5 proved viable
@@ -1021,7 +1021,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Why here.** QNN slot was defined in A.6. Before activation code is written, QNN prerequisite enablement must be proven: provider/plugin discovery, HTP backend discovery, and a proven QNN-compatible Whisper artifact/runtime contract path.
 
-**Goal.** Confirmed: QAIRT SDK installed, `QnnHtp.dll` discoverable, and a proven QNN-compatible Whisper artifact/runtime contract (for example `whisper-small-qnn-qdq`, QNN-compatible QDQ artifact, or precompiled QNN ONNX artifact) is available for ARM64 QNN STT.
+**Goal.** Confirmed: QAIRT SDK installed, `QnnHtp.dll` discoverable, and a proven QNN-compatible Whisper artifact via `qai_hub_models` (`whisper_base_en`, `precompiled_qnn_onnx`, `qualcomm-snapdragon-x-elite`) is available for ARM64 QNN STT. Full acquisition procedure in `2026-05-11-slice_h.3_pre-qual.md`.
 
 **Scope.**
 - Non-mutating verification: `QAIRT_SDK_PATH` set, DLL probe succeeds, `onnxruntime-qnn` imports on ARM64.
