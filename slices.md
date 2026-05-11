@@ -67,7 +67,7 @@ Group G — Cross-Session Episodic Retrieval
 Group H — Voice Acceleration
   H.0  Voice acceleration viability census (non-mutating; produces device/host state table)
   H.1  STT CPU baseline reconfirmation post-G
-  H.2  ARM64 QNN prerequisite gate (QNN provider/HTP discovery + proven QNN-compatible Whisper artifact path)
+  H.2  ARM64 QNN prerequisite gate (QNN provider/HTP discovery gate only)
   H.3  ARM64 QNN STT activation (requires H.2 PASS + pre-qual: 2026-05-11-slice_h.3_pre-qual.md)
   H.4  x64 CUDA STT readiness / regression guard
   H.5  Windows DirectML voice viability gate
@@ -1019,13 +1019,14 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ## H.2 — ARM64 QNN Prerequisite Gate
 
-**Why here.** QNN slot was defined in A.6. Before activation code is written, QNN prerequisite enablement must be proven: provider/plugin discovery, HTP backend discovery, and a proven QNN-compatible Whisper artifact/runtime contract path.
+**Why here.** QNN slot was defined in A.6. Before activation code is written, QNN prerequisite enablement must be proven: provider/plugin discovery and HTP backend discovery.
 
-**Goal.** Confirmed: QAIRT SDK installed, `QnnHtp.dll` discoverable, and a proven QNN-compatible Whisper artifact via `qai_hub_models` (`whisper_base_en`, `precompiled_qnn_onnx`, `qualcomm-snapdragon-x-elite`) is available for ARM64 QNN STT. Full acquisition procedure in `2026-05-11-slice_h.3_pre-qual.md`.
+**Goal.** Confirmed: QAIRT SDK installed and `QnnHtp.dll` discoverable so ARM64 QNN environment/provider readiness is proven.
 
 **Scope.**
 - Non-mutating verification: `QAIRT_SDK_PATH` set, DLL probe succeeds, `onnxruntime-qnn` imports on ARM64.
 - H.2 owns environment and provider gate only: DLL discoverability + `QNNExecutionProvider` registration. Artifact acquisition and session proof are owned by the H.3 pre-qual (`2026-05-11-slice_h.3_pre-qual.md`).
+- H.3 pre-qual owns artifact acquisition, artifact layout proof, encoder/decoder QNN session loading, tensor contract capture, and one-step decode viability.
 - If any prerequisite is missing: close H.2 as `SKIP-prereq-missing` with an explicit checklist of what is missing. H.3 pre-qual cannot start until H.2 closes as `PASS`.
 
 **Acceptance.** Gate closes as `PASS` (all prerequisites confirmed) or `SKIP-prereq-missing` (missing items documented). `BLOCKED-*` is not an acceptable state.
@@ -1039,7 +1040,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 **Goal.** Voice turn on the Qualcomm ARM64 host completes with `selected_device="qnn"` for STT. CPU-EP regression still green on the same host.
 
 **Scope.**
-- Activate QNN STT by loading the proven artifact from H.2 and selecting QNN only when readiness and artifact proof are both present.
+- Activate QNN STT by loading the artifact proven by H.3 pre-qual and selecting QNN only when readiness and artifact proof are both present.
 - Use existing ONNX Whisper runtime only if its model contract is compatible with the proven artifact layout; otherwise add a narrow QNN/Qualcomm STT adapter.
 - Populate the QNN Whisper catalog entry for the proven artifact path.
 - Preflight owns QAIRT DLL discovery (extends A.3 pattern).
