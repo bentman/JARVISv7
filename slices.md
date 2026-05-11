@@ -1025,8 +1025,8 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Scope.**
 - Non-mutating verification: `QAIRT_SDK_PATH` set, DLL probe succeeds, `onnxruntime-qnn` imports on ARM64.
-- QNN-compatible artifact acquisition/build and proof path must be documented and must establish compatibility before activation.
-- If any prerequisite is missing: close H.2 as `SKIP-prereq-missing` with an explicit checklist of what is missing. H.3 cannot start until H.2 closes as `PASS`.
+- H.2 owns environment and provider gate only: DLL discoverability + `QNNExecutionProvider` registration. Artifact acquisition and session proof are owned by the H.3 pre-qual (`2026-05-11-slice_h.3_pre-qual.md`).
+- If any prerequisite is missing: close H.2 as `SKIP-prereq-missing` with an explicit checklist of what is missing. H.3 pre-qual cannot start until H.2 closes as `PASS`.
 
 **Acceptance.** Gate closes as `PASS` (all prerequisites confirmed) or `SKIP-prereq-missing` (missing items documented). `BLOCKED-*` is not an acceptable state.
 
