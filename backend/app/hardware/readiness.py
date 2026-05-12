@@ -26,7 +26,7 @@ def derive_stt_device_readiness(
             )
         )
         if qnn_tokens_present:
-            return ("cpu", True, "selecting cpu")
+            return ("qnn", True, "qnn prerequisites proven; selecting qnn")
         return ("cpu", True, "selecting cpu")
 
     if (

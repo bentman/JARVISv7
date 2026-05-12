@@ -13,6 +13,7 @@ from backend.app.runtimes.stt.onnx_asr_runtime import OnnxAsrRuntime
 from backend.app.runtimes.stt.onnx_whisper_runtime import (
     QNN_STT_DEFERRED_REASON,
     OnnxWhisperRuntime,
+    QnnWhisperRuntime,
     providers_for_device,
 )
 from backend.app.runtimes.stt.stt_runtime import DegradedSTTRuntime, select_stt_runtime
@@ -58,6 +59,21 @@ def test_selector_returns_directml_runtime_when_dml_ep_proven():
     assert runtime.providers == ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 
+def test_selector_returns_qnn_runtime_when_qnn_tokens_proven():
+    preflight = PreflightResult(
+        tokens=["import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"],
+        dll_discovery_log=[],
+        probe_errors={},
+    )
+    profile = HardwareProfile(npu_available=True, npu_vendor="qualcomm")
+
+    runtime = select_stt_runtime(preflight, profile)
+
+    assert isinstance(runtime, QnnWhisperRuntime)
+    assert runtime.device == "qnn"
+    assert runtime.model_name == "whisper-base-en-qnn-snapdragon-x-elite"
+
+
 def test_selector_returns_degraded_runtime_when_device_not_ready():
     preflight = PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={})
     profile = HardwareProfile()
@@ -70,15 +86,29 @@ def test_selector_returns_degraded_runtime_when_device_not_ready():
         runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000)
 
 
-def test_qnn_branch_raises_not_implemented_without_loading_session():
-    runtime = OnnxWhisperRuntime(device="qnn", model_path=Path("unused"))
+def test_qnn_runtime_is_available_when_model_files_present_recursively(tmp_path):
+    model_path = tmp_path / "qnn-model"
+    nested = model_path / "artifact" / "inner"
+    nested.mkdir(parents=True)
+    (nested / "encoder.onnx").write_text("x", encoding="utf-8")
+    (nested / "decoder.onnx").write_text("x", encoding="utf-8")
+
+    runtime = QnnWhisperRuntime(model_path=model_path)
+
+    assert runtime.is_available()
+
+
+def test_qnn_runtime_is_not_available_when_model_files_absent(tmp_path):
+    model_path = tmp_path / "qnn-model"
+    model_path.mkdir(parents=True)
+
+    runtime = QnnWhisperRuntime(model_path=model_path)
 
     assert not runtime.is_available()
-    assert runtime._model is None
-    with pytest.raises(NotImplementedError, match="H.3.2"):
-        runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000)
-    assert runtime._model is None
-    assert QNN_STT_DEFERRED_REASON.endswith("H.3.2")
+
+
+def test_qnn_runtime_does_not_expose_h32_deferred_message():
+    assert "H.3.2" not in QNN_STT_DEFERRED_REASON
 
 
 def test_onnx_whisper_runtime_accepts_device_parameter():

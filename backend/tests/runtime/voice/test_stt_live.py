@@ -7,8 +7,8 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
-from backend.tests.conftest import SKIP_UNLESS_LIVE
+from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime, QnnWhisperRuntime
+from backend.tests.conftest import SKIP_UNLESS_ARM64, SKIP_UNLESS_LIVE, SKIP_UNLESS_QNN
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
@@ -59,5 +59,22 @@ def test_stt_cuda_transcribes_hello_world_fixture_on_current_host():
     assert runtime.is_available()
     audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
     transcript = runtime.transcribe(audio, sample_rate)
+
+    assert "hello world" in _normalize_transcript(transcript)
+
+
+@pytest.mark.live
+@pytest.mark.stt
+@pytest.mark.qnn
+@pytest.mark.arm64
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
+@pytest.mark.skipif(SKIP_UNLESS_QNN, reason="requires QNN execution provider readiness")
+def test_stt_qnn_live_transcript_correct():
+    runtime = QnnWhisperRuntime(device="qnn", model_name="whisper-base-en-qnn-snapdragon-x-elite")
+
+    assert runtime.is_available()
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+    transcript = runtime.transcribe(audio, sample_rate=16000)
 
     assert "hello world" in _normalize_transcript(transcript)

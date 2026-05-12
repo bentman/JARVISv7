@@ -22,3 +22,14 @@ models:
         normalizer.json: normalizer.json
         added_tokens.json: added_tokens.json
     local_path: models/stt/whisper-small-onnx
+  whisper-base-en-qnn-snapdragon-x-elite:
+    family: stt
+    runtime: qnn_whisper
+    devices: [qnn]
+    source:
+      type: url_zip
+      url: https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/whisper_base/releases/v0.53.1/whisper_base-precompiled_qnn_onnx-float-qualcomm_snapdragon_x_elite.zip
+      required_files_anywhere:
+        - encoder.onnx
+        - decoder.onnx
+    local_path: models/stt/whisper-base-en-qnn-snapdragon-x-elite

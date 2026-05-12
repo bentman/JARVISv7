@@ -172,11 +172,11 @@ def test_stt_readiness_reports_qnn_defined_and_selects_cpu_with_deferred_qnn_rea
     assert reason == "selecting cpu"
 
 
-def test_stt_readiness_reports_cpu_when_qnn_tokens_are_proven_but_inference_is_deferred() -> None:
+def test_stt_readiness_selects_qnn_when_qnn_tokens_are_proven() -> None:
     selected_device, ready, reason = derive_stt_device_readiness(
         _preflight("import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"),
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
     )
 
-    assert (selected_device, ready) == ("cpu", True)
-    assert reason == "selecting cpu"
+    assert (selected_device, ready) == ("qnn", True)
+    assert reason == "qnn prerequisites proven; selecting qnn"

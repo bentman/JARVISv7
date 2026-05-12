@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-12 09:47
+  - Summary: Completed H.3 ARM64 QNN STT activation on Windows ARM64 by finalizing `QnnWhisperRuntime.transcribe()` for the precompiled Qualcomm artifact contract and passing live STT transcript validation.
+  - Scope: `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `CHANGE_LOG.md`
+  - Host class(es): Windows ARM64 / Qualcomm QNN
+  - Evidence: `$env:JARVISV7_LIVE_TESTS="true"; backend\.venv\Scripts\python -m pytest backend/tests/runtime/voice/test_stt_live.py -q -s -k qnn` PASS (`1 passed, 2 deselected in 4.49s`); `backend\.venv\Scripts\python -m pytest backend/tests/unit/runtimes/stt/test_stt_runtime.py -q` PASS (`13 passed in 0.06s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`102 passed, 2 deselected in 0.99s`).
+  - Note: Decisive runtime fix used QNN decoder prompt seed `[50258]` for this precompiled artifact contract. Retained runtime behavior includes explicit cross-cache mapping, fail-fast behavior for unmapped cross inputs, dynamic `attention_mask` shape derivation, and `attention_mask` filled with ones. Final status: `H.3 PASS`.
+
 - 2026-05-11 15:01
   - Summary: Completed H.3 pre-qualification on Windows ARM64 by proving Qualcomm precompiled Whisper QNN artifact/session readiness and required mechanical/runtime gates; final decision was `PROCEED`.
   - Scope: `CHANGE_LOG.md`
