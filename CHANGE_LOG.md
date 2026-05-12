@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-11 15:01
+  - Summary: Completed H.3 pre-qualification on Windows ARM64 by proving Qualcomm precompiled Whisper QNN artifact/session readiness and required mechanical/runtime gates; final decision was `PROCEED`.
+  - Scope: `CHANGE_LOG.md`
+  - Host class(es): Windows ARM64 / Snapdragon X Elite
+  - Evidence: QNN plugin and HTP backend were discovered through `onnxruntime-qnn`; H.2 live gate passed (`2 passed in 0.73s`); Qualcomm artifact `whisper_base-precompiled_qnn_onnx-float-qualcomm_snapdragon_x_elite.zip` downloaded successfully (`180640873` bytes); extracted ONNX files identified as `encoder.onnx` (`1556` bytes) and `decoder.onnx` (`4483` bytes); encoder and decoder QNN sessions initialized with `disable_cpu_fallback=True`; encoder contract included `input_features [1,80,3000] float16` with cross-cache outputs through layers 0-5; decoder contract included `input_ids`, `attention_mask`, self-cache inputs, cross-cache inputs, `position_ids`, and output `logits [1,51865,1,1] float16` plus self-cache outputs; known-audio mechanical probe succeeded with audio `(62560,)` at `16000`, features `(1,80,3000)` float16, encoder output `(8,1,64,1500)`, decoder logits `(1,51865,1,1)`; regression passed (`102 passed, 2 deselected in 1.02s`).
+  - Note: Final decision: `PROCEED`.
+
 - 2026-05-09 13:10
   - Summary: Removed personality-derived text injection from the active final prompt path while preserving personality as structured metadata for loading, selection, desktop display, session state, and turn artifacts. Prompt/response engine architecture was preserved.
   - Scope: `backend/app/cognition/prompt_assembler.py`, `backend/app/conversation/engine.py`, `backend/app/personality/adapter.py`, `config/personality/concise.yaml`, `config/personality/warm.yaml`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/unit/personality/test_personality.py`
