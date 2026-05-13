@@ -18,6 +18,20 @@
 
 ## Entries
 
+- 2026-05-13 08:10
+  - Summary: Completed Sub-Slice H.7 (TTS Acceleration Viability / Device Slot Normalization) as a normalization-plus-viability closeout. Device slot normalization was applied to accept `cpu`, `cuda`, `directml`, and `qnn` in the TTS base guard. Live/package viability proof showed the installed `kokoro_onnx.Kokoro` constructor does not expose provider override, so accelerated TTS paths were closed as deferred with `provider-override-missing` fail-closed behavior while preserving CPU synthesis.
+  - Scope: `backend/app/runtimes/tts/base.py`, `backend/app/runtimes/tts/kokoro_onnx_runtime.py`, `backend/app/hardware/readiness.py`, `backend/tests/unit/hardware/test_readiness.py`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/voice/test_tts_live.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend/.venv/Scripts/python -c "import inspect, kokoro_onnx; print(inspect.signature(kokoro_onnx.Kokoro.__init__))"` PASS with signature `(self, model_path: str, voices_path: str, espeak_config: kokoro_onnx.config.EspeakConfig | None = None, vocab_config: dict | str | None = None)` (no `providers` parameter); `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/voice/test_tts_live.py -q` PASS/SKIP (`2 passed, 1 skipped`) with DirectML skip reason `requires DirectML execution provider readiness`; `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/tts/test_tts_runtime.py -q` PASS (`13 passed in 0.34s`); `backend/.venv/Scripts/python -m pytest backend/tests/unit/hardware/test_readiness.py -q` PASS (`9 passed in 0.04s`).
+  - Note: H.7 close-state outcomes on this host: TTS CUDA `Deferred` (`provider-override-missing`), TTS DirectML `Deferred` (`provider-override-missing` plus host DirectML readiness skip), TTS QNN `Deferred` (`provider-override-missing`, ARM64/QNN path not activated in this scope). No STT runtime changes, no QNN/ARM64 component modifications, and no model artifact changes were made.
+
+- 2026-05-13 07:15
+  - Summary: Sub-Slices H.5 (DirectML viability gate) and H.6 (DirectML STT/TTS activation) were closed on Windows x64 and Windows ARM64. `DmlExecutionProvider` was absent from the installed ORT wheel on both host classes; live gate tests skipped deterministically on both hosts. H.5 closes as `SKIP-prereq-missing` on both host classes; H.6 closes as `Deferred` per slice dependency rule.
+  - Scope: `backend/tests/runtime/hardware/test_directml_gate_live.py` (new)
+  - Host class(es): Windows x64, Windows ARM64
+  - Evidence: Windows x64 — `$env:JARVISV7_LIVE_TESTS="true"; backend\.venv\Scripts\python -m pytest backend/tests/runtime/hardware/test_directml_gate_live.py -q` result: `2 skipped in 0.57s`; skip reason: `requires DirectML execution provider readiness`; `ep:DmlExecutionProvider` absent from preflight tokens on x64 ORT GPU wheel. Windows ARM64 — same command: `2 skipped`; skip reason unchanged; `ep:DmlExecutionProvider` absent from preflight tokens on ARM64 ORT wheel.
+  - Note: H.5 close state: `SKIP-prereq-missing` on Windows x64 (RTX 3060 present; `DmlExecutionProvider` absent from installed `onnxruntime-gpu` wheel) and `SKIP-prereq-missing` on Windows ARM64 (Qualcomm Adreno present; `DmlExecutionProvider` absent from installed ORT wheel). H.6 close state: `Deferred` on both host classes per slice H dependency rule (H.6 requires H.5 PASS). No runtime source, provisioning, `pyproject.toml`, or `SYSTEM_INVENTORY.md` changes were made. Preflight already included provider-token probing; no `preflight.py` extension was required.
+
 - 2026-05-12 09:47
   - Summary: Completed H.3 ARM64 QNN STT activation on Windows ARM64 by finalizing `QnnWhisperRuntime.transcribe()` for the precompiled Qualcomm artifact contract and passing live STT transcript validation.
   - Scope: `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `CHANGE_LOG.md`

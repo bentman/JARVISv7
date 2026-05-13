@@ -53,6 +53,23 @@ def derive_tts_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
+    if (
+        profile.gpu_vendor == "nvidia"
+        and profile.cuda_available
+        and _has_token(preflight, "ep:CUDAExecutionProvider")
+    ):
+        return ("cpu", True, "provider-override-missing: CUDAExecutionProvider unavailable to kokoro_onnx")
+
+    if (
+        profile.os_name == "windows"
+        and profile.gpu_available
+        and _has_token(preflight, "ep:DmlExecutionProvider")
+    ):
+        return ("cpu", True, "provider-override-missing: DmlExecutionProvider unavailable to kokoro_onnx")
+
+    if profile.npu_available and profile.npu_vendor == "qualcomm":
+        return ("cpu", True, "provider-override-missing: QNNExecutionProvider unavailable to kokoro_onnx")
+
     if _has_token(preflight, "import:kokoro_onnx"):
         return ("cpu", True, _reason_for_cpu("import:kokoro_onnx", "cpu"))
     return ("cpu", False, "import:kokoro_onnx:MISSING; cpu unavailable in slice_a")

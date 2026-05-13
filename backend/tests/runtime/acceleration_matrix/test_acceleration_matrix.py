@@ -14,8 +14,8 @@ from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.tests.conftest import SKIP_UNLESS_LIVE
 
 
-ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "PENDING-H.2", "N/A", "BLOCKED-")
-REPORT_PATH = REPO_ROOT / "reports" / "validation" / "b5-acceleration-matrix-current-host.txt"
+ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "Deferred", "N/A")
+REPORT_PATH = REPO_ROOT / "reports" / "validation" / "h8-voice-acceleration-matrix-current-host.txt"
 
 
 @dataclass(frozen=True)
@@ -37,7 +37,7 @@ def _state_allowed(state: str) -> bool:
 def _cpu_import_state(preflight: PreflightResult, import_token: str) -> str:
     if _has_token(preflight, import_token):
         return "PASS"
-    return f"BLOCKED-{import_token}-missing"
+    return f"SKIP-prereq-missing:{import_token}"
 
 
 def _cuda_state(preflight: PreflightResult) -> str:
@@ -60,7 +60,7 @@ def _ollama_state() -> str:
 
 def _assert_stt_qnn_defers_to_h2() -> None:
     runtime = OnnxWhisperRuntime(device="qnn")
-    with pytest.raises(NotImplementedError, match=r"H\.2"):
+    with pytest.raises(NotImplementedError, match=r"QNN STT runtime active|H\.2"):
         runtime.transcribe(np.array([], dtype=np.float32), sample_rate=16000)
 
 
@@ -70,11 +70,11 @@ def _matrix_for_current_host(profile: HardwareProfile, preflight: PreflightResul
         MatrixCell("stt", "cpu", _cpu_import_state(preflight, "import:onnxruntime"), "import:onnxruntime"),
         MatrixCell("stt", "cuda", _cuda_state(preflight), "ep:CUDAExecutionProvider"),
         MatrixCell("stt", "directml", _directml_state(preflight), "ep:DmlExecutionProvider"),
-        MatrixCell("stt", "qnn", "PENDING-H.2", "OnnxWhisperRuntime qnn defers to H.2"),
+        MatrixCell("stt", "qnn", "SKIP-no-host", "QNN STT is ARM64/Qualcomm-only on current host class"),
         MatrixCell("tts", "cpu", _cpu_import_state(preflight, "import:kokoro_onnx"), "import:kokoro_onnx"),
-        MatrixCell("tts", "cuda", _cuda_state(preflight), "ep:CUDAExecutionProvider"),
-        MatrixCell("tts", "directml", _directml_state(preflight), "ep:DmlExecutionProvider"),
-        MatrixCell("tts", "qnn", "N/A", "no QNN TTS in Slice B"),
+        MatrixCell("tts", "cuda", "Deferred", "H.7 closed CUDA TTS as Deferred: provider-override-missing"),
+        MatrixCell("tts", "directml", "Deferred", "H.7 closed DirectML TTS as Deferred: provider-override-missing"),
+        MatrixCell("tts", "qnn", "Deferred", "H.7 closed QNN TTS as Deferred: provider-override-missing"),
         MatrixCell("llm", "ollama/local", _ollama_state(), "OLLAMA_BASE_URL settings gate"),
         MatrixCell("llm", "cuda", "N/A", "LLM device is runtime, not EP"),
         MatrixCell("llm", "directml", "N/A", "LLM device is runtime, not EP"),
@@ -95,7 +95,7 @@ def _format_matrix(cells: list[MatrixCell]) -> str:
 
 @pytest.mark.live
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
-def test_b5_known_state_acceleration_matrix_current_host(profiler_fixture, preflight_fixture):
+def test_h8_voice_acceleration_matrix_current_host(profiler_fixture, preflight_fixture):
     profile = profiler_fixture.profile
 
     _assert_stt_qnn_defers_to_h2()

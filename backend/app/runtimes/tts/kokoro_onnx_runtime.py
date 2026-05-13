@@ -10,6 +10,17 @@ from backend.app.runtimes.tts.base import TTSBase
 
 
 KOKORO_SAMPLE_RATE = 24000
+PROVIDER_OVERRIDE_MISSING_REASON = "provider-override-missing"
+
+
+def _provider_for_device(device: str) -> str | None:
+    if device == "cuda":
+        return "CUDAExecutionProvider"
+    if device == "directml":
+        return "DmlExecutionProvider"
+    if device == "qnn":
+        return "QNNExecutionProvider"
+    return None
 
 
 class KokoroOnnxRuntime(TTSBase):
@@ -42,6 +53,15 @@ class KokoroOnnxRuntime(TTSBase):
             if not self.is_available():
                 raise RuntimeError(f"TTS model files are unavailable at {self.model_path}")
             from kokoro_onnx import Kokoro
+            import inspect
+
+            provider_name = _provider_for_device(self.device)
+            if provider_name is not None:
+                signature = inspect.signature(Kokoro.__init__)
+                if "providers" not in signature.parameters:
+                    raise RuntimeError(
+                        f"{PROVIDER_OVERRIDE_MISSING_REASON}: kokoro_onnx.Kokoro does not expose providers override"
+                    )
 
             self._model = Kokoro(str(self.onnx_path), str(self.voices_path))
         return self._model

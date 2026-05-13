@@ -50,8 +50,33 @@ def test_kokoro_runtime_accepts_device_parameter():
     runtime = KokoroOnnxRuntime(device="cpu", model_path=Path("unused"))
 
     assert runtime.device == "cpu"
-    with pytest.raises(ValueError, match="unsupported TTS device"):
-        KokoroOnnxRuntime(device="qnn", model_path=Path("unused"))
+
+
+def test_tts_device_slot_accepts_cuda_string():
+    runtime = KokoroOnnxRuntime(device="cuda", model_path=Path("unused"))
+    assert runtime.device == "cuda"
+
+
+def test_tts_device_slot_accepts_directml_string():
+    runtime = KokoroOnnxRuntime(device="directml", model_path=Path("unused"))
+    assert runtime.device == "directml"
+
+
+def test_tts_device_slot_accepts_qnn_string():
+    runtime = KokoroOnnxRuntime(device="qnn", model_path=Path("unused"))
+    assert runtime.device == "qnn"
+
+
+def test_kokoro_runtime_reports_provider_override_missing_for_accelerated_device(tmp_path):
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    (model_path / "kokoro-v1.0.onnx").write_text("x", encoding="utf-8")
+    (model_path / "voices-v1.0.bin").write_text("x", encoding="utf-8")
+
+    runtime = KokoroOnnxRuntime(device="cuda", model_path=model_path)
+
+    with pytest.raises(RuntimeError, match="provider-override-missing"):
+        runtime.synthesize("hello world")
 
 
 def test_kokoro_runtime_uses_kokoro_helper(monkeypatch, tmp_path):

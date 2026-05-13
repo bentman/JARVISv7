@@ -70,6 +70,32 @@ def test_tts_readiness_selects_cpu_when_kokoro_onnx_imported() -> None:
     assert "import:kokoro_onnx" in reason
 
 
+def test_tts_readiness_reports_provider_override_missing_for_cuda_candidate() -> None:
+    selected_device, ready, reason = derive_tts_device_readiness(
+        _preflight("import:kokoro_onnx", "ep:CUDAExecutionProvider"),
+        _profile(
+            os_name="windows",
+            arch="amd64",
+            gpu_available=True,
+            gpu_vendor="nvidia",
+            cuda_available=True,
+        ),
+    )
+
+    assert (selected_device, ready) == ("cpu", True)
+    assert "provider-override-missing" in reason
+
+
+def test_tts_readiness_reports_provider_override_missing_for_directml_candidate() -> None:
+    selected_device, ready, reason = derive_tts_device_readiness(
+        _preflight("import:kokoro_onnx", "ep:DmlExecutionProvider"),
+        _profile(os_name="windows", arch="amd64", gpu_available=True),
+    )
+
+    assert (selected_device, ready) == ("cpu", True)
+    assert "provider-override-missing" in reason
+
+
 def test_llm_readiness_reports_plain_unavailable_reason() -> None:
     selected_device, ready, reason = derive_llm_device_readiness(
         _preflight("import:onnxruntime"),
