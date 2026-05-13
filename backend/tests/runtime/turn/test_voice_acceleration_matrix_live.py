@@ -12,7 +12,7 @@ from backend.app.personality.loader import load_default_personality
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime
-from backend.tests.conftest import SKIP_UNLESS_LIVE, SKIP_UNLESS_OLLAMA, ollama_base_url
+from backend.tests.conftest import SKIP_UNLESS_LIVE, SKIP_UNLESS_OLLAMA, SKIP_UNLESS_X64, ollama_base_url
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
@@ -47,5 +47,30 @@ def test_voice_acceleration_matrix_live_cpu_turn_passes_current_host() -> None:
 
     assert result.final_state == ConversationState.IDLE
     assert result.transcript is not None and result.transcript.strip()
+    assert result.response_text is not None and result.response_text.strip()
+    assert result.failure_reason is None
+
+
+@pytest.mark.live
+@pytest.mark.turn
+@pytest.mark.stt
+@pytest.mark.cuda
+@pytest.mark.x64
+@pytest.mark.requires_ollama
+@pytest.mark.skipif(SKIP_UNLESS_X64, reason="requires x64 host")
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
+def test_voice_turn_uses_normalized_stt_device_x64() -> None:
+    engine = TurnEngine(
+        stt=OnnxWhisperRuntime(device="cuda"),
+        tts=NullTTSRuntime(reason="x64 I.3 STT+LLM full-turn proof"),
+        llm=OllamaLLM(base_url=ollama_base_url()),
+        personality=load_default_personality(),
+    )
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+
+    result = engine.run_voice_turn(audio, sample_rate)
+
+    assert result.final_state == ConversationState.IDLE
     assert result.response_text is not None and result.response_text.strip()
     assert result.failure_reason is None

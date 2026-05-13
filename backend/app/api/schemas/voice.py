@@ -16,4 +16,5 @@ class VoiceTurnResponse(BaseModel):
     tts_degraded_reason: str | None = None
     interrupted: bool = False
     interruption_events: list[dict[str, object]]
+    stt_device: str | None = None
     tool_calls: list[ToolCallSummary] | None = None

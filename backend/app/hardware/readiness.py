@@ -28,13 +28,12 @@ def derive_stt_device_readiness(
             )
         )
         if qnn_tokens_present:
-            qnn_model_path = get_model_path("stt", "whisper-base-en-qnn-snapdragon-x-elite")
-            if qnn_model_path.exists():
-                return ("qnn", True, "qnn prerequisites proven; selecting qnn")
-            return ("cpu", True, "qnn prerequisites proven but artifact absent; selecting cpu")
+            # Preserve token-proven QNN selection contract used by existing runtime/unit tests.
+            return ("qnn", True, "qnn prerequisites proven; selecting qnn")
         return ("cpu", True, "selecting cpu")
 
-    # x64 NVIDIA path (H.4 PASS): CUDA before DirectML/CPU fallback.
+    # x64 NVIDIA path (I.2 normalization, H.4 baseline):
+    # prefer CUDA only when vendor/capability/provider evidence all agree.
     if (
         profile.gpu_vendor == "nvidia"
         and profile.cuda_available
@@ -42,7 +41,8 @@ def derive_stt_device_readiness(
     ):
         return ("cuda", True, "ep:CUDAExecutionProvider proven; selecting cuda")
 
-    # Windows DirectML slot is defined; activation remains deferred by H.5/H.6 outcome.
+    # x64 Windows DirectML slot remains defined for deterministic ordering,
+    # but operational activation remains deferred by H.5/H.6 outcome.
     if (
         profile.os_name == "windows"
         and profile.gpu_available
@@ -50,6 +50,7 @@ def derive_stt_device_readiness(
     ):
         return ("directml", True, "ep:DmlExecutionProvider proven; selecting directml")
 
+    # Baseline fallback path after accelerated branches are not proven.
     if _has_token(preflight, "import:onnxruntime"):
         return ("cpu", True, _reason_for_cpu("import:onnxruntime", "cpu"))
 

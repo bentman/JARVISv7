@@ -65,6 +65,7 @@ def voice_turn_response(result: TurnResult) -> VoiceTurnResponse:
         tts_degraded_reason=result.tts_degraded_reason,
         interrupted=result.interrupted,
         interruption_events=result.interruption_events,
+        stt_device=None,
         tool_calls=tool_calls,
     )
 
@@ -79,4 +80,6 @@ async def voice_turn(request: Request, engine: TurnEngine = Depends(get_engine))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     result = turn_service.run_voice_turn(audio, sample_rate, engine=engine)
-    return voice_turn_response(result)
+    response = voice_turn_response(result)
+    response.stt_device = getattr(getattr(engine, "stt", None), "device", None)
+    return response

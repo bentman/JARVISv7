@@ -290,6 +290,7 @@ def test_voice_turn_accepts_wav_bytes_and_returns_result() -> None:
     assert response.status_code == 200
     assert payload["turn_id"] == "turn-voice"
     assert payload["tts_degraded"] is True
+    assert payload["stt_device"] in {"cpu", "cuda", "directml", "qnn", None}
 
 
 def test_diagnostics_profile_returns_profile_payload() -> None:

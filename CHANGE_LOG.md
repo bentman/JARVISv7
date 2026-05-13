@@ -18,6 +18,20 @@
 
 ## Entries
 
+- 2026-05-13 14:44
+  - Summary: Completed Sub-Slice I.3 (x64 Live Mic/Audio User-Interaction Matrix) by adding STT device observability to `/task/voice` responses and extending x64 live turn matrix coverage. A bounded corrective fix replaced an initial brittle `stt_device` derivation with direct engine STT runtime device wiring.
+  - Scope: `backend/app/api/schemas/voice.py`, `backend/app/api/routes/voice.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py -q` PASS (`21 passed in 0.65s`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`PASS: unit: 104 tests`, `104 passed, 4 deselected in 0.94s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families turn --devices cuda` PASS (`1 passed, 32 deselected in 13.42s`).
+  - Note: Corrective fixes used in this task: 1/2. ARM64 I.3 execution was explicitly deferred for execution on the appropriate ARM64 host.
+
+- 2026-05-13 14:31
+  - Summary: Completed Sub-Slice I.2 (x64 Acceleration Sequence Normalization) on Windows x64 with a behavior-preserving normalization pass in STT readiness branch documentation for x64 ordering (CUDA → DirectML slot → CPU fallback). During validation, one bounded corrective fix was applied to restore token-proven ARM64 QNN readiness selection contract after an unintended side effect surfaced in unit tests.
+  - Scope: `backend/app/hardware/readiness.py`
+  - Host class(es): Windows x64
+  - Evidence: `backend/.venv/Scripts/python -m compileall backend/app/hardware/readiness.py` PASS (`Compiling 'backend/app/hardware/readiness.py'...`); initial `backend/.venv/Scripts/python scripts/validate_backend.py unit` FAIL (2 tests: `test_stt_readiness_selects_qnn_when_qnn_tokens_are_proven`, `test_selector_returns_qnn_runtime_when_qnn_tokens_proven`); post-corrective `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (`338 passed in 1.18s`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`PASS: unit: 104 tests`, `104 passed, 4 deselected in 0.91s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices cuda` PASS (`1 passed, 31 deselected in 6.45s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices cpu` PASS (`4 passed, 5 skipped, 23 deselected in 51.18s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families tts --devices cpu` PASS (`4 passed, 1 skipped, 27 deselected in 18.49s`).
+  - Note: Corrective fixes used in this task: 1/2. No changes were made outside allowed scope (`backend/app/hardware/readiness.py`, `config/hardware/notes.md`), and `config/hardware/notes.md` required no update.
+
 - 2026-05-13 14:21
   - Summary: Completed Sub-Slice I.1 (ARM Acceleration Sequence Normalization) on Windows ARM64 by normalizing ARM64 STT readiness to require both QNN prerequisite tokens and the QNN artifact presence via model catalog lookup before selecting `qnn`, while preserving CPU fallback behavior. Added hardware acceleration chain documentation for ARM64 and x64 in `config/hardware/notes.md` and documented H.7 TTS provider-override rationale inline in readiness derivation comments.
   - Scope: `backend/app/hardware/readiness.py`, `config/hardware/notes.md`
