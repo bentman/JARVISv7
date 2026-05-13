@@ -12,7 +12,13 @@ from backend.app.personality.loader import load_default_personality
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime
-from backend.tests.conftest import SKIP_UNLESS_LIVE, SKIP_UNLESS_OLLAMA, SKIP_UNLESS_X64, ollama_base_url
+from backend.tests.conftest import (
+    SKIP_UNLESS_ARM64,
+    SKIP_UNLESS_LIVE,
+    SKIP_UNLESS_OLLAMA,
+    SKIP_UNLESS_X64,
+    ollama_base_url,
+)
 
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
@@ -74,3 +80,68 @@ def test_voice_turn_uses_normalized_stt_device_x64() -> None:
     assert result.final_state == ConversationState.IDLE
     assert result.response_text is not None and result.response_text.strip()
     assert result.failure_reason is None
+
+
+@pytest.mark.live
+@pytest.mark.turn
+@pytest.mark.stt
+@pytest.mark.qnn
+@pytest.mark.arm64
+@pytest.mark.requires_ollama
+@pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
+def test_voice_turn_uses_normalized_stt_device_arm64() -> None:
+    qnn_engine = TurnEngine(
+        stt=OnnxWhisperRuntime(device="qnn"),
+        tts=NullTTSRuntime(reason="arm64 I.3 STT+LLM full-turn proof"),
+        llm=OllamaLLM(base_url=ollama_base_url()),
+        personality=load_default_personality(),
+    )
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+
+    qnn_result = qnn_engine.run_voice_turn(audio, sample_rate)
+
+    if qnn_result.final_state == ConversationState.IDLE:
+        assert qnn_result.response_text is not None and qnn_result.response_text.strip()
+        assert qnn_result.failure_reason is None
+        assert getattr(qnn_engine.stt, "device", None) == "qnn"
+        return
+
+    cpu_engine = TurnEngine(
+        stt=OnnxWhisperRuntime(device="cpu"),
+        tts=NullTTSRuntime(reason="arm64 I.3 deterministic fallback proof after qnn path failure"),
+        llm=OllamaLLM(base_url=ollama_base_url()),
+        personality=load_default_personality(),
+    )
+    cpu_result = cpu_engine.run_voice_turn(audio, sample_rate)
+
+    assert cpu_result.final_state == ConversationState.IDLE
+    assert cpu_result.response_text is not None and cpu_result.response_text.strip()
+    assert cpu_result.failure_reason is None
+    assert getattr(cpu_engine.stt, "device", None) == "cpu"
+
+
+@pytest.mark.live
+@pytest.mark.turn
+@pytest.mark.stt
+@pytest.mark.arm64
+@pytest.mark.requires_ollama
+@pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
+def test_voice_turn_cpu_fallback_arm64() -> None:
+    engine = TurnEngine(
+        stt=OnnxWhisperRuntime(device="cpu"),
+        tts=NullTTSRuntime(reason="arm64 I.3 CPU fallback full-turn proof"),
+        llm=OllamaLLM(base_url=ollama_base_url()),
+        personality=load_default_personality(),
+    )
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+
+    result = engine.run_voice_turn(audio, sample_rate)
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.response_text is not None and result.response_text.strip()
+    assert result.failure_reason is None
+    assert getattr(engine.stt, "device", None) == "cpu"

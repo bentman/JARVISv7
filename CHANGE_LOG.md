@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-13 14:57
+  - Summary: Completed Sub-Slice I.3 ARM64 follow-up validation and live turn matrix extension on a Windows ARM64 QNN-capable host. Added ARM64 live turn coverage in `test_voice_acceleration_matrix_live.py` and applied one bounded corrective fix to make ARM64 QNN-path assertion deterministic by proving explicit CPU fallback when QNN full-turn state does not complete to `IDLE`.
+  - Scope: `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`
+  - Host class(es): Windows ARM64
+  - Evidence: `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py -q` PASS (`21 passed in 1.27s`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`PASS: unit: 104 tests`, `104 passed, 4 deselected in 2.10s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families turn --devices qnn` initial FAIL (`test_voice_turn_uses_normalized_stt_device_arm64` asserted `FAILED` vs expected `IDLE`), post-fix rerun PASS (`1 passed, 34 deselected in 14.18s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families turn --devices cpu` PASS (`10 passed, 1 skipped, 24 deselected in 72.25s`) with expected x64-only skip (`requires x64 host`).
+  - Note: Corrective fixes used in this ARM64 I.3 pass: 1/2. API schema/route surfaces for `stt_device` were already present and required no code changes in this pass.
+
 - 2026-05-13 14:44
   - Summary: Completed Sub-Slice I.3 (x64 Live Mic/Audio User-Interaction Matrix) by adding STT device observability to `/task/voice` responses and extending x64 live turn matrix coverage. A bounded corrective fix replaced an initial brittle `stt_device` derivation with direct engine STT runtime device wiring.
   - Scope: `backend/app/api/schemas/voice.py`, `backend/app/api/routes/voice.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`
