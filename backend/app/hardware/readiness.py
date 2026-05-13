@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.app.core.capabilities import HardwareProfile
+from backend.app.models.catalog import get_model_path
 from backend.app.hardware.preflight import PreflightResult
 
 
@@ -16,6 +17,7 @@ def derive_stt_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
+    # ARM64 Qualcomm path (H.3 PASS): evaluate QNN prerequisites first.
     if profile.npu_available and profile.npu_vendor == "qualcomm":
         qnn_tokens_present = all(
             _has_token(preflight, token)
@@ -26,9 +28,13 @@ def derive_stt_device_readiness(
             )
         )
         if qnn_tokens_present:
-            return ("qnn", True, "qnn prerequisites proven; selecting qnn")
+            qnn_model_path = get_model_path("stt", "whisper-base-en-qnn-snapdragon-x-elite")
+            if qnn_model_path.exists():
+                return ("qnn", True, "qnn prerequisites proven; selecting qnn")
+            return ("cpu", True, "qnn prerequisites proven but artifact absent; selecting cpu")
         return ("cpu", True, "selecting cpu")
 
+    # x64 NVIDIA path (H.4 PASS): CUDA before DirectML/CPU fallback.
     if (
         profile.gpu_vendor == "nvidia"
         and profile.cuda_available
@@ -36,6 +42,7 @@ def derive_stt_device_readiness(
     ):
         return ("cuda", True, "ep:CUDAExecutionProvider proven; selecting cuda")
 
+    # Windows DirectML slot is defined; activation remains deferred by H.5/H.6 outcome.
     if (
         profile.os_name == "windows"
         and profile.gpu_available
@@ -53,6 +60,7 @@ def derive_tts_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
+    # H.7 rationale: kokoro_onnx runtime does not expose provider override; fail closed to CPU.
     if (
         profile.gpu_vendor == "nvidia"
         and profile.cuda_available
@@ -60,6 +68,7 @@ def derive_tts_device_readiness(
     ):
         return ("cpu", True, "provider-override-missing: CUDAExecutionProvider unavailable to kokoro_onnx")
 
+    # H.7 rationale applies to DirectML as well.
     if (
         profile.os_name == "windows"
         and profile.gpu_available
@@ -67,6 +76,7 @@ def derive_tts_device_readiness(
     ):
         return ("cpu", True, "provider-override-missing: DmlExecutionProvider unavailable to kokoro_onnx")
 
+    # H.7 rationale applies to QNN on ARM64 as well.
     if profile.npu_available and profile.npu_vendor == "qualcomm":
         return ("cpu", True, "provider-override-missing: QNNExecutionProvider unavailable to kokoro_onnx")
 

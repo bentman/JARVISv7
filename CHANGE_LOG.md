@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-13 14:21
+  - Summary: Completed Sub-Slice I.1 (ARM Acceleration Sequence Normalization) on Windows ARM64 by normalizing ARM64 STT readiness to require both QNN prerequisite tokens and the QNN artifact presence via model catalog lookup before selecting `qnn`, while preserving CPU fallback behavior. Added hardware acceleration chain documentation for ARM64 and x64 in `config/hardware/notes.md` and documented H.7 TTS provider-override rationale inline in readiness derivation comments.
+  - Scope: `backend/app/hardware/readiness.py`, `config/hardware/notes.md`
+  - Host class(es): Windows ARM64
+  - Evidence: `backend/.venv/Scripts/python -m compileall backend/app/hardware/readiness.py` PASS (`Compiling 'backend/app/hardware/readiness.py'...`); `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (`338 passed in 2.02s`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`PASS: unit: 104 tests`, `104 passed, 4 deselected in 2.05s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices qnn` first run FAIL (`Windows fatal exception: access violation`), immediate rerun PASS (`3 passed, 29 deselected in 5.41s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families stt --devices cpu` PASS (`7 passed, 2 skipped, 23 deselected, 1 warning in 61.89s`); `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families tts --devices cpu` PASS (`3 passed, 2 skipped, 27 deselected in 54.32s`).
+  - Note: No runtime family or selector dispatch files were modified. I.1 completion used no corrective code fix (0/2); one non-reproducible transient QNN runtime crash was observed and cleared on deterministic rerun.
+
 - 2026-05-13 09:01
   - Summary: Completed Sub-Slice H.8 (Voice Acceleration Live Turn Matrix) closeout across both host classes by combining prior x64 completion context (CUDA-class host evidence) with this session’s ARM64 follow-up validation (QNN-capable host). H.8 live turn matrix, acceleration matrix, and regression gates are now explicitly recorded as validated for Windows x64 and Windows ARM64.
   - Scope: `CHANGE_LOG.md` (H.8 closeout evidence entry)
