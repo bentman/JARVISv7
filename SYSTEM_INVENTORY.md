@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice H voice acceleration matrix and live turn gates - 2026-05-13 09:10
+  - State: Verified
+  - Location: `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `reports/validation/h8-voice-acceleration-matrix-current-host.txt`, `CHANGE_LOG.md`
+  - Validation: Windows x64 and Windows ARM64 evidence recorded in `CHANGE_LOG.md` (`2026-05-13 09:01`): x64 H.8 live turn matrix PASS, x64 H.8 acceleration matrix PASS, and x64 regression PASS; ARM64 H.8 live turn matrix PASS (`1 passed in 17.45s`), ARM64 H.8 acceleration matrix PASS (`1 passed in 1.88s`), and ARM64 regression PASS (`104 passed, 4 deselected`).
+  - Notes: H.8 superseded the prior B.5 voice-family matrix gate with a Slice H voice acceleration matrix plus live full-turn validation surface.
+
 - Capability: Slice G cross-session episodic retrieval and cached recall foundation - 2026-05-02 22:10
   - State: Verified
   - Location: `backend/app/memory/episodic.py`, `backend/app/memory/retrieval.py`, `backend/app/memory/write_policy.py`, `backend/app/conversation/engine.py`, `backend/app/cognition/prompt_assembler.py`, `backend/tests/unit/memory/`, `backend/tests/runtime/turn/test_retrieval_live.py`, `backend/tests/runtime/services/test_retrieval_cached_live.py`
