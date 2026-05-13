@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-13 09:01
+  - Summary: Completed Sub-Slice H.8 (Voice Acceleration Live Turn Matrix) closeout across both host classes by combining prior x64 completion context (CUDA-class host evidence) with this session’s ARM64 follow-up validation (QNN-capable host). H.8 live turn matrix, acceleration matrix, and regression gates are now explicitly recorded as validated for Windows x64 and Windows ARM64.
+  - Scope: `CHANGE_LOG.md` (H.8 closeout evidence entry)
+  - Host class(es): Windows x64 (GPU-CUDA class context evidence), Windows ARM64 (QNN-capable live evidence)
+  - Evidence: Windows x64 — context evidence provided for this closeout: H.8 live turn matrix test PASS on x64, H.8 acceleration matrix test PASS on x64, and regression remained green on x64; TTS accelerated paths remained `Deferred` (`provider-override-missing`) and DirectML remained non-proven (`SKIP-prereq-missing`/deferred outcomes). Windows ARM64 — `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py -q` PASS (`1 passed in 17.45s`); `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py -q` PASS (`1 passed in 1.88s`); `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`[fingerprint] arch=arm64 ... readiness=ready`, `PASS: unit: 104 tests`, `104 passed, 4 deselected in 2.26s`).
+  - Note: H.8 close-state language for this dual-host record: live turn matrix `PASS` on Windows x64 and Windows ARM64; acceleration matrix `PASS` on Windows x64 and Windows ARM64; regression gate `PASS` on Windows x64 and Windows ARM64. No runtime source edits were made for this ARM64 follow-up pass.
+
 - 2026-05-13 08:10
   - Summary: Completed Sub-Slice H.7 (TTS Acceleration Viability / Device Slot Normalization) as a normalization-plus-viability closeout. Device slot normalization was applied to accept `cpu`, `cuda`, `directml`, and `qnn` in the TTS base guard. Live/package viability proof showed the installed `kokoro_onnx.Kokoro` constructor does not expose provider override, so accelerated TTS paths were closed as deferred with `provider-override-missing` fail-closed behavior while preserving CPU synthesis.
   - Scope: `backend/app/runtimes/tts/base.py`, `backend/app/runtimes/tts/kokoro_onnx_runtime.py`, `backend/app/hardware/readiness.py`, `backend/tests/unit/hardware/test_readiness.py`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/voice/test_tts_live.py`
