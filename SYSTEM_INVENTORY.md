@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice I hardware path normalization and live mic/audio interaction matrix - 2026-05-13 15:07
+  - State: Verified
+  - Location: `backend/app/hardware/readiness.py`, `config/hardware/notes.md`, `backend/app/api/schemas/voice.py`, `backend/app/api/routes/voice.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`, `20260513_slice-i.md`, `20260513_slice-i3.md`, `CHANGE_LOG.md`
+  - Validation: Windows x64 and Windows ARM64 evidence recorded in `CHANGE_LOG.md` (`2026-05-13 14:21`, `2026-05-13 14:31`, `2026-05-13 14:44`, `2026-05-13 14:57`): I.1 ARM64 normalization PASS with unit/regression/runtime evidence; I.2 x64 normalization PASS with unit/regression/runtime evidence; I.3 x64 live mic/audio matrix PASS (`runtime --families turn --devices cuda: 1 passed, 32 deselected`), and I.3 ARM64 follow-up PASS (`runtime --families turn --devices qnn: 1 passed, 34 deselected`; `runtime --families turn --devices cpu: 10 passed, 1 skipped, 24 deselected`) with regression remaining PASS (`104 passed, 4 deselected`) on both host classes.
+  - Notes: Slice I closed with deterministic host-specific acceleration/readiness normalization plus `/task/voice` STT-device observability and host-gated live turn matrix coverage.
+
 - Capability: Slice H voice acceleration matrix and live turn gates - 2026-05-13 09:10
   - State: Verified
   - Location: `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `reports/validation/h8-voice-acceleration-matrix-current-host.txt`, `CHANGE_LOG.md`
