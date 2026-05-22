@@ -9,6 +9,14 @@ const FAMILY_LABELS = {
 
 const FAILED_REASON_TOKENS = ["MISSING", "unavailable"];
 
+function isOllamaLocalRuntimeFallback(family, activeLlmRuntime) {
+  return (
+    family?.family === "llm" &&
+    String(activeLlmRuntime || "").toLowerCase() === "ollama" &&
+    String(family?.reason || "").toLowerCase() === "local runtime unavailable"
+  );
+}
+
 function appendFactList(payload, containerEl) {
   const facts = document.createElement("dl");
   facts.className = "facts readiness-summary";
@@ -40,17 +48,20 @@ function orderedFamilies(families) {
   return [...ordered, ...remaining];
 }
 
-function classifyFamily(family) {
+function classifyFamily(family, readinessPayload) {
   const reason = String(family?.reason || "");
+  if (!family?.ready && isOllamaLocalRuntimeFallback(family, readinessPayload?.active_llm_runtime)) {
+    return "degraded";
+  }
   if (!family?.ready && FAILED_REASON_TOKENS.some((token) => reason.includes(token))) {
     return "failed";
   }
   return family?.ready ? "ready" : "degraded";
 }
 
-function appendFamilyRow(family, listEl) {
+function appendFamilyRow(family, listEl, readinessPayload) {
   const item = document.createElement("li");
-  const state = classifyFamily(family);
+  const state = classifyFamily(family, readinessPayload);
   item.className = `family readiness-family ${state}`;
   item.dataset.family = family.family || "unknown";
   item.dataset.readinessState = state;
@@ -85,7 +96,7 @@ export function renderReadiness(readinessPayload, containerEl) {
   const list = document.createElement("ul");
   list.className = "families readiness-family-list";
   for (const family of orderedFamilies(readinessPayload.families)) {
-    appendFamilyRow(family, list);
+    appendFamilyRow(family, list, readinessPayload);
   }
   containerEl.appendChild(list);
 }
