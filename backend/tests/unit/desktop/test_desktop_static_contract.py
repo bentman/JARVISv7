@@ -164,6 +164,48 @@ def test_desktop_can_render_optional_tool_calls_metadata() -> None:
     assert "response.tool_calls" in main_js
 
 
+def test_j1_readiness_components_and_containers_exist() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+    readiness_panel = _read("desktop/src/components/readiness-panel.js")
+    degraded_list = _read("desktop/src/components/degraded-list.js")
+
+    assert 'id="readiness-panel"' in index_html
+    assert 'id="degraded-conditions"' in index_html
+    assert "./components/readiness-panel.js" in main_js
+    assert "./components/degraded-list.js" in main_js
+    assert "export function renderReadiness" in readiness_panel
+    assert "export function renderDegradedList" in degraded_list
+    assert "renderReadinessPanel(readiness, readinessEl)" in main_js
+    assert "renderDegradedList(readiness, degradedEl)" in main_js
+    assert 'invoke("get_readiness")' in main_js
+
+
+def test_j1_voice_debug_is_collapsed_details_without_voice_capture_change() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+
+    assert "<details" in index_html
+    assert "<summary>Voice debug details</summary>" in index_html
+    assert 'id="voice-detail"' in index_html
+    assert index_html.index("<details") < index_html.index('id="voice-detail"')
+    assert "pointerdown" in main_js
+    assert "pointerup" in main_js
+    assert "pointercancel" in main_js
+
+
+def test_j1_readiness_payload_values_are_rendered_with_dom_text_apis() -> None:
+    readiness_panel = _read("desktop/src/components/readiness-panel.js")
+    degraded_list = _read("desktop/src/components/degraded-list.js")
+    main_js = _read("desktop/src/main.js")
+
+    assert "textContent" in readiness_panel
+    assert "textContent" in degraded_list
+    assert "innerHTML" not in readiness_panel
+    assert "innerHTML" not in degraded_list
+    assert "document.body.dataset.degraded" in main_js
+
+
 def test_backend_startup_diagnostics_are_exposed() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     for expected in [

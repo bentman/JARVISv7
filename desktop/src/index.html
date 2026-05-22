@@ -50,6 +50,7 @@
 
           <h2>Readiness</h2>
           <div id="readiness-panel" class="readiness empty">Waiting for backend readiness…</div>
+          <div id="degraded-conditions" class="degraded-conditions" hidden></div>
         </aside>
 
         <section class="panel conversation-panel">
@@ -66,7 +67,10 @@
             <button id="ptt-button" type="button">Hold to Talk</button>
             <span id="voice-status">Voice idle</span>
           </div>
-          <pre id="voice-detail" class="voice-detail" aria-live="polite"></pre>
+          <details class="voice-debug">
+            <summary>Voice debug details</summary>
+            <pre id="voice-detail" class="voice-detail" aria-live="polite"></pre>
+          </details>
         </section>
       </section>
     </main>

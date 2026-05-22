@@ -1,3 +1,6 @@
+import { renderDegradedList } from "./components/degraded-list.js";
+import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
+
 const stateEl = document.querySelector("#startup-state");
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
@@ -8,6 +11,7 @@ const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
 const personalityDetailEl = document.querySelector("#personality-detail");
 const readinessEl = document.querySelector("#readiness-panel");
+const degradedEl = document.querySelector("#degraded-conditions");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
 const turnStateEl = document.querySelector("#turn-state");
@@ -96,25 +100,8 @@ function setVoiceDetail(result) {
 }
 
 function renderReadiness(readiness) {
-  const families = Object.values(readiness.families || {});
-  const familyMarkup = families.map((family) => `
-    <li class="family ${family.ready ? "ready" : "degraded"}">
-      <strong>${family.family.toUpperCase()}</strong>
-      <span>${family.runtime} / ${family.device}</span>
-      <small>${family.ready ? "ready" : "degraded"}: ${family.reason}</small>
-    </li>`).join("");
-
-  readinessEl.classList.remove("empty");
-  readinessEl.innerHTML = `
-    <dl class="facts">
-      <dt>Arch</dt><dd>${readiness.arch}</dd>
-      <dt>Profile</dt><dd>${readiness.profile_id}</dd>
-      <dt>Personality</dt><dd>${readiness.active_personality_profile_id}</dd>
-      <dt>LLM</dt><dd>${readiness.active_llm_runtime}</dd>
-      <dt>Status</dt><dd>${readiness.status}</dd>
-    </dl>
-    <ul class="families">${familyMarkup}</ul>
-  `;
+  renderReadinessPanel(readiness, readinessEl);
+  renderDegradedList(readiness, degradedEl);
   setState(readiness.requires_degraded_mode || readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
 }
 

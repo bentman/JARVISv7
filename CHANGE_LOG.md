@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-22 07:54
+  - Summary: Completed Sub-Slice J.1 readiness/sidebar surfacing on Windows x64. Readiness rendering moved from inline `desktop/src/main.js` markup into plain ES module renderers; backend-derived readiness values are rendered with DOM/text APIs; degraded/fallback conditions are surfaced in a dedicated container; voice debug details are collapsed by default; and existing backend/Tauri calls plus current voice capture behavior were preserved.
+  - Scope: `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`15 passed in 0.20s`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`341 passed in 3.77s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`104 passed, 4 deselected in 1.15s`).
+  - Note: Manual desktop validation remains pending. ARM64 validation is deferred to ARM64-specific work or Slice J closeout.
+
 - 2026-05-13 14:57
   - Summary: Completed Sub-Slice I.3 ARM64 follow-up validation and live turn matrix extension on a Windows ARM64 QNN-capable host. Added ARM64 live turn coverage in `test_voice_acceleration_matrix_live.py` and applied one bounded corrective fix to make ARM64 QNN-path assertion deterministic by proving explicit CPU fallback when QNN full-turn state does not complete to `IDLE`.
   - Scope: `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`
