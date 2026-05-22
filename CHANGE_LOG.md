@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-22 08:20
+  - Summary: Completed Sub-Slice J.2 named interaction state labels on Windows x64. Added `setStateLabel(stateKey, labelEl)` with user-facing labels for known shell/turn state keys, preserved unknown state keys as raw visible values, stored the raw state key in `data-state` for later styling, and routed header state plus `#turn-state` display through the helper while preserving existing degraded body attribute behavior.
+  - Scope: `desktop/src/components/state-label.js`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`17 passed in 0.10s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`104 passed, 4 deselected in 0.91s`).
+  - Note: Backend, Tauri, `desktop/src/index.html`, `desktop/src/style.css`, wake/PTT behavior, and later Slice J work were unchanged. Manual desktop validation remains pending. ARM64 validation is deferred to ARM64-specific work or Slice J closeout.
+
 - 2026-05-22 07:54
   - Summary: Completed Sub-Slice J.1 readiness/sidebar surfacing on Windows x64. Readiness rendering moved from inline `desktop/src/main.js` markup into plain ES module renderers; backend-derived readiness values are rendered with DOM/text APIs; degraded/fallback conditions are surfaced in a dedicated container; voice debug details are collapsed by default; and existing backend/Tauri calls plus current voice capture behavior were preserved.
   - Scope: `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`

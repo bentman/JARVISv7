@@ -1,5 +1,6 @@
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
+import { setStateLabel } from "./components/state-label.js";
 
 const stateEl = document.querySelector("#startup-state");
 const healthEl = document.querySelector("#backend-health");
@@ -35,8 +36,7 @@ const presenceByProfile = {
 };
 
 function setState(value, degraded = false) {
-  stateEl.textContent = value;
-  stateEl.dataset.state = value;
+  setStateLabel(value, stateEl);
   document.body.dataset.degraded = degraded ? "true" : "false";
 }
 
@@ -279,7 +279,7 @@ async function handleVoiceCaptureStop() {
     appendPresence("reasoning");
     const response = JSON.parse(await invoke("submit_voice", { audioBytes: Array.from(wavBytes) }));
     setVoiceDetail(response);
-    turnStateEl.textContent = response.final_state;
+    setStateLabel(response.final_state, turnStateEl);
     setState(response.failure_reason ? "FAILED" : response.final_state, response.tts_degraded);
     if (response.failure_reason || response.tts_degraded) {
       const reason = response.failure_reason || response.tts_degraded_reason || "Voice turn degraded.";
@@ -303,12 +303,12 @@ async function submitText(text) {
   appendMessage("user", text);
   setState("REASONING");
   appendPresence("reasoning");
-  turnStateEl.textContent = "REASONING";
+  setStateLabel("REASONING", turnStateEl);
   sendButton.disabled = true;
 
   try {
     const response = JSON.parse(await invoke("submit_text", { text }));
-    turnStateEl.textContent = response.final_state;
+    setStateLabel(response.final_state, turnStateEl);
     setState(response.failure_reason ? "FAILED" : response.final_state);
     if (response.failure_reason) {
       showError(response.failure_reason);
@@ -317,7 +317,7 @@ async function submitText(text) {
     appendToolCalls(response.tool_calls);
     await refreshSessionStatus();
   } catch (error) {
-    turnStateEl.textContent = "FAILED";
+    setStateLabel("FAILED", turnStateEl);
     showError(String(error));
   } finally {
     sendButton.disabled = false;

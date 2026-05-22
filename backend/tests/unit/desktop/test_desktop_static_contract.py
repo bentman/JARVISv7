@@ -206,6 +206,46 @@ def test_j1_readiness_payload_values_are_rendered_with_dom_text_apis() -> None:
     assert "document.body.dataset.degraded" in main_js
 
 
+def test_j2_state_label_component_exports_mapping_and_preserves_data_state() -> None:
+    state_label = _read("desktop/src/components/state-label.js")
+
+    assert "export function setStateLabel" in state_label
+    assert "dataset.state" in state_label
+    for state_key in [
+        "BOOTSTRAP",
+        "STARTING",
+        "READY",
+        "IDLE",
+        "LISTENING",
+        "TRANSCRIBING",
+        "REASONING",
+        "ACTING",
+        "RESPONDING",
+        "SPEAKING",
+        "INTERRUPTED",
+        "RECOVERING",
+        "DEGRADED",
+        "FAILED",
+    ]:
+        assert state_key in state_label
+    for label in ["Starting", "Ready", "Listening", "Thinking", "Speaking", "Failed"]:
+        assert label in state_label
+
+
+def test_j2_main_state_displays_flow_through_state_label_helper() -> None:
+    main_js = _read("desktop/src/main.js")
+
+    assert "./components/state-label.js" in main_js
+    assert "function setState(value, degraded = false)" in main_js
+    assert "setStateLabel(value, stateEl)" in main_js
+    assert "document.body.dataset.degraded" in main_js
+    assert "turnStateEl.textContent =" not in main_js
+    assert "stateEl.textContent =" not in main_js
+    assert "setStateLabel(response.final_state, turnStateEl)" in main_js
+    assert 'setStateLabel("REASONING", turnStateEl)' in main_js
+    assert 'setStateLabel("FAILED", turnStateEl)' in main_js
+
+
 def test_backend_startup_diagnostics_are_exposed() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     for expected in [
