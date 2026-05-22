@@ -33,9 +33,7 @@
             <dt>Turns</dt>
             <dd id="session-turn-count">0</dd>
             <dt>Wake</dt>
-            <dd id="wake-status">checking</dd>
-            <dt>Wake detail</dt>
-            <dd id="wake-detail">Waiting for wake status…</dd>
+            <dd id="wake-indicator">Checking wake status…</dd>
             <dt>Personality</dt>
             <dd id="personality-current">default</dd>
             <dt>Endpoint</dt>
@@ -64,7 +62,7 @@
             <button id="send-button" type="submit">Send</button>
           </form>
           <div class="voice-controls">
-            <button id="ptt-button" type="button">Hold to Talk</button>
+            <button id="ptt-button" type="button" aria-pressed="false" data-capture-state="idle">Start Voice</button>
             <span id="voice-status">Voice idle</span>
           </div>
           <details class="voice-debug">

@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-22 10:01
+  - Summary: Completed Sub-Slice J.3b Wake Status + True Click-Start / Click-Stop PTT on Windows x64. Replaced HTT pointer-hold behavior with click-start / click-stop PTT; removed `pointerdown`, `pointerup`, and `pointercancel` hold-to-talk behavior; preserved the existing WebView `MediaRecorder` flow, WAV encoding, `submit_voice`, response rendering, failure handling, and backend/Tauri command paths; added `wake-indicator.js` to render existing wake fields `provider`, `available`, `monitoring`, and `reason`; and updated static desktop contract tests for J.3b.
+  - Scope: `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/components/wake-indicator.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`19 passed in 0.11s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`104 passed, 4 deselected in 0.99s`).
+  - Note: Backend schemas/routes, Tauri commands/plugins, dependencies/provisioning, `desktop/src/style.css`, and `SYSTEM_INVENTORY.md` were unchanged. Manual desktop validation remains pending. ARM64 validation is deferred to ARM64-specific work or Slice J closeout unless requested earlier.
+
 - 2026-05-22 09:10
   - Summary: Completed Sub-Slice J.3a Wake/PTT Interaction Boundary Assessment. Gate J-3 wake payload shape was confirmed for `provider`, `available`, `monitoring`, and `reason`; blocker assessment B1-B5 all passed; final decision: `PROCEED to J.3b`.
   - Scope: Read-only assessment of `20260515_slice-j.md`, `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src-tauri/src/lib.rs`, `desktop/src-tauri/src/backend.rs`, `backend/app/api/schemas/status.py`, `backend/app/api/routes/status.py`, `CHANGE_LOG.md`

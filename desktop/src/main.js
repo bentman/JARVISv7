@@ -1,13 +1,13 @@
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
 import { setStateLabel } from "./components/state-label.js";
+import { renderWakeStatus } from "./components/wake-indicator.js";
 
 const stateEl = document.querySelector("#startup-state");
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
 const turnCountEl = document.querySelector("#session-turn-count");
-const wakeStatusEl = document.querySelector("#wake-status");
-const wakeDetailEl = document.querySelector("#wake-detail");
+const wakeIndicatorEl = document.querySelector("#wake-indicator");
 const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
 const personalityDetailEl = document.querySelector("#personality-detail");
@@ -99,6 +99,26 @@ function setVoiceDetail(result) {
   voiceDetailEl.textContent = lines.join("\n");
 }
 
+function setCaptureState(state) {
+  pttButton.dataset.captureState = state;
+  if (state === "recording") {
+    pttButton.disabled = false;
+    pttButton.setAttribute("aria-pressed", "true");
+    pttButton.textContent = "Stop and Submit";
+    voiceStatusEl.textContent = "Recording… click to submit";
+    return;
+  }
+  if (state === "processing") {
+    pttButton.disabled = true;
+    pttButton.setAttribute("aria-pressed", "false");
+    pttButton.textContent = "Submitting Voice…";
+    return;
+  }
+  pttButton.disabled = false;
+  pttButton.setAttribute("aria-pressed", "false");
+  pttButton.textContent = "Start Voice";
+}
+
 function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);
   renderDegradedList(readiness, degradedEl);
@@ -115,18 +135,18 @@ async function refreshSessionStatus() {
 async function refreshWakeStatus() {
   try {
     const status = JSON.parse(await invoke("get_wake_status"));
-    const provider = status.provider || "unknown";
-    const available = Boolean(status.available);
-    wakeStatusEl.textContent = available ? `${provider} available` : "PTT-only fallback";
-    wakeDetailEl.textContent = available
-      ? `Wake provider ${provider} is available. PTT remains available. Reason: ${status.reason || "ready"}`
-      : `Wake unavailable; PTT-only fallback is active. Reason: ${status.reason || "unknown"}`;
-    wakeStatusEl.dataset.available = String(available);
+    renderWakeStatus(status, wakeIndicatorEl);
     return status;
   } catch (error) {
-    wakeStatusEl.textContent = "PTT-only fallback";
-    wakeStatusEl.dataset.available = "false";
-    wakeDetailEl.textContent = `Wake status unavailable; PTT-only fallback is active. Reason: ${String(error)}`;
+    renderWakeStatus(
+      {
+        provider: "unknown",
+        available: false,
+        monitoring: false,
+        reason: `Wake status unavailable; PTT-only fallback is active. Reason: ${String(error)}`,
+      },
+      wakeIndicatorEl,
+    );
     return null;
   }
 }
@@ -237,10 +257,12 @@ function writeAscii(view, offset, value) {
 }
 
 async function startVoiceCapture() {
+  if (pttButton.dataset.captureState !== "idle") return;
   clearError();
   if (!navigator.mediaDevices?.getUserMedia) {
     showError("Microphone capture is unavailable in this WebView.");
     voiceStatusEl.textContent = "Voice failed";
+    setCaptureState("idle");
     return;
   }
   try {
@@ -252,21 +274,28 @@ async function startVoiceCapture() {
     });
     mediaRecorder.addEventListener("stop", handleVoiceCaptureStop, { once: true });
     mediaRecorder.start();
-    voiceStatusEl.textContent = "Recording… release to submit";
+    setCaptureState("recording");
     setState("LISTENING");
     appendPresence("listening");
   } catch (error) {
+    setCaptureState("idle");
     voiceStatusEl.textContent = "Voice failed";
     showError(`Microphone permission/capture failed: ${String(error)}`);
   }
 }
 
 function stopVoiceCapture() {
+  if (pttButton.dataset.captureState !== "recording") return;
   if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    setCaptureState("processing");
     voiceStatusEl.textContent = "Encoding WAV…";
     appendPresence("transcribing");
     mediaRecorder.stop();
+    return;
   }
+  setCaptureState("idle");
+  voiceStatusEl.textContent = "Voice failed";
+  showError("Voice capture was not active.");
 }
 
 async function handleVoiceCaptureStop() {
@@ -295,6 +324,7 @@ async function handleVoiceCaptureStop() {
     mediaStream = null;
     mediaRecorder = null;
     audioChunks = [];
+    setCaptureState("idle");
   }
 }
 
@@ -333,17 +363,17 @@ formEl.addEventListener("submit", (event) => {
   submitText(text);
 });
 
-pttButton.addEventListener("pointerdown", (event) => {
+pttButton.addEventListener("click", (event) => {
   event.preventDefault();
-  startVoiceCapture();
+  const captureState = pttButton.dataset.captureState || "idle";
+  if (captureState === "idle") {
+    startVoiceCapture();
+    return;
+  }
+  if (captureState === "recording") {
+    stopVoiceCapture();
+  }
 });
-
-pttButton.addEventListener("pointerup", (event) => {
-  event.preventDefault();
-  stopVoiceCapture();
-});
-
-pttButton.addEventListener("pointercancel", stopVoiceCapture);
 
 personalitySelectEl.addEventListener("change", (event) => {
   selectPersonality(event.target.value).catch((error) => showError(String(error)));

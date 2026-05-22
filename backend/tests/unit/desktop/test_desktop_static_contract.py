@@ -97,15 +97,22 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
     index_html = _read("desktop/src/index.html")
+    wake_indicator = _read("desktop/src/components/wake-indicator.js")
     assert "get_wake_status" in backend_rs
     assert "/status/wake" in backend_rs
     assert "get_wake_status" in lib_rs
     assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status" in lib_rs
     assert 'invoke("get_wake_status")' in main_js
     assert "refreshWakeStatus" in main_js
+    assert "./components/wake-indicator.js" in main_js
+    assert "renderWakeStatus(status, wakeIndicatorEl)" in main_js
     assert "PTT-only fallback" in main_js
-    assert "wake-status" in index_html
-    assert "wake-detail" in index_html
+    assert 'id="wake-indicator"' in index_html
+    assert "wake-status" not in index_html
+    assert "wake-detail" not in index_html
+    assert "export function renderWakeStatus" in wake_indicator
+    for field in ["provider", "available", "monitoring", "reason"]:
+        assert field in wake_indicator
 
 
 def test_desktop_displays_personality_selector_and_presence_ui() -> None:
@@ -189,9 +196,45 @@ def test_j1_voice_debug_is_collapsed_details_without_voice_capture_change() -> N
     assert "<summary>Voice debug details</summary>" in index_html
     assert 'id="voice-detail"' in index_html
     assert index_html.index("<details") < index_html.index('id="voice-detail"')
-    assert "pointerdown" in main_js
-    assert "pointerup" in main_js
-    assert "pointercancel" in main_js
+    assert 'pttButton.addEventListener("click"' in main_js
+    assert 'pttButton.addEventListener("pointerdown"' not in main_js
+    assert 'pttButton.addEventListener("pointerup"' not in main_js
+    assert 'pttButton.addEventListener("pointercancel"' not in main_js
+
+
+def test_j3b_ptt_button_uses_click_start_click_stop_contract() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+
+    assert 'id="ptt-button"' in index_html
+    assert 'aria-pressed="false"' in index_html
+    assert 'data-capture-state="idle"' in index_html
+    assert "Hold to Talk" not in index_html
+    assert "Hold to Talk" not in main_js
+    assert 'pttButton.addEventListener("click"' in main_js
+    assert 'pttButton.addEventListener("pointerdown"' not in main_js
+    assert 'pttButton.addEventListener("pointerup"' not in main_js
+    assert 'pttButton.addEventListener("pointercancel"' not in main_js
+    assert "setCaptureState" in main_js
+    for capture_state in ["idle", "recording", "processing"]:
+        assert capture_state in main_js
+    assert "Stop and Submit" in main_js
+    assert "Start Voice" in main_js
+
+
+def test_j3b_wake_indicator_component_renders_existing_wake_fields() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+    wake_indicator = _read("desktop/src/components/wake-indicator.js")
+
+    assert 'id="wake-indicator"' in index_html
+    assert "./components/wake-indicator.js" in main_js
+    assert "renderWakeStatus" in main_js
+    assert "export function renderWakeStatus" in wake_indicator
+    assert "textContent" in wake_indicator
+    assert "innerHTML" not in wake_indicator
+    for field in ["provider", "available", "monitoring", "reason"]:
+        assert field in wake_indicator
 
 
 def test_j1_readiness_payload_values_are_rendered_with_dom_text_apis() -> None:
