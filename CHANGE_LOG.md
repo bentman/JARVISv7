@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-22 09:10
+  - Summary: Completed Sub-Slice J.3a Wake/PTT Interaction Boundary Assessment. Gate J-3 wake payload shape was confirmed for `provider`, `available`, `monitoring`, and `reason`; blocker assessment B1-B5 all passed; final decision: `PROCEED to J.3b`.
+  - Scope: Read-only assessment of `20260515_slice-j.md`, `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src-tauri/src/lib.rs`, `desktop/src-tauri/src/backend.rs`, `backend/app/api/schemas/status.py`, `backend/app/api/routes/status.py`, `CHANGE_LOG.md`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: Static inspection only; no validation reruns required. B1 PASS: current WebView `MediaRecorder.start()` / `.stop()` calls are discrete and can support click-start/click-stop. B2 PASS: Tauri `submit_voice(audio_bytes: Vec<u8>)` accepts complete audio bytes and calls `submit_voice_turn`. B3 PASS: existing JS globals (`mediaStream`, `mediaRecorder`, `audioChunks`) do not block replacing pointer-hold handlers with a click-state guard. B4 PASS: current MediaRecorder flow already collects `dataavailable` chunks and processes them on `stop`. B5 PASS: `submit_voice_turn` posts complete WAV bytes to `POST /task/voice` with `application/octet-stream`, so no backend route change is required.
+  - Note: No production code, tests, backend, Tauri, dependency, provisioning, or desktop source changes were made. `desktop/src/components/wake-indicator.js` is treated as J.3b-owned if J.3b proceeds.
+
 - 2026-05-22 08:20
   - Summary: Completed Sub-Slice J.2 named interaction state labels on Windows x64. Added `setStateLabel(stateKey, labelEl)` with user-facing labels for known shell/turn state keys, preserved unknown state keys as raw visible values, stored the raw state key in `data-state` for later styling, and routed header state plus `#turn-state` display through the helper while preserving existing degraded body attribute behavior.
   - Scope: `desktop/src/components/state-label.js`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
