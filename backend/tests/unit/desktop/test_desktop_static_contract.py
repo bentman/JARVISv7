@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 
@@ -9,6 +10,17 @@ DESKTOP = REPO_ROOT / "desktop"
 
 def _read(relative_path: str) -> str:
     return (REPO_ROOT / relative_path).read_text(encoding="utf-8")
+
+
+def _css_outside_token_section() -> str:
+    style_css = _read("desktop/src/style.css")
+    start = "/* JARVIS_V7_TOKENS_START */"
+    end = "/* JARVIS_V7_TOKENS_END */"
+    assert start in style_css
+    assert end in style_css
+    before, rest = style_css.split(start, 1)
+    _, after = rest.split(end, 1)
+    return before + after
 
 
 def test_required_desktop_files_exist() -> None:
@@ -249,6 +261,21 @@ def test_j1_readiness_payload_values_are_rendered_with_dom_text_apis() -> None:
     assert "document.body.dataset.degraded" in main_js
 
 
+def test_j1_llm_ollama_local_runtime_unavailable_is_degraded_not_failed() -> None:
+    readiness_panel = _read("desktop/src/components/readiness-panel.js")
+    degraded_list = _read("desktop/src/components/degraded-list.js")
+
+    assert "isOllamaLocalRuntimeFallback" in readiness_panel
+    assert "active_llm_runtime" in readiness_panel
+    assert 'family?.family === "llm"' in readiness_panel
+    assert 'toLowerCase() === "ollama"' in readiness_panel
+    assert 'toLowerCase() === "local runtime unavailable"' in readiness_panel
+    assert "return \"degraded\";" in readiness_panel
+    assert "FAILED_REASON_TOKENS" in readiness_panel
+    assert "local runtime unavailable" in readiness_panel
+    assert "local runtime unavailable" not in degraded_list
+
+
 def test_j2_state_label_component_exports_mapping_and_preserves_data_state() -> None:
     state_label = _read("desktop/src/components/state-label.js")
 
@@ -302,3 +329,68 @@ def test_backend_startup_diagnostics_are_exposed() -> None:
         "try_wait",
     ]:
         assert expected in backend_rs
+
+
+def test_j4_style_tokens_are_defined_in_single_token_section() -> None:
+    style_css = _read("desktop/src/style.css")
+
+    assert style_css.count("JARVIS_V7_TOKENS_START") == 1
+    assert style_css.count("JARVIS_V7_TOKENS_END") == 1
+    assert style_css.index("JARVIS_V7_TOKENS_START") < style_css.index("JARVIS_V7_TOKENS_END")
+    for token in [
+        "--color-bg-base",
+        "--color-accent",
+        "--color-ready",
+        "--color-degraded",
+        "--color-failed",
+        "--color-capture",
+        "--color-text-primary",
+        "--space-1",
+    ]:
+        assert token in style_css
+
+
+def test_j4_style_rules_do_not_use_raw_color_values_outside_tokens() -> None:
+    outside_tokens = _css_outside_token_section()
+
+    assert re.search(r"#[0-9a-fA-F]{3,8}\b", outside_tokens) is None
+    assert "rgb(" not in outside_tokens
+    assert "rgba(" not in outside_tokens
+    assert "hsl(" not in outside_tokens
+    assert "hsla(" not in outside_tokens
+
+
+def test_j4_state_capture_and_readiness_selectors_exist() -> None:
+    style_css = _read("desktop/src/style.css")
+
+    for selector in [
+        '[data-state="LISTENING"]',
+        '[data-state="REASONING"]',
+        '[data-state="SPEAKING"]',
+        '[data-state="DEGRADED"]',
+        '[data-state="FAILED"]',
+        '[data-capture-state="recording"]',
+        '[data-capture-state="processing"]',
+        'data-readiness-state="ready"',
+        'data-readiness-state="degraded"',
+        'data-readiness-state="failed"',
+        ".degraded-condition",
+        "capture-pulse",
+    ]:
+        assert selector in style_css
+
+
+def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
+    style_css = _read("desktop/src/style.css")
+    index_html = _read("desktop/src/index.html")
+
+    for selector in [
+        ".message.user",
+        ".message.assistant",
+        ".message.system",
+        ".message.presence",
+    ]:
+        assert selector in style_css
+    assert " style=" not in index_html
+
+

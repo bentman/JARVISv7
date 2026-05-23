@@ -18,6 +18,21 @@
 
 ## Entries
 
+- 2026-05-22 18:45
+  - Summary: Completed Slice J corrective pass for LLM readiness display semantics after J.4 manual smoke. Added a narrow frontend-only exception for `family === "llm"`, active LLM runtime `ollama`, and reason `local runtime unavailable`; that case now renders as degraded instead of failed in the readiness panel; the backend reason remains visible; and `degraded-list.js` was unchanged, so non-ready LLM remains listed in degraded conditions.
+  - Scope: `desktop/src/components/readiness-panel.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`24 passed in 0.21s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`104 passed, 4 deselected in 0.98s`).
+  - Note: No backend, Tauri, dependency, style redesign, J.5 rendering, `SYSTEM_INVENTORY.md`, or schema changes were made. Manual desktop smoke remains pending for this corrective pass. ARM64 validation remains deferred to Slice J closeout.
+
+- 2026-05-22 18:27
+  - Summary: Completed Sub-Slice J.4 v7-native visual polish on Windows x64. Added a delimited visual token section in `desktop/src/style.css`; replaced raw rule-body colors with token references outside the token section; added token-driven dark theme styling for shell surfaces, panels, controls, readiness rows, degraded conditions, wake/status text, PTT capture states, and conversation surfaces; styled J.2 `data-state` labels; styled PTT/manual capture states through `data-capture-state`, including recording pulse/glow and reduced-motion handling; styled readiness states with non-color-only markers; styled existing conversation role classes only; and added static contract tests for tokens, no raw colors outside the token section, state/capture/readiness selectors, conversation hierarchy selectors, and no inline styles.
+  - Scope: `desktop/src/style.css`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`23 passed in 0.35s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`104 passed, 4 deselected in 0.93s`).
+  - Manual evidence: Windows x64 desktop smoke passed after retry; dark visual polish was improved and usable; readiness/degraded sections rendered visibly; wake section rendered; PTT button no longer said `Hold to Talk`; click-start / click-stop PTT worked; STT→LLM→TTS completed and assistant response was spoken/rendered; `/health` responded before and after the voice attempt; existing `LLM failed: local runtime unavailable` readiness row was accepted as non-blocking dev/readiness semantics while active runtime is Ollama.
+  - Note: No markdown parsing, code-block detection, DOM restructuring, `innerHTML`, JS behavior, or J.5 rendering behavior was added. ARM64 validation remains deferred to ARM64-specific work or Slice J closeout.
+
 - 2026-05-22 10:01
   - Summary: Completed Sub-Slice J.3b Wake Status + True Click-Start / Click-Stop PTT on Windows x64. Replaced HTT pointer-hold behavior with click-start / click-stop PTT; removed `pointerdown`, `pointerup`, and `pointercancel` hold-to-talk behavior; preserved the existing WebView `MediaRecorder` flow, WAV encoding, `submit_voice`, response rendering, failure handling, and backend/Tauri command paths; added `wake-indicator.js` to render existing wake fields `provider`, `available`, `monitoring`, and `reason`; and updated static desktop contract tests for J.3b.
   - Scope: `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/components/wake-indicator.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
