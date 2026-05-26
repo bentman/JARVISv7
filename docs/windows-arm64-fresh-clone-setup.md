@@ -34,6 +34,17 @@ backend\.venv\Scripts\python scripts\bootstrap.py
 backend\.venv\Scripts\python scripts\ensure_models.py --verify-only
 ```
 
+## Missing-module recovery
+
+If `scripts/bootstrap.py` fails before checkpoint 2 with a missing Python module, do not install modules by hand.
+
+Refresh to the latest repository state and rerun bootstrap. If the same error persists, run:
+
+```powershell
+backend\.venv\Scripts\python scripts\provision.py install
+backend\.venv\Scripts\python scripts\bootstrap.py
+```
+
 ## Stop rule
 
 If `scripts/bootstrap.py` fails, stop at the failing checkpoint and fix that prerequisite before continuing.

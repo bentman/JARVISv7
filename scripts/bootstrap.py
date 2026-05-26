@@ -13,14 +13,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
-from backend.app.hardware.preflight import run_preflight
 from backend.app.hardware.provisioning import resolve_required_extras
-from backend.app.hardware.readiness import (
-    derive_llm_device_readiness,
-    derive_stt_device_readiness,
-    derive_tts_device_readiness,
-    derive_wake_device_readiness,
-)
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
 
 
@@ -28,6 +21,24 @@ def _load_profiler():
     from backend.app.hardware.profiler import run_profiler
 
     return run_profiler
+
+
+def _load_preflight_readiness_helpers():
+    from backend.app.hardware.preflight import run_preflight
+    from backend.app.hardware.readiness import (
+        derive_llm_device_readiness,
+        derive_stt_device_readiness,
+        derive_tts_device_readiness,
+        derive_wake_device_readiness,
+    )
+
+    return (
+        run_preflight,
+        derive_stt_device_readiness,
+        derive_tts_device_readiness,
+        derive_llm_device_readiness,
+        derive_wake_device_readiness,
+    )
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -91,6 +102,13 @@ def main(argv: list[str] | None = None) -> int:
         return code
 
     try:
+        (
+            run_preflight,
+            derive_stt_device_readiness,
+            derive_tts_device_readiness,
+            derive_llm_device_readiness,
+            derive_wake_device_readiness,
+        ) = _load_preflight_readiness_helpers()
         preflight = run_preflight(profile, extras)
         stt = derive_stt_device_readiness(preflight, profile)
         tts = derive_tts_device_readiness(preflight, profile)

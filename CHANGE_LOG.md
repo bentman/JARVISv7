@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-26 11:08
+  - Summary: Fixed Windows ARM64 fresh-clone bootstrap ordering so `scripts/bootstrap.py` no longer fails before provisioning with missing dependency imports such as `yaml`. Added a minimal missing-module recovery note to `docs/windows-arm64-fresh-clone-setup.md` telling users not to hand-install missing modules and to use repo provisioning if bootstrap fails before checkpoint 2.
+  - Scope: `scripts/bootstrap.py`, `backend/tests/unit/scripts/test_bootstrap_script.py`, `docs/windows-arm64-fresh-clone-setup.md`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: `backend\.venv\Scripts\python scripts\provision.py install` PASS (declared dependencies installed, including `pyyaml-6.0.3`, `pytest-9.0.3`, and `jarvisv7-0.0.1`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_bootstrap_script.py -q` PASS (`4 passed in 0.03s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.27s`); `backend\.venv\Scripts\python scripts\bootstrap.py` PASS (checkpoints 1/5 through 5/5 completed); `backend\.venv\Scripts\python scripts\ensure_models.py --verify-only` PASS (`"ready": true`, `"missing": []`).
+  - Note: Initial focused test attempt was blocked because the fresh/current venv did not yet contain `pytest`; repo provisioning resolved it through the approved provisioning path. No provisioning semantics, dependency declarations, backend runtime selection, or desktop behavior changed.
+
 - 2026-05-22 18:45
   - Summary: Completed Slice J corrective pass for LLM readiness display semantics after J.4 manual smoke. Added a narrow frontend-only exception for `family === "llm"`, active LLM runtime `ollama`, and reason `local runtime unavailable`; that case now renders as degraded instead of failed in the readiness panel; the backend reason remains visible; and `degraded-list.js` was unchanged, so non-ready LLM remains listed in degraded conditions.
   - Scope: `desktop/src/components/readiness-panel.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
