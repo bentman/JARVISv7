@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice J runtime/readiness UX and desktop interaction surfacing - 2026-05-26 11:42
+  - State: Verified
+  - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/state-label.js`, `desktop/src/components/wake-indicator.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `docs/windows-arm64-fresh-clone-setup.md`, `CHANGE_LOG.md`
+  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` (`2026-05-22 07:54`, `2026-05-22 08:20`, `2026-05-22 09:10`, `2026-05-22 10:01`, `2026-05-22 18:27`, `2026-05-22 18:45`): desktop static contract progressed through `15 passed`, `17 passed`, `19 passed`, `23 passed`, and `24 passed`; regression remained PASS at `104 passed, 4 deselected`; x64 manual desktop smoke passed after retry with click-start / click-stop PTT and STT→LLM→TTS. Windows ARM64 evidence recorded in `CHANGE_LOG.md` (`2026-05-26 11:31`, `2026-05-26 11:42`): desktop static contract PASS (`24 passed in 0.11s`); regression PASS (`105 passed, 4 deselected in 1.09s`); desktop app built/launched as `target\debug\jarvisv7-desktop.exe`; User initial ARM64 visual smoke OK.
+  - Notes: Slice J surfaces existing backend data with no backend schema/routes or Tauri command additions; HTT proof behavior was replaced by click-start/click-stop PTT; active Ollama with local-runtime unavailable renders degraded, not hard-failed, while preserving backend reason/degraded listing; J.5 rendering was not executed because no safe local renderer/sanitizer approach was approved; ARM64 voice/transcription was not manually checked in final visual smoke, while x64 manual evidence proved STT→LLM→TTS for the new PTT path.
+
 - Capability: Slice I hardware path normalization and live mic/audio interaction matrix - 2026-05-13 15:07
   - State: Verified
   - Location: `backend/app/hardware/readiness.py`, `config/hardware/notes.md`, `backend/app/api/schemas/voice.py`, `backend/app/api/routes/voice.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/turn/test_voice_acceleration_matrix_live.py`, `20260513_slice-i.md`, `20260513_slice-i3.md`, `CHANGE_LOG.md`
