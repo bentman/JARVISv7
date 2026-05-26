@@ -34,6 +34,17 @@ backend\.venv\Scripts\python scripts\bootstrap.py
 backend\.venv\Scripts\python scripts\ensure_models.py --verify-only
 ```
 
+## Desktop launch from a fresh clone
+
+Run from repo root:
+
+```powershell
+npm --prefix desktop install
+npm --prefix desktop run dev
+```
+
+Do not install Tauri globally. Use the repo-local desktop dependencies.
+
 ## Missing-module recovery
 
 If `scripts/bootstrap.py` fails before checkpoint 2 with a missing Python module, do not install modules by hand.

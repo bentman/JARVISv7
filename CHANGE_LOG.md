@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-26 11:31
+  - Summary: Added a minimal Windows ARM64 fresh-clone desktop launch prerequisite note documenting repo-local desktop dependency installation before running the desktop app.
+  - Scope: `docs/windows-arm64-fresh-clone-setup.md`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: ARM64 manual desktop validation initially found `npm --prefix desktop run dev` blocked because local desktop npm dependencies were missing; after `npm --prefix desktop install`, the desktop app built/launched as `target\debug\jarvisv7-desktop.exe`; user performed initial ARM64 visual smoke and reported it was OK. Existing ARM64 automated validation for this pass: desktop static contract PASS (`24 passed in 0.11s`); regression PASS (`105 passed, 4 deselected in 1.09s`).
+  - Note: Documentation-only follow-up. No source, tests, `SYSTEM_INVENTORY.md`, desktop source, or validation reruns were performed in this step.
+
 - 2026-05-26 11:08
   - Summary: Fixed Windows ARM64 fresh-clone bootstrap ordering so `scripts/bootstrap.py` no longer fails before provisioning with missing dependency imports such as `yaml`. Added a minimal missing-module recovery note to `docs/windows-arm64-fresh-clone-setup.md` telling users not to hand-install missing modules and to use repo provisioning if bootstrap fails before checkpoint 2.
   - Scope: `scripts/bootstrap.py`, `backend/tests/unit/scripts/test_bootstrap_script.py`, `docs/windows-arm64-fresh-clone-setup.md`
