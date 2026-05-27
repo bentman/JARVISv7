@@ -1,5 +1,6 @@
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
+import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
 import { setStateLabel } from "./components/state-label.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
@@ -17,6 +18,7 @@ const settingsRestartRequiredEl = document.querySelector("#settings-restart-requ
 const settingsPanelEl = document.querySelector("#settings-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
+const serviceStatusEl = document.querySelector("#service-status");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
 const turnStateEl = document.querySelector("#turn-state");
@@ -142,6 +144,7 @@ function setCaptureState(state) {
 function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);
   renderDegradedList(readiness, degradedEl);
+  renderServiceStatus(readiness.services, serviceStatusEl);
   setState(readiness.requires_degraded_mode || readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
 }
 

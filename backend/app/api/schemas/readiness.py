@@ -18,6 +18,11 @@ class PreflightSummary(BaseModel):
     probe_error_count: int
 
 
+class ServiceReadiness(BaseModel):
+    reachable: bool
+    reason: str
+
+
 class ReadinessResponse(BaseModel):
     status: str
     profile_id: str
@@ -27,3 +32,4 @@ class ReadinessResponse(BaseModel):
     requires_degraded_mode: bool
     families: dict[str, FamilyReadiness]
     preflight: PreflightSummary
+    services: dict[str, ServiceReadiness]

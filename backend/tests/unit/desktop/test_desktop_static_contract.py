@@ -29,6 +29,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/src/index.html",
         "desktop/src/main.js",
         "desktop/src/components/settings-panel.js",
+        "desktop/src/components/service-status.js",
         "desktop/src/style.css",
         "desktop/src-tauri/Cargo.toml",
         "desktop/src-tauri/build.rs",
@@ -210,6 +211,27 @@ def test_k2c_settings_restart_required_ux_contract() -> None:
     assert "closeButton.hidden = restartRequired" in settings_panel
     assert "restartButton.hidden = !restartRequired" in settings_panel
     assert "innerHTML" not in settings_panel
+
+
+def test_k3_service_status_readiness_sidebar_contract() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+    service_status = _read("desktop/src/components/service-status.js")
+
+    assert 'id="service-status"' in index_html
+    assert "Service status unavailable." in index_html
+    assert "./components/service-status.js" in main_js
+    assert "renderServiceStatus" in main_js
+    assert "serviceStatusEl" in main_js
+    assert "renderServiceStatus(readiness.services, serviceStatusEl)" in main_js
+    assert "export function renderServiceStatus" in service_status
+    assert "Service status unavailable." in service_status
+    for token in ["redis", "searxng", "reachable", "unreachable", "reason"]:
+        assert token in service_status
+    assert "innerHTML" not in service_status
+    combined = index_html + main_js + service_status
+    for forbidden in ["Start Redis", "Stop Redis", "Start SearXNG", "Stop SearXNG"]:
+        assert forbidden not in combined
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:
@@ -459,6 +481,7 @@ def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
     ]:
         assert selector in style_css
     assert " style=" not in index_html
+
 
 
 

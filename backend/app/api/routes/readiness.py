@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends
 
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state
-from backend.app.api.schemas.readiness import FamilyReadiness, PreflightSummary, ReadinessResponse
+from backend.app.api.schemas.readiness import FamilyReadiness, PreflightSummary, ReadinessResponse, ServiceReadiness
+from backend.app.api.service_status import collect_service_statuses
 
 router = APIRouter()
 
@@ -25,6 +26,7 @@ def _family_readiness(name: str, readiness: tuple[str, bool, str]) -> FamilyRead
 
 def build_readiness_response(state: ApiState) -> ReadinessResponse:
     status = "ready" if not state.preflight.probe_errors else "degraded"
+    services = collect_service_statuses()
     return ReadinessResponse(
         status=status,
         profile_id=state.profile.profile_id,
@@ -37,6 +39,10 @@ def build_readiness_response(state: ApiState) -> ReadinessResponse:
             tokens_count=len(state.preflight.tokens),
             probe_error_count=len(state.preflight.probe_errors),
         ),
+        services={
+            name: ServiceReadiness(reachable=value.reachable, reason=value.reason)
+            for name, value in services.items()
+        },
     )
 
 

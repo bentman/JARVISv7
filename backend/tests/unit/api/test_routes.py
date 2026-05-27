@@ -9,6 +9,7 @@ import numpy as np
 from fastapi.testclient import TestClient
 
 from backend.app.api.routes import config as config_route
+from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
@@ -182,6 +183,24 @@ def test_readiness_returns_family_readiness() -> None:
     assert payload["profile_id"] == "profile-test"
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
     assert payload["families"]["wake"]["ready"] is True
+
+
+def test_readiness_returns_additive_service_status(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.api.routes.readiness.collect_service_statuses",
+        lambda: {
+            "redis": service_status.ServiceStatus(reachable=True, reason="reachable"),
+            "searxng": service_status.ServiceStatus(reachable=False, reason="not configured"),
+        },
+    )
+
+    response = _client().get("/readiness")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["services"]["redis"] == {"reachable": True, "reason": "reachable"}
+    assert payload["services"]["searxng"] == {"reachable": False, "reason": "not configured"}
+    assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
 
 
 def test_personality_list_returns_available_profiles() -> None:
