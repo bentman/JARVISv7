@@ -430,6 +430,8 @@ personalitySelectEl.addEventListener("change", (event) => {
 settingsTriggerEl.addEventListener("click", () => {
   if (settingsPanelEl.hidden) {
     openSettings(settingsPanelEl, {
+      getOperatorConfig: async () => JSON.parse(await invoke("get_operator_config")),
+      writeOperatorConfig: async (fields) => JSON.parse(await invoke("write_operator_config", { fields })),
       restartBackend: restartBackendForSettings,
       onRestartRequiredChange: updateSettingsRestartRequired,
     }).catch((error) => showError(String(error)));

@@ -1,5 +1,3 @@
-const CONFIG_ENDPOINT = "http://127.0.0.1:8765/config/operator";
-
 let activeContainer = null;
 let loadedFields = [];
 let fieldControls = new Map();
@@ -8,6 +6,8 @@ let dirtyEl = null;
 let restartRequired = false;
 let restartHandler = null;
 let restartRequiredChangeHandler = null;
+let getConfigHandler = null;
+let writeConfigHandler = null;
 
 function fieldLabel(field) {
   return field.description || field.key;
@@ -164,18 +164,19 @@ async function restartBackend() {
 
 async function saveSettings(event) {
   event.preventDefault();
+  if (!writeConfigHandler) {
+    setStatus("Save unavailable.");
+    return;
+  }
   const fields = changedFields();
   if (Object.keys(fields).length === 0) {
     setStatus("No changes to save.");
     return;
   }
-  const response = await fetch(CONFIG_ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ fields }),
-  });
-  const payload = await response.json();
-  if (!response.ok) {
+  let payload;
+  try {
+    payload = await writeConfigHandler(fields);
+  } catch (error) {
     setStatus("Save failed.");
     return;
   }
@@ -186,21 +187,25 @@ async function saveSettings(event) {
 }
 
 async function loadSettings(containerEl) {
-  const response = await fetch(CONFIG_ENDPOINT);
-  if (response.status === 409) {
-    const payload = await response.json();
-    if (payload.detail?.error === "env_file_missing") {
-      renderMissingEnv(containerEl);
-      return;
-    }
-  }
-  if (!response.ok) {
+  if (!getConfigHandler) {
     const message = document.createElement("p");
     message.textContent = "Settings unavailable.";
     containerEl.replaceChildren(message);
     return;
   }
-  const payload = await response.json();
+  let payload;
+  try {
+    payload = await getConfigHandler();
+  } catch (error) {
+    const message = document.createElement("p");
+    message.textContent = "Settings unavailable.";
+    containerEl.replaceChildren(message);
+    return;
+  }
+  if (payload.detail?.error === "env_file_missing") {
+    renderMissingEnv(containerEl);
+    return;
+  }
   renderPanel(containerEl, payload.fields || []);
 }
 
@@ -208,6 +213,8 @@ export async function openSettings(containerEl, options = {}) {
   activeContainer = containerEl;
   restartHandler = options.restartBackend || restartHandler;
   restartRequiredChangeHandler = options.onRestartRequiredChange || restartRequiredChangeHandler;
+  getConfigHandler = options.getOperatorConfig || getConfigHandler;
+  writeConfigHandler = options.writeOperatorConfig || writeConfigHandler;
   containerEl.hidden = false;
   containerEl.textContent = "Loading settings…";
   notifyRestartRequiredChange();

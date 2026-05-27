@@ -1,7 +1,7 @@
 mod backend;
 
-use backend::{close_session, create_session, get_json, get_personality_list as backend_personality_list, get_session_status as backend_session_status, get_wake_status as backend_wake_status, select_personality as backend_select_personality, submit_text_turn, submit_voice_turn, wait_healthy, BackendProcessManager};
-use serde_json::json;
+use backend::{close_session, create_session, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_session_status as backend_session_status, get_wake_status as backend_wake_status, select_personality as backend_select_personality, submit_text_turn, submit_voice_turn, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
+use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tauri::{menu::{Menu, MenuItem}, tray::TrayIconBuilder, Manager, State};
@@ -105,6 +105,18 @@ fn select_personality(profile_id: String, state: State<'_, DesktopState>) -> Res
 }
 
 #[tauri::command]
+fn get_operator_config(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_operator_config(&base_url)
+}
+
+#[tauri::command]
+fn write_operator_config(fields: Value, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_write_operator_config(&base_url, fields)
+}
+
+#[tauri::command]
 fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -168,7 +180,7 @@ pub fn run() {
     let backend = BackendProcessManager::new().expect("failed to initialize backend process manager");
     tauri::Builder::default()
         .manage(DesktopState { backend: Arc::new(Mutex::new(backend)), session_id: Arc::new(Mutex::new(None)) })
-        .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, get_personality_list, select_personality, submit_text, submit_voice])
+        .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, get_personality_list, select_personality, get_operator_config, write_operator_config, submit_text, submit_voice])
         .setup(|app| {
             setup_tray(app)?;
             Ok(())

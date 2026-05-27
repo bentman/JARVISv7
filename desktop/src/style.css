@@ -626,6 +626,16 @@ button {
   font-size: 0.84rem;
 }
 
+.icon-button {
+  width: 32px;
+  height: 32px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  line-height: 1;
+  font-size: var(--text-lg);
+}
+
 #ptt-button[data-capture-state="idle"] {
   background: var(--color-accent);
   border-color: var(--color-accent);

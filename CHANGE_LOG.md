@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-27 19:26
+  - Summary: Completed Slice K.4e Settings access fix on Windows x64 / amd64. Added Tauri commands for operator settings GET/POST backed by Rust `reqwest`; removed direct browser `fetch()` and the hardcoded backend URL from the settings panel; wired settings GET/POST through `invoke("get_operator_config")` and `invoke("write_operator_config")`; preserved `.env` missing handling, changed-field saves, secret handling, and restart-required UX; and replaced the visible Settings text button with an accessible gear icon button using `aria-label="Settings"` and `title="Settings"`.
+  - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/components/settings-panel.js`, `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/style.css`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`31 passed in 0.22s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.01s`); `cargo check` PASS for `desktop/src-tauri`; user smoke confirmed the gear opens settings without `TypeError: Failed to fetch`.
+  - Note: No backend API, CORS, settings schema, service-status, search, personality, dependency/provisioning, or `SYSTEM_INVENTORY.md` changes were made.
+
 - 2026-05-27 18:40
   - Summary: Completed Slice K.4d SearchTool provider escalation repair on Windows x64 / amd64. Implemented SearchTool provider escalation in configured order: SearXNG, DDGS, Tavily; unavailable providers are skipped; provider exceptions, empty results, and no usable results fall through to the next provider; and the first provider result set with usable `SearchResult` objects is returned.
   - Scope: `backend/app/tools/search/search_tool.py`, `backend/tests/unit/tools/test_search_tool.py`

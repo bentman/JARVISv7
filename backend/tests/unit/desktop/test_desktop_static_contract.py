@@ -163,19 +163,41 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
     settings_panel = _read("desktop/src/components/settings-panel.js")
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
 
     assert 'id="settings-trigger"' in index_html
+    assert 'aria-label="Settings"' in index_html
+    assert 'title="Settings"' in index_html
+    assert 'class="icon-button"' in index_html
+    assert "&#9881;" in index_html
     assert 'id="settings-panel"' in index_html
     assert "./components/settings-panel.js" in main_js
     assert "openSettings(settingsPanelEl" in main_js
+    assert 'invoke("get_operator_config")' in main_js
+    assert 'invoke("write_operator_config"' in main_js
+    assert "getOperatorConfig:" in main_js
+    assert "writeOperatorConfig:" in main_js
     assert "closeSettings()" in main_js
     assert "export async function openSettings" in settings_panel
     assert "export function closeSettings" in settings_panel
-    assert 'fetch(CONFIG_ENDPOINT)' in settings_panel
-    assert 'method: "POST"' in settings_panel
-    assert "http://127.0.0.1:8765/config/operator" in settings_panel
+    assert "getConfigHandler" in settings_panel
+    assert "writeConfigHandler" in settings_panel
+    assert "await getConfigHandler()" in settings_panel
+    assert "await writeConfigHandler(fields)" in settings_panel
+    assert "fetch(" not in settings_panel
+    assert "http://127.0.0.1:8765/config/operator" not in settings_panel
     assert "innerHTML" not in settings_panel
     assert "textContent" in settings_panel
+    assert "get_operator_config" in lib_rs
+    assert "write_operator_config" in lib_rs
+    assert "backend_operator_config" in lib_rs
+    assert "backend_write_operator_config" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
+    assert "get_operator_config" in backend_rs
+    assert "write_operator_config" in backend_rs
+    assert "/config/operator" in backend_rs
+    assert "status.as_u16() == 409" in backend_rs
     for field in ["restart_required", "secret", "has_value", "editable", "description"]:
         assert field in settings_panel
     for copy in ["Unsaved changes", "restart required", "written", "rejected", ".env is required"]:

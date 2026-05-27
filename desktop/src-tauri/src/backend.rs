@@ -1,6 +1,6 @@
 use reqwest::blocking::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
 use std::path::PathBuf;
@@ -217,6 +217,26 @@ pub fn select_personality(base_url: &str, profile_id: &str) -> Result<String, St
     let body = response.text().map_err(|err| format!("POST /personality/select body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST /personality/select returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
+pub fn get_operator_config(base_url: &str) -> Result<String, String> {
+    let response = Client::new().get(format!("{base_url}/config/operator")).send().map_err(|err| format!("GET /config/operator failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("GET /config/operator body read failed: {err}"))?;
+    if status.is_success() || status.as_u16() == 409 {
+        return Ok(body);
+    }
+    Err(format!("GET /config/operator returned {status}: {body}"))
+}
+
+pub fn write_operator_config(base_url: &str, fields: Value) -> Result<String, String> {
+    let response = Client::new().post(format!("{base_url}/config/operator")).json(&json!({"fields": fields})).send().map_err(|err| format!("POST /config/operator failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("POST /config/operator body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("POST /config/operator returned {status}: {body}"));
     }
     Ok(body)
 }
