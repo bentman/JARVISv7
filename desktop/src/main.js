@@ -82,7 +82,23 @@ function appendPresence(stateName) {
 function updatePersonalityDisplay(profile) {
   activePersonalityId = profile.profile_id || activePersonalityId;
   personalityCurrentEl.textContent = activePersonalityId;
-  personalityDetailEl.textContent = `${profile.display_name || "JARVIS"}: tone=${profile.tone || ""}; brevity=${profile.brevity || ""}; formality=${profile.formality || ""}`;
+  const metadataFields = [
+    ["Tone", profile.tone],
+    ["Brevity", profile.brevity],
+    ["Formality", profile.formality],
+  ];
+  const heading = document.createElement("strong");
+  heading.textContent = profile.display_name || "JARVIS";
+  const rows = metadataFields.map(([label, value]) => {
+    const row = document.createElement("div");
+    const labelEl = document.createElement("span");
+    const valueEl = document.createElement("span");
+    labelEl.textContent = `${label}: `;
+    valueEl.textContent = value || "—";
+    row.append(labelEl, valueEl);
+    return row;
+  });
+  personalityDetailEl.replaceChildren(heading, ...rows);
 }
 
 function setVoiceDetail(result) {

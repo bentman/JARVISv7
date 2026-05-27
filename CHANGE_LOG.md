@@ -18,6 +18,20 @@
 
 ## Entries
 
+- 2026-05-26 19:47
+  - Summary: Completed Slice K.2a operator settings inventory/backend route on Windows ARM64 / arm64. Added `GET /config/operator` and `POST /config/operator`; reads from existing `.env` only; missing `.env` returns `409` with `{"error": "env_file_missing"}` and does not create the file; exposes only approved current v7 operator fields; returns sparse field metadata (`key`, `value`, `has_value`, `editable`, `secret`, `restart_required`, and `description`); marks editable fields as restart-required; masks `TAVILY_API_KEY` as `***` when set with `has_value=true`; rejects non-allowlisted keys; preserves unknown `.env` lines and ordering while updating allowlisted keys in place; appends missing allowlisted keys only when `.env` already exists; and registered the config router in `create_app()`.
+  - Scope: `backend/app/api/app.py`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q` PASS (`25 passed in 1.31s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS on Windows ARM64 / arm64 (`105 passed, 4 deselected in 1.09s`).
+  - Note: No desktop UI, Tauri, CSS, service-status behavior, appearance controls, cloud escalation, personality runtime behavior, dependency/provisioning, `SYSTEM_INVENTORY.md`, or `.env.example` changes were made.
+
+- 2026-05-26 19:30
+  - Summary: Completed Slice K.1 personality metadata display on Windows ARM64 / arm64. Updated `updatePersonalityDisplay(profile)` to render Tone, Brevity, and Formality as labeled metadata fields with missing values shown as `—`, using DOM/text APIs (`createElement`, `textContent`, `append`, and `replaceChildren`) while preserving existing personality selector behavior, active personality state, backend calls, response behavior, CSS, `.env`, and Tauri behavior.
+  - Scope: `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: Gate K-0 active-host baseline `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.16s`); desktop static contract `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`24 passed in 0.11s`); post-K.1 regression `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.07s`).
+  - Note: Manual visual confirmation can be included in Slice K closeout; no additional K.1 validation was requested for this log update.
+
 - 2026-05-26 11:31
   - Summary: Added a minimal Windows ARM64 fresh-clone desktop launch prerequisite note documenting repo-local desktop dependency installation before running the desktop app.
   - Scope: `docs/windows-arm64-fresh-clone-setup.md`

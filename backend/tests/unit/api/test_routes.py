@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 from fastapi.testclient import TestClient
 
+from backend.app.api.routes import config as config_route
 from backend.app.api.app import ApiState, create_app
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
@@ -386,3 +387,85 @@ def test_wake_status_reflects_error_state() -> None:
     assert payload["last_detected"] is False
     assert payload["detection_count"] == 0
     assert payload["last_error"] == "wake failed"
+
+
+def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "USE_OLLAMA=true\n"
+        "OLLAMA_BASE_URL=http://localhost:11434\n"
+        "TAVILY_API_KEY=secret-token\n"
+        "UNRELATED=value\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().get("/config/operator")
+    payload = response.json()
+
+    assert response.status_code == 200
+    fields = {field["key"]: field for field in payload["fields"]}
+    assert set(fields) == {spec.key for spec in config_route.OPERATOR_FIELD_SPECS}
+    assert fields["USE_OLLAMA"]["value"] == "true"
+    assert fields["USE_OLLAMA"]["editable"] is True
+    assert fields["USE_OLLAMA"]["restart_required"] is True
+    assert fields["USE_OLLAMA"]["description"]
+    assert fields["TAVILY_API_KEY"]["secret"] is True
+    assert fields["TAVILY_API_KEY"]["has_value"] is True
+    assert fields["TAVILY_API_KEY"]["value"] == "***"
+    assert "secret-token" not in str(payload)
+    assert "UNRELATED" not in fields
+
+
+def test_operator_config_missing_env_returns_409_without_creating_file(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().get("/config/operator")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == {"error": "env_file_missing"}
+    assert not env_file.exists()
+
+
+def test_operator_config_write_rejects_non_allowlisted_keys_and_preserves_unknown_lines(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# leading comment\n"
+        "USE_OLLAMA=true\n"
+        "UNRELATED=value\n"
+        "TAVILY_API_KEY=old-secret\n"
+        "REDIS_PORT=6379\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().post(
+        "/config/operator",
+        json={"fields": {"USE_OLLAMA": "false", "TAVILY_API_KEY": "new-secret", "NOT_ALLOWED": "x"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "written": ["USE_OLLAMA", "TAVILY_API_KEY"],
+        "rejected": [{"key": "NOT_ALLOWED", "reason": "not_allowlisted"}],
+    }
+    assert env_file.read_text(encoding="utf-8") == (
+        "# leading comment\n"
+        "USE_OLLAMA=false\n"
+        "UNRELATED=value\n"
+        "TAVILY_API_KEY=new-secret\n"
+        "REDIS_PORT=6379\n"
+    )
+
+
+def test_operator_config_write_appends_missing_allowlisted_key_without_creating_missing_env(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("USE_OLLAMA=true\n", encoding="utf-8")
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().post("/config/operator", json={"fields": {"REDIS_HOST": "127.0.0.1"}})
+
+    assert response.status_code == 200
+    assert response.json() == {"written": ["REDIS_HOST"], "rejected": []}
+    assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=true\nREDIS_HOST=127.0.0.1\n"

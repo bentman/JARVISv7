@@ -143,6 +143,17 @@ def test_desktop_displays_personality_selector_and_presence_ui() -> None:
     assert "appendPresence" in main_js
     assert "presenceByProfile" in main_js
     assert "submit_text_turn" in backend_rs
+    assert 'personalitySelectEl.addEventListener("change"' in main_js
+    assert "selectPersonality(event.target.value)" in main_js
+    assert "updatePersonalityDisplay(payload.active)" in main_js
+    assert "function updatePersonalityDisplay(profile)" in main_js
+    assert "personalityDetailEl.replaceChildren" in main_js
+    for label in ["Tone", "Brevity", "Formality"]:
+        assert label in main_js
+    for field in ["profile.tone", "profile.brevity", "profile.formality"]:
+        assert field in main_js
+    assert "value || \"—\"" in main_js
+    assert "personalityDetailEl.innerHTML" not in main_js
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:
@@ -392,5 +403,6 @@ def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
     ]:
         assert selector in style_css
     assert " style=" not in index_html
+
 
 
