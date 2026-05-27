@@ -18,7 +18,7 @@
 
 ## Entries 
 
-- 2026-05-26 20:55
+- 2026-05-26 20:55 
   - Summary: Completed Slice K.2c restart-required UX on Windows ARM64 / arm64. Added restart-required state after successful settings save; rendered sparse restart-required UI in `settings-panel.js`; hid normal save/close controls while restart is required; kept Restart available; showed sparse restart failure copy; kept restart lifecycle in `main.js` through an injected callback using existing `stop_backend`, `start_backend`, and `get_readiness`; refreshed settings from `GET /config/operator` after successful restart; cleared the restart-required indicator after restart; and added a hidden-by-default persistent restart-required indicator near the Settings trigger for panel-closed state.
   - Scope: `desktop/src/components/settings-panel.js`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
   - Host class(es): Windows ARM64 / arm64
