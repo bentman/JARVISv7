@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-26 20:55
+  - Summary: Completed Slice K.2c restart-required UX on Windows ARM64 / arm64. Added restart-required state after successful settings save; rendered sparse restart-required UI in `settings-panel.js`; hid normal save/close controls while restart is required; kept Restart available; showed sparse restart failure copy; kept restart lifecycle in `main.js` through an injected callback using existing `stop_backend`, `start_backend`, and `get_readiness`; refreshed settings from `GET /config/operator` after successful restart; cleared the restart-required indicator after restart; and added a hidden-by-default persistent restart-required indicator near the Settings trigger for panel-closed state.
+  - Scope: `desktop/src/components/settings-panel.js`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`26 passed in 0.12s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS on Windows ARM64 / arm64 (`105 passed, 4 deselected in 1.06s`).
+  - Note: Preserved DOM/text API use with no `innerHTML`. No backend, new Tauri command, CSS, service status, appearance control, personality behavior, `.env.example`, dependency/provisioning, `SYSTEM_INVENTORY.md`, or schema changes were made. Manual desktop confirmation rolls into Slice K closeout.
+
 - 2026-05-26 20:36
   - Summary: Completed Slice K.2b desktop settings panel UI on Windows ARM64 / arm64. Added `settings-panel.js` with `openSettings(containerEl)` and `closeSettings()`; added a sparse sidebar settings trigger and settings panel container; wired the panel to consume `GET /config/operator` and `POST /config/operator`; rendered backend-returned fields only with no separate UI allowlist; showed key/description, editable state, secret state, has-value state, and restart-required text; preserved secret masking by submitting replacements only when entered; tracked dirty state with a sparse unsaved-change indicator; saved changed fields only and reported written/rejected counts; handled `409 env_file_missing` visibly without creating `.env`; and used DOM/text APIs with no `innerHTML` in the settings component.
   - Scope: `desktop/src/components/settings-panel.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
