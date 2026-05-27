@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-26 21:20
+  - Summary: Completed Slice K.3 service status display on Windows ARM64 / arm64. Added additive `services` payload to `GET /readiness` for Redis and SearXNG; added short-timeout, fail-closed service probes using current v7 settings/env names; added `service-status.js` with `renderServiceStatus(servicesPayload, containerEl)` using DOM/text APIs; added the sidebar service status container below degraded conditions; extended `renderReadiness()` to render service status; added sparse fallback copy `Service status unavailable.`; and added backend readiness payload coverage plus desktop static contract coverage.
+  - Scope: `backend/app/api/service_status.py`, `backend/app/api/schemas/readiness.py`, `backend/app/api/routes/readiness.py`, `backend/tests/unit/api/test_routes.py`, `desktop/src/components/service-status.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q` PASS (`26 passed in 23.65s`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`27 passed in 0.12s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS on Windows ARM64 / arm64 (`105 passed, 4 deselected in 1.06s`).
+  - Note: No existing readiness fields were renamed or removed. No Docker Compose, Tauri, settings panel, CSS, `.env.example`, dependency/provisioning, `SYSTEM_INVENTORY.md`, or service start/stop controls were changed. Manual desktop confirmation rolls into Slice K closeout.
+
 - 2026-05-26 20:55 
   - Summary: Completed Slice K.2c restart-required UX on Windows ARM64 / arm64. Added restart-required state after successful settings save; rendered sparse restart-required UI in `settings-panel.js`; hid normal save/close controls while restart is required; kept Restart available; showed sparse restart failure copy; kept restart lifecycle in `main.js` through an injected callback using existing `stop_backend`, `start_backend`, and `get_readiness`; refreshed settings from `GET /config/operator` after successful restart; cleared the restart-required indicator after restart; and added a hidden-by-default persistent restart-required indicator near the Settings trigger for panel-closed state.
   - Scope: `desktop/src/components/settings-panel.js`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
