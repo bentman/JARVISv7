@@ -1,3 +1,4 @@
+import { applyStored, initAppearanceControls } from "./components/appearance-controls.js";
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
 import { renderServiceStatus } from "./components/service-status.js";
@@ -19,6 +20,7 @@ const settingsPanelEl = document.querySelector("#settings-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
+const appearanceControlsEl = document.querySelector("#appearance-controls");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
 const turnStateEl = document.querySelector("#turn-state");
@@ -435,4 +437,10 @@ window.addEventListener("beforeunload", () => {
   invoke("stop_backend").catch(() => undefined);
 });
 
-startDesktop();
+async function startApp() {
+  applyStored();
+  await startDesktop();
+  initAppearanceControls(appearanceControlsEl);
+}
+
+startApp();

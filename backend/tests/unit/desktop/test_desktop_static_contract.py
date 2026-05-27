@@ -28,6 +28,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/package.json",
         "desktop/src/index.html",
         "desktop/src/main.js",
+        "desktop/src/components/appearance-controls.js",
         "desktop/src/components/settings-panel.js",
         "desktop/src/components/service-status.js",
         "desktop/src/style.css",
@@ -232,6 +233,32 @@ def test_k3_service_status_readiness_sidebar_contract() -> None:
     combined = index_html + main_js + service_status
     for forbidden in ["Start Redis", "Stop Redis", "Start SearXNG", "Stop SearXNG"]:
         assert forbidden not in combined
+
+
+def test_k4_appearance_controls_runtime_token_contract() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+    appearance_controls = _read("desktop/src/components/appearance-controls.js")
+
+    assert 'id="appearance-controls"' in index_html
+    assert "./components/appearance-controls.js" in main_js
+    assert "applyStored" in main_js
+    assert "initAppearanceControls" in main_js
+    assert "applyStored();\n  await startDesktop();" in main_js
+    assert "initAppearanceControls(appearanceControlsEl)" in main_js
+    assert "export function initAppearanceControls" in appearance_controls
+    assert "export function applyStored" in appearance_controls
+    assert "jarvisv7_appearance" in appearance_controls
+    assert "window.localStorage" in appearance_controls
+    assert "document.documentElement.style" in appearance_controls
+    assert "style.setProperty" in appearance_controls
+    for token in ["--text-sm", "--text-md", "--text-lg", "--space-2", "--space-3", "--space-4", "--color-accent"]:
+        assert token in appearance_controls
+    for token in ["--color-ready", "--color-degraded", "--color-failed", "--color-capture", "--color-speaking", "--color-thinking", "--color-transcribing"]:
+        assert token not in appearance_controls
+    for copy in ["Appearance", "Font", "Density", "Accent", "Larger", "Compact", "Neutral"]:
+        assert copy in appearance_controls
+    assert "innerHTML" not in appearance_controls
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:
@@ -481,6 +508,7 @@ def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
     ]:
         assert selector in style_css
     assert " style=" not in index_html
+
 
 
 

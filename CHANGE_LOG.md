@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-26 21:33
+  - Summary: Completed Slice K.4 appearance adjustments on Windows ARM64 / arm64. Added compact appearance controls at the bottom of the sidebar; added `appearance-controls.js` with `initAppearanceControls(containerEl)` and `applyStored()`; persisted preferences to WebView `localStorage` key `jarvisv7_appearance`; applied stored preferences before backend startup; supported sparse controls for font size, density, and accent; applied changes immediately with `document.documentElement.style.setProperty()`; limited runtime overrides to `--text-sm`, `--text-md`, `--text-lg`, `--space-2`, `--space-3`, `--space-4`, and `--color-accent`; and avoided semantic token overrides.
+  - Scope: `desktop/src/components/appearance-controls.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`28 passed in 0.13s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS on Windows ARM64 / arm64 (`105 passed, 4 deselected in 1.05s`).
+  - Note: No CSS, backend, Tauri, settings panel, service status, personality, `.env.example`, dependency/provisioning, `SYSTEM_INVENTORY.md`, or schema changes were made. Manual desktop confirmation rolls into Slice K closeout.
+
 - 2026-05-26 21:20
   - Summary: Completed Slice K.3 service status display on Windows ARM64 / arm64. Added additive `services` payload to `GET /readiness` for Redis and SearXNG; added short-timeout, fail-closed service probes using current v7 settings/env names; added `service-status.js` with `renderServiceStatus(servicesPayload, containerEl)` using DOM/text APIs; added the sidebar service status container below degraded conditions; extended `renderReadiness()` to render service status; added sparse fallback copy `Service status unavailable.`; and added backend readiness payload coverage plus desktop static contract coverage.
   - Scope: `backend/app/api/service_status.py`, `backend/app/api/schemas/readiness.py`, `backend/app/api/routes/readiness.py`, `backend/tests/unit/api/test_routes.py`, `desktop/src/components/service-status.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
