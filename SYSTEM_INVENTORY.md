@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice K operator controls/settings UX - 2026-05-26 21:45
+  - State: Verified
+  - Location: `desktop/src/components/settings-panel.js`, `desktop/src/components/service-status.js`, `desktop/src/components/appearance-controls.js`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/app/api/service_status.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Validation: Windows ARM64 evidence recorded in `CHANGE_LOG.md` K.1-K.4 entries. Windows x64 regression evidence: `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected`), report `reports\validation\20260527024302-regression.txt`.
+  - Notes: Slice K added personality metadata display for Tone/Brevity/Formality without changing personality runtime behavior; allowlisted `/config/operator` read/write against existing `.env` with masked secrets and no `TAVILY_API_KEY` exposure; backend-field-driven settings panel with restart-required UX using existing backend lifecycle commands; additive Redis/SearXNG readiness service status rendered in the desktop sidebar; and localStorage-backed appearance controls for font size, density, and accent preferences. No cloud escalation, new Tauri commands, service start/stop controls, or semantic state-token overrides were added.
+
 - Capability: Slice J runtime/readiness UX and desktop interaction surfacing - 2026-05-26 11:42
   - State: Verified
   - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/state-label.js`, `desktop/src/components/wake-indicator.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `docs/windows-arm64-fresh-clone-setup.md`, `CHANGE_LOG.md`
