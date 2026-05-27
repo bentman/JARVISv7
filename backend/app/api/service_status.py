@@ -38,15 +38,37 @@ def _probe_searxng(settings: Settings) -> ServiceStatus:
     if not settings.use_searxng or not base_url:
         return ServiceStatus(reachable=False, reason="not configured")
     try:
-        response = httpx.get(
-            f"{base_url}/search",
-            params={"q": "jarvis", "format": "json"},
+        health_response = httpx.get(
+            f"{base_url}/healthz",
             timeout=_READINESS_TIMEOUT_S,
         )
-        response.raise_for_status()
-        return ServiceStatus(reachable=True, reason="reachable")
     except Exception as exc:
         return ServiceStatus(reachable=False, reason=f"unreachable: {type(exc).__name__}")
+    if health_response.status_code >= 400:
+        return ServiceStatus(reachable=False, reason=f"unreachable: healthz HTTP {health_response.status_code}")
+
+    try:
+        response = httpx.get(
+            f"{base_url}/search",
+            params={"q": "", "format": "json"},
+            timeout=_READINESS_TIMEOUT_S,
+        )
+    except httpx.TimeoutException as exc:
+        return ServiceStatus(reachable=False, reason=f"container reachable; json probe timeout: {type(exc).__name__}")
+    except Exception as exc:
+        return ServiceStatus(reachable=False, reason=f"container reachable; json probe failed: {type(exc).__name__}")
+
+    try:
+        payload = response.json()
+    except ValueError:
+        return ServiceStatus(reachable=False, reason="container reachable; json unavailable: invalid JSON")
+    if response.status_code >= 400:
+        if isinstance(payload, dict) and payload.get("error") == "No query":
+            return ServiceStatus(reachable=True, reason="container reachable; json usable")
+        return ServiceStatus(reachable=False, reason=f"container reachable; json unavailable: HTTP {response.status_code}")
+    if not isinstance(payload, dict):
+        return ServiceStatus(reachable=False, reason="container reachable; json unavailable: invalid payload")
+    return ServiceStatus(reachable=True, reason="container reachable; json usable")
 
 
 def collect_service_statuses(settings: Settings | None = None) -> dict[str, ServiceStatus]:

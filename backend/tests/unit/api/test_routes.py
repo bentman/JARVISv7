@@ -190,7 +190,7 @@ def test_readiness_returns_additive_service_status(monkeypatch) -> None:
         "backend.app.api.routes.readiness.collect_service_statuses",
         lambda: {
             "redis": service_status.ServiceStatus(reachable=True, reason="reachable"),
-            "searxng": service_status.ServiceStatus(reachable=False, reason="not configured"),
+            "searxng": service_status.ServiceStatus(reachable=True, reason="container reachable; json usable"),
         },
     )
 
@@ -199,7 +199,7 @@ def test_readiness_returns_additive_service_status(monkeypatch) -> None:
 
     assert response.status_code == 200
     assert payload["services"]["redis"] == {"reachable": True, "reason": "reachable"}
-    assert payload["services"]["searxng"] == {"reachable": False, "reason": "not configured"}
+    assert payload["services"]["searxng"] == {"reachable": True, "reason": "container reachable; json usable"}
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
 
 

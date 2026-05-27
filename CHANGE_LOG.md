@@ -18,6 +18,20 @@
 
 ## Entries 
 
+- 2026-05-27 18:40
+  - Summary: Completed Slice K.4d SearchTool provider escalation repair on Windows x64 / amd64. Implemented SearchTool provider escalation in configured order: SearXNG, DDGS, Tavily; unavailable providers are skipped; provider exceptions, empty results, and no usable results fall through to the next provider; and the first provider result set with usable `SearchResult` objects is returned.
+  - Scope: `backend/app/tools/search/search_tool.py`, `backend/tests/unit/tools/test_search_tool.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\tools\test_search_tool.py backend\tests\unit\runtimes\internetsearch\test_search_runtime.py -q` PASS (`14 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.03s`); user manual smoke test PASS.
+  - Note: Preserved result JSON schema and fail-closed `[]` behavior after all enabled providers fail or return empty. `backend/app/routing/runtime_selector.py` was not modified. This repairs provider fallback only; user-facing explicit search grounding remains separate follow-up work.
+
+- 2026-05-27 17:15
+  - Summary: Completed Slice K.4c SearXNG JSON readiness correction on Windows x64 / amd64. Added deterministic SearXNG settings-path configuration and corrected readiness probing so desktop service status reports JSON format availability without conflating upstream search latency with service reachability.
+  - Scope: `docker-compose.yml`, `backend/app/api/service_status.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/api/test_service_status.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\api\test_service_status.py -q` PASS (`34 passed in 1.51s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.06s`); `docker compose up -d searxng` PASS with Redis healthy and SearXNG running; live backend probe returned `ServiceStatus(reachable=True, reason='container reachable; json usable')`; user UI smoke confirmed desktop shows `SearXNG: reachable · container reachable; json usable`.
+  - Note: Added `SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml`; kept `config/search/searxng/settings.yml` as the repo-owned active config; added focused tests proving `use_default_settings: true`, `search.formats` includes `json`, and compose keeps the explicit settings path plus `/etc/searxng` repo mount; kept `/healthz` as the reachability check; corrected the JSON capability probe to `GET /search?q=&format=json`; treats SearXNG's `{"error": "No query"}` JSON response as proof that JSON output is enabled, including HTTP 400; no desktop, Tauri, settings panel, personality, cloud escalation, dependency/provisioning, `SYSTEM_INVENTORY.md`, or SearXNG `settings.yml` changes were made.
+
 - 2026-05-27 16:31
   - Summary: Completed Slice K.4b desktop layout/readability correction. Corrected the desktop shell into a clearer three-pane layout; left runtime sidebar now focuses on Backend and Readiness; center remains Conversation, text input/send, PTT controls, and voice debug; right Operator panel now contains Personality, Services, Appearance, and Settings; removed separate Wake display from Backend facts with Wake represented in Readiness; removed Personality from the Readiness summary; added compact PTT readiness row; reordered readiness rows to `LLM`, `PTT`, `STT`, `TTS`, `Wake`; moved verbose readiness reasons into hover text; hid redundant degraded-conditions content; treated TTS on CPU as ready when a TTS runtime exists; replaced conversation message `innerHTML` rendering with DOM/text APIs; and preserved existing IDs and JS wiring where needed.
   - Scope: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
