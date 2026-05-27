@@ -1,5 +1,6 @@
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
+import { closeSettings, openSettings } from "./components/settings-panel.js";
 import { setStateLabel } from "./components/state-label.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 
@@ -11,6 +12,9 @@ const wakeIndicatorEl = document.querySelector("#wake-indicator");
 const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
 const personalityDetailEl = document.querySelector("#personality-detail");
+const settingsTriggerEl = document.querySelector("#settings-trigger");
+const settingsRestartRequiredEl = document.querySelector("#settings-restart-required");
+const settingsPanelEl = document.querySelector("#settings-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const errorEl = document.querySelector("#error-panel");
@@ -226,6 +230,24 @@ async function startDesktop() {
   }
 }
 
+async function restartBackendForSettings() {
+  await invoke("stop_backend");
+  setState("STARTING");
+  healthEl.textContent = "starting";
+  const startPayload = JSON.parse(await invoke("start_backend"));
+  sessionEl.textContent = startPayload.session_id || "created";
+  if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
+  healthEl.textContent = "ok";
+  const readiness = JSON.parse(await invoke("get_readiness"));
+  renderReadiness(readiness);
+}
+
+function updateSettingsRestartRequired(required, details = {}) {
+  if (!settingsRestartRequiredEl) return;
+  settingsRestartRequiredEl.hidden = !(required && !details.panelOpen);
+  settingsRestartRequiredEl.textContent = required ? "Restart required" : "";
+}
+
 async function blobToAudioBuffer(blob) {
   const arrayBuffer = await blob.arrayBuffer();
   const audioContext = new AudioContext();
@@ -393,6 +415,17 @@ pttButton.addEventListener("click", (event) => {
 
 personalitySelectEl.addEventListener("change", (event) => {
   selectPersonality(event.target.value).catch((error) => showError(String(error)));
+});
+
+settingsTriggerEl.addEventListener("click", () => {
+  if (settingsPanelEl.hidden) {
+    openSettings(settingsPanelEl, {
+      restartBackend: restartBackendForSettings,
+      onRestartRequiredChange: updateSettingsRestartRequired,
+    }).catch((error) => showError(String(error)));
+    return;
+  }
+  closeSettings();
 });
 
 window.addEventListener("beforeunload", () => {

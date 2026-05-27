@@ -18,6 +18,13 @@
 
 ## Entries
 
+- 2026-05-26 20:36
+  - Summary: Completed Slice K.2b desktop settings panel UI on Windows ARM64 / arm64. Added `settings-panel.js` with `openSettings(containerEl)` and `closeSettings()`; added a sparse sidebar settings trigger and settings panel container; wired the panel to consume `GET /config/operator` and `POST /config/operator`; rendered backend-returned fields only with no separate UI allowlist; showed key/description, editable state, secret state, has-value state, and restart-required text; preserved secret masking by submitting replacements only when entered; tracked dirty state with a sparse unsaved-change indicator; saved changed fields only and reported written/rejected counts; handled `409 env_file_missing` visibly without creating `.env`; and used DOM/text APIs with no `innerHTML` in the settings component.
+  - Scope: `desktop/src/components/settings-panel.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows ARM64 / arm64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`25 passed in 0.11s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS on Windows ARM64 / arm64 (`105 passed, 4 deselected in 1.04s`).
+  - Note: No backend, Tauri, CSS, restart UX, service status, appearance controls, personality behavior, `.env.example`, dependency/provisioning, `SYSTEM_INVENTORY.md`, or schema changes were made. Manual desktop confirmation rolls into Slice K closeout.
+
 - 2026-05-26 19:47
   - Summary: Completed Slice K.2a operator settings inventory/backend route on Windows ARM64 / arm64. Added `GET /config/operator` and `POST /config/operator`; reads from existing `.env` only; missing `.env` returns `409` with `{"error": "env_file_missing"}` and does not create the file; exposes only approved current v7 operator fields; returns sparse field metadata (`key`, `value`, `has_value`, `editable`, `secret`, `restart_required`, and `description`); marks editable fields as restart-required; masks `TAVILY_API_KEY` as `***` when set with `has_value=true`; rejects non-allowlisted keys; preserves unknown `.env` lines and ordering while updating allowlisted keys in place; appends missing allowlisted keys only when `.env` already exists; and registered the config router in `create_app()`.
   - Scope: `backend/app/api/app.py`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/tests/unit/api/test_routes.py`

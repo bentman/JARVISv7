@@ -28,6 +28,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/package.json",
         "desktop/src/index.html",
         "desktop/src/main.js",
+        "desktop/src/components/settings-panel.js",
         "desktop/src/style.css",
         "desktop/src-tauri/Cargo.toml",
         "desktop/src-tauri/build.rs",
@@ -154,6 +155,61 @@ def test_desktop_displays_personality_selector_and_presence_ui() -> None:
         assert field in main_js
     assert "value || \"—\"" in main_js
     assert "personalityDetailEl.innerHTML" not in main_js
+
+
+def test_k2b_settings_panel_component_and_shell_wiring() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+    settings_panel = _read("desktop/src/components/settings-panel.js")
+
+    assert 'id="settings-trigger"' in index_html
+    assert 'id="settings-panel"' in index_html
+    assert "./components/settings-panel.js" in main_js
+    assert "openSettings(settingsPanelEl" in main_js
+    assert "closeSettings()" in main_js
+    assert "export async function openSettings" in settings_panel
+    assert "export function closeSettings" in settings_panel
+    assert 'fetch(CONFIG_ENDPOINT)' in settings_panel
+    assert 'method: "POST"' in settings_panel
+    assert "http://127.0.0.1:8765/config/operator" in settings_panel
+    assert "innerHTML" not in settings_panel
+    assert "textContent" in settings_panel
+    for field in ["restart_required", "secret", "has_value", "editable", "description"]:
+        assert field in settings_panel
+    for copy in ["Unsaved changes", "restart required", "written", "rejected", ".env is required"]:
+        assert copy in settings_panel
+    assert "payload.fields" in settings_panel
+
+
+def test_k2c_settings_restart_required_ux_contract() -> None:
+    index_html = _read("desktop/src/index.html")
+    main_js = _read("desktop/src/main.js")
+    settings_panel = _read("desktop/src/components/settings-panel.js")
+
+    assert 'id="settings-restart-required"' in index_html
+    assert "Restart required" in index_html
+    assert "restartBackendForSettings" in main_js
+    assert 'invoke("stop_backend")' in main_js
+    assert 'invoke("start_backend")' in main_js
+    assert 'invoke("get_readiness")' in main_js
+    assert "renderReadiness(readiness)" in main_js
+    assert "restartBackend: restartBackendForSettings" in main_js
+    assert "onRestartRequiredChange: updateSettingsRestartRequired" in main_js
+    assert "settingsRestartRequiredEl.hidden" in main_js
+    assert "export async function openSettings(containerEl, options = {})" in settings_panel
+    assert "restartHandler = options.restartBackend" in settings_panel
+    assert "restartRequiredChangeHandler = options.onRestartRequiredChange" in settings_panel
+    assert "Restart required." in settings_panel
+    assert "Restart failed." in settings_panel
+    assert "Restart unavailable." in settings_panel
+    assert "restartRequired = true" in settings_panel
+    assert "restartRequired = false" in settings_panel
+    assert "await restartHandler()" in settings_panel
+    assert "await loadSettings(activeContainer)" in settings_panel
+    assert "saveButton.hidden = restartRequired" in settings_panel
+    assert "closeButton.hidden = restartRequired" in settings_panel
+    assert "restartButton.hidden = !restartRequired" in settings_panel
+    assert "innerHTML" not in settings_panel
 
 
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:
@@ -403,6 +459,9 @@ def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
     ]:
         assert selector in style_css
     assert " style=" not in index_html
+
+
+
 
 
 
