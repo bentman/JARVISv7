@@ -122,7 +122,7 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "./components/wake-indicator.js" in main_js
     assert "renderWakeStatus(status, wakeIndicatorEl)" in main_js
     assert "PTT-only fallback" in main_js
-    assert 'id="wake-indicator"' in index_html
+    assert 'id="wake-indicator"' not in index_html
     assert "wake-status" not in index_html
     assert "wake-detail" not in index_html
     assert "export function renderWakeStatus" in wake_indicator
@@ -261,6 +261,93 @@ def test_k4_appearance_controls_runtime_token_contract() -> None:
     assert "innerHTML" not in appearance_controls
 
 
+def test_k4b_operator_controls_are_separated_from_runtime_sidebar() -> None:
+    index_html = _read("desktop/src/index.html")
+    status_start = index_html.index('class="panel status-panel"')
+    conversation_start = index_html.index('class="panel conversation-panel"')
+    operator_start = index_html.index('class="panel operator-panel"')
+    backend_heading = index_html.index("<h2>Backend</h2>")
+    personality_current = index_html.index('id="personality-current"')
+    personality_select = index_html.index('id="personality-select"')
+    personality_detail = index_html.index('id="personality-detail"')
+    settings_trigger = index_html.index('id="settings-trigger"')
+    restart_indicator = index_html.index('id="settings-restart-required"')
+    settings_panel = index_html.index('id="settings-panel"')
+    appearance_controls = index_html.index('id="appearance-controls"')
+    readiness_panel = index_html.index('id="readiness-panel"')
+    degraded_conditions = index_html.index('id="degraded-conditions"')
+    service_status = index_html.index('id="service-status"')
+
+    assert 'class="panel status-panel"' in index_html
+    assert 'class="panel operator-panel"' in index_html
+    assert 'aria-label="Runtime status"' in index_html
+    assert 'aria-label="Operator controls"' in index_html
+    assert 'id="settings-trigger"' in index_html
+    assert 'id="settings-panel"' in index_html
+    assert 'id="appearance-controls"' in index_html
+    assert status_start < conversation_start < operator_start
+    assert status_start < backend_heading < conversation_start
+    assert status_start < readiness_panel < conversation_start
+    assert status_start < degraded_conditions < conversation_start
+    assert "Checking wake status" not in index_html
+    for operator_control in [
+        personality_select,
+        personality_detail,
+        settings_trigger,
+        restart_indicator,
+        settings_panel,
+        service_status,
+        appearance_controls,
+    ]:
+        assert operator_start < operator_control
+        assert not status_start < operator_control < conversation_start
+    assert operator_start < personality_current
+    assert not status_start < personality_current < conversation_start
+    assert operator_start < appearance_controls < settings_trigger < settings_panel
+
+
+def test_k4b_layout_css_defines_three_region_scrollable_shell() -> None:
+    style_css = _read("desktop/src/style.css")
+
+    assert "grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(260px, 340px);" in style_css
+    for selector in [
+        ".status-panel",
+        ".conversation-panel",
+        ".operator-panel",
+        ".panel-section",
+        ".operator-header",
+        ".operator-actions",
+        ".settings-panel",
+        ".appearance-panel",
+    ]:
+        assert selector in style_css
+    assert ".status-panel,\n.operator-panel {\n  overflow-y: auto;" in style_css
+    assert ".conversation-log" in style_css
+    assert "flex: 1;" in style_css
+    assert ".appearance-panel label" in style_css
+    assert "grid-template-columns: minmax(80px, 0.7fr) minmax(120px, 1fr);" in style_css
+    assert "@media (max-width: 1180px)" not in style_css
+    assert "grid-template-areas" not in style_css
+    assert '"operator conversation"' not in style_css
+    assert "@media (max-width: 820px)" in style_css
+    assert "font-size: calc(var(--text-lg) + 0.12rem);" in style_css
+    assert ".operator-header {\n  border-bottom: 1px solid var(--color-border);" in style_css
+    assert ".operator-actions {\n  border-top: 1px solid var(--color-border);" in style_css
+
+
+def test_k4b_conversation_message_rendering_uses_dom_text_apis() -> None:
+    main_js = _read("desktop/src/main.js")
+
+    assert "function appendMessage(role, text)" in main_js
+    assert "document.createElement(\"article\")" in main_js
+    assert "document.createElement(\"span\")" in main_js
+    assert "document.createElement(\"strong\")" in main_js
+    assert "document.createElement(\"p\")" in main_js
+    assert "bodyEl.textContent = text || \"(no text returned)\"" in main_js
+    assert "entry.append(stampEl, roleEl, bodyEl)" in main_js
+    assert "entry.innerHTML" not in main_js
+
+
 def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     main_js = _read("desktop/src/main.js")
@@ -314,6 +401,17 @@ def test_j1_readiness_components_and_containers_exist() -> None:
     assert "renderReadinessPanel(readiness, readinessEl)" in main_js
     assert "renderDegradedList(readiness, degradedEl)" in main_js
     assert 'invoke("get_readiness")' in main_js
+    assert "active_personality_profile_id" not in readiness_panel
+    assert "ptt" in readiness_panel
+    assert "PTT" in readiness_panel
+    assert 'const FAMILY_ORDER = ["llm", "stt", "tts", "wake"]' in readiness_panel
+    assert "readinessRows(readinessPayload.families)" in readiness_panel
+    assert 'family?.family === "llm"' in readiness_panel
+    assert "rows.splice(llmIndex >= 0 ? llmIndex + 1 : 0, 0, ptt)" in readiness_panel
+    assert "item.title = familyDetail(family, state)" in readiness_panel
+    assert "reason.textContent" not in readiness_panel
+    assert "provider-override-missing" not in degraded_list
+    assert "containerEl.hidden = true" in degraded_list
 
 
 def test_j1_voice_debug_is_collapsed_details_without_voice_capture_change() -> None:
@@ -355,7 +453,7 @@ def test_j3b_wake_indicator_component_renders_existing_wake_fields() -> None:
     main_js = _read("desktop/src/main.js")
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
 
-    assert 'id="wake-indicator"' in index_html
+    assert 'id="wake-indicator"' not in index_html
     assert "./components/wake-indicator.js" in main_js
     assert "renderWakeStatus" in main_js
     assert "export function renderWakeStatus" in wake_indicator
@@ -371,7 +469,6 @@ def test_j1_readiness_payload_values_are_rendered_with_dom_text_apis() -> None:
     main_js = _read("desktop/src/main.js")
 
     assert "textContent" in readiness_panel
-    assert "textContent" in degraded_list
     assert "innerHTML" not in readiness_panel
     assert "innerHTML" not in degraded_list
     assert "document.body.dataset.degraded" in main_js
@@ -390,6 +487,8 @@ def test_j1_llm_ollama_local_runtime_unavailable_is_degraded_not_failed() -> Non
     assert "FAILED_REASON_TOKENS" in readiness_panel
     assert "local runtime unavailable" in readiness_panel
     assert "local runtime unavailable" not in degraded_list
+    assert 'family?.family === "tts"' in readiness_panel
+    assert 'toLowerCase() === "cpu"' in readiness_panel
 
 
 def test_j2_state_label_component_exports_mapping_and_preserves_data_state() -> None:

@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-27 16:31
+  - Summary: Completed Slice K.4b desktop layout/readability correction. Corrected the desktop shell into a clearer three-pane layout; left runtime sidebar now focuses on Backend and Readiness; center remains Conversation, text input/send, PTT controls, and voice debug; right Operator panel now contains Personality, Services, Appearance, and Settings; removed separate Wake display from Backend facts with Wake represented in Readiness; removed Personality from the Readiness summary; added compact PTT readiness row; reordered readiness rows to `LLM`, `PTT`, `STT`, `TTS`, `Wake`; moved verbose readiness reasons into hover text; hid redundant degraded-conditions content; treated TTS on CPU as ready when a TTS runtime exists; replaced conversation message `innerHTML` rendering with DOM/text APIs; and preserved existing IDs and JS wiring where needed.
+  - Scope: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`31 passed in 0.14s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.12s`); user screenshot review confirmed the three-pane layout was visually in place.
+  - Note: No backend, Tauri, service probe, settings semantics, personality behavior, dependency/provisioning, or `SYSTEM_INVENTORY.md` changes were made.
+
 - 2026-05-26 21:33
   - Summary: Completed Slice K.4 appearance adjustments on Windows ARM64 / arm64. Added compact appearance controls at the bottom of the sidebar; added `appearance-controls.js` with `initAppearanceControls(containerEl)` and `applyStored()`; persisted preferences to WebView `localStorage` key `jarvisv7_appearance`; applied stored preferences before backend startup; supported sparse controls for font size, density, and accent; applied changes immediately with `document.documentElement.style.setProperty()`; limited runtime overrides to `--text-sm`, `--text-md`, `--text-lg`, `--space-2`, `--space-3`, `--space-4`, and `--color-accent`; and avoided semantic token overrides.
   - Scope: `desktop/src/components/appearance-controls.js`, `desktop/src/index.html`, `desktop/src/main.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`

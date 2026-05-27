@@ -61,10 +61,15 @@ function clearError() {
 
 function appendMessage(role, text) {
   const entry = document.createElement("article");
+  const stampEl = document.createElement("span");
+  const roleEl = document.createElement("strong");
+  const bodyEl = document.createElement("p");
   entry.className = `message ${role}`;
-  const stamp = new Date().toLocaleTimeString();
-  entry.innerHTML = `<span class="stamp">${stamp}</span><strong>${role}</strong><p></p>`;
-  entry.querySelector("p").textContent = text || "(no text returned)";
+  stampEl.className = "stamp";
+  stampEl.textContent = new Date().toLocaleTimeString();
+  roleEl.textContent = role;
+  bodyEl.textContent = text || "(no text returned)";
+  entry.append(stampEl, roleEl, bodyEl);
   logEl.appendChild(entry);
   logEl.scrollTop = logEl.scrollHeight;
 }
