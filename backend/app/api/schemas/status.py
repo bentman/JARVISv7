@@ -6,7 +6,9 @@ class WakeStatusResponse(BaseModel):
     provider: str
     available: bool
     reason: str
+    active: bool = False
+    enabled: bool = False
     monitoring: bool = False
-    last_detected: bool = False
+    last_detected: str | None = None
     detection_count: int = 0
     last_error: str | None = None

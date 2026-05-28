@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import time
 import wave
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -18,6 +19,7 @@ from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport,
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.session_service import SessionService
+from backend.app.services.wake_monitor import WakeMonitorService
 
 
 class _FakeSTT:
@@ -54,6 +56,15 @@ class _FakeLLM:
 
     def generate(self, prompt: str, **kwargs: object) -> str:
         return f"response to {prompt}"
+
+
+class _FakeWakeRuntime:
+    def is_available(self) -> bool:
+        return True
+
+    def detect(self, audio_chunk: np.ndarray) -> bool:
+        _ = audio_chunk
+        return False
 
 
 @dataclass(slots=True)
@@ -146,12 +157,18 @@ def _state() -> ApiState:
         session_manager=session_manager,  # type: ignore[arg-type]
         engine=_FakeEngine(),  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        wake_monitor=None,  # type: ignore[arg-type]
         cache_manager=CacheManager(),
     )
     state.session_service = SessionService(
         session_manager=state.session_manager,  # type: ignore[arg-type]
         engine=state.engine,
         engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type]
+    )
+    state.wake_monitor = WakeMonitorService(
+        session_service=state.session_service,
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type]
+        chunk_source=_wake_source,
     )
     return state
 
@@ -168,6 +185,12 @@ def _wav_bytes() -> bytes:
         wav_file.setframerate(16000)
         wav_file.writeframes((np.zeros(160, dtype="<i2")).tobytes())
     return buffer.getvalue()
+
+
+def _wake_source(stop_event):
+    while not stop_event.is_set():
+        time.sleep(0.01)
+        yield np.zeros(4)
 
 
 def test_health_returns_200() -> None:
@@ -346,11 +369,37 @@ def test_wake_status_uses_readiness_without_starting_monitor() -> None:
         "provider": "openwakeword",
         "available": True,
         "reason": "wake ready",
+        "active": False,
+        "enabled": False,
         "monitoring": False,
-        "last_detected": False,
+        "last_detected": None,
         "detection_count": 0,
         "last_error": None,
     }
+
+
+def test_wake_monitor_start_stop_and_toggle_endpoints() -> None:
+    client = _client()
+
+    started = client.post("/status/wake/start")
+    assert started.status_code == 200
+    assert started.json()["active"] is True
+    assert started.json()["enabled"] is True
+    assert started.json()["monitoring"] is True
+
+    stopped = client.post("/status/wake/stop")
+    assert stopped.status_code == 200
+    assert stopped.json()["active"] is False
+    assert stopped.json()["enabled"] is False
+    assert stopped.json()["monitoring"] is False
+
+    toggled_on = client.post("/status/wake/toggle")
+    assert toggled_on.status_code == 200
+    assert toggled_on.json()["active"] is True
+
+    toggled_off = client.post("/status/wake/toggle")
+    assert toggled_off.status_code == 200
+    assert toggled_off.json()["active"] is False
 
 
 def test_wake_status_reflects_deterministic_detection_state() -> None:
@@ -376,7 +425,7 @@ def test_wake_status_reflects_deterministic_detection_state() -> None:
     assert payload["provider"] == "openwakeword"
     assert payload["available"] is True
     assert payload["reason"] == "wake detected"
-    assert payload["last_detected"] is True
+    assert payload["last_detected"] is not None
     assert payload["detection_count"] == 1
     assert payload["last_error"] is None
 
@@ -403,7 +452,9 @@ def test_wake_status_reflects_error_state() -> None:
     payload = response.json()
     assert payload["available"] is False
     assert payload["reason"] == "wake detection error; PTT-only fallback is active"
-    assert payload["last_detected"] is False
+    assert payload["active"] is False
+    assert payload["enabled"] is False
+    assert payload["last_detected"] is None
     assert payload["detection_count"] == 0
     assert payload["last_error"] == "wake failed"
 

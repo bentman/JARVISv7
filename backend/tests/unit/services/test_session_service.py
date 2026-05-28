@@ -171,8 +171,10 @@ def test_wake_status_defaults_to_configured_readiness(tmp_path: Path) -> None:
     assert status.provider == "openwakeword"
     assert status.available is True
     assert status.reason == "wake ready"
+    assert status.active is False
+    assert status.enabled is False
     assert status.monitoring is False
-    assert status.last_detected is False
+    assert status.last_detected is None
     assert status.detection_count == 0
     assert status.last_error is None
 
@@ -183,7 +185,7 @@ def test_process_wake_chunks_records_positive_detection(tmp_path: Path) -> None:
     runtime = _FakeWakeRuntime(detections=[False, True])
     status = service.process_wake_chunks(runtime, [np.zeros(4), np.ones(4)])
     assert status.available is True
-    assert status.last_detected is True
+    assert status.last_detected is not None
     assert status.detection_count == 1
     assert status.reason == "wake detected"
 
@@ -193,7 +195,7 @@ def test_process_wake_chunks_records_no_detection_without_error(tmp_path: Path) 
     service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
     status = service.process_wake_chunks(_FakeWakeRuntime(detections=[False]), [np.zeros(4)])
     assert status.available is True
-    assert status.last_detected is False
+    assert status.last_detected is None
     assert status.detection_count == 0
     assert status.reason == "wake not detected"
     assert status.last_error is None
@@ -205,7 +207,9 @@ def test_wake_unavailable_degrades_to_ptt_only_without_error(tmp_path: Path) -> 
     status = service.process_wake_chunks(_FakeWakeRuntime(available=False), [np.zeros(4)])
     assert status.available is False
     assert status.monitoring is False
-    assert status.last_detected is False
+    assert status.active is False
+    assert status.enabled is False
+    assert status.last_detected is None
     assert status.reason == "wake runtime is unavailable; PTT-only fallback is active"
     assert status.last_error is None
 
@@ -216,6 +220,26 @@ def test_wake_detection_error_records_last_error(tmp_path: Path) -> None:
     status = service.process_wake_chunks(_FakeWakeRuntime(error=RuntimeError("mic failed")), [np.zeros(4)])
     assert status.available is False
     assert status.monitoring is False
-    assert status.last_detected is False
+    assert status.active is False
+    assert status.enabled is False
+    assert status.last_detected is None
     assert status.reason == "wake detection error; PTT-only fallback is active"
     assert status.last_error == "mic failed"
+
+
+def test_start_and_stop_wake_monitor_updates_status_without_readiness_change(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    started = service.start_wake_monitor(provider="openwakeword", available=True, reason="wake ready")
+
+    assert started.available is True
+    assert started.active is True
+    assert started.enabled is True
+    assert started.monitoring is True
+    assert started.reason == "wake ready"
+
+    stopped = service.stop_wake_monitor()
+    assert stopped.available is True
+    assert stopped.active is False
+    assert stopped.enabled is False
+    assert stopped.monitoring is False
+    assert stopped.reason == "wake monitoring stopped; manual PTT is active"

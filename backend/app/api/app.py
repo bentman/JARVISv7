@@ -27,7 +27,9 @@ from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
+from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.session_service import SessionService
+from backend.app.services.wake_monitor import WakeMonitorService
 
 
 ReadinessMap = dict[str, tuple[str, bool, str]]
@@ -47,6 +49,7 @@ class ApiState:
     session_manager: SessionManager
     engine: TurnEngine
     session_service: SessionService
+    wake_monitor: WakeMonitorService
     cache_manager: CacheManager
 
 
@@ -102,6 +105,7 @@ def build_startup_state() -> ApiState:
         session_manager=session_manager,
         engine=None,  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        wake_monitor=None,  # type: ignore[arg-type]
         cache_manager=cache_manager,
     )
     state.engine = build_engine(state, session_manager)
@@ -109,6 +113,10 @@ def build_startup_state() -> ApiState:
         session_manager=session_manager,
         engine=state.engine,
         engine_factory=lambda manager: bind_session(state, manager),
+    )
+    state.wake_monitor = WakeMonitorService(
+        session_service=state.session_service,
+        runtime_factory=lambda: select_wake_runtime(state.preflight, state.profile),
     )
     return state
 

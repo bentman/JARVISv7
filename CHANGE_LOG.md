@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-28 18:53
+  - Summary: Completed Slice K.4f backend wake monitor lifecycle on Windows x64 / amd64. Added backend-owned wake monitor lifecycle endpoints for start, stop, toggle, and status; added focused `WakeMonitorService` with injected runtime/chunk source support and no test microphone dependency; extended wake status with `active`, `enabled`, `last_detected`, `detection_count`, and `last_error`; kept `SessionService` limited to wake state/status updates; wake detection now updates timestamp/count; and unavailable runtime or capture/detection errors fail closed and disable monitoring.
+  - Scope: `backend/app/api/app.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`, `backend/app/services/session_service.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/services/test_session_service.py`, `backend/tests/unit/services/test_wake_monitor.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_session_service.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\api\test_routes.py -q` PASS (`45 passed in 1.42s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 1.78s`).
+  - Note: No hands-free turn submission was added. No desktop, Tauri, PTT, search, settings, personality, dependency/provisioning, or `SYSTEM_INVENTORY.md` changes were made.
+
 - 2026-05-27 19:26
   - Summary: Completed Slice K.4e Settings access fix on Windows x64 / amd64. Added Tauri commands for operator settings GET/POST backed by Rust `reqwest`; removed direct browser `fetch()` and the hardcoded backend URL from the settings panel; wired settings GET/POST through `invoke("get_operator_config")` and `invoke("write_operator_config")`; preserved `.env` missing handling, changed-field saves, secret handling, and restart-required UX; and replaced the visible Settings text button with an accessible gear icon button using `aria-label="Settings"` and `title="Settings"`.
   - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/components/settings-panel.js`, `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/style.css`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
