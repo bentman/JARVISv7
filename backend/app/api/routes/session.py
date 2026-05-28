@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from backend.app.api.dependencies import get_session_service
+from backend.app.api.app import ApiState
+from backend.app.api.dependencies import get_api_state, get_session_service
 from backend.app.api.schemas.session import (
     CloseSessionRequest,
     CloseSessionResponse,
@@ -47,9 +48,24 @@ def close_session(
 @router.get("/session/status", response_model=SessionStatusResponse)
 def session_status(session_service: SessionService = Depends(get_session_service)) -> SessionStatusResponse:
     status = session_service.status()
+    return _session_status_response(status)
+
+
+@router.post("/session/ptt", response_model=SessionStatusResponse)
+def invoke_ptt(state: ApiState = Depends(get_api_state)) -> SessionStatusResponse:
+    if state.resident_voice is None:
+        raise HTTPException(status_code=503, detail="resident voice invocation is unavailable")
+    return _session_status_response(state.resident_voice.ptt())
+
+
+def _session_status_response(status) -> SessionStatusResponse:
     return SessionStatusResponse(
         session_id=status.session_id,
         active=status.active,
         state=status.state,
         turn_count=status.turn_count,
+        last_transcript=status.last_transcript,
+        last_response=status.last_response,
+        failure_reason=status.failure_reason,
+        invocation_source=status.invocation_source,
     )

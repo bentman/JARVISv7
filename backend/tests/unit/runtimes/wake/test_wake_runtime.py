@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import wave
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -12,6 +13,17 @@ from backend.app.runtimes.wake.base import WakeBase
 from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES
 from backend.app.runtimes.wake.porcupine_runtime import PorcupineRuntime
 from backend.app.runtimes.wake.wake_runtime import NullWakeRuntime, select_wake_runtime
+
+
+FIXTURE_DIR = Path(__file__).resolve().parents[3] / "fixtures"
+
+
+def _load_wav_int16(path: Path) -> np.ndarray:
+    with wave.open(str(path), "rb") as wav_file:
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getframerate() == 16000
+        assert wav_file.getsampwidth() == 2
+        return np.frombuffer(wav_file.readframes(wav_file.getnframes()), dtype="<i2").copy()
 
 
 def test_selector_returns_openwakeword_runtime_when_ready():
@@ -74,6 +86,22 @@ def test_openwakeword_runtime_streams_chunks_and_detects(monkeypatch, tmp_path):
     assert runtime.detect(np.zeros(WAKE_CHUNK_SAMPLES * 2, dtype=np.int16)) is True
     assert runtime.last_score == 0.7
     assert calls[1:] == [WAKE_CHUNK_SAMPLES, WAKE_CHUNK_SAMPLES]
+
+
+def test_openwakeword_runtime_detects_reference_fixture_with_real_model():
+    runtime = OpenWakeWordRuntime(device="cpu")
+    assert runtime.is_available(), f"wake model files are unavailable at {runtime.model_path}"
+
+    reference_audio = _load_wav_int16(FIXTURE_DIR / "hey_jarvis_ref.wav")
+    assert runtime.detect(reference_audio), (
+        "reference wake fixture was not detected; "
+        f"score={runtime.last_score:.6f}, threshold={runtime.threshold:.6f}"
+    )
+
+    sample_audio = _load_wav_int16(FIXTURE_DIR / "hey_jarvis.wav")
+    runtime.detect(sample_audio)
+    assert runtime.last_score is not None
+    assert runtime.threshold > 0.0
 
 
 def test_porcupine_runtime_is_available_false_when_no_access_key(monkeypatch):

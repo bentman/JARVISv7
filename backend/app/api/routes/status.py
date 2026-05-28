@@ -43,4 +43,6 @@ def _wake_response(status) -> WakeStatusResponse:
         last_detected=status.last_detected,
         detection_count=status.detection_count,
         last_error=status.last_error,
+        last_score=status.last_score,
+        threshold=status.threshold,
     )

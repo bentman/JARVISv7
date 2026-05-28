@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 
 from backend.app.services.session_service import SessionService
-from backend.app.services.wake_monitor import WakeMonitorService
+from backend.app.services.wake_monitor import WAKE_CHUNK_SAMPLES, WakeMonitorService, microphone_chunk_source
 from backend.tests.unit.services.test_session_service import _FakeWakeRuntime, _service
 
 
@@ -47,6 +49,7 @@ def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
 
 def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> None:
     service = _service(tmp_path)
+    invocations: list[str] = []
 
     def source(stop_event):
         yield np.zeros(4)
@@ -58,6 +61,7 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
         session_service=service,
         runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True]),
         chunk_source=source,
+        invocation_callback=invocations.append,
     )
 
     monitor.start()
@@ -68,6 +72,9 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
     assert status.reason == "wake detected"
     assert status.last_detected is not None
     assert status.detection_count == 1
+    assert status.last_score == 0.8
+    assert status.threshold == 0.5
+    assert invocations == ["wake"]
 
 
 def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:
@@ -111,6 +118,8 @@ def test_wake_monitor_capture_error_disables_monitoring(tmp_path: Path) -> None:
     assert status.monitoring is False
     assert status.reason == "wake detection error; PTT-only fallback is active"
     assert status.last_error == "mic failed"
+    assert status.last_score == 0.0
+    assert status.threshold == 0.5
 
 
 def test_wake_monitor_toggle_starts_and_stops(tmp_path: Path) -> None:
@@ -129,3 +138,21 @@ def test_wake_monitor_toggle_starts_and_stops(tmp_path: Path) -> None:
 
     assert monitor.toggle().active is True
     assert monitor.toggle().active is False
+
+
+def test_microphone_chunk_source_uses_default_sounddevice_capture(monkeypatch) -> None:
+    calls: list[tuple[int, int, int, str]] = []
+
+    def fake_rec(chunk_samples: int, *, samplerate: int, channels: int, dtype: str) -> np.ndarray:
+        calls.append((chunk_samples, samplerate, channels, dtype))
+        return np.zeros((chunk_samples, channels), dtype=np.int16)
+
+    fake_sounddevice = SimpleNamespace(rec=fake_rec, wait=lambda: None)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sounddevice)
+
+    stop_event = type("StopEvent", (), {"is_set": lambda self: len(calls) > 0})()
+    chunk = next(iter(microphone_chunk_source(stop_event)))
+
+    assert calls == [(WAKE_CHUNK_SAMPLES, 16000, 1, "int16")]
+    assert chunk.shape == (WAKE_CHUNK_SAMPLES,)
+    assert chunk.dtype == np.int16

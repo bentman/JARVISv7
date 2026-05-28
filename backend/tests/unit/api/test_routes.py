@@ -19,6 +19,7 @@ from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport,
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.session_service import SessionService
+from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.wake_monitor import WakeMonitorService
 
 
@@ -59,11 +60,15 @@ class _FakeLLM:
 
 
 class _FakeWakeRuntime:
+    last_score = 0.0
+    threshold = 0.5
+
     def is_available(self) -> bool:
         return True
 
     def detect(self, audio_chunk: np.ndarray) -> bool:
         _ = audio_chunk
+        self.last_score = 0.1
         return False
 
 
@@ -157,6 +162,7 @@ def _state() -> ApiState:
         session_manager=session_manager,  # type: ignore[arg-type]
         engine=_FakeEngine(),  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        resident_voice=None,  # type: ignore[arg-type]
         wake_monitor=None,  # type: ignore[arg-type]
         cache_manager=CacheManager(),
     )
@@ -165,10 +171,16 @@ def _state() -> ApiState:
         engine=state.engine,
         engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type]
     )
+    state.resident_voice = ResidentVoiceInvocationService(
+        session_service=state.session_service,
+        engine_provider=lambda: state.session_service.engine(),
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
     state.wake_monitor = WakeMonitorService(
         session_service=state.session_service,
         runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type]
         chunk_source=_wake_source,
+        invocation_callback=state.resident_voice.enqueue,
     )
     return state
 
@@ -269,7 +281,57 @@ def test_session_status_returns_active_session() -> None:
     session_id = client.app.state.jarvis_state.session_service.status().session_id
     response = client.get("/session/status")
     assert response.status_code == 200
-    assert response.json() == {"session_id": session_id, "active": True, "state": "IDLE", "turn_count": 0}
+    assert response.json() == {
+        "session_id": session_id,
+        "active": True,
+        "state": "IDLE",
+        "turn_count": 0,
+        "last_transcript": None,
+        "last_response": None,
+        "failure_reason": None,
+        "invocation_source": None,
+    }
+
+
+def test_session_ptt_queues_resident_voice_invocation() -> None:
+    client = _client()
+
+    response = client.post("/session/ptt")
+
+    assert response.status_code == 200
+    deadline = time.monotonic() + 1.0
+    payload = {}
+    while time.monotonic() < deadline:
+        payload = client.get("/session/status").json()
+        if payload["last_transcript"] == "hello voice":
+            break
+        time.sleep(0.01)
+    assert payload["state"] == "IDLE"
+    assert payload["last_transcript"] == "hello voice"
+    assert payload["last_response"] == "voice response"
+    assert payload["failure_reason"] is None
+    assert payload["invocation_source"] == "ptt"
+
+
+def test_session_ptt_works_when_wake_is_unavailable() -> None:
+    client = _client()
+    client.app.state.jarvis_state.readiness["wake"] = ("cpu", False, "wake unavailable")
+
+    response = client.post("/session/ptt")
+
+    assert response.status_code == 200
+    deadline = time.monotonic() + 1.0
+    payload = {}
+    while time.monotonic() < deadline:
+        payload = client.get("/session/status").json()
+        if payload["last_transcript"] == "hello voice":
+            break
+        time.sleep(0.01)
+    assert payload["state"] == "IDLE"
+    assert payload["last_transcript"] == "hello voice"
+    assert payload["last_response"] == "voice response"
+    assert payload["failure_reason"] is None
+    assert payload["invocation_source"] == "ptt"
 
 
 def test_session_close_returns_closed() -> None:
@@ -375,6 +437,8 @@ def test_wake_status_uses_readiness_without_starting_monitor() -> None:
         "last_detected": None,
         "detection_count": 0,
         "last_error": None,
+        "last_score": None,
+        "threshold": None,
     }
 
 
@@ -406,11 +470,15 @@ def test_wake_status_reflects_deterministic_detection_state() -> None:
     client = _client()
 
     class WakeRuntime:
+        last_score = 0.0
+        threshold = 0.5
+
         def is_available(self) -> bool:
             return True
 
         def detect(self, audio_chunk: np.ndarray) -> bool:
             _ = audio_chunk
+            self.last_score = 0.7
             return True
 
     client.app.state.jarvis_state.session_service.configure_wake_status(
@@ -428,17 +496,23 @@ def test_wake_status_reflects_deterministic_detection_state() -> None:
     assert payload["last_detected"] is not None
     assert payload["detection_count"] == 1
     assert payload["last_error"] is None
+    assert payload["last_score"] == 0.7
+    assert payload["threshold"] == 0.5
 
 
 def test_wake_status_reflects_error_state() -> None:
     client = _client()
 
     class WakeRuntime:
+        last_score = 0.0
+        threshold = 0.5
+
         def is_available(self) -> bool:
             return True
 
         def detect(self, audio_chunk: np.ndarray) -> bool:
             _ = audio_chunk
+            self.last_score = 0.25
             raise RuntimeError("wake failed")
 
     client.app.state.jarvis_state.session_service.configure_wake_status(
@@ -457,6 +531,8 @@ def test_wake_status_reflects_error_state() -> None:
     assert payload["last_detected"] is None
     assert payload["detection_count"] == 0
     assert payload["last_error"] == "wake failed"
+    assert payload["last_score"] == 0.25
+    assert payload["threshold"] == 0.5
 
 
 def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: Path, monkeypatch) -> None:

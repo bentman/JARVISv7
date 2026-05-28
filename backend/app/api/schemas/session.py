@@ -18,6 +18,10 @@ class SessionStatusResponse(BaseModel):
     active: bool
     state: str
     turn_count: int
+    last_transcript: str | None = None
+    last_response: str | None = None
+    failure_reason: str | None = None
+    invocation_source: str | None = None
 
 
 class CloseSessionRequest(BaseModel):

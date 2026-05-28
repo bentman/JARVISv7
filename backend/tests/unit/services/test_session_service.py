@@ -51,6 +51,8 @@ class _FakeWakeRuntime:
         self.available = available
         self.detections = detections or []
         self.error = error
+        self.last_score = 0.0
+        self.threshold = 0.5
 
     def is_available(self) -> bool:
         return self.available
@@ -58,8 +60,11 @@ class _FakeWakeRuntime:
     def detect(self, audio_chunk: np.ndarray) -> bool:
         _ = audio_chunk
         if self.error is not None:
+            self.last_score = 0.25
             raise self.error
-        return self.detections.pop(0) if self.detections else False
+        detected = self.detections.pop(0) if self.detections else False
+        self.last_score = 0.8 if detected else 0.2
+        return detected
 
 
 def _engine(manager: SessionManager) -> TurnEngine:
@@ -188,6 +193,8 @@ def test_process_wake_chunks_records_positive_detection(tmp_path: Path) -> None:
     assert status.last_detected is not None
     assert status.detection_count == 1
     assert status.reason == "wake detected"
+    assert status.last_score == 0.8
+    assert status.threshold == 0.5
 
 
 def test_process_wake_chunks_records_no_detection_without_error(tmp_path: Path) -> None:
@@ -199,6 +206,8 @@ def test_process_wake_chunks_records_no_detection_without_error(tmp_path: Path) 
     assert status.detection_count == 0
     assert status.reason == "wake not detected"
     assert status.last_error is None
+    assert status.last_score == 0.2
+    assert status.threshold == 0.5
 
 
 def test_wake_unavailable_degrades_to_ptt_only_without_error(tmp_path: Path) -> None:
@@ -225,6 +234,8 @@ def test_wake_detection_error_records_last_error(tmp_path: Path) -> None:
     assert status.last_detected is None
     assert status.reason == "wake detection error; PTT-only fallback is active"
     assert status.last_error == "mic failed"
+    assert status.last_score == 0.25
+    assert status.threshold == 0.5
 
 
 def test_start_and_stop_wake_monitor_updates_status_without_readiness_change(tmp_path: Path) -> None:

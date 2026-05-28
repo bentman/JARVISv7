@@ -12,3 +12,5 @@ class WakeStatusResponse(BaseModel):
     last_detected: str | None = None
     detection_count: int = 0
     last_error: str | None = None
+    last_score: float | None = None
+    threshold: float | None = None

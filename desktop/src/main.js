@@ -11,6 +11,7 @@ const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
 const turnCountEl = document.querySelector("#session-turn-count");
 const wakeIndicatorEl = document.querySelector("#wake-indicator");
+const wakeToggleEl = document.querySelector("#wake-toggle");
 const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
 const personalityDetailEl = document.querySelector("#personality-detail");
@@ -36,6 +37,7 @@ let mediaStream = null;
 let mediaRecorder = null;
 let audioChunks = [];
 let activePersonalityId = "default";
+let wakePollTimer = null;
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -166,6 +168,11 @@ async function refreshWakeStatus() {
   try {
     const status = JSON.parse(await invoke("get_wake_status"));
     renderWakeStatus(status, wakeIndicatorEl);
+    if (wakeToggleEl) {
+      wakeToggleEl.disabled = !status.available;
+      wakeToggleEl.textContent = status.active || status.monitoring ? "Stop" : "Start";
+      wakeToggleEl.setAttribute("aria-pressed", status.active || status.monitoring ? "true" : "false");
+    }
     return status;
   } catch (error) {
     renderWakeStatus(
@@ -173,12 +180,45 @@ async function refreshWakeStatus() {
         provider: "unknown",
         available: false,
         monitoring: false,
+        active: false,
+        enabled: false,
         reason: `Wake status unavailable; PTT-only fallback is active. Reason: ${String(error)}`,
       },
       wakeIndicatorEl,
     );
+    if (wakeToggleEl) {
+      wakeToggleEl.disabled = true;
+      wakeToggleEl.textContent = "Start";
+      wakeToggleEl.setAttribute("aria-pressed", "false");
+    }
     return null;
   }
+}
+
+function startWakePolling() {
+  if (wakePollTimer) window.clearInterval(wakePollTimer);
+  wakePollTimer = window.setInterval(() => {
+    refreshWakeStatus().catch(() => undefined);
+  }, 1500);
+}
+
+function stopWakePolling() {
+  if (!wakePollTimer) return;
+  window.clearInterval(wakePollTimer);
+  wakePollTimer = null;
+}
+
+async function startWakeMonitorIfAvailable() {
+  const status = await refreshWakeStatus();
+  if (!status?.available || status.active || status.monitoring) return status;
+  const started = JSON.parse(await invoke("start_wake_monitor"));
+  renderWakeStatus(started, wakeIndicatorEl);
+  if (wakeToggleEl) {
+    wakeToggleEl.disabled = !started.available;
+    wakeToggleEl.textContent = started.active || started.monitoring ? "Stop" : "Start";
+    wakeToggleEl.setAttribute("aria-pressed", started.active || started.monitoring ? "true" : "false");
+  }
+  return started;
 }
 
 async function refreshPersonalityProfiles() {
@@ -227,7 +267,8 @@ async function startDesktop() {
     const readiness = JSON.parse(await invoke("get_readiness"));
     renderReadiness(readiness);
     await refreshSessionStatus();
-    await refreshWakeStatus();
+    await startWakeMonitorIfAvailable();
+    startWakePolling();
     await refreshPersonalityProfiles();
     appendMessage("system", "Backend started and readiness loaded.");
     sendButton.disabled = false;
@@ -250,6 +291,8 @@ async function restartBackendForSettings() {
   healthEl.textContent = "ok";
   const readiness = JSON.parse(await invoke("get_readiness"));
   renderReadiness(readiness);
+  await startWakeMonitorIfAvailable();
+  startWakePolling();
 }
 
 function updateSettingsRestartRequired(required, details = {}) {
@@ -440,7 +483,23 @@ settingsTriggerEl.addEventListener("click", () => {
   closeSettings();
 });
 
+if (wakeToggleEl) {
+  wakeToggleEl.addEventListener("click", () => {
+    invoke("toggle_wake_monitor")
+      .then((payload) => {
+        const status = JSON.parse(payload);
+        renderWakeStatus(status, wakeIndicatorEl);
+        wakeToggleEl.disabled = !status.available;
+        wakeToggleEl.textContent = status.active || status.monitoring ? "Stop" : "Start";
+        wakeToggleEl.setAttribute("aria-pressed", status.active || status.monitoring ? "true" : "false");
+      })
+      .catch((error) => showError(String(error)));
+  });
+}
+
 window.addEventListener("beforeunload", () => {
+  stopWakePolling();
+  invoke("stop_wake_monitor").catch(() => undefined);
   invoke("stop_backend").catch(() => undefined);
 });
 

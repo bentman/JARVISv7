@@ -29,6 +29,7 @@ from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.session_service import SessionService
+from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.wake_monitor import WakeMonitorService
 
 
@@ -51,6 +52,7 @@ class ApiState:
     session_service: SessionService
     wake_monitor: WakeMonitorService
     cache_manager: CacheManager
+    resident_voice: ResidentVoiceInvocationService | None = None
 
 
 def _derive_readiness(preflight: PreflightResult, profile: HardwareProfile) -> ReadinessMap:
@@ -105,6 +107,7 @@ def build_startup_state() -> ApiState:
         session_manager=session_manager,
         engine=None,  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        resident_voice=None,  # type: ignore[arg-type]
         wake_monitor=None,  # type: ignore[arg-type]
         cache_manager=cache_manager,
     )
@@ -114,9 +117,14 @@ def build_startup_state() -> ApiState:
         engine=state.engine,
         engine_factory=lambda manager: bind_session(state, manager),
     )
+    state.resident_voice = ResidentVoiceInvocationService(
+        session_service=state.session_service,
+        engine_provider=lambda: state.session_service.engine(),
+    )
     state.wake_monitor = WakeMonitorService(
         session_service=state.session_service,
         runtime_factory=lambda: select_wake_runtime(state.preflight, state.profile),
+        invocation_callback=state.resident_voice.enqueue,
     )
     return state
 

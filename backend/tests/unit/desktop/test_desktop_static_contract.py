@@ -115,18 +115,33 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
     assert "get_wake_status" in backend_rs
     assert "/status/wake" in backend_rs
+    assert "start_wake_monitor" in backend_rs
+    assert "stop_wake_monitor" in backend_rs
+    assert "toggle_wake_monitor" in backend_rs
+    for endpoint in ["/status/wake/start", "/status/wake/stop", "/status/wake/toggle"]:
+        assert endpoint in backend_rs
     assert "get_wake_status" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status" in lib_rs
+    assert "start_wake_monitor" in lib_rs
+    assert "stop_wake_monitor" in lib_rs
+    assert "toggle_wake_monitor" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
     assert 'invoke("get_wake_status")' in main_js
+    assert 'invoke("start_wake_monitor")' in main_js
+    assert 'invoke("stop_wake_monitor")' in main_js
+    assert 'invoke("toggle_wake_monitor")' in main_js
     assert "refreshWakeStatus" in main_js
+    assert "startWakeMonitorIfAvailable" in main_js
+    assert "startWakePolling" in main_js
+    assert "stopWakePolling" in main_js
     assert "./components/wake-indicator.js" in main_js
     assert "renderWakeStatus(status, wakeIndicatorEl)" in main_js
     assert "PTT-only fallback" in main_js
-    assert 'id="wake-indicator"' not in index_html
-    assert "wake-status" not in index_html
+    assert 'id="wake-indicator"' in index_html
+    assert 'id="wake-toggle"' in index_html
+    assert index_html.index('class="panel-section wake-monitor-panel"') < index_html.index("<h2>Personality</h2>")
     assert "wake-detail" not in index_html
     assert "export function renderWakeStatus" in wake_indicator
-    for field in ["provider", "available", "monitoring", "reason"]:
+    for field in ["provider", "available", "active", "monitoring", "detection_count", "last_detected", "last_score", "threshold", "reason"]:
         assert field in wake_indicator
 
 
@@ -193,7 +208,7 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert "write_operator_config" in lib_rs
     assert "backend_operator_config" in lib_rs
     assert "backend_write_operator_config" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
     assert "get_operator_config" in backend_rs
     assert "write_operator_config" in backend_rs
     assert "/config/operator" in backend_rs
@@ -299,6 +314,8 @@ def test_k4b_operator_controls_are_separated_from_runtime_sidebar() -> None:
     readiness_panel = index_html.index('id="readiness-panel"')
     degraded_conditions = index_html.index('id="degraded-conditions"')
     service_status = index_html.index('id="service-status"')
+    wake_indicator = index_html.index('id="wake-indicator"')
+    wake_toggle = index_html.index('id="wake-toggle"')
 
     assert 'class="panel status-panel"' in index_html
     assert 'class="panel operator-panel"' in index_html
@@ -320,6 +337,8 @@ def test_k4b_operator_controls_are_separated_from_runtime_sidebar() -> None:
         settings_panel,
         service_status,
         appearance_controls,
+        wake_indicator,
+        wake_toggle,
     ]:
         assert operator_start < operator_control
         assert not status_start < operator_control < conversation_start
@@ -475,14 +494,56 @@ def test_j3b_wake_indicator_component_renders_existing_wake_fields() -> None:
     main_js = _read("desktop/src/main.js")
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
 
-    assert 'id="wake-indicator"' not in index_html
+    assert 'id="wake-indicator"' in index_html
+    assert 'id="wake-toggle"' in index_html
     assert "./components/wake-indicator.js" in main_js
     assert "renderWakeStatus" in main_js
     assert "export function renderWakeStatus" in wake_indicator
     assert "textContent" in wake_indicator
     assert "innerHTML" not in wake_indicator
-    for field in ["provider", "available", "monitoring", "reason"]:
+    for field in ["provider", "available", "active", "monitoring", "detection_count", "last_detected", "last_score", "threshold", "reason"]:
         assert field in wake_indicator
+
+
+def test_k4g_wake_monitor_desktop_contract() -> None:
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    main_js = _read("desktop/src/main.js")
+    index_html = _read("desktop/src/index.html")
+    style_css = _read("desktop/src/style.css")
+    wake_indicator = _read("desktop/src/components/wake-indicator.js")
+
+    for command in ["start_wake_monitor", "stop_wake_monitor", "toggle_wake_monitor"]:
+        assert command in backend_rs
+        assert command in lib_rs
+    for endpoint in ["/status/wake/start", "/status/wake/stop", "/status/wake/toggle"]:
+        assert endpoint in backend_rs
+    assert 'invoke("start_wake_monitor")' in main_js
+    assert 'invoke("stop_wake_monitor")' in main_js
+    assert 'invoke("toggle_wake_monitor")' in main_js
+    assert "startWakeMonitorIfAvailable" in main_js
+    assert "startWakePolling" in main_js
+    assert "window.setInterval" in main_js
+    assert "stopWakePolling" in main_js
+    assert 'wakeToggleEl.addEventListener("click"' in main_js
+    assert 'id="wake-toggle"' in index_html
+    assert 'id="wake-indicator"' in index_html
+    assert index_html.index('class="panel-section wake-monitor-panel"') < index_html.index("<h2>Personality</h2>")
+    assert "dataset.active" in wake_indicator
+    assert "detection_count" in wake_indicator
+    assert "last_detected" in wake_indicator
+    assert "last_score" in wake_indicator
+    assert "threshold" in wake_indicator
+    assert "detections" in wake_indicator
+    assert "last detected" in wake_indicator
+    assert "score" in wake_indicator
+    assert "formatDiagnostic" in wake_indicator
+    assert ".wake-monitor-heading h2" in style_css
+    assert ".wake-monitor-heading .secondary" in style_css
+    assert '.wake-indicator[data-active="true"]' in style_css
+    assert '.wake-indicator[data-active="false"][data-available="true"]' in style_css
+    assert 'pttButton.addEventListener("click"' in main_js
+    assert 'pttButton.addEventListener("pointerdown"' not in main_js
 
 
 def test_j1_readiness_payload_values_are_rendered_with_dom_text_apis() -> None:

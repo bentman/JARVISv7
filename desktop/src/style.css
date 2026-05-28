@@ -387,6 +387,47 @@ dd {
   line-height: 1.35;
 }
 
+.wake-monitor-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.wake-monitor-heading h2 {
+  font-size: 0.92rem;
+  line-height: 1.2;
+  margin-bottom: 0;
+}
+
+.wake-monitor-heading .secondary {
+  padding: var(--space-1) var(--space-2);
+  font-size: 0.76rem;
+}
+
+.wake-indicator {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-failed);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin-top: var(--space-2);
+  background: var(--color-bg-soft);
+  font-size: 0.76rem;
+}
+
+.wake-indicator[data-active="true"] {
+  border-left-color: var(--color-ready);
+}
+
+.wake-indicator[data-active="false"][data-available="true"] {
+  border-left-color: var(--color-degraded);
+}
+
+.wake-indicator-fields {
+  display: grid;
+  gap: var(--space-1);
+}
+
 .wake-indicator-field {
   display: grid;
   grid-template-columns: max-content 1fr;

@@ -12,6 +12,15 @@ from backend.app.services.session_service import SessionService, WakeMonitorStat
 
 WakeRuntimeFactory = Callable[[], WakeBase]
 WakeChunkSource = Callable[[threading.Event], Iterable[np.ndarray]]
+InvocationCallback = Callable[[str], object]
+
+
+def _runtime_score(runtime: WakeBase) -> float | None:
+    return getattr(runtime, "last_score", None)
+
+
+def _runtime_threshold(runtime: WakeBase) -> float | None:
+    return getattr(runtime, "threshold", None)
 
 
 def microphone_chunk_source(stop_event: threading.Event, *, sample_rate: int = 16000, chunk_samples: int = WAKE_CHUNK_SAMPLES) -> Iterable[np.ndarray]:
@@ -33,11 +42,13 @@ class WakeMonitorService:
         session_service: SessionService,
         runtime_factory: WakeRuntimeFactory,
         chunk_source: WakeChunkSource = microphone_chunk_source,
+        invocation_callback: InvocationCallback | None = None,
         provider: str = "openwakeword",
     ) -> None:
         self._session_service = session_service
         self._runtime_factory = runtime_factory
         self._chunk_source = chunk_source
+        self._invocation_callback = invocation_callback
         self._provider = provider
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
@@ -87,12 +98,24 @@ class WakeMonitorService:
                 if self._stop_event.is_set():
                     break
                 if runtime.detect(np.asarray(chunk)):
-                    self._session_service.record_wake_detection()
+                    self._session_service.record_wake_detection(
+                        last_score=_runtime_score(runtime),
+                        threshold=_runtime_threshold(runtime),
+                    )
+                    if self._invocation_callback is not None:
+                        self._invocation_callback("wake")
                 else:
-                    self._session_service.record_wake_idle()
+                    self._session_service.record_wake_idle(
+                        last_score=_runtime_score(runtime),
+                        threshold=_runtime_threshold(runtime),
+                    )
         except Exception as exc:
             if not self._stop_event.is_set():
-                self._session_service.record_wake_error(exc)
+                self._session_service.record_wake_error(
+                    exc,
+                    last_score=_runtime_score(runtime),
+                    threshold=_runtime_threshold(runtime),
+                )
         finally:
             with self._lock:
                 if self._thread is threading.current_thread():

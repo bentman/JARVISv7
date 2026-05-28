@@ -207,6 +207,28 @@ pub fn get_wake_status(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/status/wake")
 }
 
+fn post_wake_action(base_url: &str, path: &str) -> Result<String, String> {
+    let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("POST {path} body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("POST {path} returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
+pub fn start_wake_monitor(base_url: &str) -> Result<String, String> {
+    post_wake_action(base_url, "/status/wake/start")
+}
+
+pub fn stop_wake_monitor(base_url: &str) -> Result<String, String> {
+    post_wake_action(base_url, "/status/wake/stop")
+}
+
+pub fn toggle_wake_monitor(base_url: &str) -> Result<String, String> {
+    post_wake_action(base_url, "/status/wake/toggle")
+}
+
 pub fn get_personality_list(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/personality/list")
 }
