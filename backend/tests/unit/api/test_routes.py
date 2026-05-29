@@ -182,6 +182,10 @@ def _state() -> ApiState:
         chunk_source=_wake_source,
         invocation_callback=state.resident_voice.enqueue,
     )
+    state.resident_voice.set_invocation_hooks(
+        before_invocation=state.wake_monitor.pause_for_voice_invocation,
+        after_invocation=state.wake_monitor.resume_after_voice_invocation,
+    )
     return state
 
 
@@ -290,6 +294,7 @@ def test_session_status_returns_active_session() -> None:
         "last_response": None,
         "failure_reason": None,
         "invocation_source": None,
+        "tts_output_device": None,
     }
 
 
@@ -332,6 +337,33 @@ def test_session_ptt_works_when_wake_is_unavailable() -> None:
     assert payload["last_response"] == "voice response"
     assert payload["failure_reason"] is None
     assert payload["invocation_source"] == "ptt"
+
+
+def test_session_ptt_works_while_wake_monitoring_is_enabled() -> None:
+    client = _client()
+    wake_started = client.post("/status/wake/start")
+    assert wake_started.status_code == 200
+    assert wake_started.json()["active"] is True
+
+    response = client.post("/session/ptt")
+
+    assert response.status_code == 200
+    deadline = time.monotonic() + 1.0
+    payload = {}
+    while time.monotonic() < deadline:
+        payload = client.get("/session/status").json()
+        if payload["last_transcript"] == "hello voice":
+            break
+        time.sleep(0.01)
+    assert payload["state"] == "IDLE"
+    assert payload["last_transcript"] == "hello voice"
+    assert payload["last_response"] == "voice response"
+    assert payload["failure_reason"] is None
+    assert payload["invocation_source"] == "ptt"
+
+    wake_status = client.get("/status/wake").json()
+    assert wake_status["available"] is True
+    assert wake_status["active"] is True
 
 
 def test_session_close_returns_closed() -> None:

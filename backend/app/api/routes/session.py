@@ -68,4 +68,5 @@ def _session_status_response(status) -> SessionStatusResponse:
         last_response=status.last_response,
         failure_reason=status.failure_reason,
         invocation_source=status.invocation_source,
+        tts_output_device=status.tts_output_device,
     )

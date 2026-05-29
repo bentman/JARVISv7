@@ -59,7 +59,11 @@ def test_ollama_runtime_generate_posts_stream_false_and_num_ctx(monkeypatch):
                 "model": "phi4-mini",
                 "prompt": "Reply ready",
                 "stream": False,
-                "options": {"num_ctx": 4096},
+                "options": {
+                    "stop": ["\nUser:", "\nAssistant:", "User:", "Assistant:"],
+                    "num_predict": 220,
+                    "num_ctx": 4096,
+                },
             },
             7.0,
         )

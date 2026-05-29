@@ -22,6 +22,7 @@ class SessionStatusResponse(BaseModel):
     last_response: str | None = None
     failure_reason: str | None = None
     invocation_source: str | None = None
+    tts_output_device: str | None = None
 
 
 class CloseSessionRequest(BaseModel):

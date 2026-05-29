@@ -9,7 +9,7 @@ import pytest
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.tts.kokoro_onnx_runtime import KOKORO_SAMPLE_RATE, KokoroOnnxRuntime
-from backend.app.runtimes.tts.playback import is_playing, stop
+from backend.app.runtimes.tts.playback import describe_output_device, is_playing, stop
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime, select_tts_runtime
 
 
@@ -146,3 +146,32 @@ def test_playback_helpers_fail_only_when_called_if_sounddevice_unavailable(monke
         is_playing()
 
     playback._sounddevice_error = None
+
+
+def test_playback_records_default_output_device(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    class Default:
+        device = [2, 7]
+
+    calls = []
+    fake_sounddevice = SimpleNamespace(
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+        play=lambda audio, samplerate: calls.append((audio.shape, samplerate)),
+        wait=lambda: None,
+    )
+    playback._sounddevice = fake_sounddevice
+    playback._sounddevice_error = None
+    playback._last_output_device = None
+
+    playback.play(np.zeros(4, dtype=np.float32), 24000)
+
+    assert playback.last_output_device() == "7: output-7"
+    assert calls == [((4,), 24000)]
+
+
+def test_describe_output_device_falls_back_when_default_is_unavailable():
+    fake_sounddevice = SimpleNamespace(default=SimpleNamespace(device=[None, -1]))
+
+    assert describe_output_device(fake_sounddevice) == "sounddevice default output"

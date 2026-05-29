@@ -7,7 +7,7 @@ from uuid import uuid4
 import numpy as np
 
 from backend.app.cognition.prompt_assembler import assemble_prompt
-from backend.app.cognition.responder import sanitize_for_tts
+from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
@@ -35,6 +35,7 @@ class TurnResult:
     failure_reason: str | None = None
     tts_degraded: bool = False
     tts_degraded_reason: str | None = None
+    tts_output_device: str | None = None
     interrupted: bool = False
     interruption_events: list[dict[str, object]] = field(default_factory=list)
     tool_calls: list[dict[str, object]] = field(default_factory=list)
@@ -160,7 +161,7 @@ class TurnEngine:
                 tool_context = self._format_tool_result_for_prompt(tool_result)
                 prompt = f"{prompt}\n\nTool execution context:\n{tool_context}"
 
-            response = self.llm.generate(prompt)
+            response = bound_single_turn_response(self.llm.generate(prompt))
             if not response.strip():
                 return self._fail(context, transcript=transcript, response_text=response, reason="LLM returned empty response")
             context.advance(ConversationState.RESPONDING)
@@ -239,6 +240,7 @@ class TurnEngine:
                 sample_rate=sample_rate,
             )
         self.playback_api.play(audio, sample_rate)
+        tts_output_device = getattr(self.playback_api, "last_output_device", lambda: None)()
         context.advance(ConversationState.IDLE)
         result = TurnResult(
             turn_id=context.turn_id,
@@ -246,6 +248,7 @@ class TurnEngine:
             transcript=transcript,
             response_text=response_text,
             final_state=context.state,
+            tts_output_device=tts_output_device,
         )
         self._record_artifact(
             context,
@@ -374,6 +377,7 @@ class TurnEngine:
             failure_reason=result.failure_reason,
             tts_degraded=result.tts_degraded,
             tts_degraded_reason=result.tts_degraded_reason,
+            tts_output_device=result.tts_output_device,
             interruption_events=result.interruption_events,
             tools_invoked=[str(call["tool_name"]) for call in result.tool_calls if isinstance(call.get("tool_name"), str)],
             agent_trace={"tool_calls": result.tool_calls, "tool_results": result.tool_results} if result.tool_calls else None,

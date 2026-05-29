@@ -23,6 +23,7 @@ class SessionStatus:
     last_response: str | None = None
     failure_reason: str | None = None
     invocation_source: str | None = None
+    tts_output_device: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -75,6 +76,7 @@ class SessionService:
         self._last_response: str | None = None
         self._failure_reason: str | None = None
         self._invocation_source: str | None = None
+        self._tts_output_device: str | None = None
         self._wake_status = WakeMonitorStatus(
             provider="openwakeword",
             available=False,
@@ -126,6 +128,7 @@ class SessionService:
             last_response=self._last_response,
             failure_reason=self._failure_reason,
             invocation_source=self._invocation_source,
+            tts_output_device=self._tts_output_device,
         )
 
     def is_session_active(self) -> bool:
@@ -151,6 +154,7 @@ class SessionService:
         self._last_transcript = result.transcript
         self._last_response = result.response_text
         self._failure_reason = result.failure_reason
+        self._tts_output_device = getattr(result, "tts_output_device", None)
         self._state = (state or result.final_state).value
         if self._state != ConversationState.FAILED.value:
             self._state = ConversationState.IDLE.value
@@ -207,6 +211,22 @@ class SessionService:
             reason=reason,
             active=False,
             enabled=False,
+            monitoring=False,
+            last_detected=self._wake_status.last_detected,
+            detection_count=self._wake_status.detection_count,
+            last_error=self._wake_status.last_error,
+            last_score=self._wake_status.last_score,
+            threshold=self._wake_status.threshold,
+        )
+        return self._wake_status
+
+    def pause_wake_monitor(self, reason: str = "wake monitoring paused for resident voice invocation") -> WakeMonitorStatus:
+        self._wake_status = WakeMonitorStatus(
+            provider=self._wake_status.provider,
+            available=self._wake_status.available,
+            reason=reason,
+            active=self._wake_status.active,
+            enabled=self._wake_status.enabled,
             monitoring=False,
             last_detected=self._wake_status.last_detected,
             detection_count=self._wake_status.detection_count,

@@ -84,6 +84,7 @@ class FakePlayback:
         self.stopped = False
         self.play_calls = 0
         self.start_calls = 0
+        self.output_device = "7: USB headset"
 
     def play(self, audio: np.ndarray, sample_rate: int) -> None:
         self.play_calls += 1
@@ -94,6 +95,9 @@ class FakePlayback:
 
     def stop(self) -> None:
         self.stopped = True
+
+    def last_output_device(self) -> str:
+        return self.output_device
 
 
 class FakeToolRegistry:
@@ -179,7 +183,7 @@ def test_text_turn_returns_response_for_known_prompt():
     assert result.transcript == "hello world"
     assert result.response_text == "hello"
     assert result.failure_reason is None
-    assert llm.prompts[0] == "User: hello world"
+    assert llm.prompts[0].endswith("User: hello world\nAssistant:")
 
 
 def test_personality_prompt_injection_is_not_applied_in_live_prompt_path():
@@ -189,7 +193,7 @@ def test_personality_prompt_injection_is_not_applied_in_live_prompt_path():
 
     prompt = llm.prompts[0]
     assert result.final_state == ConversationState.IDLE
-    assert prompt == "User: style check"
+    assert prompt.endswith("User: style check\nAssistant:")
 
 
 def test_voice_turn_calls_stt_then_llm():
@@ -203,6 +207,17 @@ def test_voice_turn_calls_stt_then_llm():
     assert result.final_state == ConversationState.IDLE
     assert result.tts_degraded is True
     assert result.tts_degraded_reason == "TTS runtime is unavailable"
+
+
+def test_llm_continuation_markers_are_trimmed_before_response_and_tts(monkeypatch: pytest.MonkeyPatch):
+    tts = FakeTTS(available=True)
+    llm = FakeLLM(response="Assistant: First answer.\nUser: fabricated\nAssistant: extra")
+    monkeypatch.setattr("backend.app.conversation.engine.playback.play", lambda audio, sample_rate: None)
+
+    result = _engine(tts=tts, llm=llm).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.response_text == "First answer."
+    assert tts.synthesized_texts == ["First answer."]
 
 
 def test_turn_engine_transitions_through_expected_states():
@@ -306,6 +321,15 @@ def test_speaking_state_entered_when_tts_available(monkeypatch: pytest.MonkeyPat
     assert tts.calls == 1
     assert len(playback_calls) == 1
     assert playback_calls[0][1] == 24000
+
+
+def test_voice_turn_records_tts_output_device_from_playback_api():
+    playback = FakePlayback()
+
+    result = _engine(tts=FakeTTS(available=True), playback_api=playback).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.tts_output_device == "7: USB headset"
 
 
 def test_speaking_state_skipped_when_tts_unavailable(monkeypatch: pytest.MonkeyPatch):

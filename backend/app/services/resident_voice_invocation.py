@@ -15,6 +15,8 @@ from backend.app.services.session_service import SessionService, SessionStatus
 
 AudioCapture = Callable[[], tuple[np.ndarray, int]]
 EngineProvider = Callable[[], TurnEngine]
+BeforeInvocation = Callable[[], object]
+AfterInvocation = Callable[[object], object]
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,13 +31,21 @@ class ResidentVoiceInvocationService:
         session_service: SessionService,
         engine_provider: EngineProvider,
         audio_capture: AudioCapture | None = None,
+        before_invocation: BeforeInvocation | None = None,
+        after_invocation: AfterInvocation | None = None,
     ) -> None:
         self._session_service = session_service
         self._engine_provider = engine_provider
         self._audio_capture = audio_capture or (lambda: voice_service.capture_audio(duration_s=3.0))
+        self._before_invocation = before_invocation
+        self._after_invocation = after_invocation
         self._queue: queue.Queue[ResidentInvocationRequest] = queue.Queue()
         self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
+
+    def set_invocation_hooks(self, *, before_invocation: BeforeInvocation, after_invocation: AfterInvocation) -> None:
+        self._before_invocation = before_invocation
+        self._after_invocation = after_invocation
 
     def enqueue(self, source: str) -> SessionStatus:
         normalized_source = source.strip().lower() or "voice"
@@ -71,10 +81,14 @@ class ResidentVoiceInvocationService:
                 self._queue.task_done()
 
     def _invoke(self, source: str) -> None:
+        hook_state: object = None
         try:
+            if self._before_invocation is not None:
+                hook_state = self._before_invocation()
             self._session_service.begin_voice_invocation(source)
             audio, sample_rate = self._audio_capture()
             self._session_service.mark_voice_state(ConversationState.TRANSCRIBING)
+            self._session_service.mark_voice_state(ConversationState.REASONING)
             result = self._engine_provider().run_voice_turn(audio, sample_rate)
             if result.failure_reason:
                 self._session_service.complete_voice_invocation(result, state=ConversationState.FAILED)
@@ -85,3 +99,9 @@ class ResidentVoiceInvocationService:
             self._session_service.complete_voice_invocation(result, state=result.final_state)
         except Exception as exc:
             self._session_service.fail_voice_invocation(str(exc))
+        finally:
+            if self._after_invocation is not None:
+                try:
+                    self._after_invocation(hook_state)
+                except Exception:
+                    pass

@@ -40,9 +40,17 @@ class OllamaLLM(LLMBase):
         return True
 
     def _payload(self, prompt: str) -> dict[str, Any]:
-        payload: dict[str, Any] = {"model": self.model, "prompt": prompt, "stream": False}
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False,
+            "options": {
+                "stop": ["\nUser:", "\nAssistant:", "User:", "Assistant:"],
+                "num_predict": 220,
+            },
+        }
         if self.num_ctx is not None:
-            payload["options"] = {"num_ctx": self.num_ctx}
+            payload["options"]["num_ctx"] = self.num_ctx
         return payload
 
     def generate(self, prompt: str, **kwargs: object) -> str:

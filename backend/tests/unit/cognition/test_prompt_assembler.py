@@ -13,6 +13,8 @@ def test_assemble_includes_transcript():
     prompt = assemble_prompt("hello world", _profile())
 
     assert "User: hello world" in prompt
+    assert prompt.endswith("Assistant:")
+    assert "Do not continue the dialogue" in prompt
 
 
 def test_assemble_ignores_personality_addendum_for_prompt_content():

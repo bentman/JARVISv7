@@ -122,6 +122,7 @@ function setVoiceDetail(result) {
     `transcript: ${result.last_transcript ?? ""}`,
     `response: ${result.last_response ?? ""}`,
     `failure_reason: ${result.failure_reason ?? ""}`,
+    `tts_output_device: ${result.tts_output_device ?? ""}`,
     `turn_count: ${result.turn_count ?? 0}`,
   ];
   voiceDetailEl.textContent = lines.join("\n");

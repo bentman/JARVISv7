@@ -71,6 +71,7 @@ def test_turn_schema_fields_unchanged():
         "failure_reason",
         "tts_degraded",
         "tts_degraded_reason",
+        "tts_output_device",
         "phase_timestamps",
     )
 

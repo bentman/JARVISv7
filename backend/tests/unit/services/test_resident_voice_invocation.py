@@ -60,6 +60,47 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
     assert status.turn_count == 0
 
 
+def test_invocation_suspends_and_resumes_wake_monitor_hooks(tmp_path: Path) -> None:
+    calls: list[str] = []
+    service = _service(tmp_path)
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+        before_invocation=lambda: calls.append("pause") or True,
+        after_invocation=lambda should_resume: calls.append(f"resume:{should_resume}"),
+    )
+
+    resident.ptt()
+
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+    assert calls == ["pause", "resume:True"]
+
+
+def test_resume_hook_failure_does_not_stop_later_invocations(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+
+    def resume_error(_should_resume: object) -> None:
+        raise RuntimeError("wake resume failed")
+
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+        before_invocation=lambda: True,
+        after_invocation=resume_error,
+    )
+
+    resident.ptt()
+    _wait_for(lambda: len(calls) == 1)
+
+    resident.ptt()
+
+    _wait_for(lambda: len(calls) == 2)
+    assert service.status().last_transcript == "resident transcript"
+
+
 def test_wake_and_ptt_enqueue_same_invocation_service(tmp_path: Path) -> None:
     sources: list[str] = []
     service = _service(tmp_path)

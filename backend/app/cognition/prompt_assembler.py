@@ -16,7 +16,10 @@ def assemble_prompt(
     retrieved_context: list[RetrievedFact] | None = None,
 ) -> str:
     _ = personality
-    parts: list[str] = []
+    parts: list[str] = [
+        "You are JARVIS. Answer only the user's latest request.",
+        "Return one bounded assistant answer. Do not continue the dialogue or write extra User: or Assistant: turns.",
+    ]
     if working_memory:
         parts.append("Working memory:")
         parts.extend(f"- {line}" for line in working_memory)
@@ -24,4 +27,5 @@ def assemble_prompt(
         parts.append("Relevant prior context:")
         parts.extend(f"- [{fact.session_id[:8]}/{fact.turn_id[:8]}] {fact.content}" for fact in retrieved_context)
     parts.append(f"User: {transcript}")
+    parts.append("Assistant:")
     return "\n".join(parts)

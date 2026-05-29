@@ -53,6 +53,7 @@ class WakeMonitorService:
         self._stop_event = threading.Event()
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._runtime: WakeBase | None = None
 
     def status(self) -> WakeMonitorStatus:
         return self._session_service.wake_status()
@@ -69,6 +70,7 @@ class WakeMonitorService:
             if not available:
                 return self._session_service.record_wake_unavailable()
             self._stop_event.clear()
+            self._runtime = runtime
             self._session_service.start_wake_monitor(provider=self._provider, available=True, reason="wake monitoring active")
             self._thread = threading.Thread(target=self._run, args=(runtime,), name="jarvis-wake-monitor", daemon=True)
             self._thread.start()
@@ -83,8 +85,30 @@ class WakeMonitorService:
         with self._lock:
             if self._thread is thread:
                 self._thread = None
+                self._runtime = None
             self._stop_event.clear()
         return self._session_service.stop_wake_monitor()
+
+    def pause_for_voice_invocation(self) -> bool:
+        with self._lock:
+            status = self._session_service.wake_status()
+            should_resume = status.active or status.monitoring
+            self._stop_event.set()
+            thread = self._thread
+        if thread is not None and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=1.0)
+        with self._lock:
+            if self._thread is thread:
+                self._thread = None
+            self._stop_event.clear()
+        if should_resume:
+            self._session_service.pause_wake_monitor()
+        return should_resume
+
+    def resume_after_voice_invocation(self, should_resume: bool) -> WakeMonitorStatus:
+        if not should_resume:
+            return self._session_service.wake_status()
+        return self.start()
 
     def toggle(self) -> WakeMonitorStatus:
         status = self._session_service.wake_status()

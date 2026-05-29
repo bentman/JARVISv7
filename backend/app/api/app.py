@@ -126,6 +126,10 @@ def build_startup_state() -> ApiState:
         runtime_factory=lambda: select_wake_runtime(state.preflight, state.profile),
         invocation_callback=state.resident_voice.enqueue,
     )
+    state.resident_voice.set_invocation_hooks(
+        before_invocation=state.wake_monitor.pause_for_voice_invocation,
+        after_invocation=state.wake_monitor.resume_after_voice_invocation,
+    )
     return state
 
 

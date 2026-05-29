@@ -140,6 +140,34 @@ def test_wake_monitor_toggle_starts_and_stops(tmp_path: Path) -> None:
     assert monitor.toggle().active is False
 
 
+def test_wake_monitor_can_pause_for_resident_voice_and_resume(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+
+    def source(stop_event):
+        while not stop_event.is_set():
+            time.sleep(0.01)
+            yield np.zeros(4)
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(),
+        chunk_source=source,
+    )
+
+    monitor.start()
+    should_resume = monitor.pause_for_voice_invocation()
+    paused = service.wake_status()
+
+    assert should_resume is True
+    assert paused.active is True
+    assert paused.monitoring is False
+    assert paused.reason == "wake monitoring paused for resident voice invocation"
+
+    resumed = monitor.resume_after_voice_invocation(should_resume)
+    assert resumed.active is True
+    assert resumed.monitoring is True
+
+
 def test_microphone_chunk_source_uses_default_sounddevice_capture(monkeypatch) -> None:
     calls: list[tuple[int, int, int, str]] = []
 
