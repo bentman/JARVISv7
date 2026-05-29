@@ -6,7 +6,14 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from backend.app.services.voice_service import AudioCaptureError, capture_audio, describe_input_device, diagnose_audio_ingress
+from backend.app.services.voice_service import (
+    AudioCaptureError,
+    capture_audio,
+    describe_input_device,
+    diagnose_audio_ingress,
+    wake_chunk_source,
+)
+from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 
 
 def test_capture_audio_wraps_sounddevice(monkeypatch):
@@ -35,6 +42,36 @@ def test_capture_audio_raises_audio_capture_error(monkeypatch):
 
     with pytest.raises(AudioCaptureError, match="device unavailable"):
         capture_audio(0.1)
+
+
+def test_wake_chunk_source_uses_persistent_sounddevice_stream(monkeypatch) -> None:
+    stream_calls: list[tuple[int, int, str, int]] = []
+    read_calls: list[int] = []
+
+    class FakeStream:
+        def __init__(self, *, samplerate: int, channels: int, dtype: str, blocksize: int) -> None:
+            stream_calls.append((samplerate, channels, dtype, blocksize))
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, traceback) -> None:
+            return None
+
+        def read(self, chunk_samples: int):
+            read_calls.append(chunk_samples)
+            return np.zeros((chunk_samples, 1), dtype=np.int16), False
+
+    fake_sounddevice = SimpleNamespace(InputStream=FakeStream)
+    monkeypatch.setitem(sys.modules, "sounddevice", fake_sounddevice)
+
+    stop_event = type("StopEvent", (), {"is_set": lambda self: len(read_calls) > 0})()
+    chunk = next(iter(wake_chunk_source(stop_event)))
+
+    assert stream_calls == [(16000, 1, "int16", WAKE_CHUNK_SAMPLES)]
+    assert read_calls == [WAKE_CHUNK_SAMPLES]
+    assert chunk.shape == (WAKE_CHUNK_SAMPLES,)
+    assert chunk.dtype == np.int16
 
 
 def test_diagnose_audio_ingress_reports_usable_non_silent_capture(monkeypatch):

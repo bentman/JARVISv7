@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import sys
 import time
 from pathlib import Path
-from types import SimpleNamespace
 
 import numpy as np
 
 from backend.app.services.session_service import SessionService
-from backend.app.services.wake_monitor import WAKE_CHUNK_SAMPLES, WakeMonitorService, microphone_chunk_source
+from backend.app.services.wake_monitor import WakeMonitorService
 from backend.tests.unit.services.test_session_service import _FakeWakeRuntime, _service
 
 
@@ -167,20 +165,3 @@ def test_wake_monitor_can_pause_for_resident_voice_and_resume(tmp_path: Path) ->
     assert resumed.active is True
     assert resumed.monitoring is True
 
-
-def test_microphone_chunk_source_uses_default_sounddevice_capture(monkeypatch) -> None:
-    calls: list[tuple[int, int, int, str]] = []
-
-    def fake_rec(chunk_samples: int, *, samplerate: int, channels: int, dtype: str) -> np.ndarray:
-        calls.append((chunk_samples, samplerate, channels, dtype))
-        return np.zeros((chunk_samples, channels), dtype=np.int16)
-
-    fake_sounddevice = SimpleNamespace(rec=fake_rec, wait=lambda: None)
-    monkeypatch.setitem(sys.modules, "sounddevice", fake_sounddevice)
-
-    stop_event = type("StopEvent", (), {"is_set": lambda self: len(calls) > 0})()
-    chunk = next(iter(microphone_chunk_source(stop_event)))
-
-    assert calls == [(WAKE_CHUNK_SAMPLES, 16000, 1, "int16")]
-    assert chunk.shape == (WAKE_CHUNK_SAMPLES,)
-    assert chunk.dtype == np.int16

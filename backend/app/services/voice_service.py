@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import threading
+from collections.abc import Iterable
 from typing import Any
 
 import numpy as np
+
+from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 
 
 class AudioCaptureError(RuntimeError):
@@ -33,6 +37,23 @@ def capture_audio(duration_s: float, sample_rate: int = 16000) -> tuple[np.ndarr
     except Exception as exc:
         raise AudioCaptureError(f"audio capture failed: {exc}") from exc
     return np.asarray(audio, dtype=np.float32).reshape(-1), sample_rate
+
+
+def wake_chunk_source(
+    stop_event: threading.Event,
+    *,
+    sample_rate: int = 16000,
+    chunk_samples: int = WAKE_CHUNK_SAMPLES,
+) -> Iterable[np.ndarray]:
+    try:
+        import sounddevice as sd
+    except Exception as exc:
+        raise RuntimeError("microphone capture is unavailable") from exc
+
+    with sd.InputStream(samplerate=sample_rate, channels=1, dtype="int16", blocksize=chunk_samples) as stream:
+        while not stop_event.is_set():
+            data, _ = stream.read(chunk_samples)
+            yield np.asarray(data, dtype=np.int16).reshape(-1)
 
 
 def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:

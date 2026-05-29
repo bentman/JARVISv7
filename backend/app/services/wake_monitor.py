@@ -6,8 +6,8 @@ from collections.abc import Callable, Iterable
 import numpy as np
 
 from backend.app.runtimes.wake.base import WakeBase
-from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 from backend.app.services.session_service import SessionService, WakeMonitorStatus
+from backend.app.services.voice_service import wake_chunk_source
 
 
 WakeRuntimeFactory = Callable[[], WakeBase]
@@ -23,25 +23,13 @@ def _runtime_threshold(runtime: WakeBase) -> float | None:
     return getattr(runtime, "threshold", None)
 
 
-def microphone_chunk_source(stop_event: threading.Event, *, sample_rate: int = 16000, chunk_samples: int = WAKE_CHUNK_SAMPLES) -> Iterable[np.ndarray]:
-    try:
-        import sounddevice as sd
-    except Exception as exc:
-        raise RuntimeError("microphone capture is unavailable") from exc
-
-    while not stop_event.is_set():
-        audio = sd.rec(chunk_samples, samplerate=sample_rate, channels=1, dtype="int16")
-        sd.wait()
-        yield np.asarray(audio, dtype=np.int16).reshape(-1)
-
-
 class WakeMonitorService:
     def __init__(
         self,
         *,
         session_service: SessionService,
         runtime_factory: WakeRuntimeFactory,
-        chunk_source: WakeChunkSource = microphone_chunk_source,
+        chunk_source: WakeChunkSource = wake_chunk_source,
         invocation_callback: InvocationCallback | None = None,
         provider: str = "openwakeword",
     ) -> None:
