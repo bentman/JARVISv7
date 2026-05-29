@@ -80,6 +80,14 @@ def test_lock_emits_requirements_txt_with_generated_marker_comment(
     assert "wrote" in output
 
 
+def test_base_requirements_keep_sounddevice_without_soundfile() -> None:
+    base_requirements = provision._read_base_requirements()
+    requirement_names = {provision._normalize_requirement_name(req) for req in base_requirements}
+
+    assert "sounddevice" in requirement_names
+    assert "soundfile" not in requirement_names
+
+
 def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) -> None:
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("amd64")))
     monkeypatch.setattr(provision, "_installed_distribution_names", lambda: {"fastapi", "uvicorn"})

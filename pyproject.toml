@@ -63,7 +63,6 @@ dependencies = [
 
   # Audio I/O (cross-platform; CPython wheels available for target archs)
   "sounddevice>=0.4.6",
-  "soundfile>=0.12",
 
   # Wake word — universal per PyPI (Windows x86_64 + arm64, macOS, Linux)
   "pvporcupine>=3.0",
@@ -145,6 +144,7 @@ hw-npu-qualcomm-qnn = [
   "onnxruntime>=1.24.3; platform_machine=='ARM64' and sys_platform=='win32'",
   "onnxruntime-qnn>=2.0; platform_machine=='ARM64' and sys_platform=='win32'",
   "onnx>=1.16; platform_machine=='ARM64' and sys_platform=='win32'",
+  "transformers>=4.40; platform_machine=='ARM64' and sys_platform=='win32'",
 ]
 
 # Optional alternative wake runtime (openWakeWord is primary).
@@ -276,7 +276,6 @@ module = [
   "openwakeword.*",
   "pvporcupine.*",
   "sounddevice.*",
-  "soundfile.*",
 ]
 ignore_missing_imports = true
 

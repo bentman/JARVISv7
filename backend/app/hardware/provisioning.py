@@ -18,7 +18,7 @@ _EXTRA_REQUIREMENT_NAMES: dict[str, tuple[str, ...]] = {
     "hw-gpu-nvidia-cuda": ("onnxruntime-gpu",),
     "hw-gpu-amd": ("onnxruntime-directml",),
     "hw-gpu-intel": ("onnxruntime-directml",),
-    "hw-npu-qualcomm-qnn": ("onnxruntime-qnn",),
+    "hw-npu-qualcomm-qnn": ("onnxruntime-qnn", "transformers"),
     "hw-wake-porcupine": (),
     "dev": ("pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"),
 }

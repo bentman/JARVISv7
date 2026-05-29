@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from backend.app.core.capabilities import HardwareProfile
-from backend.app.hardware.provisioning import resolve_required_extras
+from backend.app.hardware.provisioning import (
+    resolve_required_extras,
+    resolve_required_requirement_names,
+)
 
 
 def test_resolver_returns_base_plus_arch_for_cpu_only_x64() -> None:
@@ -59,6 +62,15 @@ def test_resolver_adds_qnn_for_qualcomm_npu() -> None:
         "hw-npu-qualcomm-qnn",
         "dev",
     ]
+
+
+def test_qnn_expected_requirement_names_include_transformers() -> None:
+    profile = HardwareProfile(arch="arm64", npu_available=True, npu_vendor="qualcomm")
+
+    requirement_names = resolve_required_requirement_names(profile)
+
+    assert "onnxruntime-qnn" in requirement_names
+    assert "transformers" in requirement_names
 
 
 def test_resolver_omits_qnn_for_non_qualcomm_npu() -> None:

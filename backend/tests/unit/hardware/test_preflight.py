@@ -138,3 +138,59 @@ def test_preflight_ep_probe_skipped_when_onnxruntime_not_imported(monkeypatch) -
 
     assert "onnxruntime" not in calls
     assert "ep:CUDAExecutionProvider" not in result.tokens
+
+
+def test_qnn_preflight_probes_transformers_import(monkeypatch) -> None:
+    preflight._CACHE.clear()
+    calls: list[str] = []
+
+    def fake_import(name: str):
+        calls.append(name)
+        if name == "onnxruntime":
+            return _make_module()
+        if name == "transformers":
+            return SimpleNamespace(__name__=name)
+        if name == "onnxruntime_qnn":
+            raise ModuleNotFoundError(name)
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight.importlib.metadata,
+        "version",
+        lambda name: "2.0" if name == "onnxruntime-qnn" else "0.0",
+    )
+
+    result = preflight.run_preflight(
+        _make_profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
+        ["hw-npu-qualcomm-qnn"],
+    )
+
+    assert "transformers" in calls
+    assert "import:transformers" in result.tokens
+
+
+def test_qnn_preflight_surfaces_missing_transformers(monkeypatch) -> None:
+    preflight._CACHE.clear()
+
+    def fake_import(name: str):
+        if name == "onnxruntime":
+            return _make_module()
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight.importlib.metadata,
+        "version",
+        lambda name: "2.0" if name == "onnxruntime-qnn" else "0.0",
+    )
+
+    result = preflight.run_preflight(
+        _make_profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
+        ["hw-npu-qualcomm-qnn"],
+    )
+
+    assert "import:transformers:MISSING" in result.tokens
+    assert "transformers" in result.probe_errors

@@ -107,6 +107,53 @@ def test_qnn_runtime_is_not_available_when_model_files_absent(tmp_path):
     assert not runtime.is_available()
 
 
+def test_qnn_runtime_ensure_preprocessors_imports_transformers_boundary(monkeypatch, tmp_path):
+    import sys
+
+    calls: list[tuple[str, str]] = []
+
+    class FakeWhisperFeatureExtractor:
+        @classmethod
+        def from_pretrained(cls, model_name: str):
+            calls.append(("feature_extractor", model_name))
+            return SimpleNamespace(kind="feature_extractor")
+
+    class FakeWhisperTokenizer:
+        @classmethod
+        def from_pretrained(cls, model_name: str):
+            calls.append(("tokenizer", model_name))
+            return SimpleNamespace(kind="tokenizer")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            WhisperFeatureExtractor=FakeWhisperFeatureExtractor,
+            WhisperTokenizer=FakeWhisperTokenizer,
+        ),
+    )
+
+    runtime = QnnWhisperRuntime(model_path=tmp_path)
+
+    runtime._ensure_preprocessors()
+
+    assert calls == [
+        ("feature_extractor", "openai/whisper-base"),
+        ("tokenizer", "openai/whisper-base"),
+    ]
+    assert runtime._feature_extractor.kind == "feature_extractor"
+    assert runtime._tokenizer.kind == "tokenizer"
+
+
+def test_qnn_runtime_real_transformers_preprocessor_import_boundary():
+    transformers = pytest.importorskip("transformers")
+
+    from transformers import WhisperFeatureExtractor, WhisperTokenizer
+
+    assert WhisperFeatureExtractor is transformers.WhisperFeatureExtractor
+    assert WhisperTokenizer is transformers.WhisperTokenizer
+
+
 def test_qnn_runtime_does_not_expose_h32_deferred_message():
     assert "H.3.2" not in QNN_STT_DEFERRED_REASON
 

@@ -30,6 +30,7 @@ $pyVersionRaw = (py --version)                         # e.g., "Python 3.13.13"
 $pyVersionMM = (($pyVersionRaw -split '\s+')[-1] -split '\.')[0..1] -join '.'
 py -$pyVersionMM -m venv backend\.venv
 backend\.venv\Scripts\python -m pip install --upgrade pip
+backend\.venv\Scripts\python scripts\provision.py install
 backend\.venv\Scripts\python scripts\bootstrap.py
 backend\.venv\Scripts\python scripts\ensure_models.py --verify-only
 ```
@@ -54,6 +55,7 @@ Refresh to the latest repository state and rerun bootstrap. If the same error pe
 ```powershell
 backend\.venv\Scripts\python scripts\provision.py install
 backend\.venv\Scripts\python scripts\bootstrap.py
+backend\.venv\Scripts\python scripts\ensure_models.py --verify-only
 ```
 
 ## Stop rule
