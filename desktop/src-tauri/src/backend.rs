@@ -203,6 +203,16 @@ pub fn get_session_status(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/session/status")
 }
 
+pub fn invoke_resident_ptt(base_url: &str) -> Result<String, String> {
+    let response = Client::new().post(format!("{base_url}/session/ptt")).json(&json!({})).send().map_err(|err| format!("POST /session/ptt failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("POST /session/ptt body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("POST /session/ptt returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
 pub fn get_wake_status(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/status/wake")
 }

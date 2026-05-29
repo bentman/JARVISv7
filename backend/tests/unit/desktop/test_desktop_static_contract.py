@@ -85,10 +85,9 @@ def test_desktop_references_only_approved_d1_endpoints_for_first_pass() -> None:
             DESKTOP / "src" / "main.js",
         ]
     )
-    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/status/wake", "/personality/list", "/personality/select", "/task/text", "/task/voice"]:
+    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/session/ptt", "/status/wake", "/personality/list", "/personality/select", "/task/text", "/task/voice"]:
         assert endpoint in source
     assert "/session/tick" not in source
-    assert "/session/ptt" not in source
     assert "websocket" not in source.lower()
 
 
@@ -99,12 +98,21 @@ def test_desktop_displays_resident_session_status() -> None:
     index_html = _read("desktop/src/index.html")
     assert "get_session_status" in backend_rs
     assert "/session/status" in backend_rs
+    assert "invoke_resident_ptt" in backend_rs
+    assert "/session/ptt" in backend_rs
     assert "get_session_status" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status" in lib_rs
+    assert "invoke_resident_ptt" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt" in lib_rs
     assert 'invoke("get_session_status")' in main_js
+    assert 'invoke("invoke_resident_ptt")' in main_js
     assert "refreshSessionStatus" in main_js
+    assert "startSessionPolling" in main_js
+    assert "renderResidentVoiceStatus" in main_js
+    assert "appendResidentVoiceCompletion" in main_js
     assert "session-turn-count" in main_js
     assert "session-turn-count" in index_html
+    for field in ["last_transcript", "last_response", "invocation_source", "failure_reason"]:
+        assert field in main_js
 
 
 def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
@@ -124,7 +132,7 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "start_wake_monitor" in lib_rs
     assert "stop_wake_monitor" in lib_rs
     assert "toggle_wake_monitor" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
     assert 'invoke("get_wake_status")' in main_js
     assert 'invoke("start_wake_monitor")' in main_js
     assert 'invoke("stop_wake_monitor")' in main_js
@@ -208,7 +216,7 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert "write_operator_config" in lib_rs
     assert "backend_operator_config" in lib_rs
     assert "backend_write_operator_config" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
     assert "get_operator_config" in backend_rs
     assert "write_operator_config" in backend_rs
     assert "/config/operator" in backend_rs
@@ -389,19 +397,29 @@ def test_k4b_conversation_message_rendering_uses_dom_text_apis() -> None:
     assert "entry.innerHTML" not in main_js
 
 
-def test_voice_path_uses_raw_wav_not_multipart_and_maps_visible_results() -> None:
+def test_desktop_ptt_uses_resident_voice_not_webview_wav_capture() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
+    assert "POST /session/ptt" in backend_rs
+    assert "invoke_resident_ptt" in backend_rs
+    assert "invoke_resident_ptt" in lib_rs
+    assert 'invoke("invoke_resident_ptt")' in main_js
+    assert "renderResidentVoiceStatus" in main_js
+    assert "appendResidentVoiceCompletion" in main_js
+    for field in ["last_transcript", "last_response", "state", "invocation_source", "failure_reason", "turn_count"]:
+        assert field in main_js
+    assert "MediaRecorder" not in main_js
+    assert "getUserMedia" not in main_js
+    assert "audioBytes" not in main_js
+    assert "RIFF" not in main_js
+    assert "WAVE" not in main_js
+    assert "Stop and Submit" not in main_js
+    assert "submit_voice" not in main_js
+    assert "submit_voice_turn" not in main_js
     assert "POST /task/voice" in backend_rs
     assert "application/octet-stream" in backend_rs
     assert "multipart" not in backend_rs.lower()
-    for token in ["RIFF", "WAVE", "fmt ", "data"]:
-        assert token in main_js
-    for field in ["transcript", "response_text", "final_state", "failure_reason", "tts_degraded", "tts_degraded_reason", "interrupted", "interruption_events"]:
-        assert field in main_js
-    assert "getUserMedia" in main_js
-    assert "MediaRecorder" in main_js
-    assert "audioBytes" in main_js
     assert "/stream" not in backend_rs.lower()
     assert "websocket" not in backend_rs.lower()
 
@@ -483,9 +501,11 @@ def test_j3b_ptt_button_uses_click_start_click_stop_contract() -> None:
     assert 'pttButton.addEventListener("pointerup"' not in main_js
     assert 'pttButton.addEventListener("pointercancel"' not in main_js
     assert "setCaptureState" in main_js
-    for capture_state in ["idle", "recording", "processing"]:
+    for capture_state in ["idle", "processing"]:
         assert capture_state in main_js
-    assert "Stop and Submit" in main_js
+    assert "recording" not in main_js
+    assert "invokeResidentPtt" in main_js
+    assert "Voice Running" in main_js
     assert "Start Voice" in main_js
 
 

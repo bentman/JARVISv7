@@ -33,11 +33,10 @@ const voiceStatusEl = document.querySelector("#voice-status");
 const voiceDetailEl = document.querySelector("#voice-detail");
 
 const invoke = window.__TAURI__?.core?.invoke;
-let mediaStream = null;
-let mediaRecorder = null;
-let audioChunks = [];
 let activePersonalityId = "default";
 let wakePollTimer = null;
+let sessionPollTimer = null;
+let lastRenderedResidentTurnKey = "";
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -118,31 +117,22 @@ function updatePersonalityDisplay(profile) {
 
 function setVoiceDetail(result) {
   const lines = [
-    `transcript: ${result.transcript ?? ""}`,
-    `response: ${result.response_text ?? ""}`,
-    `final_state: ${result.final_state ?? ""}`,
+    `state: ${result.state ?? ""}`,
+    `source: ${result.invocation_source ?? ""}`,
+    `transcript: ${result.last_transcript ?? ""}`,
+    `response: ${result.last_response ?? ""}`,
     `failure_reason: ${result.failure_reason ?? ""}`,
-    `tts_degraded: ${Boolean(result.tts_degraded)}`,
-    `tts_degraded_reason: ${result.tts_degraded_reason ?? ""}`,
-    `interrupted: ${Boolean(result.interrupted)}`,
-    `interruption_events: ${JSON.stringify(result.interruption_events ?? [])}`,
+    `turn_count: ${result.turn_count ?? 0}`,
   ];
   voiceDetailEl.textContent = lines.join("\n");
 }
 
 function setCaptureState(state) {
   pttButton.dataset.captureState = state;
-  if (state === "recording") {
-    pttButton.disabled = false;
-    pttButton.setAttribute("aria-pressed", "true");
-    pttButton.textContent = "Stop and Submit";
-    voiceStatusEl.textContent = "Recording… click to submit";
-    return;
-  }
   if (state === "processing") {
     pttButton.disabled = true;
     pttButton.setAttribute("aria-pressed", "false");
-    pttButton.textContent = "Submitting Voice…";
+    pttButton.textContent = "Voice Running…";
     return;
   }
   pttButton.disabled = false;
@@ -161,7 +151,69 @@ async function refreshSessionStatus() {
   const status = JSON.parse(await invoke("get_session_status"));
   sessionEl.textContent = status.session_id || "not active";
   if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
+  renderResidentVoiceStatus(status);
   return status;
+}
+
+function startSessionPolling() {
+  if (sessionPollTimer) window.clearInterval(sessionPollTimer);
+  sessionPollTimer = window.setInterval(() => {
+    refreshSessionStatus().catch(() => undefined);
+  }, 1000);
+}
+
+function stopSessionPolling() {
+  if (!sessionPollTimer) return;
+  window.clearInterval(sessionPollTimer);
+  sessionPollTimer = null;
+}
+
+function renderResidentVoiceStatus(status) {
+  setVoiceDetail(status);
+  const state = status.state || "IDLE";
+  setStateLabel(state, turnStateEl);
+  const source = status.invocation_source || "";
+  const isResidentVoice = source === "ptt" || source === "wake";
+  if (!isResidentVoice) return;
+
+  if (state === "LISTENING") {
+    setCaptureState("processing");
+    voiceStatusEl.textContent = `${source.toUpperCase()} listening`;
+    setState("LISTENING");
+    return;
+  }
+  if (["TRANSCRIBING", "REASONING", "ACTING", "RESPONDING", "SPEAKING"].includes(state)) {
+    setCaptureState("processing");
+    voiceStatusEl.textContent = `${source.toUpperCase()} ${state.toLowerCase()}`;
+    setState(state);
+    return;
+  }
+  if (state === "FAILED") {
+    setCaptureState("idle");
+    voiceStatusEl.textContent = "Voice failed";
+    if (status.failure_reason) showError(status.failure_reason);
+    appendResidentVoiceCompletion(status);
+    return;
+  }
+  if (state === "IDLE") {
+    setCaptureState("idle");
+    voiceStatusEl.textContent = status.last_transcript || status.last_response ? "Voice complete" : "Voice idle";
+    appendResidentVoiceCompletion(status);
+  }
+}
+
+function appendResidentVoiceCompletion(status) {
+  if (!status.last_transcript && !status.last_response && !status.failure_reason) return;
+  const key = [
+    status.invocation_source ?? "",
+    status.last_transcript ?? "",
+    status.last_response ?? "",
+    status.failure_reason ?? "",
+  ].join("|");
+  if (key === lastRenderedResidentTurnKey) return;
+  lastRenderedResidentTurnKey = key;
+  if (status.last_transcript) appendMessage("user", status.last_transcript);
+  appendMessage("assistant", status.last_response || status.failure_reason);
 }
 
 async function refreshWakeStatus() {
@@ -269,6 +321,7 @@ async function startDesktop() {
     await refreshSessionStatus();
     await startWakeMonitorIfAvailable();
     startWakePolling();
+    startSessionPolling();
     await refreshPersonalityProfiles();
     appendMessage("system", "Backend started and readiness loaded.");
     sendButton.disabled = false;
@@ -293,6 +346,7 @@ async function restartBackendForSettings() {
   renderReadiness(readiness);
   await startWakeMonitorIfAvailable();
   startWakePolling();
+  startSessionPolling();
 }
 
 function updateSettingsRestartRequired(required, details = {}) {
@@ -301,121 +355,21 @@ function updateSettingsRestartRequired(required, details = {}) {
   settingsRestartRequiredEl.textContent = required ? "Restart required" : "";
 }
 
-async function blobToAudioBuffer(blob) {
-  const arrayBuffer = await blob.arrayBuffer();
-  const audioContext = new AudioContext();
-  try {
-    return await audioContext.decodeAudioData(arrayBuffer);
-  } finally {
-    await audioContext.close();
-  }
-}
-
-function encodeWav(audioBuffer) {
-  const sampleRate = audioBuffer.sampleRate;
-  const channelData = audioBuffer.getChannelData(0);
-  const dataSize = channelData.length * 2;
-  const buffer = new ArrayBuffer(44 + dataSize);
-  const view = new DataView(buffer);
-
-  writeAscii(view, 0, "RIFF");
-  view.setUint32(4, 36 + dataSize, true);
-  writeAscii(view, 8, "WAVE");
-  writeAscii(view, 12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, sampleRate, true);
-  view.setUint32(28, sampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeAscii(view, 36, "data");
-  view.setUint32(40, dataSize, true);
-
-  let offset = 44;
-  for (const sample of channelData) {
-    const clamped = Math.max(-1, Math.min(1, sample));
-    view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
-    offset += 2;
-  }
-  return new Uint8Array(buffer);
-}
-
-function writeAscii(view, offset, value) {
-  for (let index = 0; index < value.length; index += 1) {
-    view.setUint8(offset + index, value.charCodeAt(index));
-  }
-}
-
-async function startVoiceCapture() {
+async function invokeResidentPtt() {
   if (pttButton.dataset.captureState !== "idle") return;
   clearError();
-  if (!navigator.mediaDevices?.getUserMedia) {
-    showError("Microphone capture is unavailable in this WebView.");
-    voiceStatusEl.textContent = "Voice failed";
-    setCaptureState("idle");
-    return;
-  }
+  setCaptureState("processing");
+  voiceStatusEl.textContent = "PTT invoked";
+  setState("LISTENING");
+  appendPresence("listening");
   try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    audioChunks = [];
-    mediaRecorder = new MediaRecorder(mediaStream);
-    mediaRecorder.addEventListener("dataavailable", (event) => {
-      if (event.data.size > 0) audioChunks.push(event.data);
-    });
-    mediaRecorder.addEventListener("stop", handleVoiceCaptureStop, { once: true });
-    mediaRecorder.start();
-    setCaptureState("recording");
-    setState("LISTENING");
-    appendPresence("listening");
+    const status = JSON.parse(await invoke("invoke_resident_ptt"));
+    renderResidentVoiceStatus(status);
+    await refreshSessionStatus();
   } catch (error) {
     setCaptureState("idle");
     voiceStatusEl.textContent = "Voice failed";
-    showError(`Microphone permission/capture failed: ${String(error)}`);
-  }
-}
-
-function stopVoiceCapture() {
-  if (pttButton.dataset.captureState !== "recording") return;
-  if (mediaRecorder && mediaRecorder.state !== "inactive") {
-    setCaptureState("processing");
-    voiceStatusEl.textContent = "Encoding WAV…";
-    appendPresence("transcribing");
-    mediaRecorder.stop();
-    return;
-  }
-  setCaptureState("idle");
-  voiceStatusEl.textContent = "Voice failed";
-  showError("Voice capture was not active.");
-}
-
-async function handleVoiceCaptureStop() {
-  try {
-    for (const track of mediaStream?.getTracks() || []) track.stop();
-    const audioBlob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-    const audioBuffer = await blobToAudioBuffer(audioBlob);
-    const wavBytes = encodeWav(audioBuffer);
-    voiceStatusEl.textContent = `Posting WAV (${wavBytes.byteLength} bytes)…`;
-    appendPresence("reasoning");
-    const response = JSON.parse(await invoke("submit_voice", { audioBytes: Array.from(wavBytes) }));
-    setVoiceDetail(response);
-    setStateLabel(response.final_state, turnStateEl);
-    setState(response.failure_reason ? "FAILED" : response.final_state, response.tts_degraded);
-    if (response.failure_reason || response.tts_degraded) {
-      const reason = response.failure_reason || response.tts_degraded_reason || "Voice turn degraded.";
-      showError(reason);
-    }
-    appendMessage("user", response.transcript || "(voice transcript unavailable)");
-    appendMessage("assistant", response.response_text || response.failure_reason || response.tts_degraded_reason);
-    voiceStatusEl.textContent = "Voice complete";
-  } catch (error) {
-    voiceStatusEl.textContent = "Voice failed";
-    showError(`Voice turn failed: ${String(error)}`);
-  } finally {
-    mediaStream = null;
-    mediaRecorder = null;
-    audioChunks = [];
-    setCaptureState("idle");
+    showError(`Resident voice invocation failed: ${String(error)}`);
   }
 }
 
@@ -456,14 +410,7 @@ formEl.addEventListener("submit", (event) => {
 
 pttButton.addEventListener("click", (event) => {
   event.preventDefault();
-  const captureState = pttButton.dataset.captureState || "idle";
-  if (captureState === "idle") {
-    startVoiceCapture();
-    return;
-  }
-  if (captureState === "recording") {
-    stopVoiceCapture();
-  }
+  invokeResidentPtt();
 });
 
 personalitySelectEl.addEventListener("change", (event) => {
@@ -499,6 +446,7 @@ if (wakeToggleEl) {
 
 window.addEventListener("beforeunload", () => {
   stopWakePolling();
+  stopSessionPolling();
   invoke("stop_wake_monitor").catch(() => undefined);
   invoke("stop_backend").catch(() => undefined);
 });
