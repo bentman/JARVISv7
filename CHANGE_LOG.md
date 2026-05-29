@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-29 07:40
+  - Summary: Recorded completed x64 voice ingress proof for wake microphone capture consolidation. Wake microphone capture was moved to the shared backend voice service and now uses a persistent `sounddevice.InputStream` for wake chunks.
+  - Scope: Commit `6e9747be53c824425f25a2135d84b44ee9489d4e`; `backend/app/services/voice_service.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/services/test_voice_service.py`, `backend/tests/unit/services/test_wake_monitor.py`
+  - Host class(es): Windows x64 / amd64
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_voice_service.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\runtimes\wake\test_wake_runtime.py -q` PASS (`25 passed in 0.44s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected in 0.92s`); manual Windows x64 desktop result: PTT still worked; wake detected once; `detection_count=1`; `last_detected` updated; resident turn completed from `source=wake`; transcript and response populated; TTS output device populated.
+  - Note: Documentation/evidence-only entry. No ARM64 live voice/wake proof, final press/release PTT semantics, barge-in, or interruption behavior is claimed.
+
 - 2026-05-28 18:53
   - Summary: Completed Slice K.4f backend wake monitor lifecycle on Windows x64 / amd64. Added backend-owned wake monitor lifecycle endpoints for start, stop, toggle, and status; added focused `WakeMonitorService` with injected runtime/chunk source support and no test microphone dependency; extended wake status with `active`, `enabled`, `last_detected`, `detection_count`, and `last_error`; kept `SessionService` limited to wake state/status updates; wake detection now updates timestamp/count; and unavailable runtime or capture/detection errors fail closed and disable monitoring.
   - Scope: `backend/app/api/app.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`, `backend/app/services/session_service.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/services/test_session_service.py`, `backend/tests/unit/services/test_wake_monitor.py`
