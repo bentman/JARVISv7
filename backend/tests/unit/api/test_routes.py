@@ -446,6 +446,40 @@ def test_diagnostics_preflight_returns_tokens_and_errors() -> None:
     assert payload["probe_errors"] == {}
 
 
+def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypatch) -> None:
+    from backend.app.services.voice_service import AudioIngressDiagnostics
+
+    monkeypatch.setattr(
+        "backend.app.api.routes.diagnostics.diagnose_audio_ingress",
+        lambda duration_s: AudioIngressDiagnostics(
+            usable=True,
+            sample_rate=16000,
+            sample_count=1600,
+            dtype="float32",
+            duration=duration_s,
+            input_device="3: USB mic",
+            rms=0.12,
+            peak=0.4,
+            reason="capture succeeded with non-silent audio",
+        ),
+    )
+
+    response = _client().post("/diagnostics/audio-ingress?duration_s=0.5")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "usable": True,
+        "sample_rate": 16000,
+        "sample_count": 1600,
+        "dtype": "float32",
+        "duration": 0.5,
+        "input_device": "3: USB mic",
+        "rms": 0.12,
+        "peak": 0.4,
+        "reason": "capture succeeded with non-silent audio",
+    }
+
+
 def test_agents_status_is_disabled_read_only() -> None:
     response = _client().get("/agents/status")
     assert response.status_code == 200

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
-from backend.app.services.voice_service import AudioCaptureError, capture_audio
+from backend.app.services.voice_service import AudioCaptureError, capture_audio, describe_input_device, diagnose_audio_ingress
 
 
 def test_capture_audio_wraps_sounddevice(monkeypatch):
@@ -35,3 +35,82 @@ def test_capture_audio_raises_audio_capture_error(monkeypatch):
 
     with pytest.raises(AudioCaptureError, match="device unavailable"):
         capture_audio(0.1)
+
+
+def test_diagnose_audio_ingress_reports_usable_non_silent_capture(monkeypatch):
+    def fake_capture_audio(duration_s, sample_rate):
+        assert duration_s == 1.0
+        assert sample_rate == 16000
+        return np.array([0.0, 0.25, -0.25], dtype=np.float32), 16000
+
+    monkeypatch.setattr("backend.app.services.voice_service.capture_audio", fake_capture_audio)
+    monkeypatch.setattr("backend.app.services.voice_service.describe_input_device", lambda: "3: USB mic")
+
+    result = diagnose_audio_ingress(1.0)
+
+    assert result.usable is True
+    assert result.sample_rate == 16000
+    assert result.sample_count == 3
+    assert result.dtype == "float32"
+    assert result.input_device == "3: USB mic"
+    assert result.rms > 0
+    assert result.peak == 0.25
+    assert result.reason == "capture succeeded with non-silent audio"
+
+
+def test_diagnose_audio_ingress_reports_empty_capture(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.services.voice_service.capture_audio",
+        lambda duration_s, sample_rate: (np.array([], dtype=np.float32), sample_rate),
+    )
+    monkeypatch.setattr("backend.app.services.voice_service.describe_input_device", lambda: "default input")
+
+    result = diagnose_audio_ingress(1.0)
+
+    assert result.usable is False
+    assert result.sample_count == 0
+    assert result.reason == "capture returned empty audio"
+
+
+def test_diagnose_audio_ingress_reports_silent_capture(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.services.voice_service.capture_audio",
+        lambda duration_s, sample_rate: (np.zeros(1600, dtype=np.float32), sample_rate),
+    )
+    monkeypatch.setattr("backend.app.services.voice_service.describe_input_device", lambda: "default input")
+
+    result = diagnose_audio_ingress(1.0)
+
+    assert result.usable is False
+    assert result.sample_count == 1600
+    assert result.rms == 0.0
+    assert result.peak == 0.0
+    assert result.reason == "capture succeeded but audio is silent"
+
+
+def test_diagnose_audio_ingress_reports_capture_exception(monkeypatch):
+    def fail_capture_audio(duration_s, sample_rate):
+        raise AudioCaptureError("audio capture failed: device unavailable")
+
+    monkeypatch.setattr("backend.app.services.voice_service.capture_audio", fail_capture_audio)
+    monkeypatch.setattr("backend.app.services.voice_service.describe_input_device", lambda: "default input")
+
+    result = diagnose_audio_ingress(5.0)
+
+    assert result.usable is False
+    assert result.sample_rate == 16000
+    assert result.sample_count == 0
+    assert result.duration == 2.0
+    assert result.reason == "capture failed: audio capture failed: device unavailable"
+
+
+def test_describe_input_device_uses_sounddevice_default_input():
+    class Default:
+        device = [4, 8]
+
+    fake_sounddevice = SimpleNamespace(
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+    )
+
+    assert describe_input_device(fake_sounddevice) == "4: input-4"
