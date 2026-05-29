@@ -27,6 +27,7 @@ class OpenWakeWordRuntime(WakeBase):
         self.threshold = float(threshold if threshold is not None else entry.config.get("threshold", 0.5))
         self._model: Any | None = None
         self.last_score = 0.0
+        self.last_prediction_keys: tuple[str, ...] = ()
 
     @property
     def wakeword_path(self) -> Path:
@@ -61,12 +62,15 @@ class OpenWakeWordRuntime(WakeBase):
         audio = np.asarray(audio_chunk, dtype=np.int16).reshape(-1)
         model = self._load_model()
         max_score = 0.0
+        prediction_keys: set[str] = set()
         for start in range(0, len(audio), WAKE_CHUNK_SAMPLES):
             chunk = audio[start : start + WAKE_CHUNK_SAMPLES]
             if chunk.size == 0:
                 continue
             predictions = model.predict(chunk)
+            prediction_keys.update(str(key) for key in predictions)
             score = float(predictions.get(WAKE_MODEL_KEY, predictions.get("hey_jarvis", 0.0)))
             max_score = max(max_score, score)
         self.last_score = max_score
+        self.last_prediction_keys = tuple(sorted(prediction_keys))
         return max_score >= self.threshold

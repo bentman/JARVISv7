@@ -10,7 +10,7 @@ import pytest
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.wake.base import WakeBase
-from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES
+from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES, WAKE_MODEL_KEY
 from backend.app.runtimes.wake.porcupine_runtime import PorcupineRuntime
 from backend.app.runtimes.wake.wake_runtime import NullWakeRuntime, select_wake_runtime
 
@@ -85,7 +85,53 @@ def test_openwakeword_runtime_streams_chunks_and_detects(monkeypatch, tmp_path):
 
     assert runtime.detect(np.zeros(WAKE_CHUNK_SAMPLES * 2, dtype=np.int16)) is True
     assert runtime.last_score == 0.7
+    assert runtime.last_prediction_keys == (WAKE_MODEL_KEY,)
     assert calls[1:] == [WAKE_CHUNK_SAMPLES, WAKE_CHUNK_SAMPLES]
+
+
+def test_openwakeword_runtime_reports_expected_key_below_threshold(monkeypatch, tmp_path):
+    for filename in ("hey_jarvis_v0.1.onnx", "melspectrogram.onnx", "embedding_model.onnx"):
+        (tmp_path / filename).write_text("x", encoding="utf-8")
+
+    class FakeModel:
+        def __init__(self, **kwargs):
+            _ = kwargs
+
+        def predict(self, chunk):
+            _ = chunk
+            return {WAKE_MODEL_KEY: 0.25}
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "openwakeword", SimpleNamespace(Model=FakeModel))
+    runtime = OpenWakeWordRuntime(model_path=tmp_path, threshold=0.5)
+
+    assert runtime.detect(np.zeros(WAKE_CHUNK_SAMPLES, dtype=np.int16)) is False
+    assert runtime.last_score == 0.25
+    assert runtime.last_prediction_keys == (WAKE_MODEL_KEY,)
+
+
+def test_openwakeword_runtime_reports_prediction_key_mismatch(monkeypatch, tmp_path):
+    for filename in ("hey_jarvis_v0.1.onnx", "melspectrogram.onnx", "embedding_model.onnx"):
+        (tmp_path / filename).write_text("x", encoding="utf-8")
+
+    class FakeModel:
+        def __init__(self, **kwargs):
+            _ = kwargs
+
+        def predict(self, chunk):
+            _ = chunk
+            return {"unexpected_key": 0.9}
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "openwakeword", SimpleNamespace(Model=FakeModel))
+    runtime = OpenWakeWordRuntime(model_path=tmp_path, threshold=0.5)
+
+    assert runtime.detect(np.zeros(WAKE_CHUNK_SAMPLES, dtype=np.int16)) is False
+    assert runtime.last_score == 0.0
+    assert runtime.last_prediction_keys == ("unexpected_key",)
+    assert WAKE_MODEL_KEY not in runtime.last_prediction_keys
 
 
 def test_openwakeword_runtime_detects_reference_fixture_with_real_model():
@@ -95,8 +141,10 @@ def test_openwakeword_runtime_detects_reference_fixture_with_real_model():
     reference_audio = _load_wav_int16(FIXTURE_DIR / "hey_jarvis_ref.wav")
     assert runtime.detect(reference_audio), (
         "reference wake fixture was not detected; "
-        f"score={runtime.last_score:.6f}, threshold={runtime.threshold:.6f}"
+        f"score={runtime.last_score:.6f}, threshold={runtime.threshold:.6f}, "
+        f"prediction_keys={runtime.last_prediction_keys}"
     )
+    assert WAKE_MODEL_KEY in runtime.last_prediction_keys
 
     sample_audio = _load_wav_int16(FIXTURE_DIR / "hey_jarvis.wav")
     runtime.detect(sample_audio)
