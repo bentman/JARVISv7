@@ -10,6 +10,10 @@ def _profile(arch: str) -> HardwareProfile:
     return HardwareProfile(arch=arch)
 
 
+def _arm64_qnn_profile() -> HardwareProfile:
+    return HardwareProfile(arch="arm64", npu_available=True, npu_vendor="qualcomm")
+
+
 def _report_for(profile: HardwareProfile):
     return type("R", (), {"profile": profile, "flags": None})()
 
@@ -60,6 +64,24 @@ def test_install_composes_correct_pip_command_from_resolver(monkeypatch, capsys)
     assert "pip install -e" in output
 
 
+def test_arm64_qnn_install_reinstalls_pinned_qnn_family(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    profile = _arm64_qnn_profile()
+
+    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
+
+    exit_code = provision._run_install(
+        profile,
+        ["hw-cpu-base", "hw-arm64-base", "hw-npu-qualcomm-qnn", "dev"],
+        include_porcupine=False,
+    )
+
+    assert exit_code == 0
+    assert ["uninstall", "-y", "onnxruntime", "onnxruntime-qnn"] == commands[1][3:]
+    assert commands[2][-1:] == ["onnxruntime-qnn==1.24.3"]
+    assert "onnxruntime==1.24.3" not in commands[2]
+
+
 def test_lock_emits_requirements_txt_with_generated_marker_comment(
     monkeypatch,
     tmp_path,
@@ -90,13 +112,67 @@ def test_base_requirements_keep_sounddevice_without_soundfile() -> None:
 
 def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) -> None:
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("amd64")))
-    monkeypatch.setattr(provision, "_installed_distribution_names", lambda: {"fastapi", "uvicorn"})
+    monkeypatch.setattr(provision, "_installed_distribution_versions", lambda: {"fastapi": "1.0", "uvicorn": "1.0"})
 
     exit_code = provision.main(["verify"])
     output = capsys.readouterr().out
 
     assert exit_code == 1
     assert "missing" in output
+
+
+def test_verify_reports_version_drift_for_exact_pins(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_arm64_qnn_profile()))
+    monkeypatch.setattr(
+        provision,
+        "_expected_distribution_names",
+        lambda profile, include_porcupine: {"onnxruntime_qnn"},
+    )
+    monkeypatch.setattr(
+        provision,
+        "_expected_exact_distribution_versions",
+        lambda profile, include_porcupine: {
+            "onnxruntime_qnn": "1.24.3",
+        },
+    )
+    monkeypatch.setattr(
+        provision,
+        "_installed_distribution_versions",
+        lambda: {"onnxruntime_qnn": "2.1.1"},
+    )
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "version_mismatches" in output
+    assert "onnxruntime_qnn" in output
+
+
+def test_verify_rejects_base_onnxruntime_with_arm64_qnn(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_arm64_qnn_profile()))
+    monkeypatch.setattr(
+        provision,
+        "_expected_distribution_names",
+        lambda profile, include_porcupine: {"onnxruntime_qnn"},
+    )
+    monkeypatch.setattr(
+        provision,
+        "_expected_exact_distribution_versions",
+        lambda profile, include_porcupine: {"onnxruntime_qnn": "1.24.3"},
+    )
+    monkeypatch.setattr(
+        provision,
+        "_installed_distribution_versions",
+        lambda: {"onnxruntime": "1.24.3", "onnxruntime_qnn": "1.24.3"},
+    )
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "conflicts" in output
+    assert "onnxruntime cannot be installed alongside onnxruntime-qnn" in output
 
 
 def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) -> None:
@@ -108,8 +184,8 @@ def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) 
     )
     monkeypatch.setattr(
         provision,
-        "_installed_distribution_names",
-        lambda: {"pre_commit", "huggingface_hub", "python_dotenv"},
+        "_installed_distribution_versions",
+        lambda: {"pre_commit": "1.0", "huggingface_hub": "1.0", "python_dotenv": "1.0"},
     )
 
     exit_code = provision.main(["verify"])

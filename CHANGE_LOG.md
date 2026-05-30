@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-05-30 06:58
+  - Summary: Completed ARM64 QNN provider-surface repair and live desktop proof. The correction superseded the earlier incomplete ARM64 QNN package-family/probe direction by making `onnxruntime-qnn==1.24.3` the sole ORT runtime distribution for the ARM64 QNN host path, removing/rejecting separate base `onnxruntime`, and proving QNN readiness through the built-in `onnxruntime` provider surface instead of the 2.x plugin-era `onnxruntime_qnn` path.
+  - Scope: `pyproject.toml`, `scripts/provision.py`, `backend/app/hardware/provisioning.py`, `backend/app/hardware/preflight.py`, `backend/app/hardware/qnn_provider.py`, `backend/tests/unit/scripts/test_provision_script.py`, `backend/tests/unit/hardware/test_provisioning.py`, `backend/tests/unit/hardware/test_preflight.py`, `backend/tests/unit/hardware/test_qnn_slot.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`; user ARM64 desktop wake proof.
+  - Host class(es): Windows ARM64 / Qualcomm QNN
+  - Evidence: base `onnxruntime` distribution absent; `onnxruntime-qnn 1.24.3`; `ort.__version__=1.24.3`; providers included `QNNExecutionProvider`; profile PASS with readiness `ready; tokens=18` and QNN tokens `ep:QNNExecutionProvider`, `qnn:htp_path`, `dll:QnnHtp`, no probe errors; focused tests PASS (`33 passed`); `backend\.venv\Scripts\python scripts\provision.py verify` PASS; `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected`); QNN hardware live gate PASS (`2 passed`); QNN STT live fixture PASS (`1 passed`); user desktop live proof PASS with ARM64 wake path completing as `source: wake`, populated transcript/response, and no visible failure reason.
+  - Note: QNN decoder/token logic, readiness selection intent, model catalog, desktop/wake/PTT/TTS behavior, `/task/voice`, settings, search, and personality were not changed.
+
 - 2026-05-29 07:40
   - Summary: Recorded completed x64 voice ingress proof for wake microphone capture consolidation. Wake microphone capture was moved to the shared backend voice service and now uses a persistent `sounddevice.InputStream` for wake chunks.
   - Scope: Commit `6e9747be53c824425f25a2135d84b44ee9489d4e`; `backend/app/services/voice_service.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/services/test_voice_service.py`, `backend/tests/unit/services/test_wake_monitor.py`

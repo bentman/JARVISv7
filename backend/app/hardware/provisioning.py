@@ -9,7 +9,7 @@ from backend.app.core.capabilities import HardwareProfile
 _REQUIREMENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]+")
 
 
-_EXTRA_REQUIREMENT_NAMES: dict[str, tuple[str, ...]] = {
+_EXTRA_REQUIREMENT_SPECS: dict[str, tuple[str, ...]] = {
     "hw-cpu-base": (),
     "hw-x64-base": ("onnx-asr", "kokoro-onnx", "openwakeword"),
     "hw-x64-ort-cpu": ("onnxruntime",),
@@ -18,7 +18,11 @@ _EXTRA_REQUIREMENT_NAMES: dict[str, tuple[str, ...]] = {
     "hw-gpu-nvidia-cuda": ("onnxruntime-gpu",),
     "hw-gpu-amd": ("onnxruntime-directml",),
     "hw-gpu-intel": ("onnxruntime-directml",),
-    "hw-npu-qualcomm-qnn": ("onnxruntime-qnn", "transformers"),
+    "hw-npu-qualcomm-qnn": (
+        "onnxruntime-qnn==1.24.3",
+        "onnx>=1.16",
+        "transformers>=4.40",
+    ),
     "hw-wake-porcupine": (),
     "dev": ("pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"),
 }
@@ -108,9 +112,20 @@ def resolve_required_requirement_names(
     include_porcupine: bool = False,
 ) -> list[str]:
     requirement_names: list[str] = []
-    for extra in resolve_required_extras(profile, include_porcupine):
-        for requirement in _EXTRA_REQUIREMENT_NAMES.get(extra, ()):
+    for requirement in resolve_required_requirement_specs(profile, include_porcupine):
             requirement_name = _requirement_name(requirement)
             if requirement_name not in requirement_names:
                 requirement_names.append(requirement_name)
     return requirement_names
+
+
+def resolve_required_requirement_specs(
+    profile: HardwareProfile,
+    include_porcupine: bool = False,
+) -> list[str]:
+    requirement_specs: list[str] = []
+    for extra in resolve_required_extras(profile, include_porcupine):
+        for requirement in _EXTRA_REQUIREMENT_SPECS.get(extra, ()):
+            if requirement not in requirement_specs:
+                requirement_specs.append(requirement)
+    return requirement_specs

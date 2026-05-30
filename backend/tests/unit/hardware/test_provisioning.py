@@ -4,6 +4,7 @@ from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.provisioning import (
     resolve_required_extras,
     resolve_required_requirement_names,
+    resolve_required_requirement_specs,
 )
 
 
@@ -69,8 +70,21 @@ def test_qnn_expected_requirement_names_include_transformers() -> None:
 
     requirement_names = resolve_required_requirement_names(profile)
 
+    assert "onnxruntime" not in requirement_names
     assert "onnxruntime-qnn" in requirement_names
+    assert "onnx" in requirement_names
     assert "transformers" in requirement_names
+
+
+def test_qnn_expected_requirement_specs_pin_ort_family() -> None:
+    profile = HardwareProfile(arch="arm64", npu_available=True, npu_vendor="qualcomm")
+
+    requirement_specs = resolve_required_requirement_specs(profile)
+
+    assert "onnxruntime==1.24.3" not in requirement_specs
+    assert "onnxruntime-qnn==1.24.3" in requirement_specs
+    assert "onnx>=1.16" in requirement_specs
+    assert "transformers>=4.40" in requirement_specs
 
 
 def test_resolver_omits_qnn_for_non_qualcomm_npu() -> None:

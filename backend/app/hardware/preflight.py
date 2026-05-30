@@ -209,11 +209,49 @@ def _probe_distribution(
         return True
 
 
+def _discover_packaged_qnn_htp_path(probe_errors: dict[str, str]) -> Path | None:
+    try:
+        onnxruntime = importlib.import_module("onnxruntime")
+    except Exception as exc:
+        probe_errors["onnxruntime.qnn.htp_discovery"] = str(exc)
+        return None
+
+    module_file = getattr(onnxruntime, "__file__", None)
+    if not module_file:
+        probe_errors["onnxruntime.qnn.htp_discovery"] = "onnxruntime module file unavailable"
+        return None
+
+    module_root = Path(module_file).resolve().parent
+    return next((path for path in module_root.rglob("QnnHtp.dll") if path.is_file()), None)
+
+
+def _mark_qnn_htp_discovery(
+    htp_path: Path | None,
+    tokens: list[str],
+    dll_discovery_log: list[str],
+) -> None:
+    if htp_path is None:
+        if "dll:QnnHtp" not in tokens and "dll:QnnHtp:MISSING" not in tokens:
+            tokens.append("dll:QnnHtp:MISSING")
+        return
+
+    dll_api = _available_dll_directory_api()
+    try:
+        if dll_api is not None:
+            dll_api(str(htp_path.parent))
+        dll_discovery_log.append(f"QnnHtp:added:{htp_path.parent}")
+    except Exception as exc:
+        dll_discovery_log.append(f"QnnHtp:failed:{htp_path.parent}:{exc}")
+    if "dll:QnnHtp" not in tokens:
+        tokens.append("dll:QnnHtp")
+
+
 def _probe_qnn_capability(
     profile: HardwareProfile,
     installed_extras: list[str],
     tokens: list[str],
     probe_errors: dict[str, str],
+    dll_discovery_log: list[str],
 ) -> None:
     if profile.npu_vendor != "qualcomm" or not _has_extra(installed_extras, "hw-npu-qualcomm-qnn"):
         return
@@ -221,60 +259,21 @@ def _probe_qnn_capability(
     qnn_distribution_ready = _probe_distribution("onnxruntime-qnn", tokens, probe_errors)
 
     if qnn_distribution_ready:
-        try:
-            qnn_plugin = importlib.import_module("onnxruntime_qnn")
-            qnn_library_path = Path(qnn_plugin.get_library_path())
-            qnn_htp_path = Path(qnn_plugin.get_qnn_htp_path())
-        except Exception as exc:
-            probe_errors["onnxruntime.qnn.plugin"] = str(exc)
-            tokens.append("qnn:plugin_library:MISSING")
+        if "ep:QNNExecutionProvider" not in tokens:
+            tokens.append("ep:QNNExecutionProvider:MISSING")
+
+        htp_path = _discover_packaged_qnn_htp_path(probe_errors)
+        if htp_path is None and "dll:QnnHtp" in tokens:
+            tokens.append("qnn:htp_path:configured")
+        elif htp_path is None:
             tokens.append("qnn:htp_path:MISSING")
         else:
-            if qnn_library_path.exists():
-                tokens.append("qnn:plugin_library")
-                tokens.append(f"qnn:backend_path:{qnn_library_path}")
-            else:
-                tokens.append("qnn:plugin_library:MISSING")
-
-            if qnn_htp_path.exists():
-                tokens.append("qnn:htp_path")
-                if "dll:QnnHtp" not in tokens:
-                    tokens.append("dll:QnnHtp")
-            else:
-                tokens.append("qnn:htp_path:MISSING")
-
-            if "import:onnxruntime" in tokens:
-                try:
-                    onnxruntime = importlib.import_module("onnxruntime")
-                    onnxruntime.register_execution_provider_library(
-                        "QNNExecutionProvider",
-                        str(qnn_library_path),
-                    )
-                    ep_devices = list(onnxruntime.get_ep_devices())
-                except Exception as exc:
-                    probe_errors["onnxruntime.qnn.ep_devices"] = str(exc)
-                    tokens.append("ep:QNNExecutionProvider:MISSING")
-                else:
-                    has_qnn_device = any(device.ep_name == "QNNExecutionProvider" for device in ep_devices)
-                    if has_qnn_device:
-                        tokens.append("ep:QNNExecutionProvider")
-                        tokens.append("qnn:ep_device")
-                    else:
-                        tokens.append("ep:QNNExecutionProvider:MISSING")
-                        tokens.append("qnn:ep_device:MISSING")
-                finally:
-                    try:
-                        onnxruntime.unregister_execution_provider_library("QNNExecutionProvider")
-                    except Exception:
-                        pass
-            else:
-                tokens.append("ep:QNNExecutionProvider:MISSING")
-                tokens.append("qnn:ep_device:MISSING")
+            tokens.append("qnn:htp_path")
+            tokens.append(f"qnn:backend_path:{htp_path}")
+            _mark_qnn_htp_discovery(htp_path, tokens, dll_discovery_log)
     else:
         tokens.append("ep:QNNExecutionProvider:MISSING")
-        tokens.append("qnn:plugin_library:MISSING")
         tokens.append("qnn:htp_path:MISSING")
-        tokens.append("qnn:ep_device:MISSING")
 
     if "dll:QnnHtp" not in tokens and "dll:QnnHtp:MISSING" not in tokens:
         tokens.append("dll:QnnHtp:MISSING")
@@ -296,7 +295,7 @@ def run_preflight(profile: HardwareProfile, installed_extras: list[str]) -> Pref
     if "import:onnxruntime" in tokens:
         _probe_execution_providers(tokens, probe_errors)
 
-    _probe_qnn_capability(profile, installed_extras, tokens, probe_errors)
+    _probe_qnn_capability(profile, installed_extras, tokens, probe_errors, dll_discovery_log)
 
     result = PreflightResult(
         tokens=tokens,

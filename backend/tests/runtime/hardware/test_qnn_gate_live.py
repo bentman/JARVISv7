@@ -5,7 +5,7 @@ from pathlib import Path
 import onnxruntime
 import pytest
 
-from backend.app.hardware.qnn_provider import create_qnn_session
+from backend.app.hardware.qnn_provider import create_qnn_session, get_qnn_provider_options
 from backend.app.models.catalog import get_model_entry
 from backend.tests.conftest import SKIP_UNLESS_ARM64, SKIP_UNLESS_LIVE, SKIP_UNLESS_QNN
 
@@ -112,12 +112,9 @@ def _collect_epcontext_diagnostics(onnx_path: Path, artifact_root: Path) -> dict
 @pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
 @pytest.mark.skipif(SKIP_UNLESS_QNN, reason="requires QNN execution provider readiness")
 def test_qnn_dll_discoverable_via_qairt_sdk_path() -> None:
-    import onnxruntime_qnn
+    provider_options = get_qnn_provider_options()
+    htp_path = Path(provider_options["backend_path"])
 
-    backend_path = Path(onnxruntime_qnn.get_library_path())
-    htp_path = Path(onnxruntime_qnn.get_qnn_htp_path())
-
-    assert backend_path.is_file(), f"QNN plugin library not found at {backend_path}"
     assert htp_path.is_file(), f"QNN HTP backend not found at {htp_path}"
 
 
@@ -130,18 +127,9 @@ def test_qnn_dll_discoverable_via_qairt_sdk_path() -> None:
 @pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
 @pytest.mark.skipif(SKIP_UNLESS_QNN, reason="requires QNN execution provider readiness")
 def test_qnn_ep_registers_in_onnxruntime() -> None:
-    import onnxruntime_qnn
+    providers = onnxruntime.get_available_providers()
 
-    backend_path = str(onnxruntime_qnn.get_library_path())
-    onnxruntime.register_execution_provider_library("QNNExecutionProvider", backend_path)
-    try:
-        ep_devices = list(onnxruntime.get_ep_devices())
-        assert any(device.ep_name == "QNNExecutionProvider" for device in ep_devices)
-    finally:
-        try:
-            onnxruntime.unregister_execution_provider_library("QNNExecutionProvider")
-        except Exception:
-            pass
+    assert "QNNExecutionProvider" in providers
 
 
 

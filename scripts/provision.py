@@ -47,14 +47,31 @@ def _read_base_requirements() -> list[str]:
     return [str(item).strip() for item in dependencies if str(item).strip()]
 
 
+def _read_extra_requirements(extra: str) -> list[str]:
+    try:
+        import tomllib
+    except ImportError:  # pragma: no cover - Python 3.11 always has tomllib
+        return []
+
+    pyproject_path = APP_REPO_ROOT / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    optional_dependencies = data.get("project", {}).get("optional-dependencies", {})
+    dependencies = optional_dependencies.get(extra, [])
+    return [str(item).strip() for item in dependencies if str(item).strip()]
+
+
 def _installed_distribution_names() -> set[str]:
-    names: set[str] = set()
+    return set(_installed_distribution_versions())
+
+
+def _installed_distribution_versions() -> dict[str, str]:
+    versions: dict[str, str] = {}
     for distribution in importlib.metadata.distributions():
         metadata = distribution.metadata
         name = metadata.get("Name")
         if name:
-            names.add(_canonicalize_package_name(str(name)))
-    return names
+            versions[_canonicalize_package_name(str(name))] = distribution.version
+    return versions
 
 
 def _canonicalize_package_name(name: str) -> str:
@@ -69,6 +86,20 @@ def _normalize_requirement_name(requirement: str) -> str:
         if separator in candidate:
             candidate = candidate.split(separator, 1)[0]
     return _canonicalize_package_name(candidate)
+
+
+def _exact_requirement_version(requirement: str) -> tuple[str, str] | None:
+    candidate = requirement.split(";", 1)[0].strip()
+    if "==" not in candidate:
+        return None
+    name, version = candidate.split("==", 1)
+    if "[" in name:
+        name = name.split("[", 1)[0]
+    normalized_name = _canonicalize_package_name(name)
+    expected_version = version.strip()
+    if not normalized_name or not expected_version:
+        return None
+    return normalized_name, expected_version
 
 
 def _build_pip_install_command(extras: list[str], include_porcupine: bool = False) -> list[str]:
@@ -157,6 +188,25 @@ def _expected_distribution_names(profile: HardwareProfile, include_porcupine: bo
     return expected
 
 
+def _expected_exact_distribution_versions(
+    profile: HardwareProfile,
+    include_porcupine: bool,
+) -> dict[str, str]:
+    expected: dict[str, str] = {}
+    extras = resolve_required_extras(profile, include_porcupine=include_porcupine)
+    requirement_specs = [
+        *_read_base_requirements(),
+        *(requirement for extra in extras for requirement in _read_extra_requirements(extra)),
+    ]
+    for requirement in requirement_specs:
+        exact = _exact_requirement_version(requirement)
+        if exact is None:
+            continue
+        name, version = exact
+        expected[name] = version
+    return expected
+
+
 def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine: bool) -> int:
     command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
     install_rc = _run_pip_install(command)
@@ -179,7 +229,15 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
         return 0
 
     if arm64_qnn_profile:
-        uninstall_cpu_ort = [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime"]
+        uninstall_cpu_ort = [
+            sys.executable,
+            "-m",
+            "pip",
+            "uninstall",
+            "-y",
+            "onnxruntime",
+            "onnxruntime-qnn",
+        ]
         uninstall_rc = _run_pip_install(uninstall_cpu_ort)
         if uninstall_rc != 0:
             return uninstall_rc
@@ -190,7 +248,7 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
             "pip",
             "install",
             "--force-reinstall",
-            "onnxruntime-qnn>=2.0",
+            "onnxruntime-qnn==1.24.3",
         ]
         reinstall_rc = _run_pip_install(reinstall_qnn_ort)
         if reinstall_rc != 0:
@@ -213,16 +271,44 @@ def _run_verify(profile: HardwareProfile, extras: list[str], include_porcupine: 
         profile,
         include_porcupine=include_porcupine,
     )
-    installed_requirements = _installed_distribution_names()
+    expected_versions = _expected_exact_distribution_versions(
+        profile,
+        include_porcupine=include_porcupine,
+    )
+    installed_versions = _installed_distribution_versions()
+    installed_requirements = set(installed_versions)
     missing = sorted(expected_requirements - installed_requirements)
+    arm64_qnn_profile = (
+        profile.arch == "arm64"
+        and profile.npu_available
+        and profile.npu_vendor == "qualcomm"
+    )
+    conflicts: list[str] = []
+    if arm64_qnn_profile and {"onnxruntime", "onnxruntime_qnn"} <= installed_requirements:
+        conflicts.append("onnxruntime cannot be installed alongside onnxruntime-qnn on ARM64 QNN hosts")
+    version_mismatches = sorted(
+        (
+            name,
+            expected_version,
+            installed_versions.get(name, "<missing>"),
+        )
+        for name, expected_version in expected_versions.items()
+        if name in installed_versions and installed_versions[name] != expected_version
+    )
     unexpected = sorted(installed_requirements & expected_requirements)
     print(f"expected_requirements={sorted(expected_requirements)}")
+    if expected_versions:
+        print(f"expected_versions={dict(sorted(expected_versions.items()))}")
     print(f"installed_requirements={sorted(installed_requirements)}")
     if missing:
         print(f"missing={missing}")
+    if version_mismatches:
+        print(f"version_mismatches={version_mismatches}")
+    if conflicts:
+        print(f"conflicts={conflicts}")
     if unexpected:
         print(f"present={unexpected}")
-    return 0 if not missing else 1
+    return 0 if not missing and not version_mismatches and not conflicts else 1
 
 
 def main(argv: list[str] | None = None) -> int:

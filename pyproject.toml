@@ -141,8 +141,7 @@ hw-gpu-intel = [
 # Qualcomm NPU via QNN execution provider (slot defined in A.6; wired in H.2).
 # Windows ARM64 wheels for CPython 3.11-3.13 per PyPI 2.0.0 listing.
 hw-npu-qualcomm-qnn = [
-  "onnxruntime>=1.24.3; platform_machine=='ARM64' and sys_platform=='win32'",
-  "onnxruntime-qnn>=2.0; platform_machine=='ARM64' and sys_platform=='win32'",
+  "onnxruntime-qnn==1.24.3; platform_machine=='ARM64' and sys_platform=='win32'",
   "onnx>=1.16; platform_machine=='ARM64' and sys_platform=='win32'",
   "transformers>=4.40; platform_machine=='ARM64' and sys_platform=='win32'",
 ]

@@ -171,6 +171,87 @@ def test_qnn_preflight_probes_transformers_import(monkeypatch) -> None:
     assert "import:transformers" in result.tokens
 
 
+def test_qnn_preflight_uses_builtin_provider_surface_without_plugin_import(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    preflight._CACHE.clear()
+    module_root = tmp_path / "onnxruntime"
+    module_root.mkdir()
+    module_file = module_root / "__init__.py"
+    module_file.write_text("", encoding="utf-8")
+    htp_path = module_root / "capi" / "QnnHtp.dll"
+    htp_path.parent.mkdir()
+    htp_path.write_text("", encoding="utf-8")
+
+    def fake_import(name: str):
+        if name == "onnxruntime_qnn":
+            raise AssertionError("onnxruntime_qnn must not be imported for ORT 1.24.x QNN")
+        if name == "onnxruntime":
+            return SimpleNamespace(
+                __file__=str(module_file),
+                get_available_providers=lambda: ["QNNExecutionProvider", "CPUExecutionProvider"],
+            )
+        if name == "transformers":
+            return SimpleNamespace(__name__=name)
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight.importlib.metadata,
+        "version",
+        lambda name: "1.24.3" if name == "onnxruntime-qnn" else "0.0",
+    )
+
+    result = preflight.run_preflight(
+        _make_profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
+        ["hw-npu-qualcomm-qnn"],
+    )
+
+    assert "ep:QNNExecutionProvider" in result.tokens
+    assert "dll:QnnHtp" in result.tokens
+    assert "qnn:htp_path" in result.tokens
+    assert any(token.startswith("qnn:backend_path:") for token in result.tokens)
+    assert "onnxruntime.qnn.plugin" not in result.probe_errors
+
+
+def test_qnn_preflight_marks_qnn_ep_missing_when_provider_absent(monkeypatch, tmp_path) -> None:
+    preflight._CACHE.clear()
+    module_root = tmp_path / "onnxruntime"
+    module_root.mkdir()
+    module_file = module_root / "__init__.py"
+    module_file.write_text("", encoding="utf-8")
+
+    def fake_import(name: str):
+        if name == "onnxruntime_qnn":
+            raise AssertionError("onnxruntime_qnn must not be imported for ORT 1.24.x QNN")
+        if name == "onnxruntime":
+            return SimpleNamespace(
+                __file__=str(module_file),
+                get_available_providers=lambda: ["AzureExecutionProvider", "CPUExecutionProvider"],
+            )
+        if name == "transformers":
+            return SimpleNamespace(__name__=name)
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight.importlib.metadata,
+        "version",
+        lambda name: "1.24.3" if name == "onnxruntime-qnn" else "0.0",
+    )
+
+    result = preflight.run_preflight(
+        _make_profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
+        ["hw-npu-qualcomm-qnn"],
+    )
+
+    assert "ep:QNNExecutionProvider:MISSING" in result.tokens
+    assert "qnn:htp_path:MISSING" in result.tokens
+
+
 def test_qnn_preflight_surfaces_missing_transformers(monkeypatch) -> None:
     preflight._CACHE.clear()
 
