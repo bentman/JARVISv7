@@ -971,7 +971,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group H — Voice Acceleration
+~~# Group H — Voice Acceleration~~ Completed
 
 **Why this group exists here.** Voice acceleration (STT/TTS on GPU/NPU) belongs after the core loop, tools, memory, and episodic retrieval are stable. Acceleration work at this stage is a clean device-branch substitution inside already-proven runtime families — not new architecture. Local LLM service work is deferred to Group M because it has distinct resource and build constraints that must be assessed independently after acceleration is proven.
 
@@ -1126,7 +1126,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group I — Hardware Path Normalization
+~~# Group I — Hardware Path Normalization~~ Completed
 
 **Why this group exists here.** Group H produces evidence of what actually works per device per host class. Group I consumes that evidence to normalize the selector, readiness deriver, and preflight reporting into coherent, documented acceleration paths for both host classes. Future hardware variants (Intel NPU, additional AMD GPUs) are represented as defined-but-deferred slots following the A.6 / H.2 pattern — not over-built.
 
@@ -1173,7 +1173,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group J — Runtime/Readiness UX + Degraded-State Surfacing
+~~# Group J — Runtime/Readiness UX + Degraded-State Surfacing~~ Completed
 
 **Why this group exists here.** After acceleration is normalized (H+I), the readiness surface expands significantly: more devices, more prerequisites, more possible degraded states. Before UI controls land (K), the readiness data must be accurate, visible, and surfaced with explicit reasons. This is a backend-and-API concern that must be stable before K adds interactive controls that depend on it.
 
@@ -1192,7 +1192,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group K — UI Controls + Operator Settings
+~~# Group K — UI Controls + Operator Settings~~ Completed
 
 **Why this group exists here.** With readiness data accurate and visible (J), interactive controls can be added safely. Controls that modify operator settings must have explicit guardrails so the UI cannot silently mutate runtime state or policy.
 
