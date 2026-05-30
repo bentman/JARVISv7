@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice K+ desktop/operator cleanup and ARM64 QNN voice validation - 2026-05-30 06:58
+  - State: Verified
+  - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/settings-panel.js`, `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `backend/app/api/service_status.py`, `backend/app/services/wake_monitor.py`, `backend/app/services/voice_service.py`, `backend/app/tools/search/search_tool.py`, `pyproject.toml`, `scripts/provision.py`, `backend/app/hardware/provisioning.py`, `backend/app/hardware/preflight.py`, `backend/app/hardware/qnn_provider.py`, `CHANGE_LOG.md`
+  - Validation: Windows ARM64 / Qualcomm QNN evidence recorded in committed `CHANGE_LOG.md` entry at commit `cdf81476474fb9e3e4ec4cfb33b2848f072d0ea4`, plus Slice K+ entries in `CHANGE_LOG.md`: focused QNN provider tests PASS (`33 passed`), provision verify PASS, profile PASS (`ready; tokens=18`), regression PASS (`115 passed, 4 deselected`), QNN hardware live gate PASS (`2 passed`), QNN STT live fixture PASS (`1 passed`), and User desktop live proof PASS with wake monitoring active, wake detection incremented, resident voice turn completed from `source: wake`, transcript/response populated, and no visible failure reason.
+  - Notes: Extends Slice K with three-pane layout/readability cleanup, readiness/sidebar refinements, settings access fix, SearXNG/service-status corrections, search provider escalation repair, and wake/operator panel surfacing. ARM64 voice path validated as STT `onnx-whisper / qnn`, TTS `kokoro-onnx / cpu`, Wake `openwakeword / cpu`; QNN provider surface uses `onnxruntime-qnn==1.24.3` as the sole ORT runtime distribution with readiness proven through built-in `onnxruntime`.
+
 - Capability: Slice K operator controls/settings UX - 2026-05-26 21:45
   - State: Verified
   - Location: `desktop/src/components/settings-panel.js`, `desktop/src/components/service-status.js`, `desktop/src/components/appearance-controls.js`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/app/api/service_status.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
