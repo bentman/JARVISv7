@@ -33,7 +33,7 @@ JARVISv7 exists because v6 taught two important lessons:
 
 * * *
 
-![JARVISv7.png](docs\JARVISv7.png "JARVISv7")
+![JARVISv7](docs/JARVISv7.png)
 
 * * *
 
