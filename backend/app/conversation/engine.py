@@ -7,7 +7,6 @@ from uuid import uuid4
 import numpy as np
 
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
-from backend.app.cognition.prompt_envelope import PromptSegment
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.style_guard import apply_personality_style_guard
@@ -149,28 +148,22 @@ class TurnEngine:
                     )
                 except Exception:
                     retrieved_context = []
-            prompt_envelope = assemble_prompt_envelope(
-                transcript,
-                self.personality,
-                working_memory=working_memory,
-                retrieved_context=retrieved_context,
-            )
-
             tool_results: list[ToolResult] = []
+            tool_context: str | None = None
             if tool_name is not None:
                 context.advance(ConversationState.ACTING)
                 normalized_input = dict(tool_input or {})
                 tool_result = self._execute_tool(tool_name, normalized_input)
                 tool_results.append(tool_result)
                 tool_context = self._format_tool_result_for_prompt(tool_result)
-                prompt_envelope = prompt_envelope.with_segment(
-                    PromptSegment(
-                        authority="tool",
-                        content_type="tool_result",
-                        trusted=False,
-                        text=f"Tool execution context:\n{tool_context}",
-                    )
-                )
+
+            prompt_envelope = assemble_prompt_envelope(
+                transcript,
+                self.personality,
+                working_memory=working_memory,
+                retrieved_context=retrieved_context,
+                tool_context=tool_context,
+            )
 
             prompt = render_flat_prompt(prompt_envelope)
             response = bound_single_turn_response(self.llm.generate_envelope(prompt_envelope))

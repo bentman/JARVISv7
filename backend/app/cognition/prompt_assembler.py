@@ -17,6 +17,7 @@ def assemble_prompt_envelope(
     working_memory: list[str] | None = None,
     *,
     retrieved_context: list[RetrievedFact] | None = None,
+    tool_context: str | None = None,
 ) -> PromptEnvelope:
     policy = compile_personality_policy(personality)
     segments: list[PromptSegment] = [
@@ -62,6 +63,15 @@ def assemble_prompt_envelope(
                 ),
             )
         )
+    if tool_context:
+        segments.append(
+            PromptSegment(
+                authority="tool",
+                content_type="tool_result",
+                trusted=False,
+                text=f"Tool execution context:\n{tool_context}",
+            )
+        )
     segments.extend(
         [
             PromptSegment(
@@ -87,11 +97,13 @@ def assemble_prompt(
     working_memory: list[str] | None = None,
     *,
     retrieved_context: list[RetrievedFact] | None = None,
+    tool_context: str | None = None,
 ) -> str:
     envelope = assemble_prompt_envelope(
         transcript,
         personality,
         working_memory=working_memory,
         retrieved_context=retrieved_context,
+        tool_context=tool_context,
     )
     return render_flat_prompt(envelope)

@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-12 12:37
+  - Summary: Corrected Personality Policy Envelope tool-result ordering. Tool execution context is now assembled by the prompt assembly layer before the user request and trusted output contract, instead of being appended after a finalized envelope in the turn engine.
+  - Scope: `backend/app/cognition/prompt_assembler.py`, `backend/app/conversation/engine.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\cognition\test_prompt_assembler.py -q` PASS (`11 passed in 0.11s`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`439 passed, 1 skipped in 3.26s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected in 0.96s`, report `reports\validation\20260612173725-regression.txt`).
+  - Note: No personality schema, policy compiler, LLM runtime selection, tool execution authority, memory storage, STT/TTS, wake, provisioning, hardware detection, desktop UI, or `SYSTEM_INVENTORY.md` changes were made.
+
 - 2026-06-12 11:46
   - Summary: Completed Slice L.6 ARM64 validation and Group L governance closeout for the personality policy envelope. Focused personality/cognition/conversation/API/desktop tests, live turn runtime validation, and regression all passed on Windows ARM64 / arm64 after Ollama service availability was confirmed.
   - Scope: `backend/app/personality/`, `config/personality/`, `backend/app/cognition/`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `SYSTEM_INVENTORY.md`
