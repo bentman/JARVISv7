@@ -6,8 +6,11 @@ from uuid import uuid4
 
 import numpy as np
 
-from backend.app.cognition.prompt_assembler import assemble_prompt
+from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
+from backend.app.cognition.prompt_envelope import PromptSegment
+from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
+from backend.app.cognition.style_guard import apply_personality_style_guard
 from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
@@ -17,6 +20,7 @@ from backend.app.conversation.turn_manager import TurnContext
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
+from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
@@ -145,7 +149,7 @@ class TurnEngine:
                     )
                 except Exception:
                     retrieved_context = []
-            prompt = assemble_prompt(
+            prompt_envelope = assemble_prompt_envelope(
                 transcript,
                 self.personality,
                 working_memory=working_memory,
@@ -159,12 +163,25 @@ class TurnEngine:
                 tool_result = self._execute_tool(tool_name, normalized_input)
                 tool_results.append(tool_result)
                 tool_context = self._format_tool_result_for_prompt(tool_result)
-                prompt = f"{prompt}\n\nTool execution context:\n{tool_context}"
+                prompt_envelope = prompt_envelope.with_segment(
+                    PromptSegment(
+                        authority="tool",
+                        content_type="tool_result",
+                        trusted=False,
+                        text=f"Tool execution context:\n{tool_context}",
+                    )
+                )
 
-            response = bound_single_turn_response(self.llm.generate(prompt))
+            prompt = render_flat_prompt(prompt_envelope)
+            response = bound_single_turn_response(self.llm.generate_envelope(prompt_envelope))
             if not response.strip():
                 return self._fail(context, transcript=transcript, response_text=response, reason="LLM returned empty response")
             context.advance(ConversationState.RESPONDING)
+            response = apply_personality_style_guard(
+                response,
+                compile_personality_policy(self.personality),
+                modality="voice" if speak_response else "text",
+            )
             response_text = sanitize_for_tts(response)
             if speak_response:
                 return self._speak_or_degrade(

@@ -18,6 +18,55 @@
 
 ## Entries 
 
+- 2026-06-12 11:21
+  - Summary: Recorded Slice L.6 current-host validation for the personality policy envelope implementation. Focused personality/cognition/conversation/API/desktop tests, active-host turn runtime validation, and active-host regression all passed on Windows x64 / amd64.
+  - Scope: `backend/app/personality/`, `config/personality/`, `backend/app/cognition/`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality backend\tests\unit\cognition backend\tests\unit\conversation backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`148 passed in 3.77s`); `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn --devices cpu` PASS (`9 passed, 2 skipped, 24 deselected in 58.15s`, fingerprint `arch=amd64`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected in 2.28s`, report `reports\validation\20260612162057-regression.txt`).
+  - Note: `SYSTEM_INVENTORY.md` was not updated because Group L closeout still requires Windows ARM64 validation evidence.
+
+- 2026-06-12 11:19
+  - Summary: Completed Slice L.5 deterministic style guard and TTS projection. Added bounded post-generation style cleanup that trims generic acknowledgments according to personality policy and voice/text modality while preserving existing single-turn response and TTS sanitization behavior.
+  - Scope: `backend/app/cognition/style_guard.py`, `backend/app/conversation/engine.py`, `backend/tests/unit/cognition/test_style_guard.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\cognition backend\tests\unit\conversation -q` PASS (`71 passed in 0.41s`).
+  - Note: L.5 did not update `SYSTEM_INVENTORY.md`; Group L inventory update remains deferred to L.6 after full validation.
+
+- 2026-06-12 11:18
+  - Summary: Completed Slice L.4 LLM envelope adapter and turn integration. Added a default envelope-aware LLM adapter that preserves `generate(prompt)` compatibility, updated the turn engine to pass structured prompt envelopes, and rendered tool execution context as untrusted tool-result prompt content.
+  - Scope: `backend/app/runtimes/llm/base.py`, `backend/app/conversation/engine.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation backend\tests\unit\runtimes\llm -q` PASS (`57 passed in 0.43s`).
+  - Note: L.4 did not update `SYSTEM_INVENTORY.md`; Group L inventory update remains deferred to L.6 after full validation.
+
+- 2026-06-12 11:17
+  - Summary: Completed Slice L.3 prompt envelope and flat renderer. Prompt assembly now builds provenance-aware segments for application rules, personality policy, memory, retrieval, user input, and output contract, then renders a deterministic flat prompt compatible with current local/Ollama-style runtimes.
+  - Scope: `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_renderer.py`, `backend/app/cognition/prompt_assembler.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\cognition backend\tests\unit\conversation -q` PASS (`64 passed in 0.32s`).
+  - Note: L.3 did not update `SYSTEM_INVENTORY.md`; Group L inventory update remains deferred to L.6 after full validation.
+
+- 2026-06-12 11:15
+  - Summary: Completed Slice L.2 personality policy compiler. Added deterministic compilation from structured personality profiles into bounded style/speech rules plus style-only role overlays that reject authority-bearing fields.
+  - Scope: `backend/app/personality/policy.py`, `backend/tests/unit/personality/test_personality.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality -q` PASS (`14 passed in 0.12s`).
+  - Note: L.2 did not update `SYSTEM_INVENTORY.md`; Group L inventory update remains deferred to L.6 after full validation.
+
+- 2026-06-12 11:14
+  - Summary: Completed Slice L.1 structured personality profile schema and loader validation. Personality profiles now carry structured style fields with compatibility defaults, configured profiles declare those fields explicitly, and profile loading rejects unknown or prohibited authority-bearing keys.
+  - Scope: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `config/personality/default.yaml`, `config/personality/concise.yaml`, `config/personality/warm.yaml`, `backend/tests/unit/personality/test_personality.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality -q` PASS (`10 passed in 0.26s`).
+  - Note: L.1 did not update `SYSTEM_INVENTORY.md`; Group L inventory update remains deferred to L.6 after full validation.
+
+- 2026-06-12 11:12
+  - Summary: Completed Slice L.0 personality runtime boundary census. Confirmed existing personality profile selection and metadata surfaces were present, while runtime prompt behavior still ignored personality style data and did not pass legacy `system_prompt_addendum` raw into prompts.
+  - Scope: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/adapter.py`, `config/personality/default.yaml`, `config/personality/concise.yaml`, `config/personality/warm.yaml`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/responder.py`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`, `backend/tests/unit/personality/test_personality.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64 / amd64 current workspace inspection
+  - Evidence: `Get-Content` inspection confirmed `PersonalityProfile` fields were limited to `profile_id`, `display_name`, `tone`, `brevity`, `formality`, and `system_prompt_addendum`; `assemble_prompt()` accepted `personality` but assigned `_ = personality`; `TurnEngine` passed `self.personality` into `assemble_prompt()` and recorded `active_personality_profile_id`; tests asserted personality addendum was not injected.
+  - Note: Evidence-only L.0 entry. No implementation code or `SYSTEM_INVENTORY.md` changes were made.
+
 - 2026-05-30 06:58
   - Summary: Completed ARM64 QNN provider-surface repair and live desktop proof. The correction superseded the earlier incomplete ARM64 QNN package-family/probe direction by making `onnxruntime-qnn==1.24.3` the sole ORT runtime distribution for the ARM64 QNN host path, removing/rejecting separate base `onnxruntime`, and proving QNN readiness through the built-in `onnxruntime` provider surface instead of the 2.x plugin-era `onnxruntime_qnn` path.
   - Scope: `pyproject.toml`, `scripts/provision.py`, `backend/app/hardware/provisioning.py`, `backend/app/hardware/preflight.py`, `backend/app/hardware/qnn_provider.py`, `backend/tests/unit/scripts/test_provision_script.py`, `backend/tests/unit/hardware/test_provisioning.py`, `backend/tests/unit/hardware/test_preflight.py`, `backend/tests/unit/hardware/test_qnn_slot.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`; user ARM64 desktop wake proof.

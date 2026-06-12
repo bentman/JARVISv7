@@ -1,0 +1,26 @@
+from __future__ import annotations
+
+from backend.app.cognition.style_guard import apply_personality_style_guard
+from backend.app.personality.loader import load_default_personality
+from backend.app.personality.policy import compile_personality_policy
+
+
+def test_style_guard_is_deterministic():
+    policy = compile_personality_policy(load_default_personality())
+
+    first = apply_personality_style_guard("Sure, ready now.", policy, modality="voice")
+    second = apply_personality_style_guard("Sure, ready now.", policy, modality="voice")
+
+    assert first == second
+
+
+def test_style_guard_trims_generic_voice_acknowledgment_for_minimal_style():
+    policy = compile_personality_policy(load_default_personality())
+
+    assert apply_personality_style_guard("Sure, ready now.", policy, modality="voice") == "ready now."
+
+
+def test_style_guard_preserves_text_acknowledgment_for_minimal_style():
+    policy = compile_personality_policy(load_default_personality())
+
+    assert apply_personality_style_guard("Sure, ready now.", policy, modality="text") == "Sure, ready now."
