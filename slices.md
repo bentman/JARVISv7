@@ -84,9 +84,11 @@ Group J — Runtime/Readiness UX + Degraded-State Surfacing
 
 Group K — UI Controls + Operator Settings
 
-Group L — Agent Framework
+Group L — Personality Policy Envelope
 
-Group M — Ollama.cpp / Local LLM Runtime
+Group M — Agent Framework
+
+Group N — Ollama.cpp / Local LLM Runtime
 ```
 
 No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
@@ -973,7 +975,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ~~# Group H — Voice Acceleration~~ Completed
 
-**Why this group exists here.** Voice acceleration (STT/TTS on GPU/NPU) belongs after the core loop, tools, memory, and episodic retrieval are stable. Acceleration work at this stage is a clean device-branch substitution inside already-proven runtime families — not new architecture. Local LLM service work is deferred to Group M because it has distinct resource and build constraints that must be assessed independently after acceleration is proven.
+**Why this group exists here.** Voice acceleration (STT/TTS on GPU/NPU) belongs after the core loop, tools, memory, and episodic retrieval are stable. Acceleration work at this stage is a clean device-branch substitution inside already-proven runtime families — not new architecture. Local LLM service work is deferred to Group N because it has distinct resource and build constraints that must be assessed independently after acceleration is proven.
 
 **Voice-first ordering.** H works only on STT and TTS device uplift. LLM runtime selection (Ollama) is unchanged. Wake remains CPU-only.
 
@@ -1212,13 +1214,206 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group L — Agent Framework
+# Group L — Personality Policy Envelope
+
+**Why this group exists here.** Personality is already visible and selectable in the durable desktop/backend surface, but current runtime behavior is intentionally thin: `backend/app/personality/schema.py` carries only `profile_id`, `display_name`, `tone`, `brevity`, `formality`, and legacy `system_prompt_addendum`; `backend/app/cognition/prompt_assembler.py` receives `personality` and currently ignores it; `backend/app/conversation/engine.py` already passes the active profile into prompt assembly and records `active_personality_profile_id` in turn artifacts. Group L turns that existing integration point into an application-owned policy envelope before agents or additional LLM runtimes consume it.
+
+**Reference inputs.**
+- Product requirement: `ProjectVision.md` requires personality to be structured, inspectable, modality-consistent, and unable to override safety, facts, or deterministic orchestration.
+- Current capability state: `SYSTEM_INVENTORY.md` and `CHANGE_LOG.md` show personality profile selection and desktop metadata display exist, while Slice K explicitly did not change personality runtime behavior.
+- Current code anchors: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/adapter.py`, `config/personality/*.yaml`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/responder.py`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`.
+- External constraint reference for implementation planning: OWASP prompt-injection guidance supports segregating trusted instructions from user, retrieved, and tool content; Group L should claim structured authority separation and deterministic rendering, not complete prompt-injection prevention.
+
+**Goal.** Replace raw-or-ignored personality behavior with a structured `PersonalityProfile -> PersonalityPolicy -> PromptEnvelope -> renderer -> LLM runtime -> style guard -> TTS-safe response` boundary that works with current flat-string local/Ollama paths and leaves a clear adapter path for future structured-message runtimes.
+
+**Scope.**
+- Expand personality profiles into validated, structured style data: identity summary, tone, brevity, formality, warmth, assertiveness, humor policy, response style, acknowledgment style, confirmation style, interruption style, voice pacing, voice energy, and enabled state.
+- Compile profiles into a bounded `PersonalityPolicy` that can influence style, wording, pacing, and presentation, but cannot define tool permissions, model routing, memory policy, safety overrides, hidden instructions, or orchestration authority.
+- Introduce a structured prompt envelope that separates application rules, personality style policy, working memory, retrieved memory, tool results, user transcript, and output contract by authority/provenance.
+- Preserve current flat `LLMBase.generate(prompt: str)` compatibility while adding an optional envelope-aware generation boundary for future API runtimes.
+- Add a deterministic style guard after LLM generation for bounded style, single-turn response constraints, and voice/text presentation cleanup.
+- Keep active personality traceable through turn artifacts and existing session/personality selection paths.
+
+**Out of scope.**
+- New model providers, provider installation, OAuth/API escalation, llama.cpp activation, or local LLM service work.
+- Hardware profiling, provisioning, preflight/readiness, STT/TTS runtime selection, wake monitoring, search provider fallback, Redis/SearXNG behavior, memory storage format, desktop layout, or operator settings semantics.
+- LLM-driven tool selection, autonomous agent behavior, agent role contracts, or tool permission changes.
+- Claiming prompt-injection prevention as solved; Group L only claims segmented authority, deterministic rendering, and safer personality consistency.
+
+**Boundaries.**
+- Owns: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/adapter.py`, new `backend/app/personality/policy.py`, `config/personality/*.yaml`, `backend/app/cognition/prompt_assembler.py`, new `backend/app/cognition/prompt_envelope.py`, new `backend/app/cognition/prompt_renderer.py`, new `backend/app/cognition/style_guard.py`, narrow additions to `backend/app/runtimes/llm/base.py`, narrow integration in `backend/app/conversation/engine.py`, and focused tests under `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, and `backend/tests/unit/conversation/`.
+- May touch only for compatibility if needed: `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`.
+- Must not touch: `backend/app/hardware/**`, `scripts/provision.py`, `scripts/validate_backend.py`, `pyproject.toml`, `backend/app/runtimes/stt/**`, `backend/app/runtimes/tts/**`, `backend/app/runtimes/wake/**`, `backend/app/tools/**`, `backend/app/runtimes/internetsearch/**`, `docker-compose.yml`, `desktop/src/style.css`, desktop layout structure, or `desktop/src-tauri/**`.
+
+**Key design decisions.**
+- Personality is not an authority source. It sits below application invariants, safety/policy, deterministic orchestration, tool authority, routing authority, and factual grounding.
+- `system_prompt_addendum` is not the primary mechanism. It may remain temporarily as a legacy config field, but Group L must not pass it raw into prompt content.
+- Role overlays, if introduced, are style-only. They may tune response shape for personal-assistant, research, code-planning, code-agent, tool-narration, error-reporting, or escalation-narration contexts, but they cannot grant permissions or choose runtimes.
+- Tool output, retrieved memory, and working memory are rendered as context with explicit provenance, not as trusted application/persona instructions.
+- Flat-string rendering remains the default compatibility path for current Ollama/local-style runtimes. Structured role-message rendering is an extension point, not a requirement for Group L closeout.
+- Response normalization is deterministic. Do not add a second LLM as a default persona judge.
+
+**Governance recording.**
+- Each validated L sub-slice records its completed evidence in `CHANGE_LOG.md` before the next L sub-slice begins.
+- `SYSTEM_INVENTORY.md` is updated only during L.6 closeout after full Group L validation evidence exists.
+
+## L.0 — Personality Runtime Boundary Census
+
+**Why here.** Before changing behavior, record the current personality and prompt path from code evidence so later implementation does not accidentally reopen Slice C/D/F/G/J/K boundaries.
+
+**Goal.** A repo-grounded baseline of the current profile schema, config fields, prompt assembly behavior, turn-engine integration, response normalizer behavior, LLM interface, API summary, and desktop metadata assumptions.
+
+**Scope.**
+- Inspect `backend/app/personality/**`, `config/personality/*.yaml`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/responder.py`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/app/api/routes/personality.py`, and desktop static contract tests.
+- Identify tests that currently assert personality addendum is not injected and prompt assembly ignores personality.
+- No code changes unless the sub-slice is explicitly approved as an implementation gate.
+
+**Acceptance.** Baseline evidence recorded before L.1 begins, including exact files inspected and the expected behavior changes L.1-L.5 will intentionally make. `CHANGE_LOG.md` records the validated L.0 evidence before L.1 begins.
+
+**Finish line.** The implementation boundary is documented and the affected test set is known.
+
+---
+
+## L.1 — Structured Personality Profile Schema + Loader Validation
+
+**Goal.** Personality profiles are structured enough to persist, compare, validate, list, select, and apply consistently without free-form prompt authority.
+
+**Scope.**
+- Extend `PersonalityProfile` with the minimal structured fields required by `ProjectVision.md`: `identity_summary`, `warmth`, `assertiveness`, `humor_policy`, `response_style`, `acknowledgment_style`, `confirmation_style`, `interruption_style`, `voice_pacing`, `voice_energy`, and `enabled`.
+- Update `config/personality/default.yaml`, `config/personality/concise.yaml`, and `config/personality/warm.yaml` to include the new fields.
+- Add enum-like validation in the loader/schema layer and reject unknown/prohibited authority fields such as tool permissions, routing rules, memory permissions, safety overrides, or hidden instructions.
+- Preserve profile selection by `profile_id` and the existing desktop/API summary contract unless a narrow additive field exposure is required.
+- Treat `system_prompt_addendum` as legacy/deprecated compatibility data; do not make it a raw prompt instruction.
+
+**Out of scope.** Prompt rendering and response style enforcement (L.2-L.5).
+
+**Acceptance.**
+- Unit: personality profile roundtrip, YAML loading, unknown profile rejection, unsafe profile id rejection, unknown/prohibited field rejection, and default profile loading all pass.
+- API/static compatibility: existing personality list/select behavior remains intact.
+- `CHANGE_LOG.md` records the validated L.1 evidence before L.2 begins.
+
+**Finish line.** All configured profiles load through the expanded validated schema, and invalid authority-bearing config fails closed.
+
+---
+
+## L.2 — PersonalityPolicy Compiler + Style-Only Role Overlays
+
+**Goal.** Convert a validated `PersonalityProfile` into bounded style policy data consumed by prompt construction and response guarding.
+
+**Scope.**
+- Add `backend/app/personality/policy.py` with a deterministic compiler from `PersonalityProfile` to `PersonalityPolicy`.
+- Policy output includes identity, style rules, speech rules, bounded confirmation/acknowledgment/interruption guidance, and a list of forbidden override categories for trace/debug use.
+- Add optional style-only role overlays if a current code path needs them; overlays cannot alter tool permissions, runtime selection, memory policy, safety policy, or orchestration state transitions.
+- Keep the current selected profile as the only personality state source in `SessionService` and `TurnEngine`.
+
+**Out of scope.** Agent role contracts and agent orchestration. Those remain Group M.
+
+**Acceptance.**
+- Unit: compiler is deterministic for fixed input, rejects unsupported style values, applies defaults, and proves overlays cannot introduce prohibited authority fields.
+- `CHANGE_LOG.md` records the validated L.2 evidence before L.3 begins.
+
+**Finish line.** Personality behavior is represented as validated policy data, not raw prompt text.
+
+---
+
+## L.3 — PromptEnvelope + Flat Renderer
+
+**Goal.** Prompt construction becomes structured and provenance-aware while preserving the current flat prompt string path.
+
+**Scope.**
+- Add `backend/app/cognition/prompt_envelope.py` with `PromptSegment` and `PromptEnvelope` concepts covering authority/provenance, content type, trust level, and text.
+- Add `backend/app/cognition/prompt_renderer.py` to render an envelope into a deterministic flat prompt for current local/Ollama-style runtimes.
+- Update `assemble_prompt()` to build an envelope from application rules, personality policy, working memory, retrieved context, user transcript, and output contract, then render it flat by default.
+- Fence retrieved memory and future tool content as untrusted context, not instruction authority.
+- Preserve current turn artifact compatibility by continuing to store the rendered prompt text in `final_prompt_text`.
+
+**Out of scope.** Native chat-role provider calls; L.4 only creates the adapter path.
+
+**Acceptance.**
+- Unit: fixed profile/transcript/memory/retrieval input produces deterministic prompt text.
+- Unit: retrieved content containing strings such as "ignore previous instructions" appears only in an untrusted context segment.
+- Unit: prompt still ends with the expected assistant output contract for flat runtimes.
+- `CHANGE_LOG.md` records the validated L.3 evidence before L.4 begins.
+
+**Finish line.** `assemble_prompt()` no longer ignores personality, and prompt authority ordering is explicit in code and rendered output.
+
+---
+
+## L.4 — LLM Envelope Adapter + Turn Integration
+
+**Goal.** The turn engine can pass the same personality-aware envelope contract through current and future LLM runtime adapters without breaking existing runtimes.
+
+**Scope.**
+- Add an optional `generate_envelope(envelope, **kwargs)` method to `LLMBase` that defaults to flat rendering plus existing `generate(prompt: str)`.
+- Keep all existing concrete LLM runtimes compatible without requiring provider installation or cloud/API calls.
+- Update `TurnEngine` to use the envelope-aware boundary where available while preserving existing failure handling, ACTING state behavior, tool invocation metadata, retrieval references, and turn artifact writes.
+- Move tool execution context insertion toward envelope segments rather than appending raw text to the rendered prompt.
+
+**Out of scope.** Changing runtime selection, adding providers, changing tool execution authority, or adding agents.
+
+**Acceptance.**
+- Unit: fake LLMs using only `generate(prompt)` still pass.
+- Unit: envelope-aware fake LLM receives the structured envelope.
+- Unit: tool result content is rendered as untrusted `tool_result` context and still records `tools_invoked` / `agent_trace` exactly as before.
+- Runtime: existing text-turn and voice-turn live tests remain green on target host classes.
+- `CHANGE_LOG.md` records the validated L.4 evidence before L.5 begins.
+
+**Finish line.** Current flat-string runtimes keep working, and future structured-message runtimes have a single adapter boundary.
+
+---
+
+## L.5 — Deterministic Style Guard + TTS Projection
+
+**Goal.** Apply personality style after generation through deterministic normalization that is safe for text and voice paths.
+
+**Scope.**
+- Add `backend/app/cognition/style_guard.py` or extend the existing responder boundary without duplicating it.
+- Preserve `bound_single_turn_response()` and `sanitize_for_tts()` behavior while adding bounded style cleanup for brevity, acknowledgment trimming, confirmation wording, and TTS-safe presentation.
+- Apply voice/text modality as an input to the guard so voice can prefer shorter, cleaner spoken output without changing factual content or tool policy.
+- Ensure the guard cannot add new facts, perform tool calls, select models, or rewrite failure states.
+
+**Out of scope.** Second-pass LLM judging, emotional speech synthesis, TTS voice model switching, or audio runtime changes.
+
+**Acceptance.**
+- Unit: style guard is deterministic and bounded for representative profiles.
+- Unit: voice output remains TTS-safe and strips markdown/control text as current tests expect.
+- Unit: guard does not alter tool metadata, final state, failure reason, or retrieved memory refs.
+- `CHANGE_LOG.md` records the validated L.5 evidence before L.6 begins.
+
+**Finish line.** Personality affects final wording/presentation through deterministic constraints without becoming another reasoning or policy engine.
+
+---
+
+## L.6 — Cross-Surface Validation + Governance Closeout
+
+**Goal.** Prove the personality policy envelope works across text, voice, artifacts, API selection, and desktop metadata without reopening unrelated surfaces.
+
+**Scope.**
+- Focused unit tests under personality, cognition, conversation, API, and desktop static contract as needed.
+- Runtime validation for text turn and voice turn on Windows x64 and Windows ARM64 using the repository validator.
+- Regression validation remains green on both host classes.
+- Update `CHANGE_LOG.md` with L.6 validation evidence before closeout.
+- Update `SYSTEM_INVENTORY.md` only in L.6, and only after full Group L validation evidence exists.
+
+**Acceptance.**
+- `backend\.venv\Scripts\python -m pytest` focused suites PASS on the implementing host.
+- `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn --devices cpu` or the host-appropriate turn runtime subset PASSes where applicable.
+- `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASSes on Windows x64 and Windows ARM64.
+- Prompt-injection fixture proves user/retrieved/tool content is not promoted into application/personality policy.
+- Desktop personality metadata remains stable or additive-only.
+- `CHANGE_LOG.md` records the validated L.6 evidence, then `SYSTEM_INVENTORY.md` records the completed Group L capability.
+
+**Finish line.** Personality is structured, validated, rendered through a trusted prompt envelope, applied consistently to text/voice prompt construction, guarded deterministically after generation, and traceable through turn artifacts.
+
+---
+
+# Group M — Agent Framework
 
 **Why this group exists here.** Agents belong after the core loop, tools, memory, acceleration normalization, readiness surfacing, and UI controls are stable. The agent framework is a role-separated orchestration layer on top of the turn engine, tool registry, memory, and turn artifacts already proven in C/F/G/H/I. Placing it here reduces the risk of agents being built against an unstable acceleration or readiness surface.
 
 Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
-## L.1 — Agent Role Contracts + Typed Message Protocol
+## M.1 — Agent Role Contracts + Typed Message Protocol
 
 **Goal.** Five canonical agent roles with stable input/output schemas and a typed message protocol.
 
@@ -1228,7 +1423,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## L.2 — Agent Ledger
+## M.2 — Agent Ledger
 
 **Goal.** Persisted, queryable, restart-surviving message substrate for agent coordination.
 
@@ -1238,7 +1433,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## L.3 — Planner + Executor + Critic on Live Path
+## M.3 — Planner + Executor + Critic on Live Path
 
 **Goal.** A multi-step request completes via Planner → Executor → Critic with all messages in the ledger and a full trace reconstructable.
 
@@ -1248,7 +1443,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## L.4 — Curator + Learner Roles
+## M.4 — Curator + Learner Roles
 
 **Goal.** Curator and Learner run end-to-end in dry-run, producing a mixed training dataset and a proposed (not deployed) adapter.
 
@@ -1260,13 +1455,13 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-# Group M — Ollama.cpp / Local LLM Runtime
+# Group N — Ollama.cpp / Local LLM Runtime
 
-**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. Deferring to M ensures that ARM64 memory limits, model quantization choices, and server binary availability are evaluated against a mature, stable system — not retrofitted into Group H.
+**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. Deferring until after M ensures that ARM64 memory limits, model quantization choices, and server binary availability are evaluated against a mature, stable system — not retrofitted into Group H.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
-## M.0 — Local LLM Viability Census
+## N.0 — Local LLM Viability Census
 
 **Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
 
@@ -1275,15 +1470,15 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
 - If a prebuilt binary is available for Windows ARM64: document operator install path.
 - If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
-- Census recorded in `CHANGE_LOG.md` before M.1 begins.
+- Census recorded in `CHANGE_LOG.md` before N.1 begins.
 
 **Acceptance.** Census table produced with close states for both host classes. No code changes.
 
 ---
 
-## M.1 — Local LLM Service + Runtime Adapter
+## N.1 — Local LLM Service + Runtime Adapter
 
-**Depends on:** M.0 census closes as viable on at least one host class.
+**Depends on:** N.0 census closes as viable on at least one host class.
 
 **Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
 
@@ -1292,7 +1487,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
 - Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
 - `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- ARM64 acceptance: if model runs but is memory-constrained, close M.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+- ARM64 acceptance: if model runs but is memory-constrained, close N.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
 
 **Out of scope.** LLM device acceleration (separate future decision).
 
