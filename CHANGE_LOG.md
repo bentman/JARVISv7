@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-12 11:46
+  - Summary: Completed Slice L.6 ARM64 validation and Group L governance closeout for the personality policy envelope. Focused personality/cognition/conversation/API/desktop tests, live turn runtime validation, and regression all passed on Windows ARM64 / arm64 after Ollama service availability was confirmed.
+  - Scope: `backend/app/personality/`, `config/personality/`, `backend/app/cognition/`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `SYSTEM_INVENTORY.md`
+  - Host class(es): Windows ARM64 / arm64 current workspace
+  - Evidence: `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready; tokens=18`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality backend\tests\unit\cognition backend\tests\unit\conversation backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`148 passed in 20.48s`); `JARVISV7_LIVE_TESTS=1 backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn --devices cpu` PASS (`10 passed, 1 skipped, 24 deselected in 70.78s`, fingerprint `arch=arm64`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected in 0.97s`, report `reports\validation\20260612164435-regression.txt`).
+  - Note: The first live turn runtime attempt failed because the configured Ollama endpoint refused connections (`WinError 10061`); after `ollama list` and `ollama show phi4-mini` confirmed service/model availability, the same live runtime validator passed.
+
 - 2026-06-12 11:21
   - Summary: Recorded Slice L.6 current-host validation for the personality policy envelope implementation. Focused personality/cognition/conversation/API/desktop tests, active-host turn runtime validation, and active-host regression all passed on Windows x64 / amd64.
   - Scope: `backend/app/personality/`, `config/personality/`, `backend/app/cognition/`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
