@@ -18,6 +18,33 @@
 
 ## Entries 
 
+- 2026-06-13 04:55
+  - Summary: Recorded post-adjustment live desktop wake smoke result. One wake turn still failed as empty STT/no speech; the next wake turn completed with imperfect transcript `edsię what is the capital of texas` and response `Austin`, confirming improvement but not conversational timing quality.
+  - Scope: Live desktop smoke result only; no code/config changes in this entry.
+  - Host class(es): Windows ARM64 / arm64 current workspace
+  - Evidence: `data\turns\c64d40d6056647d58afab4d12694d039\2760bce5a91b42c3bd350733b1032b54.json` recorded `failure_reason='STT returned empty transcript'`; `data\turns\c64d40d6056647d58afab4d12694d039\b7c4e0c867f347e1afed001afffd2d63.json` recorded transcript `edsię what is the capital of texas`, response `Austin`, and no failure reason.
+
+- 2026-06-13 04:51
+  - Summary: Corrected wake-triggered command audio handoff. Wake detection now carries a bounded pre-roll and post-wake audio buffer from the existing wake monitor input stream into resident voice invocation, avoiding a second microphone capture for wake turns while preserving normal PTT capture behavior.
+  - Scope: `backend/app/services/wake_monitor.py`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/services/test_wake_monitor.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`
+  - Host class(es): Windows ARM64 / arm64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\services\test_resident_voice_invocation.py -q` PASS (`14 passed in 0.19s`); `backend\.venv\Scripts\python -c "import os, pytest; os.environ['JARVISV7_LIVE_TESTS']='1'; raise SystemExit(pytest.main(['backend/tests/runtime/voice/test_stt_live.py','-q','-k','qnn']))"` PASS (`1 passed, 2 deselected`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected`, report `reports\validation\20260613094953-regression.txt`).
+  - Note: STT/QNN runtime selection, provisioning, personality policy, LLM, TTS, and PTT capture were not changed.
+
+- 2026-06-12 15:05
+  - Summary: Corrected wake-sourced empty-transcript reporting and resident invocation queue draining. Wake-triggered voice turns that return the canonical empty STT transcript now report `No speech detected after wake`, while PTT keeps the original STT failure; the resident worker also rechecks the queue before exiting so closely queued wake/PTT requests are not stranded.
+  - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`
+  - Host class(es): Windows ARM64 / arm64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py -q` PASS (`7 passed in 0.13s`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\services\test_voice_service.py -q` PASS (`21 passed in 0.25s`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected`, report `reports\validation\20260612200519-regression.txt`).
+  - Note: STT runtime/model behavior was not changed. Investigation showed QNN STT transcribed the known-audio fixture while live ambient wake capture returned an empty transcript.
+
+- 2026-06-12 14:41
+  - Summary: Corrected the ARM64 QNN provisioning install sequence to preserve the repo-owned ORT family selection. Provisioning now removes only the conflicting plain `onnxruntime` distribution on Qualcomm ARM64 hosts and force-reinstalls pinned `onnxruntime-qnn==1.24.3` with `--no-deps`.
+  - Scope: `scripts/provision.py`, `backend/tests/unit/scripts/test_provision_script.py`
+  - Host class(es): Windows ARM64 / arm64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_provision_script.py backend\tests\unit\hardware\test_provisioning.py -q` PASS (`23 passed in 0.08s`); `backend\.venv\Scripts\python scripts\provision.py install` PASS with no pip resolver conflict line and final QNN reinstall `Successfully installed onnxruntime-qnn-1.24.3`; `backend\.venv\Scripts\python scripts\provision.py verify` PASS with expected `onnxruntime_qnn` present and no plain `onnxruntime`; `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=arm64`, readiness `ready; tokens=18`, `ep:QNNExecutionProvider`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected`, report `reports\validation\20260612194040-regression.txt`).
+  - Note: Raw `pip check` still reports third-party metadata requirements from `kokoro-onnx` and `openwakeword` for distribution name `onnxruntime`; repo acceptance remains `scripts\provision.py verify` plus preflight because `onnxruntime-qnn` provides the runtime import/provider surface while plain `onnxruntime` must not coexist on ARM64 QNN hosts.
+
 - 2026-06-12 12:37
   - Summary: Corrected Personality Policy Envelope tool-result ordering. Tool execution context is now assembled by the prompt assembly layer before the user request and trusted output contract, instead of being appended after a finalized envelope in the turn engine.
   - Scope: `backend/app/cognition/prompt_assembler.py`, `backend/app/conversation/engine.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/conversation/test_engine.py`

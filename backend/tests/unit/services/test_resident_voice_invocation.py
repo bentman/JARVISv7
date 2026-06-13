@@ -12,11 +12,14 @@ from backend.tests.unit.services.test_session_service import _service
 
 
 class _FakeEngine:
-    def __init__(self, calls: list[tuple[np.ndarray, int]]) -> None:
+    def __init__(self, calls: list[tuple[np.ndarray, int]], result: TurnResult | None = None) -> None:
         self.calls = calls
+        self.result = result
 
     def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
         self.calls.append((audio, sample_rate))
+        if self.result is not None:
+            return self.result
         return TurnResult(
             turn_id="turn-resident",
             session_id="session-resident",
@@ -123,6 +126,29 @@ def test_wake_and_ptt_enqueue_same_invocation_service(tmp_path: Path) -> None:
     assert service.status().last_transcript == "resident transcript"
 
 
+def test_wake_invocation_uses_provided_audio_without_new_capture(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    wake_audio = np.arange(6, dtype=np.float32)
+
+    def capture_error():
+        raise AssertionError("wake payload should avoid a second microphone capture")
+
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=capture_error,
+    )
+
+    resident.enqueue("wake", wake_audio, 16000)
+
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+    assert len(calls) == 1
+    assert np.array_equal(calls[0][0], wake_audio)
+    assert calls[0][1] == 16000
+    assert service.status().invocation_source == "wake"
+
+
 def test_capture_failure_records_failed_voice_status(tmp_path: Path) -> None:
     service = _service(tmp_path)
 
@@ -142,4 +168,52 @@ def test_capture_failure_records_failed_voice_status(tmp_path: Path) -> None:
     assert status.failure_reason == "microphone unavailable"
     assert status.last_transcript is None
     assert status.last_response is None
+    assert status.invocation_source == "ptt"
+
+
+def test_wake_empty_transcript_reports_no_speech_detected(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    empty_result = TurnResult(
+        turn_id="turn-empty",
+        session_id="session-resident",
+        transcript="",
+        response_text=None,
+        final_state=ConversationState.FAILED,
+        failure_reason="STT returned empty transcript",
+    )
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine([], empty_result),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    resident.enqueue("wake")
+
+    _wait_for(lambda: service.status().state == "FAILED")
+    status = service.status()
+    assert status.failure_reason == "No speech detected after wake"
+    assert status.invocation_source == "wake"
+
+
+def test_ptt_empty_transcript_keeps_stt_failure_reason(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    empty_result = TurnResult(
+        turn_id="turn-empty",
+        session_id="session-resident",
+        transcript="",
+        response_text=None,
+        final_state=ConversationState.FAILED,
+        failure_reason="STT returned empty transcript",
+    )
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine([], empty_result),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    resident.ptt()
+
+    _wait_for(lambda: service.status().state == "FAILED")
+    status = service.status()
+    assert status.failure_reason == "STT returned empty transcript"
     assert status.invocation_source == "ptt"

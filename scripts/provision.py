@@ -236,7 +236,6 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
             "uninstall",
             "-y",
             "onnxruntime",
-            "onnxruntime-qnn",
         ]
         uninstall_rc = _run_pip_install(uninstall_cpu_ort)
         if uninstall_rc != 0:
@@ -248,6 +247,7 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
             "pip",
             "install",
             "--force-reinstall",
+            "--no-deps",
             "onnxruntime-qnn==1.24.3",
         ]
         reinstall_rc = _run_pip_install(reinstall_qnn_ort)

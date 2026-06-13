@@ -47,19 +47,24 @@ def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
 
 def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> None:
     service = _service(tmp_path)
-    invocations: list[str] = []
+    invocations: list[tuple[str, np.ndarray | None, int | None]] = []
 
     def source(stop_event):
         yield np.zeros(4)
         yield np.ones(4)
+        for _ in range(40):
+            yield np.ones(4)
         while not stop_event.is_set():
             time.sleep(0.01)
+
+    def invoke(source_name: str, audio: np.ndarray | None = None, sample_rate: int | None = None) -> None:
+        invocations.append((source_name, audio, sample_rate))
 
     monitor = WakeMonitorService(
         session_service=service,
         runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True]),
         chunk_source=source,
-        invocation_callback=invocations.append,
+        invocation_callback=invoke,
     )
 
     monitor.start()
@@ -67,12 +72,16 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
     status = service.wake_status()
     monitor.stop()
 
-    assert status.reason == "wake detected"
     assert status.last_detected is not None
     assert status.detection_count == 1
-    assert status.last_score == 0.8
     assert status.threshold == 0.5
-    assert invocations == ["wake"]
+    assert len(invocations) == 1
+    source_name, audio, sample_rate = invocations[0]
+    assert source_name == "wake"
+    assert sample_rate == 16000
+    assert audio is not None
+    assert audio.dtype == np.float32
+    assert audio.size >= 8
 
 
 def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:

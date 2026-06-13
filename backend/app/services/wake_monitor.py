@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Iterable
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator
 
 import numpy as np
 
 from backend.app.runtimes.wake.base import WakeBase
+from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 from backend.app.services.session_service import SessionService, WakeMonitorStatus
 from backend.app.services.voice_service import wake_chunk_source
 
 
 WakeRuntimeFactory = Callable[[], WakeBase]
 WakeChunkSource = Callable[[threading.Event], Iterable[np.ndarray]]
-InvocationCallback = Callable[[str], object]
+InvocationCallback = Callable[[str, np.ndarray | None, int | None], object]
+WAKE_SAMPLE_RATE = 16000
+WAKE_PREROLL_SECONDS = 1.0
+WAKE_COMMAND_SECONDS = 3.0
 
 
 def _runtime_score(runtime: WakeBase) -> float | None:
@@ -21,6 +26,18 @@ def _runtime_score(runtime: WakeBase) -> float | None:
 
 def _runtime_threshold(runtime: WakeBase) -> float | None:
     return getattr(runtime, "threshold", None)
+
+
+def _chunk_count(duration_s: float) -> int:
+    samples = int(WAKE_SAMPLE_RATE * duration_s)
+    return max(1, (samples + WAKE_CHUNK_SAMPLES - 1) // WAKE_CHUNK_SAMPLES)
+
+
+def _chunks_to_stt_audio(chunks: list[np.ndarray]) -> np.ndarray:
+    if not chunks:
+        return np.asarray([], dtype=np.float32)
+    audio = np.concatenate([np.asarray(chunk, dtype=np.int16).reshape(-1) for chunk in chunks])
+    return audio.astype(np.float32) / 32768.0
 
 
 class WakeMonitorService:
@@ -106,16 +123,22 @@ class WakeMonitorService:
 
     def _run(self, runtime: WakeBase) -> None:
         try:
-            for chunk in self._chunk_source(self._stop_event):
+            pre_roll: deque[np.ndarray] = deque(maxlen=_chunk_count(WAKE_PREROLL_SECONDS))
+            source = iter(self._chunk_source(self._stop_event))
+            for chunk in source:
                 if self._stop_event.is_set():
                     break
-                if runtime.detect(np.asarray(chunk)):
+                chunk_audio = np.asarray(chunk, dtype=np.int16).reshape(-1)
+                pre_roll.append(chunk_audio)
+                if runtime.detect(chunk_audio):
                     self._session_service.record_wake_detection(
                         last_score=_runtime_score(runtime),
                         threshold=_runtime_threshold(runtime),
                     )
                     if self._invocation_callback is not None:
-                        self._invocation_callback("wake")
+                        command_chunks = list(pre_roll)
+                        command_chunks.extend(self._collect_post_wake_chunks(source))
+                        self._invocation_callback("wake", _chunks_to_stt_audio(command_chunks), WAKE_SAMPLE_RATE)
                 else:
                     self._session_service.record_wake_idle(
                         last_score=_runtime_score(runtime),
@@ -132,3 +155,15 @@ class WakeMonitorService:
             with self._lock:
                 if self._thread is threading.current_thread():
                     self._thread = None
+
+    def _collect_post_wake_chunks(self, source: Iterator[np.ndarray]) -> list[np.ndarray]:
+        chunks: list[np.ndarray] = []
+        for _ in range(_chunk_count(WAKE_COMMAND_SECONDS)):
+            if self._stop_event.is_set():
+                break
+            try:
+                chunk = next(source)
+            except StopIteration:
+                break
+            chunks.append(np.asarray(chunk, dtype=np.int16).reshape(-1))
+        return chunks

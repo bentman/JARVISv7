@@ -77,7 +77,8 @@ def test_arm64_qnn_install_reinstalls_pinned_qnn_family(monkeypatch) -> None:
     )
 
     assert exit_code == 0
-    assert ["uninstall", "-y", "onnxruntime", "onnxruntime-qnn"] == commands[1][3:]
+    assert ["uninstall", "-y", "onnxruntime"] == commands[1][3:]
+    assert "--no-deps" in commands[2]
     assert commands[2][-1:] == ["onnxruntime-qnn==1.24.3"]
     assert "onnxruntime==1.24.3" not in commands[2]
 
