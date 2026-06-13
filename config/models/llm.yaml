@@ -6,4 +6,4 @@ ollama:
 
 local:
   model_path: ${LLAMA_CPP_MODEL_PATH}
-  state: deferred
+  state: not_wired

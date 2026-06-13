@@ -8,7 +8,9 @@ class LlamaCppLLM(LLMBase):
         return False
 
     def generate(self, prompt: str, **kwargs: object) -> str:
-        raise NotImplementedError("llama.cpp activation deferred to M.1")
+        raise NotImplementedError(
+            "llama.cpp is not wired as a verified runtime; local LLM runtime boundary owns wiring and validation"
+        )
 
     def runtime_name(self) -> str:
         return "llama.cpp"

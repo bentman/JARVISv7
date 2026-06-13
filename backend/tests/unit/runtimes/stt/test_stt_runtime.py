@@ -11,7 +11,7 @@ from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.onnx_asr_runtime import OnnxAsrRuntime
 from backend.app.runtimes.stt.onnx_whisper_runtime import (
-    QNN_STT_DEFERRED_REASON,
+    ONNX_WHISPER_QNN_NOT_WIRED_REASON,
     OnnxWhisperRuntime,
     QnnWhisperRuntime,
     providers_for_device,
@@ -154,8 +154,9 @@ def test_qnn_runtime_real_transformers_preprocessor_import_boundary():
     assert WhisperTokenizer is transformers.WhisperTokenizer
 
 
-def test_qnn_runtime_does_not_expose_h32_deferred_message():
-    assert "H.3.2" not in QNN_STT_DEFERRED_REASON
+def test_onnx_whisper_qnn_guard_does_not_expose_slice_reference():
+    assert "H.3.2" not in ONNX_WHISPER_QNN_NOT_WIRED_REASON
+    assert "not wired through OnnxWhisperRuntime" in ONNX_WHISPER_QNN_NOT_WIRED_REASON
 
 
 def test_onnx_whisper_runtime_accepts_device_parameter():

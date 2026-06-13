@@ -152,7 +152,7 @@ def test_preflight_emits_qnn_dll_token_when_qnnhtp_is_discoverable(monkeypatch) 
     assert "dll:QnnHtp" in result.tokens
 
 
-def test_stt_readiness_reports_qnn_defined_and_selects_cpu_with_deferred_qnn_reason() -> None:
+def test_stt_readiness_reports_qnn_defined_and_selects_cpu_with_not_wired_qnn_reason() -> None:
     selected_device, ready, reason = derive_stt_device_readiness(
         _preflight("import:onnxruntime-qnn:MISSING", "ep:QNNExecutionProvider:MISSING", "dll:QnnHtp:MISSING"),
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),

@@ -249,7 +249,7 @@ Rules:
 - Corrections and clarifications must be added only below `## Appendix`.
 - Required entry fields:
   - Capability: brief descriptive component name with date/time
-  - State: `Planned`, `Implemented`, `Verified`, `Deferred`
+  - State: `Planned`, `Implemented`, `Verified`, `Not Implemented`
   - Location: relative file path(s)
   - Validation: method and/or relative script path(s); include host class
   - Notes: optional, one line max

@@ -9,7 +9,7 @@
 ### TTS device priority
 1. CPU — only proven path
    - kokoro_onnx.Kokoro does not expose a providers parameter (H.7)
-   - Accelerated TTS deferred pending upstream package change
+   - Accelerated TTS is not currently wired because kokoro_onnx does not expose provider selection; the hardware acceleration boundary owns activation after upstream support exists.
 
 ### LLM
 - Ollama (local HTTP) — primary
@@ -40,7 +40,7 @@
 ### Wake
 - openWakeWord (CPU) — primary
 
-### Enabling DirectML (future operator action)
+### Enabling DirectML (operator action when provider support is installed)
   pip install onnxruntime-directml
   $env:JARVISV7_LIVE_TESTS="true"
   python -m pytest backend/tests/runtime/hardware/test_directml_gate_live.py -q

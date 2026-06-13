@@ -14,7 +14,7 @@ from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.tests.conftest import SKIP_UNLESS_LIVE
 
 
-ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "Deferred", "N/A")
+ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "NOT-WIRED", "N/A")
 REPORT_PATH = REPO_ROOT / "reports" / "validation" / "h8-voice-acceleration-matrix-current-host.txt"
 
 
@@ -58,9 +58,9 @@ def _ollama_state() -> str:
     return "PASS"
 
 
-def _assert_stt_qnn_defers_to_h2() -> None:
+def _assert_stt_qnn_guard_is_explicit_not_wired() -> None:
     runtime = OnnxWhisperRuntime(device="qnn")
-    with pytest.raises(NotImplementedError, match=r"QNN STT runtime active|H\.2"):
+    with pytest.raises(NotImplementedError, match=r"not wired through OnnxWhisperRuntime"):
         runtime.transcribe(np.array([], dtype=np.float32), sample_rate=16000)
 
 
@@ -72,9 +72,14 @@ def _matrix_for_current_host(profile: HardwareProfile, preflight: PreflightResul
         MatrixCell("stt", "directml", _directml_state(preflight), "ep:DmlExecutionProvider"),
         MatrixCell("stt", "qnn", "SKIP-no-host", "QNN STT is ARM64/Qualcomm-only on current host class"),
         MatrixCell("tts", "cpu", _cpu_import_state(preflight, "import:kokoro_onnx"), "import:kokoro_onnx"),
-        MatrixCell("tts", "cuda", "Deferred", "H.7 closed CUDA TTS as Deferred: provider-override-missing"),
-        MatrixCell("tts", "directml", "Deferred", "H.7 closed DirectML TTS as Deferred: provider-override-missing"),
-        MatrixCell("tts", "qnn", "Deferred", "H.7 closed QNN TTS as Deferred: provider-override-missing"),
+        MatrixCell("tts", "cuda", "NOT-WIRED:provider-override-missing", "TTS CUDA not wired: provider-override-missing"),
+        MatrixCell(
+            "tts",
+            "directml",
+            "NOT-WIRED:provider-override-missing",
+            "TTS DirectML not wired: provider-override-missing",
+        ),
+        MatrixCell("tts", "qnn", "NOT-WIRED:provider-override-missing", "TTS QNN not wired: provider-override-missing"),
         MatrixCell("llm", "ollama/local", _ollama_state(), "OLLAMA_BASE_URL settings gate"),
         MatrixCell("llm", "cuda", "N/A", "LLM device is runtime, not EP"),
         MatrixCell("llm", "directml", "N/A", "LLM device is runtime, not EP"),
@@ -98,7 +103,7 @@ def _format_matrix(cells: list[MatrixCell]) -> str:
 def test_h8_voice_acceleration_matrix_current_host(profiler_fixture, preflight_fixture):
     profile = profiler_fixture.profile
 
-    _assert_stt_qnn_defers_to_h2()
+    _assert_stt_qnn_guard_is_explicit_not_wired()
     cells = _matrix_for_current_host(profile, preflight_fixture)
     matrix = _format_matrix(cells)
 

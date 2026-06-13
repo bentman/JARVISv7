@@ -41,8 +41,8 @@ class CloudLLMRuntime(LLMBase):
         if not self.api_key_env or not os.getenv(self.api_key_env):
             self.reason = f"{self.name} API key env var missing: {self.api_key_env}"
             return False
-        self.reason = f"{self.name} cloud runtime structurally available; calls deferred"
+        self.reason = f"{self.name} cloud runtime structurally available; provider calls not implemented"
         return True
 
     def generate(self, prompt: str, **kwargs: object) -> str:
-        raise RuntimeError(f"{self.name} cloud LLM policy-gated or provider calls deferred")
+        raise RuntimeError(f"{self.name} cloud LLM policy-gated or provider calls not implemented")

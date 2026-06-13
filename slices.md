@@ -119,7 +119,7 @@ No slice in a later group may reopen a decision owned by an earlier group withou
 
 **Key design decisions.**
 - Profiler never imports optional hardware-family packages (`onnxruntime`, `torch`, etc.) — detection is stdlib + `psutil`/platform-level only, so the profiler itself runs on a clean base install.
-- NPU vendor detection must distinguish Qualcomm (QNN target), Intel (future DirectML/OpenVINO target), AMD (future ROCm target), and unknown; the profiler never guesses vendor from OS alone.
+- NPU vendor detection must distinguish Qualcomm (QNN target), Intel (DirectML/OpenVINO target), AMD (ROCm target), and unknown; the profiler never guesses vendor from OS alone.
 - Desktop vs laptop classification is best-effort; downstream code treats it as a hint, not a hard constraint.
 
 **Acceptance.**
@@ -184,7 +184,7 @@ No slice in a later group may reopen a decision owned by an earlier group withou
 **Risks.**
 - Environment markers vary subtly across `pip` versions; freeze supported `pip` version in `dev` extra and test against it.
 - `pyproject.toml` extras install order is not strictly guaranteed; the resolver ordering exists for logging/debugging, not for install correctness.
-- NPU vendor gating cannot use PEP 508 markers; the resolver must make the call. Document this split clearly so no future maintainer tries to move it into markers.
+- NPU vendor gating cannot use PEP 508 markers; the resolver must make the call. Document this split clearly so maintainers do not move it into markers.
 
 ---
 
@@ -331,19 +331,19 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ## A.6 — QNN Definition
 
-**Why here.** Carry QNN as a first-class definition from day one so later activation is pure wiring. Defining it here forces every runtime family in B to treat `qnn` as one of the device values it must accept.
+**Why here.** Carry QNN as a first-class definition from day one so activation is pure hardware acceleration boundary wiring. Defining it here forces every runtime family in B to treat `qnn` as one of the device values it must accept.
 
-**Goal.** Activating QNN later (in H.2) requires no manifest / extra / flag / token / schema changes — only runtime code and a quantized model.
+**Goal.** Activating QNN at the hardware acceleration boundary requires no manifest / extra / flag / token / schema changes — only runtime code and a quantized model.
 
 **Scope.**
 - `hw-npu-qualcomm-qnn` extra in `pyproject.toml`, applied by the resolver on Qualcomm NPU hosts.
 - Packages: `onnxruntime-qnn>=2.0.0` (PyPI Windows ARM64 wheels confirmed for CPython 3.11/3.12/3.13).
-- Evidence tokens added to `resolve_backend_evidence_tokens()`: `import:onnxruntime-qnn`, `ep:QNNExecutionProvider`, `dll:QnnHtp` — all returning "defined but not wired" until H.2.
+- Evidence tokens added to `resolve_backend_evidence_tokens()`: `import:onnxruntime-qnn`, `ep:QNNExecutionProvider`, `dll:QnnHtp` — all returning "defined but not wired" until hardware acceleration validation proves activation.
 - `CapabilityFlags.qnn_available` set from NPU vendor detection.
-- `qnn` accepted as a valid `selected_device` value in STT readiness; selector emits a clear "defined, inference pending H.2" reason and refuses to select it for actual work.
+- `qnn` accepted as a valid `selected_device` value in STT readiness; selector emits a clear "defined, inference not wired" reason and refuses to select it for actual work without hardware acceleration validation.
 - Operator prerequisites documented in `.env.example` and `config/hardware/notes.md`: QAIRT SDK install path, backend `.dll` location.
 
-**Out of scope.** Inference code. Quantized model catalog entries (placeholder only). All deferred to H.2.
+**Out of scope.** Inference code. Quantized model catalog entries (placeholder only). The hardware acceleration boundary owns activation and validation.
 
 **Boundaries.**
 - Owns: the extra entry, token definitions, the `qnn_available` flag, documentation.
@@ -351,11 +351,11 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Key design decisions.**
 - Define the slot, not the implementation — prevents the "QNN as retrofit" failure mode without blocking on SDK availability or hardware access.
-- Quantization tooling notes included in `config/hardware/notes.md`: per ORT QNN docs the `onnx` package has ARM64 install issues, so quantization runs on x64; this is documented as a future operator workflow, not a blocker here.
+- Quantization tooling notes included in `config/hardware/notes.md`: per ORT QNN docs the `onnx` package has ARM64 install issues, so quantization runs on x64; this is documented as an operator workflow, not a blocker here.
 
 **Acceptance.** Unit tests confirm Qualcomm host synthetic profiles produce the expected "defined but not wired" readiness claims.
 
-**Finish line.** QNN is present in the architecture as a slot every later decision is aware of.
+**Finish line.** QNN is present in the architecture as a slot every hardware acceleration decision is aware of.
 
 **Risks.**
 - `onnxruntime-qnn` versioning may diverge from core `onnxruntime`; pin compatible ranges explicitly.
@@ -374,7 +374,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Scope.**
 - Primary runtime: ONNX-based Whisper via `onnxruntime`. Single runtime file accepting `device ∈ {cpu, cuda, directml, qnn}`. Device branches live inside the runtime; `cpu` works on every host, GPU/NPU branches check readiness.
-- Secondary runtime: `onnx-asr` (`istupakov/onnx-asr`). Supports Windows/Linux/macOS on x86/Arm CPUs with CUDA/TensorRT/CoreML/DirectML/ROCm/WebGPU backends per its PyPI listing. Kept behind a runtime flag for non-Whisper model families (Parakeet/Canary/NeMo), lower-latency streaming scenarios, and future non-English coverage.
+- Secondary runtime: `onnx-asr` (`istupakov/onnx-asr`). Supports Windows/Linux/macOS on x86/Arm CPUs with CUDA/TensorRT/CoreML/DirectML/ROCm/WebGPU backends per its PyPI listing. Kept behind a runtime flag for non-Whisper model families (Parakeet/Canary/NeMo), lower-latency streaming scenarios, and non-English coverage owned by the voice interaction boundary.
 - Selector in `backend/app/runtimes/stt/stt_runtime.py` dispatches on `(runtime_family, device)` from profiler/readiness output.
 - Catalog entries in `config/models/stt.yaml`:
   - `whisper-small-onnx` (CPU/CUDA/DirectML).
@@ -382,7 +382,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
   - One Parakeet-family ONNX model for the `onnx-asr` path.
 - Cache keying is `(runtime_family, model_name, device)` so runtimes never collide in cache.
 
-**Out of scope.** QNN inference (H.2). QNN-target quantization tooling (H.2). Streaming partial transcripts (future polish).
+**Out of scope.** QNN inference and QNN-target quantization tooling belong to the hardware acceleration boundary. Streaming partial transcripts belong to the streaming response boundary.
 
 **Assumptions.**
 - ONNX Whisper `small` is available on HuggingFace in a layout compatible with `onnxruntime`.
@@ -394,9 +394,9 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Must not touch: TTS, LLM, wake, services.
 
 **Key design decisions.**
-- One ONNX Whisper runtime file holds all device branches; `faster-whisper` is not included in the base strategy (may be added later as a second runtime if ONNX coverage proves insufficient for a specific need, but it is not default).
+- One ONNX Whisper runtime file holds all device branches; `faster-whisper` is not included in the base strategy. The local STT runtime boundary owns any second-runtime decision if ONNX coverage proves insufficient for a specific need.
 - Selector refuses to pick an unready device with a clear reason rather than falling through silently.
-- `onnx-asr` is present from day one, not deferred, because bringing it in later is more work than defining its slot now.
+- `onnx-asr` is present from day one because defining its slot up front keeps the runtime boundary stable.
 
 **Acceptance.**
 - Unit: runtime + selector dispatch table.
@@ -434,7 +434,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Owns: `backend/app/runtimes/tts/{base.py, kokoro_onnx_runtime.py, tts_runtime.py, playback.py}`, `config/models/tts.yaml`.
 
 **Key design decisions.**
-- PyTorch-based Kokoro is not default (x64-only path). If future need arises it can be added as a second runtime on x64, but single-stack is the goal.
+- PyTorch-based Kokoro is not default (x64-only path). The voice interaction boundary owns any second-runtime decision on x64 if a concrete need appears, but single-stack is the goal.
 - Playback utilities live in runtime layer, not in services, so interruption logic (C.5) has one interruption point.
 
 **Acceptance.**
@@ -502,7 +502,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
   - Reserved config slots: `wake.yaml` carries a `provider: openwakeword | porcupine` field and a `porcupine_keyword_path` slot even when unused.
   - Future-custom-keyword caveat documented: Picovoice Console selects platform at training time; whether a single Windows `.ppn` covers both x64 and ARM64 at Console level is not definitively documented, so custom-keyword work should validate with Picovoice support and plan for per-arch files if needed. Dev-tier AccessKey allows one keyword at a time.
 - Wake selector dispatches on `provider` config value; openWakeWord default.
-- Custom "jarvis"-only training (no "hey" prefix) is deferred future polish. Documented as a Linux/WSL/Colab operator task per openWakeWord's notebook ("automated model training is only supported on linux systems due to the requirements of the text to speech library used for synthetic sample generation (Piper)"). Trained `.onnx` output is arch-independent.
+- Custom "jarvis"-only training (no "hey" prefix) is not implemented. The voice interaction boundary owns custom wake-word training; it remains a Linux/WSL/Colab operator task per openWakeWord's notebook ("automated model training is only supported on linux systems due to the requirements of the text to speech library used for synthetic sample generation (Piper)"). Trained `.onnx` output is arch-independent.
 
 **Out of scope.** Training custom openWakeWord models. NPU-accelerated wake (wake runs on CPU for both providers).
 
@@ -516,7 +516,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 **Key design decisions.**
 - openWakeWord default because arch-independence + pre-trained `hey_jarvis` gives the best baseline UX with no operator setup.
 - Porcupine kept as an optional alternative because its dev-tier single-keyword limit doesn't fit a primary multi-keyword surface but may be right for specific deployments.
-- Custom-keyword training deferred — not a precondition for any C–H slice.
+- Custom-keyword training is not implemented and is not a precondition for the current voice interaction boundary.
 
 **Acceptance.**
 - Unit: selector dispatch; runtime fail-closed when models missing.
@@ -525,7 +525,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 **Finish line.** Wake detection works out-of-box on both host classes via openWakeWord. Porcupine available as drop-in when the extra is installed.
 
 **Risks.**
-- openWakeWord false-reject rate in noisy environments may push users toward custom verifier models later; that path is documented but not required.
+- openWakeWord false-reject rate in noisy environments may push users toward custom verifier models; that path is documented but not required.
 
 ---
 
@@ -663,7 +663,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Policy: speech output is interruptible at nearest safe boundary; listening has priority once barge-in is accepted; unsupported-interruption modes degrade to stop-and-reinvoke with explicit surfacing.
 - Initial acceptable behavior: user interrupts → speech stops → system records → clean transition to next allowed state without corrupting session. Perfect conversational overlap not required.
 
-**Out of scope.** Wake-during-speech (future polish).
+**Out of scope.** Wake-during-speech belongs to the realtime conversation/session boundary.
 
 **Acceptance.** Runtime live: interruption during SPEAKING produces clean state transitions and a turn artifact recording the event.
 
@@ -796,7 +796,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Acceptance.** Desktop live: "hey jarvis" triggers LISTENING on both host classes via openWakeWord.
 
-**Risks.** Wake concurrent with SPEAKING (barge-by-wake) — out of scope for this slice; documented as future polish.
+**Risks.** Wake concurrent with SPEAKING (barge-by-wake) is outside this boundary; the realtime conversation/session boundary owns that behavior.
 
 ---
 
@@ -807,7 +807,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 **Scope.**
 - Personality shaping controls in shell (profile picker).
 - Assistant presence behaviors (acknowledgment phrases, response pacing hints consumed by TTS).
-- Overlay / ambient presence patterns defined in `docs/` but implementation deferred.
+- Overlay / ambient presence patterns are defined in `docs/`; implementation is not claimed by the desktop shell boundary.
 
 **Acceptance.** Desktop live: personality switch changes next turn's response style.
 
@@ -896,14 +896,14 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
   - `backend/app/tools/system/` — time/date, hardware-info (read-only).
   - `backend/app/tools/filesystem/` — read-only filesystem access within sandboxed paths.
   - `backend/app/tools/search/` — adapter over `backend/app/runtimes/internetsearch/`.
-- Tool contract supports arbitrary future tool addition without redesign.
+- Tool contract supports additional tool registration without redesign.
 - Tool invocations explicit and logged; no hidden side effects.
 
 **Boundaries.**
 - Owns: `backend/app/tools/**`.
 
 **Key design decisions.**
-- Filesystem tool is read-only at this slice's scope. Write tools are a separate future decision with their own policy gates.
+- Filesystem tool is read-only at this slice's scope. Write tools belong to the tool orchestration boundary and require their own policy gates.
 - Search adapter is the only bridge from tools to runtimes; tools never reach past the runtime boundary.
 
 **Acceptance.** Runtime live: each of the three tools returns correct results in a real voice turn.
@@ -939,7 +939,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Explicit write policy extending `write_policy.py` pattern — governs what enters episodic memory, what is redacted, what is retained how long.
 - Retrieval results logged in turn artifacts (explicit provenance).
 
-**Out of scope.** Semantic memory (future). Cross-session summarization beyond recency-based recall.
+**Out of scope.** Semantic/vector memory belongs to the semantic memory boundary. Cross-session summarization beyond recency-based recall belongs to the semantic memory boundary.
 
 **Boundaries.**
 - Owns: `backend/app/memory/{episodic,retrieval}.py`.
@@ -975,17 +975,17 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ~~# Group H — Voice Acceleration~~ Completed
 
-**Why this group exists here.** Voice acceleration (STT/TTS on GPU/NPU) belongs after the core loop, tools, memory, and episodic retrieval are stable. Acceleration work at this stage is a clean device-branch substitution inside already-proven runtime families — not new architecture. Local LLM service work is deferred to Group N because it has distinct resource and build constraints that must be assessed independently after acceleration is proven.
+**Why this group exists here.** Voice acceleration (STT/TTS on GPU/NPU) belongs after the core loop, tools, memory, and episodic retrieval are stable. Acceleration work at this stage is a clean device-branch substitution inside already-proven runtime families — not new architecture. Local LLM service work belongs to the local LLM runtime boundary because it has distinct resource and build constraints that must be assessed independently after acceleration is proven.
 
 **Voice-first ordering.** H works only on STT and TTS device uplift. LLM runtime selection (Ollama) is unchanged. Wake remains CPU-only.
 
-**Viability-gate discipline.** Each acceleration variant (QNN, CUDA, DirectML) begins with a non-mutating viability gate that produces documented evidence before any wiring code is written. An unproven host or missing prerequisite closes as `SKIP-no-host`, `SKIP-prereq-missing`, or `Deferred` — never as `BLOCKED-*`.
+**Viability-gate discipline.** Each acceleration variant (QNN, CUDA, DirectML) begins with a non-mutating viability gate that produces documented evidence before any wiring code is written. An unproven host or missing prerequisite closes as `SKIP-no-host`, `SKIP-prereq-missing`, or `NOT-WIRED:<reason>` — never as `BLOCKED-*`.
 
 **Close states for hardware/provider sub-slices:**
 - `PASS` — proven on the target host with the target device
 - `SKIP-no-host` — no host with the required hardware was available
 - `SKIP-prereq-missing` — required SDK, DLL, or package not present; not a blocker if clearly documented
-- `Deferred` — capability is defined and slotted; activation explicitly moved to a named later sub-slice
+- `NOT-WIRED:<reason>` — capability is defined and slotted, but current evidence does not justify runtime activation; the relevant capability boundary owns wiring and validation
 - `Degraded-memory-constrained` — host hardware present but insufficient for the target model size; documented with memory parameters
 
 ## H.0 — Voice Acceleration Viability Census
@@ -1094,22 +1094,22 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 **Scope.**
 - Activate DirectML branch in `onnx_whisper_runtime.py` and `kokoro_onnx_runtime.py` where H.5 proved the EP loadable.
 - Selector updates to prefer DirectML when ready.
-- If H.5 was `SKIP-*`: H.6 closes as `Deferred` without any code change.
+- If H.5 was `SKIP-*`: H.6 closes as `NOT-WIRED:<reason>` without any code change.
 
-**Acceptance.** Runtime live with DirectML device on proven host, or `Deferred` if H.5 was `SKIP-*`.
+**Acceptance.** Runtime live with DirectML device on proven host, or `NOT-WIRED:<reason>` if H.5 was `SKIP-*`.
 
 ---
 
 ## H.7 — TTS Acceleration Viability / Device Slot Normalization
 
-**Goal.** TTS device options normalized alongside STT. CPU proven on both hosts. CUDA/DirectML where H.4/H.6 proved viable. QNN TTS explicitly deferred.
+**Goal.** TTS device options normalized alongside STT. CPU proven on both hosts. CUDA/DirectML where viability gates proved provider support. QNN TTS explicitly marked not wired when no verified Kokoro HTP quantization exists.
 
 **Scope.**
 - TTS CPU live test reconfirmation on both host classes.
 - TTS CUDA / DirectML branches activated where the corresponding STT gate (H.4 / H.6) proved the EP.
-- QNN TTS: explicitly `Deferred` — no verified Kokoro HTP quantization exists. Document in `config/hardware/notes.md`.
+- QNN TTS: explicitly `NOT-WIRED:no-verified-kokoro-htp-quantization`. Document in `config/hardware/notes.md`.
 
-**Acceptance.** TTS CPU `PASS` on both hosts. Acceleration variants `PASS` or `Deferred` with reason.
+**Acceptance.** TTS CPU `PASS` on both hosts. Acceleration variants `PASS` or `NOT-WIRED:<reason>`.
 
 ---
 
@@ -1119,10 +1119,10 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Scope.**
 - Run `validate_backend.py matrix` on both host classes.
-- Every cell is `PASS`, `SKIP-*`, or `Deferred`. Any `FAIL` blocks Group H closeout.
+- Every cell is `PASS`, `SKIP-*`, or `NOT-WIRED:<reason>`. Any `FAIL` blocks Group H closeout.
 - Matrix recorded in `SYSTEM_INVENTORY.md` as the Group H gate entry.
 
-**Acceptance.** Matrix green on both host classes (allowing SKIP/Deferred cells with reasons). Regression ≥ 96.
+**Acceptance.** Matrix green on both host classes (allowing SKIP/NOT-WIRED cells with reasons). Regression >= 96.
 
 **Finish line.** Group I hardware-path normalization may begin.
 
@@ -1130,7 +1130,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ~~# Group I — Hardware Path Normalization~~ Completed
 
-**Why this group exists here.** Group H produces evidence of what actually works per device per host class. Group I consumes that evidence to normalize the selector, readiness deriver, and preflight reporting into coherent, documented acceleration paths for both host classes. Future hardware variants (Intel NPU, additional AMD GPUs) are represented as defined-but-deferred slots following the A.6 / H.2 pattern — not over-built.
+**Why this group exists here.** Hardware acceleration evidence records what actually works per device per host class. The readiness/provisioning boundary consumes that evidence to normalize the selector, readiness deriver, and preflight reporting into coherent, documented acceleration paths for both host classes. Additional hardware variants (Intel NPU, additional AMD GPUs) are represented as defined-but-not-wired slots owned by the hardware acceleration boundary.
 
 ## I.1 — ARM Acceleration Sequence Normalization
 
@@ -1138,7 +1138,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Scope.**
 - Normalize `derive_stt_device_readiness()` and `derive_tts_device_readiness()` to prefer QNN when H.3 proved it, fall back to CPU cleanly.
-- Intel NPU (future) and other ARM NPU variants represented as defined-but-deferred slots.
+- Intel NPU and other ARM NPU variants represented as defined-but-not-wired slots owned by the hardware acceleration boundary.
 - No new runtime families; this is selector and readiness normalization only.
 - Document the ARM64 path in `config/hardware/notes.md`.
 
@@ -1152,7 +1152,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 **Scope.**
 - Normalize x64 readiness derivers to prefer CUDA → DirectML → CPU in documented order.
-- Non-NVIDIA GPU variants (Intel iGPU, AMD without DirectML) represented as defined-but-deferred slots.
+- Non-NVIDIA GPU variants (Intel iGPU, AMD without DirectML) represented as defined-but-not-wired slots owned by the hardware acceleration boundary.
 - Document the x64 path in `config/hardware/notes.md`.
 
 **Acceptance.** Unit: x64 readiness derivation correct for all acceleration states from H. Runtime live: x64 host selects the best proven device.
@@ -1224,13 +1224,13 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Current code anchors: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/adapter.py`, `config/personality/*.yaml`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/responder.py`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`.
 - External constraint reference for implementation planning: OWASP prompt-injection guidance supports segregating trusted instructions from user, retrieved, and tool content; Group L should claim structured authority separation and deterministic rendering, not complete prompt-injection prevention.
 
-**Goal.** Replace raw-or-ignored personality behavior with a structured `PersonalityProfile -> PersonalityPolicy -> PromptEnvelope -> renderer -> LLM runtime -> style guard -> TTS-safe response` boundary that works with current flat-string local/Ollama paths and leaves a clear adapter path for future structured-message runtimes.
+**Goal.** Replace raw-or-ignored personality behavior with a structured `PersonalityProfile -> PersonalityPolicy -> PromptEnvelope -> renderer -> LLM runtime -> style guard -> TTS-safe response` boundary that works with current flat-string local/Ollama paths and leaves a clear adapter path for structured-message runtimes.
 
 **Scope.**
 - Expand personality profiles into validated, structured style data: identity summary, tone, brevity, formality, warmth, assertiveness, humor policy, response style, acknowledgment style, confirmation style, interruption style, voice pacing, voice energy, and enabled state.
 - Compile profiles into a bounded `PersonalityPolicy` that can influence style, wording, pacing, and presentation, but cannot define tool permissions, model routing, memory policy, safety overrides, hidden instructions, or orchestration authority.
 - Introduce a structured prompt envelope that separates application rules, personality style policy, working memory, retrieved memory, tool results, user transcript, and output contract by authority/provenance.
-- Preserve current flat `LLMBase.generate(prompt: str)` compatibility while adding an optional envelope-aware generation boundary for future API runtimes.
+- Preserve current flat `LLMBase.generate(prompt: str)` compatibility while adding an optional envelope-aware generation boundary for structured-message API runtimes.
 - Add a deterministic style guard after LLM generation for bounded style, single-turn response constraints, and voice/text presentation cleanup.
 - Keep active personality traceable through turn artifacts and existing session/personality selection paths.
 
@@ -1324,7 +1324,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Add `backend/app/cognition/prompt_envelope.py` with `PromptSegment` and `PromptEnvelope` concepts covering authority/provenance, content type, trust level, and text.
 - Add `backend/app/cognition/prompt_renderer.py` to render an envelope into a deterministic flat prompt for current local/Ollama-style runtimes.
 - Update `assemble_prompt()` to build an envelope from application rules, personality policy, working memory, retrieved context, user transcript, and output contract, then render it flat by default.
-- Fence retrieved memory and future tool content as untrusted context, not instruction authority.
+- Fence retrieved memory and tool content as untrusted context, not instruction authority.
 - Preserve current turn artifact compatibility by continuing to store the rendered prompt text in `final_prompt_text`.
 
 **Out of scope.** Native chat-role provider calls; L.4 only creates the adapter path.
@@ -1341,7 +1341,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ## L.4 — LLM Envelope Adapter + Turn Integration
 
-**Goal.** The turn engine can pass the same personality-aware envelope contract through current and future LLM runtime adapters without breaking existing runtimes.
+**Goal.** The turn engine can pass the same personality-aware envelope contract through current and structured-message LLM runtime adapters without breaking existing runtimes.
 
 **Scope.**
 - Add an optional `generate_envelope(envelope, **kwargs)` method to `LLMBase` that defaults to flat rendering plus existing `generate(prompt: str)`.
@@ -1358,7 +1358,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Runtime: existing text-turn and voice-turn live tests remain green on target host classes.
 - `CHANGE_LOG.md` records the validated L.4 evidence before L.5 begins.
 
-**Finish line.** Current flat-string runtimes keep working, and future structured-message runtimes have a single adapter boundary.
+**Finish line.** Current flat-string runtimes keep working, and structured-message runtimes have a single adapter boundary.
 
 ---
 
@@ -1457,7 +1457,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 # Group N — Ollama.cpp / Local LLM Runtime
 
-**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. Deferring until after M ensures that ARM64 memory limits, model quantization choices, and server binary availability are evaluated against a mature, stable system — not retrofitted into Group H.
+**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, and server binary availability so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
@@ -1489,7 +1489,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
 - ARM64 acceptance: if model runs but is memory-constrained, close N.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
 
-**Out of scope.** LLM device acceleration (separate future decision).
+**Out of scope.** LLM device acceleration belongs to the local LLM runtime boundary as a separate capability decision.
 
 **Acceptance.** Runtime live: turn completes via local LLM on at least x64; Ollama fallback proven. ARM64: `PASS`, `Degraded-memory-constrained`, or `SKIP-no-viable-binary` — all acceptable with documentation.
 

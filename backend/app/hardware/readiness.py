@@ -42,7 +42,7 @@ def derive_stt_device_readiness(
         return ("cuda", True, "ep:CUDAExecutionProvider proven; selecting cuda")
 
     # x64 Windows DirectML slot remains defined for deterministic ordering,
-    # but operational activation remains deferred by H.5/H.6 outcome.
+    # but current installed provider evidence does not activate it.
     if (
         profile.os_name == "windows"
         and profile.gpu_available

@@ -10,7 +10,9 @@ from backend.app.models.catalog import get_model_path
 from backend.app.runtimes.stt.base import STTBase
 
 
-QNN_STT_DEFERRED_REASON = "QNN STT runtime active"
+ONNX_WHISPER_QNN_NOT_WIRED_REASON = (
+    "QNN STT is not wired through OnnxWhisperRuntime; use QnnWhisperRuntime for verified QNN execution"
+)
 
 
 def providers_for_device(device: str) -> list[str]:
@@ -39,7 +41,7 @@ class OnnxWhisperRuntime(STTBase):
 
     def _load_model(self) -> Any:
         if self.device == "qnn":
-            raise NotImplementedError(QNN_STT_DEFERRED_REASON)
+            raise NotImplementedError(ONNX_WHISPER_QNN_NOT_WIRED_REASON)
         if self._model is None:
             import onnx_asr
 
@@ -71,7 +73,7 @@ class OnnxWhisperRuntime(STTBase):
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if self.device == "qnn":
-            raise NotImplementedError(QNN_STT_DEFERRED_REASON)
+            raise NotImplementedError(ONNX_WHISPER_QNN_NOT_WIRED_REASON)
         if not self.is_available():
             raise RuntimeError(f"STT model files are unavailable at {self.model_path}")
         waveform = np.asarray(audio, dtype=np.float32)
