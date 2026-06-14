@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-13 18:21
+  - Summary: Implemented Group M realtime conversation session boundary. Resident voice invocation now routes live wake/PTT invocation events through a realtime session boundary that records ordered events and delegates committed voice turns to the existing turn engine while preserving current status behavior.
+  - Scope: `backend/app/conversation/realtime/`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\realtime` PASS (`8 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py` PASS (`8 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_session_service.py` PASS (`13 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`450 passed, 1 skipped`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected`, report `reports\validation\20260613232131-regression.txt`).
+  - Note: No agent behavior, streaming transport, semantic-memory redesign, model routing, STT/TTS/LLM runtime selection, wake runtime replacement, provisioning, hardware detection, or desktop UI changes were made.
+
 - 2026-06-13 09:48
   - Summary: Cleaned active governance and runtime-boundary wording for vague postponement language and brittle adjacent slice handoffs. Active guidance now uses not implemented, not wired, not claimed, outside boundary, or stable boundary ownership language.
   - Scope: `AGENTS.md`, `SYSTEM_INVENTORY.md`, `CHANGE_LOG.md`, `slices.md`, `config/hardware/notes.md`, `config/models/llm.yaml`, `backend/app/hardware/readiness.py`, `backend/app/runtimes/llm/base.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `backend/tests/unit/hardware/test_qnn_slot.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`

@@ -3,12 +3,13 @@ from __future__ import annotations
 import queue
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 import numpy as np
 
 from backend.app.conversation.engine import TurnEngine
-from backend.app.conversation.states import ConversationState
+from backend.app.conversation.realtime.events import RealtimeEvent
+from backend.app.conversation.realtime.session import RealtimeConversationSession
 from backend.app.services import voice_service
 from backend.app.services.session_service import SessionService, SessionStatus
 
@@ -17,8 +18,6 @@ AudioCapture = Callable[[], tuple[np.ndarray, int]]
 EngineProvider = Callable[[], TurnEngine]
 BeforeInvocation = Callable[[], object]
 AfterInvocation = Callable[[object], object]
-EMPTY_TRANSCRIPT_REASON = "STT returned empty transcript"
-WAKE_NO_SPEECH_REASON = "No speech detected after wake"
 
 
 @dataclass(frozen=True, slots=True)
@@ -46,6 +45,7 @@ class ResidentVoiceInvocationService:
         self._queue: queue.Queue[ResidentInvocationRequest] = queue.Queue()
         self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
+        self._last_realtime_events: tuple[RealtimeEvent, ...] = ()
 
     def set_invocation_hooks(self, *, before_invocation: BeforeInvocation, after_invocation: AfterInvocation) -> None:
         self._before_invocation = before_invocation
@@ -67,6 +67,9 @@ class ResidentVoiceInvocationService:
 
     def status(self) -> SessionStatus:
         return self._session_service.status()
+
+    def last_realtime_events(self) -> tuple[RealtimeEvent, ...]:
+        return self._last_realtime_events
 
     def _ensure_worker(self) -> None:
         with self._lock:
@@ -93,29 +96,27 @@ class ResidentVoiceInvocationService:
 
     def _invoke(self, request: ResidentInvocationRequest) -> None:
         hook_state: object = None
+        realtime_session: RealtimeConversationSession | None = None
         try:
             if self._before_invocation is not None:
                 hook_state = self._before_invocation()
-            self._session_service.begin_voice_invocation(request.source)
-            if request.audio is not None and request.sample_rate is not None:
-                audio, sample_rate = request.audio, request.sample_rate
-            else:
-                audio, sample_rate = self._audio_capture()
-            self._session_service.mark_voice_state(ConversationState.TRANSCRIBING)
-            self._session_service.mark_voice_state(ConversationState.REASONING)
-            result = self._engine_provider().run_voice_turn(audio, sample_rate)
-            if request.source == "wake" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
-                result = replace(result, failure_reason=WAKE_NO_SPEECH_REASON)
+            realtime_session = RealtimeConversationSession(
+                session_service=self._session_service,
+                engine_provider=self._engine_provider,
+            )
+            result = realtime_session.run_voice_invocation(
+                source=request.source,
+                audio=request.audio,
+                sample_rate=request.sample_rate,
+                audio_capture=self._audio_capture,
+            )
             if result.failure_reason:
-                self._session_service.complete_voice_invocation(result, state=ConversationState.FAILED)
                 return
-            self._session_service.mark_voice_state(ConversationState.RESPONDING)
-            if result.response_text:
-                self._session_service.mark_voice_state(ConversationState.SPEAKING)
-            self._session_service.complete_voice_invocation(result, state=result.final_state)
         except Exception as exc:
             self._session_service.fail_voice_invocation(str(exc))
         finally:
+            if realtime_session is not None:
+                self._last_realtime_events = tuple(realtime_session.ledger.events)
             if self._after_invocation is not None:
                 try:
                     self._after_invocation(hook_state)

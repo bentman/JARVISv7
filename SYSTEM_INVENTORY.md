@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Group M realtime conversation session boundary - 2026-06-13 18:21
+  - State: Verified
+  - Location: `backend/app/conversation/realtime/__init__.py`, `backend/app/conversation/realtime/events.py`, `backend/app/conversation/realtime/ledger.py`, `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/turn_taking.py`, `backend/app/conversation/realtime/interruption.py`, `backend/app/conversation/realtime/response_queue.py`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `CHANGE_LOG.md`
+  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-13 18:21`: realtime unit tests PASS (`8 passed`), resident voice tests PASS (`8 passed`), session service tests PASS (`13 passed`), backend unit validator PASS (`450 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`115 passed, 4 deselected`, report `reports\validation\20260613232131-regression.txt`).
+  - Notes: Adds typed realtime events, append-only in-memory event ledger, non-streaming response/interruption boundary helpers, and a realtime voice invocation coordinator used by resident wake/PTT invocation; committed turn execution remains owned by `TurnEngine`.
+
 - Capability: Slice L personality policy envelope - 2026-06-12 11:46
   - State: Verified
   - Location: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/adapter.py`, `backend/app/personality/policy.py`, `config/personality/default.yaml`, `config/personality/concise.yaml`, `config/personality/warm.yaml`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_renderer.py`, `backend/app/cognition/style_guard.py`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `CHANGE_LOG.md`

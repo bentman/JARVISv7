@@ -86,9 +86,11 @@ Group K — UI Controls + Operator Settings
 
 Group L — Personality Policy Envelope
 
-Group M — Agent Framework
+Group M — Realtime Conversation Session Boundary
 
-Group N — Ollama.cpp / Local LLM Runtime
+Group N — Agent Framework
+
+Group O — Ollama.cpp / Local LLM Runtime
 ```
 
 No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
@@ -1214,7 +1216,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group L — Personality Policy Envelope
+~~# Group L — Personality Policy Envelope~~ Completed
 
 **Why this group exists here.** Personality is already visible and selectable in the durable desktop/backend surface, but current runtime behavior is intentionally thin: `backend/app/personality/schema.py` carries only `profile_id`, `display_name`, `tone`, `brevity`, `formality`, and legacy `system_prompt_addendum`; `backend/app/cognition/prompt_assembler.py` receives `personality` and currently ignores it; `backend/app/conversation/engine.py` already passes the active profile into prompt assembly and records `active_personality_profile_id` in turn artifacts. Group L turns that existing integration point into an application-owned policy envelope before agents or additional LLM runtimes consume it.
 
@@ -1306,7 +1308,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Add optional style-only role overlays if a current code path needs them; overlays cannot alter tool permissions, runtime selection, memory policy, safety policy, or orchestration state transitions.
 - Keep the current selected profile as the only personality state source in `SessionService` and `TurnEngine`.
 
-**Out of scope.** Agent role contracts and agent orchestration. Those remain Group M.
+**Out of scope.** Agent role contracts and agent orchestration. Those remain Group N.
 
 **Acceptance.**
 - Unit: compiler is deterministic for fixed input, rejects unsupported style values, applies defaults, and proves overlays cannot introduce prohibited authority fields.
@@ -1407,13 +1409,170 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group M — Agent Framework
+# Group M - Realtime Conversation Session Boundary
+
+**Why this group exists here.** The product already has a resident voice path, a durable desktop/API session status surface, committed turn execution, wake/PTT behavior, canonical conversation states, and turn/session artifacts. What is still missing is a durable realtime session boundary that owns live invocation timing, event ordering, interruption context, and channel handoff without taking ownership from the committed turn engine. Group M inserts that boundary before agents so later orchestration consumes a stable conversation-session substrate instead of reaching into voice service internals.
+
+**Reference inputs.**
+
+- Product direction: `ProjectVision.md` requires deterministic session lifecycle, canonical states, wake/PTT voice surfaces, barge-in, local-first operation, and traceable turn artifacts.
+- Current capability state: `SYSTEM_INVENTORY.md` and `CHANGE_LOG.md` record verified voice turn, resident session, wake/PTT, desktop/backend, semantic-memory, and personality-envelope capabilities.
+- Current code anchors: `backend/app/services/resident_voice_invocation.py`, `backend/app/services/session_service.py`, `backend/app/conversation/engine.py`, `backend/app/conversation/session_manager.py`, `backend/app/conversation/states.py`, `backend/app/artifacts/session_artifact.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_session_service.py`.
+- External reference input: `20260613_slice-m.md` cites LiveKit, Twilio ConversationRelay, and Dialogflow CX as prior art for separating live session mechanics, interruption handling, and state progression from reasoning policy.
+
+**Goal.** Add a realtime conversation session boundary that records ordered live-session events, commits ready user turns to the existing `TurnEngine`, preserves current wake/PTT behavior, and leaves reasoning, tools, memory, prompt assembly, STT/TTS runtime selection, and desktop UI ownership unchanged.
+
+**Out of scope.**
+
+- Agent framework behavior, role contracts, planner/executor orchestration, or autonomous tool selection.
+- Semantic-memory redesign, retrieval policy changes, or memory storage changes.
+- Personality policy changes or prompt-envelope authority changes.
+- LLM routing, model selection, STT/TTS runtime selection, wake runtime replacement, hardware provisioning, or preflight/readiness changes.
+- WebRTC, telephony, cloud realtime backends, streaming LLM/TTS protocol, VAD endpointing, or automated progress-phrase scheduling.
+- Desktop UI redesign.
+
+**Boundaries.**
+
+- The realtime session boundary owns live session events, invocation timing, source/channel metadata, interruption event context, and handoff into committed turns.
+- `TurnEngine` continues to own committed turn execution, STT, reasoning, tools, memory retrieval, LLM generation, TTS playback, current barge-in behavior, and `TurnArtifact` content.
+- `SessionService` continues to own the coarse active status exposed to desktop/API clients.
+- `SessionManager` continues to own session id, working memory, turn artifact storage, and session artifact closeout.
+- `ConversationState` remains the canonical coarse state vocabulary.
+
+**Minimum event ordering target.**
+
+```text
+SESSION_ACTIVE
+INVOCATION_RECEIVED
+AUDIO_CAPTURE_STARTED
+AUDIO_CAPTURE_COMPLETED
+USER_TURN_COMMITTED
+TRANSCRIBING
+REASONING
+RESPONDING
+SPEAKING
+TURN_COMPLETED
+SESSION_IDLE
+```
+
+**Minimum interruption ordering target.**
+
+```text
+ASSISTANT_SPEECH_STARTED
+USER_INTERRUPTION_DETECTED
+ASSISTANT_SPEECH_STOP_REQUESTED
+TURN_RECOVERING
+SESSION_IDLE
+```
+
+**Governance recording.**
+
+- Each validated M sub-slice records completed evidence in `CHANGE_LOG.md` before the next M sub-slice begins.
+- `SYSTEM_INVENTORY.md` is updated only during M.6 closeout after full Group M validation evidence exists.
+
+## M.0 — Realtime Boundary Census and Event Vocabulary Baseline
+
+**Goal.** Establish the repository-accurate baseline for realtime session ownership before code changes.
+
+**Scope.** Reconfirm current responsibilities of `ResidentVoiceInvocationService`, `SessionService`, `TurnEngine`, `SessionManager`, `ConversationState`, `TurnArtifact`, and `SessionArtifact`. Define the first event vocabulary by mapping current observable transitions rather than inventing new runtime concepts.
+
+**Acceptance.** Census references the exact files and tests inspected, distinguishes live session events from committed turn artifacts, and does not assign reasoning, memory, tool execution, or prompt assembly ownership to the realtime boundary.
+
+**Validation.** Documentation-only diff review plus optional baseline targeted tests. Append `CHANGE_LOG.md` after validation evidence exists. Do not update `SYSTEM_INVENTORY.md` in M.0.
+
+---
+
+## M.1 — Realtime Event Schema and Session Ledger Contract
+
+**Goal.** Add the typed data contract for realtime session events without changing voice-turn behavior.
+
+**Scope.** Add a small conversation realtime module for event records and ledger helpers. Model deterministic event fields: session id, event type, monotonic sequence, timestamp, source, optional turn id, coarse conversation state, and metadata. Preserve `SessionArtifact` as closeout and `TurnArtifact` as committed-turn evidence.
+
+**Suggested locations.** `backend/app/conversation/realtime/events.py`, `backend/app/conversation/realtime/ledger.py`, and `backend/tests/unit/conversation/realtime/`.
+
+**Acceptance.** Event construction is deterministic and unit tested. Ledger ordering is append-only and sequence based. Tool, memory, personality, and prompt data are not stored in realtime event records except by explicit reference id where already available.
+
+**Validation.** Focused unit tests, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## M.2 — Realtime Conversation Session Coordinator
+
+**Goal.** Introduce the coordinator that owns live session timing and delegates committed turns to the existing `TurnEngine`.
+
+**Scope.** Add a `RealtimeConversationSession` that accepts invocation/channel events, records realtime events, commits ready user input, and delegates to `TurnEngine.run_text_turn()` or `TurnEngine.run_voice_turn()`. Keep `SessionManager` and `SessionService` in their current ownership roles.
+
+**Suggested locations.** `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/policy.py`, and focused tests under `backend/tests/unit/conversation/realtime/`.
+
+**Acceptance.** Coordinator can start a session, record invocation events, commit exactly one user turn for ready input, and return to idle. Existing `TurnEngine` behavior is called rather than duplicated. The coordinator does not perform STT, TTS, LLM, memory retrieval, tool execution, or prompt assembly itself.
+
+**Validation.** Unit tests with fake turn engine/session service dependencies, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## M.3 — Resident Voice Adapter Integration
+
+**Goal.** Move live voice invocation orchestration behind the realtime session boundary while preserving current wake/PTT behavior.
+
+**Scope.** Refactor `ResidentVoiceInvocationService` into a channel adapter that normalizes source, handles queueing, captures or forwards audio, and submits invocation events to the realtime coordinator. Preserve push-to-talk capture, wake invocation using supplied audio without second capture, wake empty-transcript response text, PTT empty-transcript failure semantics, worker queue draining, failure cleanup, and registered invocation hooks.
+
+**Primary files.** `backend/app/services/resident_voice_invocation.py`, `backend/app/services/session_service.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_session_service.py`.
+
+**Acceptance.** Existing resident voice invocation behavior remains green. Realtime events are emitted in expected order for PTT and wake invocations. No second audio capture occurs for wake-supplied audio. The adapter does not gain reasoning, memory, tool, prompt, or runtime-selection responsibilities.
+
+**Validation.** Focused resident voice and session service tests, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## M.4 — Turn-Taking and Failure Event Coverage
+
+**Goal.** Make normal, empty-input, and capture-failure paths observable through realtime events without introducing streaming endpointing.
+
+**Scope.** Add turn-taking policy that treats current PTT/wake audio submission as the committed user-turn boundary. Record deterministic event sequences for normal completion, no-speech wake handling, PTT empty transcript failure, capture failure, and engine failure. Keep canonical coarse states aligned with `ConversationState`.
+
+**Suggested locations.** `backend/app/conversation/realtime/turn_taking.py` plus existing resident voice and realtime unit tests.
+
+**Acceptance.** Normal invocation event order matches the Group M minimum ordering target. Failure paths record terminal failure context without masking current exception behavior. Session status remains accurate after success, failure, and cleanup. No VAD, streaming endpointing, or partial transcript protocol is introduced.
+
+**Validation.** Focused realtime and resident voice unit tests, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## M.5 — Interruption and Response Boundary Events
+
+**Goal.** Represent assistant speech and interruption events at the realtime boundary while keeping current playback and barge-in behavior in `TurnEngine`.
+
+**Scope.** Add event wrappers for assistant speech start, interruption detection, stop request, recovery, and idle return. Preserve existing `BargeInDetector`, playback start/stop, `interruption_events`, and `ConversationState` usage in `TurnEngine`. Provide a deterministic response-event queue for non-streaming assistant responses.
+
+**Suggested locations.** `backend/app/conversation/realtime/interruption.py`, `backend/app/conversation/realtime/response_queue.py`, `backend/tests/unit/conversation/realtime/`, and existing turn-engine tests if present and relevant.
+
+**Acceptance.** Interruption events appear in realtime order without moving interruption ownership out of `TurnEngine`. Existing turn artifact interruption fields are preserved. Non-interrupted responses still produce speech-start and completion/idle events. No streaming LLM or streaming TTS protocol is added.
+
+**Validation.** Focused realtime interruption/response queue tests, relevant existing turn-engine tests, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## M.6 — Runtime Validation and Governance Closeout
+
+**Goal.** Close Group M with validated behavior, governance entries, and no undocumented capabilities.
+
+**Scope.** Run the smallest relevant validation first, then broaden only as required by repository governance. Confirm desktop/API status behavior still reflects wake/PTT invocation state. Confirm committed turn artifacts and session closeout artifacts still use their existing owners.
+
+**Required validation path.** Focused unit tests for realtime, resident voice, session service, and any touched turn-engine behavior; `backend/.venv/Scripts/python scripts/validate_backend.py unit`; `backend/.venv/Scripts/python scripts/validate_backend.py regression`.
+
+**Governance closeout.** Append `CHANGE_LOG.md` entries at each validated sub-slice. Update `SYSTEM_INVENTORY.md` only in M.6 after full validation proves an observable realtime conversation session boundary exists. Do not promote inventory state based on roadmap text alone.
+
+**Acceptance.** Group M implementation has validation evidence on the current host class. `SYSTEM_INVENTORY.md` records only implemented and verified observable artifacts. No Group M closeout claims agent behavior, streaming transport, semantic-memory redesign, model-routing changes, or desktop UI redesign.
+
+---
+
+# Group N — Agent Framework
 
 **Why this group exists here.** Agents belong after the core loop, tools, memory, acceleration normalization, readiness surfacing, and UI controls are stable. The agent framework is a role-separated orchestration layer on top of the turn engine, tool registry, memory, and turn artifacts already proven in C/F/G/H/I. Placing it here reduces the risk of agents being built against an unstable acceleration or readiness surface.
 
 Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
-## M.1 — Agent Role Contracts + Typed Message Protocol
+## N.1 — Agent Role Contracts + Typed Message Protocol
 
 **Goal.** Five canonical agent roles with stable input/output schemas and a typed message protocol.
 
@@ -1423,7 +1582,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## M.2 — Agent Ledger
+## N.2 — Agent Ledger
 
 **Goal.** Persisted, queryable, restart-surviving message substrate for agent coordination.
 
@@ -1433,7 +1592,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## M.3 — Planner + Executor + Critic on Live Path
+## N.3 — Planner + Executor + Critic on Live Path
 
 **Goal.** A multi-step request completes via Planner → Executor → Critic with all messages in the ledger and a full trace reconstructable.
 
@@ -1443,7 +1602,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## M.4 — Curator + Learner Roles
+## N.4 — Curator + Learner Roles
 
 **Goal.** Curator and Learner run end-to-end in dry-run, producing a mixed training dataset and a proposed (not deployed) adapter.
 
@@ -1455,13 +1614,13 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-# Group N — Ollama.cpp / Local LLM Runtime
+# Group O — Ollama.cpp / Local LLM Runtime
 
 **Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, and server binary availability so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
-## N.0 — Local LLM Viability Census
+## O.0 — Local LLM Viability Census
 
 **Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
 
@@ -1470,15 +1629,15 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
 - If a prebuilt binary is available for Windows ARM64: document operator install path.
 - If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
-- Census recorded in `CHANGE_LOG.md` before N.1 begins.
+- Census recorded in `CHANGE_LOG.md` before O.1 begins.
 
 **Acceptance.** Census table produced with close states for both host classes. No code changes.
 
 ---
 
-## N.1 — Local LLM Service + Runtime Adapter
+## O.1 — Local LLM Service + Runtime Adapter
 
-**Depends on:** N.0 census closes as viable on at least one host class.
+**Depends on:** O.0 census closes as viable on at least one host class.
 
 **Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
 
@@ -1487,7 +1646,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
 - Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
 - `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- ARM64 acceptance: if model runs but is memory-constrained, close N.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+- ARM64 acceptance: if model runs but is memory-constrained, close O.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
 
 **Out of scope.** LLM device acceleration belongs to the local LLM runtime boundary as a separate capability decision.
 

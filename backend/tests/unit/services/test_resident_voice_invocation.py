@@ -6,6 +6,7 @@ from pathlib import Path
 import numpy as np
 
 from backend.app.conversation.engine import TurnResult
+from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.tests.unit.services.test_session_service import _service
@@ -61,6 +62,20 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
     assert status.failure_reason is None
     assert status.invocation_source == "ptt"
     assert status.turn_count == 0
+    assert [event.event_type for event in resident.last_realtime_events()] == [
+        RealtimeEventType.SESSION_ACTIVE,
+        RealtimeEventType.INVOCATION_RECEIVED,
+        RealtimeEventType.AUDIO_CAPTURE_STARTED,
+        RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
+        RealtimeEventType.USER_TURN_COMMITTED,
+        RealtimeEventType.TRANSCRIBING,
+        RealtimeEventType.REASONING,
+        RealtimeEventType.RESPONDING,
+        RealtimeEventType.ASSISTANT_SPEECH_STARTED,
+        RealtimeEventType.SPEAKING,
+        RealtimeEventType.TURN_COMPLETED,
+        RealtimeEventType.SESSION_IDLE,
+    ]
 
 
 def test_invocation_suspends_and_resumes_wake_monitor_hooks(tmp_path: Path) -> None:
@@ -147,6 +162,9 @@ def test_wake_invocation_uses_provided_audio_without_new_capture(tmp_path: Path)
     assert np.array_equal(calls[0][0], wake_audio)
     assert calls[0][1] == 16000
     assert service.status().invocation_source == "wake"
+    event_types = [event.event_type for event in resident.last_realtime_events()]
+    assert RealtimeEventType.AUDIO_CAPTURE_STARTED not in event_types
+    assert RealtimeEventType.AUDIO_CAPTURE_COMPLETED in event_types
 
 
 def test_capture_failure_records_failed_voice_status(tmp_path: Path) -> None:
@@ -169,6 +187,7 @@ def test_capture_failure_records_failed_voice_status(tmp_path: Path) -> None:
     assert status.last_transcript is None
     assert status.last_response is None
     assert status.invocation_source == "ptt"
+    assert [event.event_type for event in resident.last_realtime_events()][-1] == RealtimeEventType.SESSION_FAILED
 
 
 def test_wake_empty_transcript_reports_no_speech_detected(tmp_path: Path) -> None:
