@@ -69,8 +69,6 @@ class RealtimeConversationSession:
             self.ledger.append(RealtimeEventType.USER_TURN_COMMITTED, source=source)
             self._session_service.mark_voice_state(ConversationState.TRANSCRIBING)
             self.ledger.append(RealtimeEventType.TRANSCRIBING, source=source, state=ConversationState.TRANSCRIBING)
-            self._session_service.mark_voice_state(ConversationState.REASONING)
-            self.ledger.append(RealtimeEventType.REASONING, source=source, state=ConversationState.REASONING)
             result = self._engine_provider().run_voice_turn(audio, sample_rate)
             if source == "wake" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
                 result = replace(result, failure_reason=WAKE_NO_SPEECH_REASON)
@@ -94,9 +92,16 @@ class RealtimeConversationSession:
             return
 
         self._session_service.mark_voice_state(ConversationState.RESPONDING)
+        if result.response_text:
+            self.ledger.append(
+                RealtimeEventType.ASSISTANT_RESPONSE_STARTED,
+                source=source,
+                turn_id=result.turn_id,
+                state=ConversationState.RESPONDING,
+            )
         self.ledger.append(RealtimeEventType.RESPONDING, source=source, turn_id=result.turn_id, state=ConversationState.RESPONDING)
         self.response_queue.enqueue(result.response_text)
-        if result.response_text:
+        if result.response_text and not result.tts_degraded:
             self._session_service.mark_voice_state(ConversationState.SPEAKING)
             self.ledger.append(RealtimeEventType.ASSISTANT_SPEECH_STARTED, source=source, turn_id=result.turn_id, state=ConversationState.SPEAKING)
             self.ledger.append(RealtimeEventType.SPEAKING, source=source, turn_id=result.turn_id, state=ConversationState.SPEAKING)

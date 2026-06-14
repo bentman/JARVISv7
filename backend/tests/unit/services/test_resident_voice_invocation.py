@@ -69,7 +69,7 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
         RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
         RealtimeEventType.USER_TURN_COMMITTED,
         RealtimeEventType.TRANSCRIBING,
-        RealtimeEventType.REASONING,
+        RealtimeEventType.ASSISTANT_RESPONSE_STARTED,
         RealtimeEventType.RESPONDING,
         RealtimeEventType.ASSISTANT_SPEECH_STARTED,
         RealtimeEventType.SPEAKING,

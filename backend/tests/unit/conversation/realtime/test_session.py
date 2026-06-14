@@ -51,7 +51,7 @@ def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tm
         RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
         RealtimeEventType.USER_TURN_COMMITTED,
         RealtimeEventType.TRANSCRIBING,
-        RealtimeEventType.REASONING,
+        RealtimeEventType.ASSISTANT_RESPONSE_STARTED,
         RealtimeEventType.RESPONDING,
         RealtimeEventType.ASSISTANT_SPEECH_STARTED,
         RealtimeEventType.SPEAKING,
@@ -60,6 +60,41 @@ def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tm
     ]
     assert service.status().state == "IDLE"
     assert service.status().last_transcript == "hello"
+    assert RealtimeEventType.REASONING not in session.ledger.event_types()
+
+
+def test_realtime_degraded_tts_response_does_not_record_speech_events(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    engine = _FakeEngine(
+        TurnResult(
+            turn_id="turn-degraded",
+            session_id="session-realtime",
+            transcript="hello",
+            response_text="text response",
+            final_state=ConversationState.IDLE,
+            tts_degraded=True,
+            tts_degraded_reason="TTS runtime is unavailable",
+        )
+    )
+    session = RealtimeConversationSession(
+        session_service=service,
+        engine_provider=lambda: engine,  # type: ignore[return-value]
+    )
+
+    session.run_voice_invocation(
+        source="ptt",
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    event_types = session.ledger.event_types()
+    assert RealtimeEventType.ASSISTANT_RESPONSE_STARTED in event_types
+    assert RealtimeEventType.RESPONDING in event_types
+    assert RealtimeEventType.ASSISTANT_SPEECH_STARTED not in event_types
+    assert RealtimeEventType.SPEAKING not in event_types
+    assert event_types[-2:] == [
+        RealtimeEventType.TURN_COMPLETED,
+        RealtimeEventType.SESSION_IDLE,
+    ]
 
 
 def test_realtime_wake_audio_uses_payload_without_capture(tmp_path: Path) -> None:

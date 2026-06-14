@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-14 07:02
+  - Summary: Corrected realtime conversation session event truthfulness. Realtime voice invocation no longer emits `REASONING` before committed turn execution, and degraded TTS responses no longer emit speech-start or `SPEAKING` events when playback did not occur.
+  - Scope: `backend/app/conversation/realtime/events.py`, `backend/app/conversation/realtime/session.py`, `backend/tests/unit/conversation/realtime/test_session.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `CHANGE_LOG.md`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\realtime -q` PASS (`9 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready; tokens=13`); `git diff --check` PASS with line-ending warnings only.
+  - Note: `SYSTEM_INVENTORY.md` was not updated because this was a corrective event-semantics fix, not a new capability. No streaming, agents, semantic memory, telephony, model routing, desktop UI, STT/TTS/LLM runtime selection, or broader voice redesign changes were made.
+
 - 2026-06-14 06:30
   - Summary: Completed M.6 ARM64 runtime validation and governance closeout for the Group M realtime conversation session boundary. Focused realtime/resident/session tests, unit validation, and regression all passed on Windows ARM64 / arm64.
   - Scope: `backend/app/conversation/realtime/`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_session_service.py`, `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`
