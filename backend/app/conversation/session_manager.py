@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -31,6 +33,7 @@ class SessionManager:
     working_memory: WorkingMemory = field(default_factory=WorkingMemory)
     turn_artifacts: list[TurnArtifact] = field(default_factory=list)
     timeline: SessionTimeline | None = None
+    clock: Callable[[], datetime] = utc_now
 
     def __post_init__(self) -> None:
         if self.timeline is None:
@@ -107,7 +110,7 @@ class SessionManager:
             final_state=final_state_value,
             timeline_path=str(timeline_path),
             continuity_summary=continuity_summary,
-            memory_writeback_eligible=bool(self.turn_artifacts),
+            memory_curation_candidate=bool(self.turn_artifacts),
         )
         return storage.write_session_artifact(artifact, self.sessions_base_dir)
 
@@ -143,6 +146,8 @@ class SessionManager:
                 active_session=True,
                 same_session=include_current_session,
                 latest_text=latest_text,
+                last_turn_at=self._latest_turn_timestamp(last_turn),
+                now=self.clock(),
                 last_final_state=last_turn.final_state if last_turn else None,
                 failure_reason=last_turn.failure_reason if last_turn else None,
                 prior_interrupted=bool(last_turn and last_turn.interruption_events),
@@ -155,9 +160,33 @@ class SessionManager:
             working_memory=self.working_memory.as_list(),
         )
 
+    def _latest_turn_timestamp(self, last_turn: TurnArtifact | None) -> datetime | None:
+        if last_turn is not None:
+            for timestamp in reversed(list(last_turn.phase_timestamps.values())):
+                parsed = _parse_iso_datetime(timestamp)
+                if parsed is not None:
+                    return parsed
+        assert self.timeline is not None
+        for event in reversed(self.timeline.events):
+            if last_turn is not None and event.turn_id != last_turn.turn_id:
+                continue
+            parsed = _parse_iso_datetime(event.timestamp)
+            if parsed is not None:
+                return parsed
+        return None
+
     def _apply_policy_capacity(self, policy: WritePolicy) -> None:
         if self.working_memory.max_entries == policy.max_working_memory_entries:
             return
         self.working_memory.max_entries = policy.max_working_memory_entries
         if len(self.working_memory._entries) > self.working_memory.max_entries:
             self.working_memory._entries = self.working_memory._entries[-self.working_memory.max_entries :]
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None

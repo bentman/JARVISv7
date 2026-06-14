@@ -22,6 +22,7 @@ RESET_PHRASES: tuple[str, ...] = (
     "ignore previous",
 )
 STOP_PHRASES: tuple[str, ...] = ("stop", "cancel", "never mind", "nevermind")
+DEFAULT_STALE_AFTER = timedelta(minutes=30)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,7 +32,7 @@ class ContinuityPolicyInput:
     latest_text: str | None = None
     last_turn_at: datetime | None = None
     now: datetime | None = None
-    stale_after: timedelta = timedelta(minutes=30)
+    stale_after: timedelta = DEFAULT_STALE_AFTER
     last_final_state: ConversationState | str | None = None
     failure_reason: str | None = None
     prior_interrupted: bool = False

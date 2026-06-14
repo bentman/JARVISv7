@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-14 11:14
+  - Summary: Corrected Group N continuity details. Manager-level stale context is now excluded using prior turn/timeline timestamps, historical session excerpts are labeled context-only in prompts, and closeout metadata uses `memory_curation_candidate` instead of writeback-approval wording.
+  - Scope: `backend/app/conversation/session_manager.py`, `backend/app/conversation/continuity.py`, `backend/app/conversation/continuity_policy.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/artifacts/session_artifact.py`, focused Group N tests, `CHANGE_LOG.md`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_session_manager.py backend\tests\unit\cognition\test_prompt_assembler.py backend\tests\unit\artifacts\test_turn_artifact.py -q --basetemp cache\validate_backend\focused-temp -p no:cacheprovider` PASS (`31 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation -q --basetemp cache\validate_backend\conversation-temp -p no:cacheprovider` PASS (`68 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=amd64`, readiness `ready; tokens=13`); `git diff --check` PASS with line-ending warnings only.
+
 - 2026-06-14 10:48
   - Summary: Made backend validator pytest execution use repo-local temporary storage and disabled pytest cache writes, removing the recurring sandbox/user-temp permission workaround path.
   - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`, `CHANGE_LOG.md`

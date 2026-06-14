@@ -114,5 +114,5 @@ def test_session_schema_fields_unchanged():
         "final_state",
         "timeline_path",
         "continuity_summary",
-        "memory_writeback_eligible",
+        "memory_curation_candidate",
     )

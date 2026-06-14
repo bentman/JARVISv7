@@ -12,7 +12,7 @@ SESSION_ARTIFACT_FIELDS: tuple[str, ...] = (
     "final_state",
     "timeline_path",
     "continuity_summary",
-    "memory_writeback_eligible",
+    "memory_curation_candidate",
 )
 
 
@@ -25,7 +25,7 @@ class SessionArtifact:
     final_state: str = "IDLE"
     timeline_path: str | None = None
     continuity_summary: dict[str, Any] = field(default_factory=dict)
-    memory_writeback_eligible: bool = False
+    memory_curation_candidate: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
