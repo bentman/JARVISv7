@@ -1409,7 +1409,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 
 ---
 
-# Group M - Realtime Conversation Session Boundary
+~~# Group M - Realtime Conversation Session Boundary~~ Completed
 
 **Why this group exists here.** The product already has a resident voice path, a durable desktop/API session status surface, committed turn execution, wake/PTT behavior, canonical conversation states, and turn/session artifacts. What is still missing is a durable realtime session boundary that owns live invocation timing, event ordering, interruption context, and channel handoff without taking ownership from the committed turn engine. Group M inserts that boundary before agents so later orchestration consumes a stable conversation-session substrate instead of reaching into voice service internals.
 

@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-14 06:30
+  - Summary: Completed M.6 ARM64 runtime validation and governance closeout for the Group M realtime conversation session boundary. Focused realtime/resident/session tests, unit validation, and regression all passed on Windows ARM64 / arm64.
+  - Scope: `backend/app/conversation/realtime/`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_session_service.py`, `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`
+  - Host class(es): Windows ARM64 / arm64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\realtime backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_session_service.py -q` PASS (`29 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`451 passed, 1 warning`, fingerprint `arch=arm64`, readiness `ready; tokens=18`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`115 passed, 4 deselected`, report `reports\validation\20260614112929-regression.txt`).
+  - Note: No agent behavior, streaming transport, semantic-memory redesign, model-routing changes, STT/TTS/LLM runtime selection, wake runtime replacement, provisioning, hardware detection, or desktop UI changes were made.
+
 - 2026-06-13 18:21
   - Summary: Implemented Group M realtime conversation session boundary. Resident voice invocation now routes live wake/PTT invocation events through a realtime session boundary that records ordered events and delegates committed voice turns to the existing turn engine while preserving current status behavior.
   - Scope: `backend/app/conversation/realtime/`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`
