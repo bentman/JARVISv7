@@ -88,9 +88,11 @@ Group L — Personality Policy Envelope
 
 Group M — Realtime Conversation Session Boundary
 
-Group N — Agent Framework
+Group N — Conversation Continuity and Session Memory Boundary
 
-Group O — Ollama.cpp / Local LLM Runtime
+Group O — Agent Framework
+
+Group P — Ollama.cpp / Local LLM Runtime
 ```
 
 No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
@@ -1308,7 +1310,7 @@ Every subcommand starts with a **host-fingerprint line** as the first stdout: ar
 - Add optional style-only role overlays if a current code path needs them; overlays cannot alter tool permissions, runtime selection, memory policy, safety policy, or orchestration state transitions.
 - Keep the current selected profile as the only personality state source in `SessionService` and `TurnEngine`.
 
-**Out of scope.** Agent role contracts and agent orchestration. Those remain Group N.
+**Out of scope.** Agent role contracts and agent orchestration. Those remain Group O.
 
 **Acceptance.**
 - Unit: compiler is deterministic for fixed input, rejects unsupported style values, applies defaults, and proves overlays cannot introduce prohibited authority fields.
@@ -1569,6 +1571,162 @@ SESSION_IDLE
 
 # Group N — Conversation Continuity and Session Memory Boundary
 
+**Why this group exists here.** The realtime session boundary is now verified, but it intentionally owns live event ordering and handoff only. The existing memory foundation is also verified, but it is still bounded working memory plus disk-backed episodic retrieval with recency/keyword lookup. The missing product boundary is the durable continuity layer between those two facts: the system needs explicit session-level context that can make follow-up turns, interruption recovery, and memory writeback decisions without hiding state inside the model or letting later agents invent their own history model.
+
+**Reference inputs.**
+
+- Product direction: `ProjectVision.md` defines a session as a bounded conversational context for continuity, memory policy, and interruption recovery; it also requires externalized cognition, traceable artifacts, and no hidden model state.
+- Current capability state: `SYSTEM_INVENTORY.md` records verified Group M realtime event boundary, Slice C turn/session artifacts and working memory, and Slice G episodic retrieval/cache foundations. It also states semantic/vector memory is not implemented and durable memory authority is disk-backed episodic entries, not Redis.
+- Current change evidence: `CHANGE_LOG.md` records Group M x64/ARM64 validation and the follow-up realtime event-truth correction; it also records Slice G episodic retrieval and prompt injection behavior.
+- Current code anchors: `backend/app/conversation/session_manager.py`, `backend/app/services/session_service.py`, `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/ledger.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/artifacts/session_artifact.py`, `backend/app/memory/working.py`, `backend/app/memory/write_policy.py`, `backend/app/memory/episodic.py`, `backend/app/memory/retrieval.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/conversation/engine.py`.
+- Planning input: `20260614_slice-n.md` identifies the gap between in-memory realtime session events and memory-backed conversational continuity, and recommends placing this boundary before agents.
+
+**Goal.** Create an explicit continuity and session-memory boundary that persists enough session timeline facts to reconstruct what happened, builds a bounded continuity packet for follow-up turns, supports deterministic interruption recovery context, and feeds prompt assembly without changing tool authority, retrieval authority, runtime selection, or agent behavior.
+
+**Out of scope.**
+
+- Agent framework behavior, planner/executor/critic orchestration, autonomous tool selection, or role contracts.
+- Semantic/vector memory, embedding generation, semantic indexing, or autonomous long-term memory decisions.
+- Streaming STT, streaming LLM/TTS, VAD endpointing, telephony, WebRTC, or cloud realtime backends.
+- Model routing, hardware profiling/provisioning/readiness, STT/TTS/LLM runtime selection, wake runtime replacement, desktop UI redesign, or personality policy changes.
+- Storing hidden conversation state inside prompts or model sessions.
+
+**Boundaries.**
+
+- Continuity owns session-level timeline facts, bounded carry-forward context, follow-up classification policy, interruption recovery context, and closeout/writeback eligibility metadata.
+- `RealtimeConversationSession` continues to own live invocation events and channel handoff, not durable memory policy.
+- `TurnEngine` continues to own committed turn execution, STT, reasoning, tool execution, LLM generation, TTS playback, and `TurnArtifact` creation.
+- `SessionManager` continues to own session identity, working memory, turn artifact storage, and session closeout; Group N may extend this boundary only to attach explicit session timeline/continuity artifacts.
+- Episodic memory remains disk-backed turn-level memory with policy-gated writes and recency/keyword retrieval; Redis remains retrieval-cache acceleration only.
+- Prompt assembly receives continuity as a structured, explicit session context segment; it must not merge continuity into personality, retrieval, tools, or user input.
+
+**Target prompt authority order.**
+
+```text
+application rules
+personality style
+trusted session continuity packet
+working memory
+retrieved episodic context
+tool result context
+user request
+output contract
+```
+
+**Governance recording.**
+
+- Each validated N sub-slice records completed evidence in `CHANGE_LOG.md` before the next N sub-slice begins.
+- `SYSTEM_INVENTORY.md` is updated only during N.6 closeout after full Group N validation evidence exists on the required host classes.
+
+## N.0 — Continuity Boundary Census
+
+**Goal.** Establish the repository-accurate ownership map before adding continuity code.
+
+**Scope.** Confirm current ownership for live event ordering, committed turn result, working memory, episodic write/read, retrieved context, session closeout, prompt assembly context ordering, and future semantic write eligibility.
+
+**Primary files.** `backend/app/conversation/session_manager.py`, `backend/app/services/session_service.py`, `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/ledger.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/artifacts/session_artifact.py`, `backend/app/memory/working.py`, `backend/app/memory/write_policy.py`, `backend/app/memory/episodic.py`, `backend/app/memory/retrieval.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/conversation/engine.py`.
+
+**Acceptance.** Census identifies what is implemented, what is verified, what is only planned, and which component owns each boundary. It explicitly states that semantic/vector memory, agents, streaming, and hidden model state are not part of Group N.
+
+**Validation.** Documentation-only diff review plus optional baseline targeted tests. Append `CHANGE_LOG.md` after validation evidence exists. Do not update `SYSTEM_INVENTORY.md` in N.0.
+
+---
+
+## N.1 — Durable Session Timeline Artifact
+
+**Goal.** Persist session-level timeline facts without bloating or replacing turn artifacts.
+
+**Scope.** Add or extend a session-level artifact boundary that records ordered session facts by reference: session start, invocation source, user turn committed, linked turn id, assistant response started, speech started only if real playback occurred, interruption detected, recovery, idle, and failure. Keep realtime ledger as the live event source and keep `TurnArtifact` as the committed-turn source.
+
+**Suggested locations.** `backend/app/artifacts/session_timeline.py`, `backend/app/conversation/session_timeline.py`, storage helpers near `backend/app/artifacts/storage.py`, and focused tests under `backend/tests/unit/artifacts/` or `backend/tests/unit/conversation/`.
+
+**Acceptance.** Timeline serialization is deterministic, append-only by sequence, links to turn ids rather than duplicating turn artifact bodies, and records speech events truthfully with degraded TTS paths excluded from speech-start claims.
+
+**Validation.** Focused artifact/timeline unit tests, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## N.2 — Continuity Packet
+
+**Goal.** Build a bounded explicit context packet for follow-up turns from current-session facts and existing memory surfaces.
+
+**Scope.** Define a `ContinuityPacket` that can include last user request, last assistant response summary, open topic, pending interruption/correction context, recent turn ids, recent retrieved memory refs, safe carry-forward facts, and excluded or expired context. Source data should come from session timeline, recent turn artifacts, working memory, and existing episodic retrieval outputs.
+
+**Suggested locations.** `backend/app/conversation/continuity.py`, `backend/app/conversation/continuity_packet.py`, and focused tests under `backend/tests/unit/conversation/`.
+
+**Acceptance.** Packet construction is bounded, deterministic, inspectable, and does not mutate memory. It does not perform semantic search, embeddings, autonomous memory decisions, tool calls, or model calls.
+
+**Validation.** Unit tests for packet bounds, empty-session behavior, recent-turn inclusion, interruption context inclusion, and stale/excluded context. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## N.3 — Follow-Up and Interruption Recovery Policy
+
+**Goal.** Decide deterministically whether a new turn continues the current conversational context, starts fresh, or enters interruption recovery.
+
+**Scope.** Add policy inputs for time since last turn, same active session, invocation source, last final state, failure reason, interruption flag/events, explicit reset/stop phrases if already present, and whether the prior assistant response was interrupted. Outputs should be small and explicit: continue current session, start new session, recover interrupted response, ignore stale context, or summarize and close.
+
+**Suggested locations.** `backend/app/conversation/continuity_policy.py` and focused tests under `backend/tests/unit/conversation/`.
+
+**Acceptance.** Policy is deterministic and unit tested. The LLM may consume the policy result later, but it does not choose the policy result. Failure and stale-context paths fail closed by excluding unsafe carry-forward context.
+
+**Validation.** Unit tests for same-session follow-up, stale session reset, failed-turn handling, interrupted-response recovery, and explicit reset/stop behavior where supported. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## N.4 — Prompt Assembly Integration
+
+**Goal.** Feed the continuity packet into the existing personality prompt envelope without crossing authority boundaries.
+
+**Scope.** Extend prompt assembly to accept optional trusted session continuity context and render it before working memory, retrieved context, tool context, user request, and output contract. Preserve Group L ordering and Group L tool-result placement guarantees.
+
+**Primary files.** `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_renderer.py`, `backend/app/conversation/engine.py`, and relevant cognition/conversation tests.
+
+**Acceptance.** Prompt envelope segment order is application -> persona -> trusted session continuity -> working memory -> retrieved context -> tool result -> user request -> output contract. Continuity is explicitly session context, not personality policy, not retrieval, not tool output, and not user input.
+
+**Validation.** Focused prompt assembler/renderer tests and conversation tests proving legacy `system_prompt_addendum` is still not injected and untrusted content remains separated. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## N.5 — Session Closeout and Memory Writeback Hook
+
+**Goal.** Provide a conservative closeout boundary for session summaries and future memory curation without implementing semantic memory.
+
+**Scope.** At session closeout, persist summary metadata, linked turn ids, timeline references, interruption/recovery facts, and writeback eligibility markers. Initial writeback should remain policy-gated and conservative: no embeddings, no vector store, no autonomous semantic memory, and no hidden model-generated memory unless explicitly introduced and validated in a later slice.
+
+**Suggested locations.** `backend/app/conversation/session_closeout.py`, `backend/app/memory/write_policy.py`, `backend/app/memory/episodic.py`, `backend/app/artifacts/session_artifact.py`, and focused tests under `backend/tests/unit/conversation/` and `backend/tests/unit/memory/`.
+
+**Acceptance.** Session closeout remains deterministic, links the timeline and turn artifacts, and does not change existing episodic retrieval semantics. Existing episodic write/read and Redis-cached retrieval behavior remain green.
+
+**Validation.** Focused closeout and memory tests, then relevant memory/retrieval tests. Append `CHANGE_LOG.md` after validation evidence exists.
+
+---
+
+## N.6 — Validation and Inventory Closeout
+
+**Goal.** Close Group N with validated continuity behavior and no undocumented capability claims.
+
+**Scope.** Validate that the continuity boundary supports multi-turn follow-up context, stale-context exclusion, interruption recovery context, prompt authority ordering, and existing episodic retrieval behavior without introducing agents, semantic memory, streaming, model routing, or desktop redesign.
+
+**Required validation path.**
+
+- Focused continuity, artifact, cognition, memory, and conversation tests.
+- `backend/.venv/Scripts/python scripts/validate_backend.py unit`
+- `backend/.venv/Scripts/python scripts/validate_backend.py regression`
+- Runtime turn validation where the implementing sub-slices touch live turn behavior.
+
+**Governance closeout.** Append `CHANGE_LOG.md` entries at each validated sub-slice. Update `SYSTEM_INVENTORY.md` only in N.6 after full validation proves an observable conversation continuity and session memory boundary exists. Do not promote inventory state from roadmap text alone.
+
+**Acceptance.**
+
+- A second turn in the same session receives bounded continuity context.
+- A new session does not inherit stale continuity context.
+- Interrupted response evidence can produce recovery context.
+- The continuity packet is visible in artifact or diagnostic evidence.
+- Episodic retrieval still works unchanged.
+- Prompt envelope authority ordering remains correct.
+- No agents, semantic vectors, streaming transport, telephony, model routing, or desktop UI redesign are introduced.
+
 ---
 
 # Group O — Agent Framework
@@ -1634,7 +1792,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
 - If a prebuilt binary is available for Windows ARM64: document operator install path.
 - If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
-- Census recorded in `CHANGE_LOG.md` before O.1 begins.
+- Census recorded in `CHANGE_LOG.md` before P.1 begins.
 
 **Acceptance.** Census table produced with close states for both host classes. No code changes.
 
@@ -1642,7 +1800,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ## P.1 — Local LLM Service + Runtime Adapter
 
-**Depends on:** O.0 census closes as viable on at least one host class.
+**Depends on:** P.0 census closes as viable on at least one host class.
 
 **Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
 
@@ -1651,7 +1809,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 - Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
 - Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
 - `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- ARM64 acceptance: if model runs but is memory-constrained, close O.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+- ARM64 acceptance: if model runs but is memory-constrained, close P.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
 
 **Out of scope.** LLM device acceleration belongs to the local LLM runtime boundary as a separate capability decision.
 

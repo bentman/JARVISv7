@@ -16,6 +16,7 @@ def assemble_prompt_envelope(
     personality: PersonalityProfile,
     working_memory: list[str] | None = None,
     *,
+    session_continuity: str | None = None,
     retrieved_context: list[RetrievedFact] | None = None,
     tool_context: str | None = None,
 ) -> PromptEnvelope:
@@ -37,6 +38,15 @@ def assemble_prompt_envelope(
             text="\n".join((*policy.style_rules, *policy.speech_rules)),
         ),
     ]
+    if session_continuity:
+        segments.append(
+            PromptSegment(
+                authority="session",
+                content_type="context",
+                trusted=True,
+                text=session_continuity,
+            )
+        )
     if working_memory:
         segments.append(
             PromptSegment(
@@ -96,6 +106,7 @@ def assemble_prompt(
     personality: PersonalityProfile,
     working_memory: list[str] | None = None,
     *,
+    session_continuity: str | None = None,
     retrieved_context: list[RetrievedFact] | None = None,
     tool_context: str | None = None,
 ) -> str:
@@ -103,6 +114,7 @@ def assemble_prompt(
         transcript,
         personality,
         working_memory=working_memory,
+        session_continuity=session_continuity,
         retrieved_context=retrieved_context,
         tool_context=tool_context,
     )

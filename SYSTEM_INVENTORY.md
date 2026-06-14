@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Group N conversation continuity and session memory boundary - 2026-06-14 10:32
+  - State: Verified
+  - Location: `backend/app/artifacts/session_artifact.py`, `backend/app/artifacts/session_timeline.py`, `backend/app/artifacts/storage.py`, `backend/app/conversation/continuity.py`, `backend/app/conversation/continuity_policy.py`, `backend/app/conversation/session_manager.py`, `backend/app/conversation/engine.py`, `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_renderer.py`, `backend/app/cognition/prompt_assembler.py`, `backend/tests/unit/artifacts/test_turn_artifact.py`, `backend/tests/unit/conversation/test_session_manager.py`, `backend/tests/unit/conversation/test_continuity_policy.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `CHANGE_LOG.md`
+  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-14 10:32`: focused continuity/session/prompt/engine/artifact tests PASS (`76 passed` total across focused commands), backend unit validator PASS (`461 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`115 passed, 4 deselected`, report `reports\validation\20260614153204-regression.txt`).
+  - Notes: Adds deterministic session timeline artifacts, bounded continuity packets, deterministic follow-up/interruption policy, trusted session-continuity prompt segment ordering, and conservative closeout metadata; semantic/vector memory and agents remain not implemented here.
+
 - Capability: Group M realtime conversation session boundary - 2026-06-13 18:21
   - State: Verified
   - Location: `backend/app/conversation/realtime/__init__.py`, `backend/app/conversation/realtime/events.py`, `backend/app/conversation/realtime/ledger.py`, `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/turn_taking.py`, `backend/app/conversation/realtime/interruption.py`, `backend/app/conversation/realtime/response_queue.py`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `CHANGE_LOG.md`

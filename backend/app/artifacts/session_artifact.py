@@ -4,7 +4,16 @@ import json
 from dataclasses import asdict, dataclass, field, fields
 from typing import Any
 
-SESSION_ARTIFACT_FIELDS: tuple[str, ...] = ("session_id", "started_at", "ended_at", "turn_ids", "final_state")
+SESSION_ARTIFACT_FIELDS: tuple[str, ...] = (
+    "session_id",
+    "started_at",
+    "ended_at",
+    "turn_ids",
+    "final_state",
+    "timeline_path",
+    "continuity_summary",
+    "memory_writeback_eligible",
+)
 
 
 @dataclass(slots=True)
@@ -14,6 +23,9 @@ class SessionArtifact:
     ended_at: str | None = None
     turn_ids: list[str] = field(default_factory=list)
     final_state: str = "IDLE"
+    timeline_path: str | None = None
+    continuity_summary: dict[str, Any] = field(default_factory=dict)
+    memory_writeback_eligible: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)

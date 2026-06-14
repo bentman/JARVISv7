@@ -106,4 +106,13 @@ def test_session_storage_read_returns_none_for_missing_artifact(tmp_path):
 
 
 def test_session_schema_fields_unchanged():
-    assert SESSION_ARTIFACT_FIELDS == ("session_id", "started_at", "ended_at", "turn_ids", "final_state")
+    assert SESSION_ARTIFACT_FIELDS == (
+        "session_id",
+        "started_at",
+        "ended_at",
+        "turn_ids",
+        "final_state",
+        "timeline_path",
+        "continuity_summary",
+        "memory_writeback_eligible",
+    )

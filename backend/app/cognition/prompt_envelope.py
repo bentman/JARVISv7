@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 
-Authority = Literal["application", "persona", "memory", "retrieval", "tool", "user", "output"]
+Authority = Literal["application", "persona", "session", "memory", "retrieval", "tool", "user", "output"]
 ContentType = Literal["instruction", "style", "context", "tool_result", "user_input", "contract"]
 
 

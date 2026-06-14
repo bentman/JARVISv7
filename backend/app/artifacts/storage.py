@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from backend.app.artifacts.session_artifact import SessionArtifact
+from backend.app.artifacts.session_timeline import SessionTimeline
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.core.paths import DATA_DIR
 
@@ -35,3 +36,18 @@ def read_session_artifact(session_id: str, base_dir: Path = DATA_DIR / "sessions
     if not artifact_path.exists():
         return None
     return SessionArtifact.from_json(artifact_path.read_text(encoding="utf-8"))
+
+
+def write_session_timeline(timeline: SessionTimeline, base_dir: Path = DATA_DIR / "sessions") -> Path:
+    session_dir = base_dir / timeline.session_id
+    session_dir.mkdir(parents=True, exist_ok=True)
+    artifact_path = session_dir / "timeline.json"
+    artifact_path.write_text(timeline.to_json() + "\n", encoding="utf-8")
+    return artifact_path
+
+
+def read_session_timeline(session_id: str, base_dir: Path = DATA_DIR / "sessions") -> SessionTimeline | None:
+    artifact_path = base_dir / session_id / "timeline.json"
+    if not artifact_path.exists():
+        return None
+    return SessionTimeline.from_json(artifact_path.read_text(encoding="utf-8"))

@@ -137,6 +137,10 @@ class TurnEngine:
         try:
             context.advance(ConversationState.REASONING)
             working_memory = self.session_manager.get_working_context(self.write_policy) if self.session_manager else None
+            continuity_packet = self.session_manager.build_continuity_packet(latest_text=transcript) if self.session_manager else None
+            session_continuity = None
+            if continuity_packet is not None and not continuity_packet.is_empty():
+                session_continuity = continuity_packet.to_prompt_text()
             retrieved_context: list[RetrievedFact] = []
             if self.episodic is not None:
                 try:
@@ -161,6 +165,7 @@ class TurnEngine:
                 transcript,
                 self.personality,
                 working_memory=working_memory,
+                session_continuity=session_continuity,
                 retrieved_context=retrieved_context,
                 tool_context=tool_context,
             )

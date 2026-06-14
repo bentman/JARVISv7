@@ -31,6 +31,7 @@ DIAGNOSTICS_DIR = REPORTS_DIR / "diagnostics"
 VALIDATION_DIR = REPORTS_DIR / "validation"
 BENCHMARKS_DIR = REPORTS_DIR / "benchmarks"
 CACHE_DIR = APP_REPO_ROOT / "cache" / "validate_backend"
+PYTEST_TEMP_DIR = CACHE_DIR / "pytest-temp"
 
 
 def _load_profiler():
@@ -251,7 +252,16 @@ def _pytest_available() -> bool:
 
 
 def _build_pytest_command(targets: list[str], marker_expr: str | None = None) -> list[str]:
-    command = [sys.executable, "-m", "pytest", "-q"]
+    command = [
+        sys.executable,
+        "-m",
+        "pytest",
+        "-q",
+        "--basetemp",
+        str(PYTEST_TEMP_DIR),
+        "-p",
+        "no:cacheprovider",
+    ]
     if marker_expr:
         command.extend(["-m", marker_expr])
     command.extend(targets)
