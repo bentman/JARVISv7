@@ -1564,15 +1564,20 @@ SESSION_IDLE
 
 **Acceptance.** Group M implementation has validation evidence on the current host class. `SYSTEM_INVENTORY.md` records only implemented and verified observable artifacts. No Group M closeout claims agent behavior, streaming transport, semantic-memory redesign, model-routing changes, or desktop UI redesign.
 
+
 ---
 
-# Group N — Agent Framework
+# Group N — Conversation Continuity and Session Memory Boundary
+
+---
+
+# Group O — Agent Framework
 
 **Why this group exists here.** Agents belong after the core loop, tools, memory, acceleration normalization, readiness surfacing, and UI controls are stable. The agent framework is a role-separated orchestration layer on top of the turn engine, tool registry, memory, and turn artifacts already proven in C/F/G/H/I. Placing it here reduces the risk of agents being built against an unstable acceleration or readiness surface.
 
 Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
-## N.1 — Agent Role Contracts + Typed Message Protocol
+## O.1 — Agent Role Contracts + Typed Message Protocol
 
 **Goal.** Five canonical agent roles with stable input/output schemas and a typed message protocol.
 
@@ -1582,7 +1587,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## N.2 — Agent Ledger
+## O.2 — Agent Ledger
 
 **Goal.** Persisted, queryable, restart-surviving message substrate for agent coordination.
 
@@ -1592,7 +1597,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## N.3 — Planner + Executor + Critic on Live Path
+## O.3 — Planner + Executor + Critic on Live Path
 
 **Goal.** A multi-step request completes via Planner → Executor → Critic with all messages in the ledger and a full trace reconstructable.
 
@@ -1602,7 +1607,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## N.4 — Curator + Learner Roles
+## O.4 — Curator + Learner Roles
 
 **Goal.** Curator and Learner run end-to-end in dry-run, producing a mixed training dataset and a proposed (not deployed) adapter.
 
@@ -1614,13 +1619,13 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-# Group O — Ollama.cpp / Local LLM Runtime
+# Group P — Ollama.cpp / Local LLM Runtime
 
 **Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, and server binary availability so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
-## O.0 — Local LLM Viability Census
+## P.0 — Local LLM Viability Census
 
 **Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
 
@@ -1635,7 +1640,7 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 ---
 
-## O.1 — Local LLM Service + Runtime Adapter
+## P.1 — Local LLM Service + Runtime Adapter
 
 **Depends on:** O.0 census closes as viable on at least one host class.
 
