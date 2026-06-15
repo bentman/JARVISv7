@@ -94,7 +94,9 @@ Group O — Agent Framework
 
 Group P — Agent Framework Correction (Agent System)
 
-Group Q — Ollama.cpp / Local LLM Runtime
+Group Q — General Housekeeping Items
+
+Group R — Ollama.cpp / Local LLM Runtime
 ```
 
 No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
@@ -1841,7 +1843,7 @@ Extended implementation slice: `20260615_slice-o.md`.
 
 ---
 
-# Group P — Agent Framework Correction (Agent System)
+~~# Group P — Agent Framework Correction (Agent System)~~ Completed
 
 **Why this group exists here.** Group O created a safe agent boundary, ledger, disabled policy surface, dry-run helpers, and read-only diagnostics, but it also exposed a design gap: agent roles became framework-level Python concepts (`AgentRole` literals, `VALID_AGENT_ROLES`, and hardcoded default role configs). That closes off the future JARVIS goal of user-created agents defined by shared specs. Group P corrects that architecture before any agent runtime behavior is expanded.
 
@@ -1949,13 +1951,125 @@ Correction slice: `20260615_slice-p.md`.
 
 ---
 
-# Group Q — Ollama.cpp / Local LLM Runtime
+# Group Q — General Housekeeping Items
+
+**Why this group exists here.** Recent architecture slices left the product path broadly coherent, but the repository now carries compatibility ingress paths, thin pass-through service layers, stale slice-era helpers, and duplicated status ownership. These are cleanup items, not new product features. They should be resolved before adding streaming voice, enabled agents, semantic memory, or new model/runtime behavior so later work lands on one clear boundary per concern.
+
+Source feedback: `20260615_slice-q.md`.
+
+**Current repository facts.**
+- Voice ingress has two backend paths: resident/realtime PTT through `/session/ptt` and `ResidentVoiceInvocationService`, and direct WAV upload through `backend/app/api/routes/voice.py` at `/task/voice`.
+- The desktop Rust command surface still has a `submit_voice` path while the current desktop UI uses `invoke_resident_ptt` from `desktop/src/main.js`.
+- `backend/app/services/task_service.py` is a thin wrapper over `backend/app/services/turn_service.py`, and `turn_service.py` is itself a thin wrapper over `TurnEngine`.
+- `backend/app/api/app.py::build_startup_state()` selects `OllamaLLM()` directly while `backend/app/routing/runtime_selector.py` owns LLM selection.
+- `backend/app/api/routes/readiness.py` hardcodes family runtime labels in `_RUNTIME_NAMES` while separately reporting `active_llm_runtime=state.llm.runtime_name()`.
+- `TurnEngine.enter_stub_state()` remains in product code and current unit tests still reference it.
+- `RealtimeConversationSession`, `SessionService`, `WakeMonitorService`, and desktop polling each own part of visible realtime/wake status.
+- `repo_tree.md` states the cleanup standard: services are API-facing, routes/UI are thin adapters, cognition/runtimes go through `routing/runtime_selector.py`, and routing is the single escalation-policy owner.
+
+**Execution rule.** Each housekeeping item is a separate sub-slice. Each sub-slice must search for redundant tests created only to preserve stale compatibility, remove or adjust only those tests when behavior is intentionally removed or renamed, re-validate adjacent stacks, run validator regression, and update `CHANGE_LOG.md` only after validation. Update `SYSTEM_INVENTORY.md` only when observable capability truth changes; most housekeeping items should not need inventory updates.
+
+**Out of scope.** Semantic/vector memory, enabled agents, streaming voice, telephony, new model routing, local LLM activation, desktop redesign, new wake providers, or broader voice architecture changes.
+
+## Q.1 — Normalize Voice Ingress Boundary
+
+**Goal.** Make resident/realtime voice invocation the single product voice path while resolving the legacy direct upload path truthfully.
+
+**Scope.** Inspect `backend/app/api/routes/voice.py`, `/task/voice` tests in `backend/tests/unit/api/test_routes.py`, `backend/app/services/resident_voice.py`, `backend/app/conversation/realtime/session.py`, `desktop/src-tauri/src/lib.rs`, `desktop/src/main.js`, and any script/proving-host references. Either remove `/task/voice` and `submit_voice` if unused, or explicitly mark them legacy/proving-host compatibility with tests and API naming that do not imply a second product execution path.
+
+**Acceptance.** Focused API/desktop command tests prove the product path remains `/session/ptt` / `invoke_resident_ptt`; redundant legacy tests are removed or renamed only when the compatibility surface is removed or relabeled; adjacent voice/session/realtime tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.2 — Collapse or Justify Thin Text/Turn Service Pass-Throughs
+
+**Goal.** Keep one canonical service boundary for text and turn execution.
+
+**Scope.** Inspect `backend/app/services/task_service.py`, `backend/app/services/turn_service.py`, route imports, service tests, proving-host scripts, and desktop/backend call sites. Either make `turn_service.py` the sole canonical service boundary and remove/inline `task_service.py`, or preserve `task_service.py` only as an explicitly named host-facing adapter with documented responsibility.
+
+**Acceptance.** Focused service/API tests prove text turns still validate non-empty input and delegate to `TurnEngine`; redundant pass-through tests are removed when their layer is removed; adjacent task/text/turn tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.3 — Route Startup LLM Selection Through Runtime Selector
+
+**Goal.** Remove the startup/runtime-selection mismatch so one LLM policy owner exists.
+
+**Scope.** Update the planned implementation path around `backend/app/api/app.py::build_startup_state()` so startup uses `backend/app/routing/runtime_selector.py::select_llm()` rather than constructing `OllamaLLM()` directly. Keep `backend/app/runtimes/llm/local_runtime.py` unavailable unless a later local LLM runtime slice activates it.
+
+**Acceptance.** Focused API/startup/routing tests prove startup chooses the same selected runtime order as `select_llm()` and still falls back safely; redundant tests asserting direct `OllamaLLM()` construction are removed or corrected; adjacent readiness/runtime-selector tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.4 — Derive Readiness Runtime Labels From Selected Runtime Metadata
+
+**Goal.** Readiness reports runtime labels from selected runtime instances or selection traces rather than static family labels.
+
+**Scope.** Inspect `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/app/hardware/readiness.py`, selected STT/TTS/LLM/Wake runtime objects, `backend/tests/unit/api/test_routes.py`, and `backend/tests/unit/hardware/test_readiness.py`. Replace static `_RUNTIME_NAMES` with selected runtime metadata where the current startup state already owns the selected runtime.
+
+**Acceptance.** Focused readiness tests prove `active_llm_runtime` and family runtime labels are truthful for selected runtimes and degraded/null fallbacks; redundant tests that only preserve static labels are removed or updated; adjacent API/readiness/runtime-selector tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.5 — Remove or Isolate `TurnEngine.enter_stub_state()`
+
+**Goal.** Remove stale slice-era test scaffolding from product turn-engine code unless a current compatibility reason remains.
+
+**Scope.** Inspect `backend/app/conversation/engine.py`, `backend/tests/unit/conversation/test_engine.py`, interruption/recovery tests, and any external call sites for `enter_stub_state()`. If only tests use it, replace those tests with current public behavior or move the helper into test code. If a product compatibility need remains, rename/mark it explicitly as test/proving compatibility.
+
+**Acceptance.** Focused conversation/interruption/recovery tests pass without product code carrying obsolete C.1/C.2/C.5 scaffolding messages; redundant tests that assert the stale helper directly are removed or rewritten to public behavior; adjacent conversation/realtime tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.6 — Clarify Realtime Status Ownership
+
+**Goal.** Keep realtime event emission owned by `RealtimeConversationSession` and keep `SessionService` as the current session snapshot owner.
+
+**Scope.** Inspect `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/events.py`, `backend/app/conversation/realtime/ledger.py`, `backend/app/services/session_service.py`, resident voice tests, realtime tests, and status routes. Remove duplication only where the realtime layer and session snapshot layer both claim the same terminal or transient state semantics.
+
+**Acceptance.** Focused realtime/session-service tests prove invocation received, audio capture, committed turn, response, failure, completion, and idle events remain truthful; redundant tests that assert duplicate state emission are removed or corrected; adjacent resident voice/session/status tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.7 — Split Wake Status State From Session Service When Worthwhile
+
+**Goal.** Prevent `SessionService` from becoming the long-term owner of wake domain state.
+
+**Scope.** Inspect `backend/app/services/session_service.py`, `backend/app/services/wake_monitor.py`, `backend/app/api/routes/status.py`, wake status schemas, desktop wake polling, and wake tests. If the extraction is still low-risk, move wake state transitions into a small wake status helper/store consumed by `WakeMonitorService`; otherwise mark the boundary and leave behavior unchanged.
+
+**Acceptance.** Focused wake/session-service/resident-voice tests prove wake availability, start/stop/toggle, pause/resume, detection count, error/degraded status, and PTT fallback remain unchanged; redundant session-service tests that only exist because wake state is embedded there are removed or moved; adjacent status/desktop wake tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
+
+---
+
+## Q.8 — Reduce Desktop Main-Module Monolith Drift
+
+**Goal.** Keep `desktop/src/main.js` as the desktop coordinator, not the long-term home for API client calls and resident voice UI state.
+
+**Scope.** Inspect `desktop/src/main.js`, existing `desktop/src/components/**`, `desktop/src-tauri/src/lib.rs`, desktop static-contract tests, and frontend build/test commands. Extract API client calls and resident voice state/rendering into modules before any future streaming/realtime UI work.
+
+**Acceptance.** Focused desktop static-contract tests and available frontend checks pass; redundant tests that assert implementation details of the monolith are removed or updated to module contracts; adjacent wake/personality/settings/PTT UI behavior remains unchanged; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes when backend governance closeout is needed; `git diff --check` passes.
+
+---
+
+## Q.9 — Reconcile Repo-Tree Governance With Actual Code
+
+**Goal.** Make code ownership conform to `repo_tree.md` where prior slices drifted, without treating repo-tree text as proof that the implementation already conforms.
+
+**Scope.** Inspect `repo_tree.md` rules against the final state after Q.1 through Q.8, especially `routing/runtime_selector.py` as the LLM/search escalation-policy owner, services as API-facing and domain-light, routes/UI as thin adapters, and readiness/status ownership. Make only factual governance corrections if implementation and governance diverge after cleanup.
+
+**Acceptance.** Focused tests from the affected adjacent stacks remain green; redundant tests that preserve old ownership are removed or corrected; `backend/.venv/Scripts/python scripts/validate_backend.py unit` and `backend/.venv/Scripts/python scripts/validate_backend.py regression` pass; `git diff --check` passes; `CHANGE_LOG.md` records validation. `SYSTEM_INVENTORY.md` changes only if observable capability truth changed.
+
+**Finish line.** Product paths have one named owner per concern: resident/realtime voice is the product voice ingress, turn execution has one service boundary, startup and readiness consume selected runtimes truthfully, stale turn-engine scaffolding is gone or isolated, realtime/wake/session status ownership is clear, and desktop modules are ready for future realtime UI without adding features.
+
+---
+
+# Group R — Ollama.cpp / Local LLM Runtime
 
 **Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, and server binary availability so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
-## Q.0 — Local LLM Viability Census
+## R.0 — Local LLM Viability Census
 
 **Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
 
@@ -1964,15 +2078,15 @@ Correction slice: `20260615_slice-p.md`.
 - Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
 - If a prebuilt binary is available for Windows ARM64: document operator install path.
 - If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
-- Census recorded in `CHANGE_LOG.md` before Q.1 begins.
+- Census recorded in `CHANGE_LOG.md` before R.1 begins.
 
 **Acceptance.** Census table produced with close states for both host classes. No code changes.
 
 ---
 
-## Q.1 — Local LLM Service + Runtime Adapter
+## R.1 — Local LLM Service + Runtime Adapter
 
-**Depends on:** Q.0 census closes as viable on at least one host class.
+**Depends on:** R.0 census closes as viable on at least one host class.
 
 **Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
 
@@ -1981,7 +2095,7 @@ Correction slice: `20260615_slice-p.md`.
 - Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
 - Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
 - `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- ARM64 acceptance: if model runs but is memory-constrained, close Q.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+- ARM64 acceptance: if model runs but is memory-constrained, close R.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
 
 **Out of scope.** LLM device acceleration belongs to the local LLM runtime boundary as a separate capability decision.
 
