@@ -141,16 +141,11 @@ def test_unit_subcommand_invokes_pytest_on_unit_dir(monkeypatch, capsys) -> None
     assert any("backend/tests/unit" in part for part in calls[0][0])
 
 
-def test_pytest_command_uses_repo_local_temp_and_disables_pytest_cache() -> None:
+def test_pytest_command_uses_default_pytest_temp_and_cache_behavior() -> None:
     command = validate_backend._build_pytest_command(["backend/tests/unit"])
 
-    assert "--basetemp" in command
-    basetemp_index = command.index("--basetemp")
-    basetemp = command[basetemp_index + 1].replace("/", "\\")
-    assert "\\cache\\validate_backend\\pytest-temp-" in basetemp
-    assert "-p" in command
-    plugin_index = command.index("-p")
-    assert command[plugin_index + 1] == "no:cacheprovider"
+    assert "--basetemp" not in command
+    assert "no:cacheprovider" not in command
 
 
 def test_runtime_subcommand_accepts_families_and_devices_filters(monkeypatch, capsys) -> None:

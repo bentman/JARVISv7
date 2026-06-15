@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-15 11:12
+  - Summary: Returned backend validator pytest execution to pytest defaults. Removed validator-injected `--basetemp` and `no:cacheprovider` workaround flags, and cleaned residual pytest cache/temp workaround directories.
+  - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`, pytest cache/temp residuals
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_validate_backend_script.py -q` PASS (`10 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\artifacts\test_turn_artifact.py -q` PASS (`9 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615161147-regression.txt`, command showed no `--basetemp` or `no:cacheprovider`); `git diff --check` PASS with line-ending warnings only.
+  - Note: This corrects the 2026-06-14 and 2026-06-15 validator-cache workaround entries by restoring normal pytest temp/cache behavior after removing protected residual `.pytest_cache`, `cache\validate_backend\pytest-temp*`, and `%TEMP%\pytest-of-bentl` directories.
+
 - 2026-06-15 10:14
   - Summary: Corrected the recurring backend validator temp-directory failure. Validator pytest runs now use a unique repo-local `cache\validate_backend\pytest-temp-<timestamp>-<id>` basetemp instead of reusing the stuck fixed `pytest-temp` directory.
   - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`

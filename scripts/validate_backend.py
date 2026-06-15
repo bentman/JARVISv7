@@ -10,7 +10,6 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from uuid import uuid4
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -252,17 +251,11 @@ def _pytest_available() -> bool:
 
 
 def _build_pytest_command(targets: list[str], marker_expr: str | None = None) -> list[str]:
-    CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    pytest_temp_dir = CACHE_DIR / f"pytest-temp-{_timestamp_slug()}-{uuid4().hex[:8]}"
     command = [
         sys.executable,
         "-m",
         "pytest",
         "-q",
-        "--basetemp",
-        str(pytest_temp_dir),
-        "-p",
-        "no:cacheprovider",
     ]
     if marker_expr:
         command.extend(["-m", marker_expr])
