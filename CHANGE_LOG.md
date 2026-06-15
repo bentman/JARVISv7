@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-15 08:01
+  - Summary: Confirmed Group O.1-O.3 minimum truthful agent boundary foundations on Windows ARM64 / Qualcomm QNN. Agent contracts, ledger, disabled policy gate, `/agents/status`, and unchanged non-agent conversation behavior passed validation.
+  - Scope: Validation-only entry for `backend/app/agents/`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/conversation/test_engine.py`, `config/app/policies.yaml`, `config/agents/roles.yaml`, `config/prompts/agents/`
+  - Host class(es): Windows ARM64 / Qualcomm QNN current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents -q --basetemp cache\validate_backend\pytest-temp` PASS (`12 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q --basetemp cache\validate_backend\pytest-temp` PASS (`31 passed, 1 warning`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py -q --basetemp cache\validate_backend\pytest-temp` PASS (`42 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`477 passed, 1 warning`, fingerprint `arch=arm64`, readiness `ready; tokens=18`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615130021-regression.txt`); `git diff --check` PASS; `rg` confirmed the only external backend runtime agent-package import is `backend\app\api\routes\agents.py`.
+  - Note: No code, implementation, `SYSTEM_INVENTORY.md`, dependency, provisioning, runtime-selection, desktop UI, planner/executor/critic behavior, tool-using agent behavior, hidden/background agent execution, or conversation turn changes were made.
+
 - 2026-06-15 07:43
   - Summary: Implemented Group O.1-O.3 minimum truthful agent boundary foundations. Agent role/message/request/response contracts, canonical role config and prompt placeholders, durable local agent ledger API, default-disabled agent policy, and truthful `/agents/status` response were added without wiring agent execution into conversation turns.
   - Scope: `backend/app/agents/`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `config/app/policies.yaml`, `config/agents/roles.yaml`, `config/prompts/agents/`
