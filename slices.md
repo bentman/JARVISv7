@@ -92,7 +92,9 @@ Group N — Conversation Continuity and Session Memory Boundary
 
 Group O — Agent Framework
 
-Group P — Ollama.cpp / Local LLM Runtime
+Group P — Agent Framework Correction (Agent System)
+
+Group Q — Ollama.cpp / Local LLM Runtime
 ```
 
 No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
@@ -1839,13 +1841,121 @@ Extended implementation slice: `20260615_slice-o.md`.
 
 ---
 
-# Group P — Ollama.cpp / Local LLM Runtime
+# Group P — Agent Framework Correction (Agent System)
+
+**Why this group exists here.** Group O created a safe agent boundary, ledger, disabled policy surface, dry-run helpers, and read-only diagnostics, but it also exposed a design gap: agent roles became framework-level Python concepts (`AgentRole` literals, `VALID_AGENT_ROLES`, and hardcoded default role configs). That closes off the future JARVIS goal of user-created agents defined by shared specs. Group P corrects that architecture before any agent runtime behavior is expanded.
+
+Aligns with the Agent Layer and Explicit Cognition Framework principles in `ProjectVision.md`: agents are optional, policy-gated, traceable, and compose the turn engine, tool registry, memory, and LLM runtime without replacing them.
+
+Correction slice: `20260615_slice-p.md`.
+
+**Current repository facts.**
+- `SYSTEM_INVENTORY.md` records Group O as a verified minimum truthful agent boundary plus dry-run roles/read-only diagnostics.
+- `CHANGE_LOG.md` records x64 validation for O.1-O.10 and ARM64 validation for O.1-O.3.
+- Current implementation has hardcoded role IDs in `backend/app/agents/messages.py` and `backend/app/agents/roles.py`.
+- Current default roles live in `config/agents/roles.yaml`.
+- Current policy/status/ledger surfaces live in `backend/app/agents/policy.py`, `backend/app/agents/ledger.py`, `backend/app/api/routes/agents.py`, and `backend/app/api/schemas/agents.py`.
+
+## P.0 — Agent Spec Framework Correction Census
+
+**Goal.** Establish the exact correction boundary before changing code.
+
+**Scope.** Inspect and map every hardcoded agent-role surface: `backend/app/agents/messages.py`, `backend/app/agents/roles.py`, `backend/app/agents/policy.py`, `backend/app/agents/ledger.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `config/agents/roles.yaml`, `config/prompts/agents/`, `backend/tests/unit/agents/`, `SYSTEM_INVENTORY.md`, and `CHANGE_LOG.md`.
+
+**Acceptance.** Census identifies which Group O artifacts remain valid boundary infrastructure and which role-specific concepts must become spec-defined data. No code changes. No inventory update from census alone.
+
+---
+
+## P.1 — JarvisAgentSpec Schema and Spec Repository
+
+**Goal.** Add `JarvisAgentSpec` as the single schema for all JARVIS agents.
+
+**Scope.** Code add: planned `backend/app/agents/specs.py` and spec storage under `config/agents/specs/` or a compatible config path. The spec must define stable `spec_id`, display metadata, description, prompt reference, allowed message types, allowed tools, enabled/default-disabled state, ownership/system-vs-user classification, and validation constraints.
+
+**Key correction.** `agent_creator`, `planner`, `executor`, `critic`, `curator`, and `learner` are specs, not privileged framework concepts.
+
+**Acceptance.** Unit tests validate spec schema, duplicate ID rejection, default-disabled behavior, prompt references, and serialization. New agent roles can be added by spec without editing Python role literals.
+
+---
+
+## P.2 — Spec IDs Replace Hardcoded Role Literals
+
+**Goal.** Replace framework-level role literals and `VALID_AGENT_ROLES` with validated spec IDs loaded from the spec repository.
+
+**Scope.** Refactor `backend/app/agents/messages.py`, `backend/app/agents/roles.py`, `backend/app/agents/policy.py`, and related tests so request/message/ledger/status fields accept validated spec IDs rather than a fixed Python `Literal` role set. Preserve existing message contracts, policy gate behavior, ledger behavior, and `/agents/status` truthfulness.
+
+**Boundary rule.** The core system/boundary agent remains separate from user-created JARVIS agents. Boundary/system IDs may be reserved, but user-created IDs come from specs and remain disabled unless policy explicitly allows them.
+
+**Acceptance.** Existing Group O status/ledger tests still pass. Tests prove a new valid spec ID can be loaded and used without Python literal changes, while unknown IDs fail closed through validation/policy.
+
+---
+
+## P.3 — Agent Creator Spec-Only Role
+
+**Goal.** Add the first spec-defined role: `agent_creator`.
+
+**Scope.** Code add: planned `backend/app/agents/creator.py`, `config/agents/specs/agent_creator.yaml`, and `config/prompts/agents/agent_creator.md`. Agent Creator creates and validates agent specs only.
+
+**Must not do.** Agent Creator must not create Python code, write runtime modules, auto-enable agents, execute agents, call tools, change normal conversation behavior, or bypass policy.
+
+**Acceptance.** Unit tests prove Agent Creator can produce one valid disabled `JarvisAgentSpec` for a ProjectVision-aligned role and records the design/creation event in the agent ledger. The produced spec is disabled by default.
+
+---
+
+## P.4 — Convert Group O Default Roles Into Disabled Specs
+
+**Goal.** Demote planner, executor, critic, curator, and learner from framework concepts into disabled default specs.
+
+**Scope.** Convert `config/agents/roles.yaml` semantics into spec files or a spec list. Existing dry-run helper modules may remain implementation helpers, but they must resolve role identity through `JarvisAgentSpec` rather than hardcoded framework role membership.
+
+**Acceptance.** Planner/executor/critic/curator/learner appear as disabled specs by default. Their prior Group O dry-run behavior still validates where applicable, but no spec is auto-enabled and no hidden/background behavior is introduced.
+
+---
+
+## P.5 — Spec-Aware Policy Gate and API Truth Surface
+
+**Goal.** Make policy and status report spec-defined agents truthfully.
+
+**Scope.** Extend the existing policy/status surfaces in `backend/app/agents/policy.py`, `backend/app/api/routes/agents.py`, and `backend/app/api/schemas/agents.py` so allowed roles/tools are derived from policy plus known specs. API diagnostics may list available specs and enabled/disabled state, but must remain read-only unless separately approved.
+
+**Acceptance.** API tests prove `/agents/status` remains truthful, all generated/default specs are disabled by default, policy-allowed specs are reported explicitly, and unknown specs/tools fail closed.
+
+---
+
+## P.6 — Spec Event Ledger Integration
+
+**Goal.** Record spec creation/design/validation events in the existing agent ledger.
+
+**Scope.** Reuse `backend/app/agents/ledger.py` rather than adding a new store. Add record payloads or record types as needed for spec-designed, spec-validated, spec-rejected, and policy-denied events.
+
+**Acceptance.** Unit tests prove Agent Creator and spec validation write reconstructable ledger records. Ledger records do not imply execution and do not enable specs.
+
+---
+
+## P.7 — Validation, Inventory Correction, and Closeout
+
+**Goal.** Close the correction only after the spec-first agent system is validated and repository truth ledgers are accurate.
+
+**Validation path.**
+- Focused agent spec/creator/policy/ledger/API tests.
+- Existing Group O focused tests that should remain green after refactor.
+- `backend/.venv/Scripts/python scripts/validate_backend.py unit`
+- `backend/.venv/Scripts/python scripts/validate_backend.py regression`
+- `git diff --check`
+
+**Governance closeout.** Append `CHANGE_LOG.md` after validation evidence exists. Update `SYSTEM_INVENTORY.md` only after implementation passes validation, using append-only correction/clarification if existing Group O entries need qualification. Do not rewrite prior history. Do not use `slices.md` as a completion ledger.
+
+**Finish line.** Agent roles are spec-defined; Agent Creator can create valid disabled specs; Group O status/ledger behavior still works; planner/executor/critic/curator/learner are disabled specs, not privileged framework concepts; no autonomous/background execution, tool-using agents, semantic memory, model routing, desktop UI, or normal conversation changes are introduced.
+
+---
+
+# Group Q — Ollama.cpp / Local LLM Runtime
 
 **Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, and server binary availability so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
-## P.0 — Local LLM Viability Census
+## Q.0 — Local LLM Viability Census
 
 **Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
 
@@ -1854,15 +1964,15 @@ Extended implementation slice: `20260615_slice-o.md`.
 - Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
 - If a prebuilt binary is available for Windows ARM64: document operator install path.
 - If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
-- Census recorded in `CHANGE_LOG.md` before P.1 begins.
+- Census recorded in `CHANGE_LOG.md` before Q.1 begins.
 
 **Acceptance.** Census table produced with close states for both host classes. No code changes.
 
 ---
 
-## P.1 — Local LLM Service + Runtime Adapter
+## Q.1 — Local LLM Service + Runtime Adapter
 
-**Depends on:** P.0 census closes as viable on at least one host class.
+**Depends on:** Q.0 census closes as viable on at least one host class.
 
 **Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
 
@@ -1871,7 +1981,7 @@ Extended implementation slice: `20260615_slice-o.md`.
 - Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
 - Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
 - `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- ARM64 acceptance: if model runs but is memory-constrained, close P.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+- ARM64 acceptance: if model runs but is memory-constrained, close Q.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
 
 **Out of scope.** LLM device acceleration belongs to the local LLM runtime boundary as a separate capability decision.
 
