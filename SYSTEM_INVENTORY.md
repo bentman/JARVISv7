@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Group P spec-first agent catalog and Agent Creator boundary - 2026-06-15 10:14
+  - State: Verified
+  - Location: `backend/app/agents/specs.py`, `backend/app/agents/creator.py`, `backend/app/agents/messages.py`, `backend/app/agents/roles.py`, `backend/app/agents/ledger.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `config/agents/specs/`, `config/prompts/agents/agent_creator.md`, `backend/tests/unit/agents/test_specs.py`, `backend/tests/unit/agents/test_creator.py`, `backend/tests/unit/agents/test_messages.py`, `backend/tests/unit/agents/test_roles.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`
+  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entries `2026-06-15 10:14`: focused agent/API tests PASS (`59 passed`), validator script test PASS (`10 passed`), backend unit validator PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
+  - Notes: Adds a validated `JarvisAgentSpec` catalog, deterministic spec-only Agent Creator, durable disabled specs for agent_creator/planner/executor/critic/curator/learner, spec-aware status truth, and spec lifecycle ledger records; no autonomous/background execution, model/tool calls, turn-engine integration, training/deployment, semantic/vector memory, or desktop UI behavior is claimed.
+
 - Capability: Group O dry-run agent roles and read-only trace diagnostics - 2026-06-15 08:14
   - State: Verified
   - Location: `backend/app/agents/planner.py`, `backend/app/agents/executor.py`, `backend/app/agents/critic.py`, `backend/app/agents/curator.py`, `backend/app/agents/learner.py`, `backend/app/agents/trace.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/test_planner.py`, `backend/tests/unit/agents/test_executor.py`, `backend/tests/unit/agents/test_critic.py`, `backend/tests/unit/agents/test_curator.py`, `backend/tests/unit/agents/test_learner.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`

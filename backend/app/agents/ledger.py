@@ -12,7 +12,17 @@ from backend.app.conversation.turn_manager import utc_now
 from backend.app.core.paths import DATA_DIR
 
 DEFAULT_LEDGER_PATH = DATA_DIR / "agents" / "agent_ledger.sqlite3"
-AgentRecordType = Literal["event", "plan", "outcome", "policy_decision"]
+AgentRecordType = Literal[
+    "event",
+    "plan",
+    "outcome",
+    "policy_decision",
+    "spec_design_requested",
+    "spec_created",
+    "spec_validated",
+    "spec_rejected",
+    "spec_policy_denied",
+]
 
 
 class AgentLedgerRecord(BaseModel):

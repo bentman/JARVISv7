@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-AgentRole = Literal["planner", "executor", "critic", "curator", "learner"]
+AgentRole = str
 AgentMessageType = Literal["request", "response", "event", "plan", "outcome", "policy_decision"]
 AgentRunMode = Literal["boundary", "dry_run"]
 

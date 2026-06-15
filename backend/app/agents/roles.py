@@ -6,15 +6,14 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
-from backend.app.agents.messages import AgentRole
 from backend.app.core.paths import CONFIG_DIR
+from backend.app.agents.specs import DEFAULT_SPECS_DIR, JarvisAgentSpec, load_agent_specs
 
 DEFAULT_ROLES_PATH = CONFIG_DIR / "agents" / "roles.yaml"
-VALID_AGENT_ROLES: tuple[AgentRole, ...] = ("planner", "executor", "critic", "curator", "learner")
 
 
 class AgentRoleDefinition(BaseModel):
-    role_id: AgentRole
+    role_id: str
     display_name: str
     description: str
     prompt_path: str
@@ -22,6 +21,8 @@ class AgentRoleDefinition(BaseModel):
 
 
 def load_agent_roles(path: Path = DEFAULT_ROLES_PATH) -> dict[str, AgentRoleDefinition]:
+    if path == DEFAULT_ROLES_PATH:
+        return _roles_from_specs(load_agent_specs(DEFAULT_SPECS_DIR))
     if not path.exists():
         raise FileNotFoundError(f"agent roles config not found: {path}")
     payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -36,10 +37,20 @@ def load_agent_roles(path: Path = DEFAULT_ROLES_PATH) -> dict[str, AgentRoleDefi
         if role.role_id in roles:
             raise ValueError(f"duplicate agent role: {role.role_id}")
         roles[role.role_id] = role
-    missing = sorted(set(VALID_AGENT_ROLES) - set(roles))
-    if missing:
-        raise ValueError(f"agent roles config missing roles: {', '.join(missing)}")
     return roles
+
+
+def _roles_from_specs(specs: dict[str, JarvisAgentSpec]) -> dict[str, AgentRoleDefinition]:
+    return {
+        spec_id: AgentRoleDefinition(
+            role_id=spec.spec_id,
+            display_name=spec.display_name,
+            description=spec.description,
+            prompt_path=spec.prompt_path,
+            allowed_message_types=spec.allowed_message_types,
+        )
+        for spec_id, spec in specs.items()
+    }
 
 
 def role_ids(roles: dict[str, AgentRoleDefinition] | None = None) -> list[str]:

@@ -10,6 +10,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from pathlib import Path
+from uuid import uuid4
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -31,7 +32,6 @@ DIAGNOSTICS_DIR = REPORTS_DIR / "diagnostics"
 VALIDATION_DIR = REPORTS_DIR / "validation"
 BENCHMARKS_DIR = REPORTS_DIR / "benchmarks"
 CACHE_DIR = APP_REPO_ROOT / "cache" / "validate_backend"
-PYTEST_TEMP_DIR = CACHE_DIR / "pytest-temp"
 
 
 def _load_profiler():
@@ -252,13 +252,15 @@ def _pytest_available() -> bool:
 
 
 def _build_pytest_command(targets: list[str], marker_expr: str | None = None) -> list[str]:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    pytest_temp_dir = CACHE_DIR / f"pytest-temp-{_timestamp_slug()}-{uuid4().hex[:8]}"
     command = [
         sys.executable,
         "-m",
         "pytest",
         "-q",
         "--basetemp",
-        str(PYTEST_TEMP_DIR),
+        str(pytest_temp_dir),
         "-p",
         "no:cacheprovider",
     ]

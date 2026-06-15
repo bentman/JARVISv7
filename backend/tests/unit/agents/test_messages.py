@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import pytest
-from pydantic import ValidationError
-
 from backend.app.agents.messages import AgentMessage, AgentRequest, AgentResponse
 
 
@@ -31,6 +28,7 @@ def test_agent_request_and_response_contracts_are_typed() -> None:
     assert response.run_mode == "boundary"
 
 
-def test_agent_message_rejects_unknown_role() -> None:
-    with pytest.raises(ValidationError):
-        AgentMessage(trace_id="trace-1", role="unknown", message_type="event")
+def test_agent_message_role_identity_is_spec_id_string() -> None:
+    message = AgentMessage(trace_id="trace-1", role="research_agent", message_type="event")
+
+    assert message.role == "research_agent"

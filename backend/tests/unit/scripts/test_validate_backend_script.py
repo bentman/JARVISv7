@@ -146,7 +146,8 @@ def test_pytest_command_uses_repo_local_temp_and_disables_pytest_cache() -> None
 
     assert "--basetemp" in command
     basetemp_index = command.index("--basetemp")
-    assert command[basetemp_index + 1].endswith("cache\\validate_backend\\pytest-temp")
+    basetemp = command[basetemp_index + 1].replace("/", "\\")
+    assert "\\cache\\validate_backend\\pytest-temp-" in basetemp
     assert "-p" in command
     plugin_index = command.index("-p")
     assert command[plugin_index + 1] == "no:cacheprovider"

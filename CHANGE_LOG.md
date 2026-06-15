@@ -18,6 +18,62 @@
 
 ## Entries 
 
+- 2026-06-15 10:14
+  - Summary: Corrected the recurring backend validator temp-directory failure. Validator pytest runs now use a unique repo-local `cache\validate_backend\pytest-temp-<timestamp>-<id>` basetemp instead of reusing the stuck fixed `pytest-temp` directory.
+  - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_validate_backend_script.py -q --basetemp cache\validate_backend\script-test-temp -p no:cacheprovider` PASS (`10 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`) and showed unique basetemp `cache\validate_backend\pytest-temp-20260615151428-00470b45`.
+  - Note: This corrects the 2026-06-14 validator-cache entry, which removed user-temp/cacheprovider churn but still reused one fixed repo-local temp directory that could become delete-denied.
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.8 compatibility validation. Existing Group O dry-run helpers, ledger behavior, policy/status surfaces, API tests, and normal unit/regression suites remained green after the spec-first correction.
+  - Scope: `backend/app/agents/`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, validator evidence
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No autonomous/background execution, turn-engine integration, model routing, training/deployment, semantic/vector memory, desktop UI, or normal conversation behavior change was introduced.
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.7 spec event ledger integration. Agent Creator writes reconstructable `spec_design_requested`, `spec_created`, and `spec_validated` records to the existing local agent ledger without implying execution.
+  - Scope: `backend/app/agents/creator.py`, `backend/app/agents/ledger.py`, `backend/tests/unit/agents/test_creator.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.6 spec-aware policy/status truth surface. `/agents/status` now reports known loaded specs, policy allowance, disabled state, and allowed tools while remaining read-only and default-disabled.
+  - Scope: `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.5 default-role conversion. Planner, executor, critic, curator, and learner are now durable disabled default specs instead of the framework-level role truth source.
+  - Scope: `config/agents/specs/planner.yaml`, `config/agents/specs/executor.yaml`, `config/agents/specs/critic.yaml`, `config/agents/specs/curator.yaml`, `config/agents/specs/learner.yaml`, `backend/app/agents/roles.py`, `backend/tests/unit/agents/test_roles.py`, `backend/tests/unit/agents/test_specs.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`); `rg` found no remaining `VALID_AGENT_ROLES`, role `Literal["planner"...]`, or artifact-only P.4 wording.
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.4 ProjectVision agent spec catalog population. Agent Creator now creates durable repo-owned specs for planner, executor, critic, curator, and learner under the JARVIS spec repository, and tests prove those specs load, validate, remain disabled, and do not execute.
+  - Scope: `backend/app/agents/creator.py`, `config/agents/specs/planner.yaml`, `config/agents/specs/executor.yaml`, `config/agents/specs/critic.yaml`, `config/agents/specs/curator.yaml`, `config/agents/specs/learner.yaml`, `backend/tests/unit/agents/test_creator.py`, `backend/tests/unit/agents/test_specs.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.3 Agent Creator spec-only role. Added deterministic Agent Creator code and prompt/spec configuration that writes validated disabled specs only, with no model calls, tool calls, code generation, auto-enable, or conversation turn changes.
+  - Scope: `backend/app/agents/creator.py`, `config/agents/specs/agent_creator.yaml`, `config/prompts/agents/agent_creator.md`, `backend/tests/unit/agents/test_creator.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.2 role identity correction. Agent message role fields now accept spec IDs, default role compatibility derives from loaded specs, and the hardcoded `VALID_AGENT_ROLES` framework source of truth was removed.
+  - Scope: `backend/app/agents/messages.py`, `backend/app/agents/roles.py`, `backend/tests/unit/agents/test_messages.py`, `backend/tests/unit/agents/test_roles.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`); `rg` found no remaining `VALID_AGENT_ROLES` or role `Literal["planner"...]`.
+
+- 2026-06-15 10:14
+  - Summary: Completed Group P.1 `JarvisAgentSpec` schema and spec repository. Added a validated spec schema, loader, writer, prompt-path confinement, duplicate-ID rejection, and repo-owned spec catalog tests.
+  - Scope: `backend/app/agents/specs.py`, `backend/app/agents/__init__.py`, `backend/tests/unit/agents/test_specs.py`, `config/agents/specs/`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents backend\tests\unit\api\test_routes.py -q` PASS (`59 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
+
 - 2026-06-15 08:14
   - Summary: Implemented the remaining Group O dry-run agent surfaces. Planner, executor, critic, curator, learner, and read-only trace diagnostics now operate as explicit dry-run helpers over the local agent ledger without wiring hidden agent execution into normal conversation turns.
   - Scope: `backend/app/agents/planner.py`, `backend/app/agents/executor.py`, `backend/app/agents/critic.py`, `backend/app/agents/curator.py`, `backend/app/agents/learner.py`, `backend/app/agents/trace.py`, `backend/app/agents/policy.py`, `backend/app/agents/__init__.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `SYSTEM_INVENTORY.md`

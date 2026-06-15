@@ -1,0 +1,25 @@
+spec_id: planner
+display_name: Planner
+description: Creates role-separated task decomposition and proposed plan records.
+kind: default
+enabled: false
+created_by: agent_creator
+prompt_path: config/prompts/agents/planner.md
+purpose: Propose bounded plans for agent-governed work without executing them.
+instructions_summary: Decompose approved objectives into explicit dry-run plan records.
+allowed_message_types:
+  - request
+  - plan
+  - policy_decision
+allowed_tools: []
+memory_policy:
+  session_memory: none
+handoff_policy:
+  handoffs_enabled: false
+output_contract:
+  format: structured_record
+guardrails:
+  execution_enabled: false
+  tools_enabled: false
+  model_calls_enabled: false
+version: "1"

@@ -1,0 +1,25 @@
+spec_id: learner
+display_name: Learner
+description: Proposes training-cycle and regression-gated learning plans.
+kind: default
+enabled: false
+created_by: agent_creator
+prompt_path: config/prompts/agents/learner.md
+purpose: Recommend learning-plan candidates without training or deployment actions.
+instructions_summary: Summarize curated candidates into regression-gated learning proposals.
+allowed_message_types:
+  - request
+  - plan
+  - outcome
+allowed_tools: []
+memory_policy:
+  session_memory: none
+handoff_policy:
+  handoffs_enabled: false
+output_contract:
+  format: structured_record
+guardrails:
+  execution_enabled: false
+  tools_enabled: false
+  model_calls_enabled: false
+version: "1"

@@ -1,0 +1,25 @@
+spec_id: agent_creator
+display_name: Agent Creator
+description: Creates and validates durable JARVIS agent specs without executing agents.
+kind: system
+enabled: false
+created_by: repo
+prompt_path: config/prompts/agents/agent_creator.md
+purpose: Populate the repo-owned agent spec catalog with validated disabled specs.
+instructions_summary: Convert bounded seed inputs into JarvisAgentSpec records and persist them to the spec repository.
+allowed_message_types:
+  - request
+  - event
+  - policy_decision
+allowed_tools: []
+memory_policy:
+  session_memory: none
+handoff_policy:
+  handoffs_enabled: false
+output_contract:
+  format: jarvis_agent_spec
+guardrails:
+  execution_enabled: false
+  tools_enabled: false
+  model_calls_enabled: false
+version: "1"

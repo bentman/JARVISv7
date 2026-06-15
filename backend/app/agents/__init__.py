@@ -5,6 +5,7 @@ from backend.app.agents.messages import AgentMessage, AgentRequest, AgentRespons
 from backend.app.agents.policy import AgentPolicy, load_agent_policy
 from backend.app.agents.planner import AgentPlan, AgentPlanStep, create_planner_dry_run
 from backend.app.agents.roles import AgentRoleDefinition, load_agent_roles
+from backend.app.agents.specs import JarvisAgentSpec, load_agent_specs
 
 __all__ = [
     "AgentLedger",
@@ -16,7 +17,9 @@ __all__ = [
     "AgentRequest",
     "AgentResponse",
     "AgentRoleDefinition",
+    "JarvisAgentSpec",
     "create_planner_dry_run",
     "load_agent_policy",
     "load_agent_roles",
+    "load_agent_specs",
 ]

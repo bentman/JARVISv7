@@ -483,14 +483,18 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
 
 def test_agents_status_is_disabled_read_only() -> None:
     response = _client().get("/agents/status")
+    payload = response.json()
+
     assert response.status_code == 200
-    assert response.json() == {
-        "enabled": False,
-        "read_only": True,
-        "reason": "Agent boundary is disabled by policy",
-        "allowed_roles": ["planner", "executor", "critic", "curator", "learner"],
-        "allowed_tools": [],
-    }
+    assert payload["enabled"] is False
+    assert payload["read_only"] is True
+    assert payload["reason"] == "Agent boundary is disabled by policy"
+    assert payload["allowed_roles"] == ["planner", "executor", "critic", "curator", "learner"]
+    assert payload["allowed_tools"] == []
+    known_specs = {spec["spec_id"]: spec for spec in payload["known_specs"]}
+    assert sorted(known_specs) == ["agent_creator", "critic", "curator", "executor", "learner", "planner"]
+    assert known_specs["planner"]["enabled"] is False
+    assert known_specs["planner"]["policy_allowed"] is False
 
 
 def test_agents_trace_endpoint_is_read_only(monkeypatch, tmp_path: Path) -> None:
