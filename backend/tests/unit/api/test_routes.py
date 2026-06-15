@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.api.routes import config as config_route
 from backend.app.api import service_status
+from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
 from backend.app.api.app import ApiState, create_app
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
@@ -489,6 +490,43 @@ def test_agents_status_is_disabled_read_only() -> None:
         "reason": "Agent boundary is disabled by policy",
         "allowed_roles": ["planner", "executor", "critic", "curator", "learner"],
         "allowed_tools": [],
+    }
+
+
+def test_agents_trace_endpoint_is_read_only(monkeypatch, tmp_path: Path) -> None:
+    ledger_path = tmp_path / "ledger.sqlite3"
+    ledger = AgentLedger(ledger_path)
+    ledger.append(
+        AgentLedgerRecord(
+            record_id="record-1",
+            trace_id="trace-1",
+            role_id="planner",
+            record_type="plan",
+            payload={"dry_run": True},
+            created_at="2026-06-15T00:00:00+00:00",
+        )
+    )
+    monkeypatch.setattr("backend.app.api.routes.agents.AgentLedger", lambda: AgentLedger(ledger_path))
+
+    response = _client().get("/agents/traces/trace-1")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "trace_id": "trace-1",
+        "read_only": True,
+        "records": [
+            {
+                "record_id": "record-1",
+                "trace_id": "trace-1",
+                "record_type": "plan",
+                "payload": {"dry_run": True},
+                "role_id": "planner",
+                "session_id": None,
+                "turn_id": None,
+                "parent_record_id": None,
+                "created_at": "2026-06-15T00:00:00+00:00",
+            }
+        ],
     }
 
 

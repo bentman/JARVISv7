@@ -17,6 +17,12 @@ class AgentPolicy(BaseModel):
     allowed_roles: list[str] = Field(default_factory=list)
     allowed_tools: list[str] = Field(default_factory=list)
 
+    def allows_role(self, role_id: str) -> bool:
+        return self.enabled and role_id in self.allowed_roles
+
+    def allows_tool(self, tool_name: str) -> bool:
+        return self.enabled and tool_name in self.allowed_tools
+
 
 def load_agent_policy(path: Path = DEFAULT_POLICY_PATH) -> AgentPolicy:
     if not path.exists():

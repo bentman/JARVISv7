@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-15 08:14
+  - Summary: Implemented the remaining Group O dry-run agent surfaces. Planner, executor, critic, curator, learner, and read-only trace diagnostics now operate as explicit dry-run helpers over the local agent ledger without wiring hidden agent execution into normal conversation turns.
+  - Scope: `backend/app/agents/planner.py`, `backend/app/agents/executor.py`, `backend/app/agents/critic.py`, `backend/app/agents/curator.py`, `backend/app/agents/learner.py`, `backend/app/agents/trace.py`, `backend/app/agents/policy.py`, `backend/app/agents/__init__.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `SYSTEM_INVENTORY.md`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents -q --basetemp cache\validate_backend\pytest-temp` PASS (`20 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q --basetemp cache\validate_backend\pytest-temp` PASS (`32 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py -q --basetemp cache\validate_backend\pytest-temp` PASS (`42 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`485 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615131359-regression.txt`); `git diff --check` PASS with line-ending warnings only; `rg` confirmed the only runtime agent-package imports outside `backend/app/agents/` are the read-only agent API route and the pre-existing turn artifact `agent_trace` field.
+  - Note: `slices.md` was not edited or used as a completion ledger. No autonomous/background agent execution, turn-engine integration, model routing, semantic/vector memory, training/deployment, desktop UI, hardware/provisioning, dependency, STT/TTS/LLM runtime selection, or normal conversation behavior changes were made.
+
 - 2026-06-15 08:01
   - Summary: Confirmed Group O.1-O.3 minimum truthful agent boundary foundations on Windows ARM64 / Qualcomm QNN. Agent contracts, ledger, disabled policy gate, `/agents/status`, and unchanged non-agent conversation behavior passed validation.
   - Scope: Validation-only entry for `backend/app/agents/`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/conversation/test_engine.py`, `config/app/policies.yaml`, `config/agents/roles.yaml`, `config/prompts/agents/`
