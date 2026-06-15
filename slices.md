@@ -1498,7 +1498,7 @@ SESSION_IDLE
 
 ---
 
-## M.2 — Realtime Conversation Session Coordinator
+## M.2 — Realtime Conversation Session Coordinator~
 
 **Goal.** Introduce the coordinator that owns live session timing and delegates committed turns to the existing `TurnEngine`.
 
@@ -1569,7 +1569,7 @@ SESSION_IDLE
 
 ---
 
-# Group N — Conversation Continuity and Session Memory Boundary
+~~# Group N — Conversation Continuity and Session Memory Boundary~~ Completed
 
 **Why this group exists here.** The realtime session boundary is now verified, but it intentionally owns live event ordering and handoff only. The existing memory foundation is also verified, but it is still bounded working memory plus disk-backed episodic retrieval with recency/keyword lookup. The missing product boundary is the durable continuity layer between those two facts: the system needs explicit session-level context that can make follow-up turns, interruption recovery, and memory writeback decisions without hiding state inside the model or letting later agents invent their own history model.
 

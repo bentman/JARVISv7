@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-15 05:08
+  - Summary: Recorded final Windows ARM64 / Qualcomm QNN validation evidence for Group L personality policy envelope, Group M realtime conversation session boundary, and Group N conversation continuity/session memory boundary code updates.
+  - Scope: Validation-only entry for `backend/app/personality/`, `backend/app/cognition/`, `backend/app/conversation/`, `backend/app/conversation/realtime/`, `backend/app/services/resident_voice_invocation.py`, `backend/app/artifacts/`, focused Group L/M/N tests, ARM64/QNN readiness, and QNN STT live fixture.
+  - Host class(es): Windows ARM64 / Qualcomm QNN current workspace
+  - Evidence: `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=arm64`, extras `[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev]`, readiness `ready; tokens=18`, `ep:QNNExecutionProvider`, `import:onnxruntime-qnn`, `dll:QnnHtp`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality backend\tests\unit\cognition backend\tests\unit\conversation backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_session_service.py backend\tests\unit\artifacts\test_turn_artifact.py -q` PASS (`201 passed, 1 warning`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`465 passed, 1 warning`, fingerprint `arch=arm64`, readiness `ready; tokens=18`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615100738-regression.txt`); `backend\.venv\Scripts\python -c "import os, pytest; os.environ['JARVISV7_LIVE_TESTS']='1'; raise SystemExit(pytest.main(['backend/tests/runtime/voice/test_stt_live.py','-q','-k','qnn']))"` PASS (`1 passed, 2 deselected`).
+  - Note: No code, dependency, provisioning, runtime-selection, desktop UI, `SYSTEM_INVENTORY.md`, or semantic capability changes were made for this validation entry.
+
 - 2026-06-14 11:14
   - Summary: Corrected Group N continuity details. Manager-level stale context is now excluded using prior turn/timeline timestamps, historical session excerpts are labeled context-only in prompts, and closeout metadata uses `memory_curation_candidate` instead of writeback-approval wording.
   - Scope: `backend/app/conversation/session_manager.py`, `backend/app/conversation/continuity.py`, `backend/app/conversation/continuity_policy.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/artifacts/session_artifact.py`, focused Group N tests, `CHANGE_LOG.md`
