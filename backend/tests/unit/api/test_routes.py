@@ -486,7 +486,9 @@ def test_agents_status_is_disabled_read_only() -> None:
     assert response.json() == {
         "enabled": False,
         "read_only": True,
-        "reason": "Group I not implemented",
+        "reason": "Agent boundary is disabled by policy",
+        "allowed_roles": ["planner", "executor", "critic", "curator", "learner"],
+        "allowed_tools": [],
     }
 
 

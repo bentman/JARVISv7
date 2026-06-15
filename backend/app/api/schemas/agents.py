@@ -7,3 +7,5 @@ class AgentsStatusResponse(BaseModel):
     enabled: bool
     read_only: bool
     reason: str
+    allowed_roles: list[str]
+    allowed_tools: list[str]

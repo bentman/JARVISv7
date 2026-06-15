@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-15 07:43
+  - Summary: Implemented Group O.1-O.3 minimum truthful agent boundary foundations. Agent role/message/request/response contracts, canonical role config and prompt placeholders, durable local agent ledger API, default-disabled agent policy, and truthful `/agents/status` response were added without wiring agent execution into conversation turns.
+  - Scope: `backend/app/agents/`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `config/app/policies.yaml`, `config/agents/roles.yaml`, `config/prompts/agents/`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents -q --basetemp cache\validate_backend\pytest-temp` PASS (`12 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q --basetemp cache\validate_backend\pytest-temp` PASS (`31 passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py -q --basetemp cache\validate_backend\pytest-temp` PASS (`42 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`476 passed, 1 skipped`, fingerprint `arch=amd64`, readiness `ready; tokens=13`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615124133-regression.txt`); `git diff --check` PASS with line-ending warnings only; `rg` confirmed agent package references in backend runtime are limited to `backend\app\api\routes\agents.py`.
+  - Note: Initial raw pytest without repo-local `--basetemp` failed on host temp permissions at `C:\Users\bentl\AppData\Local\Temp\pytest-of-bentl`; rerun with repo-local temp passed. `SYSTEM_INVENTORY.md` was not updated because O.4 is the inventory gate. No planner/executor/critic runtime behavior, tool-using agent behavior, hidden/background agent execution, conversation turn changes, model routing, semantic/vector memory, desktop UI, hardware/provisioning, or dependency changes were made.
+
 - 2026-06-15 05:08
   - Summary: Recorded final Windows ARM64 / Qualcomm QNN validation evidence for Group L personality policy envelope, Group M realtime conversation session boundary, and Group N conversation continuity/session memory boundary code updates.
   - Scope: Validation-only entry for `backend/app/personality/`, `backend/app/cognition/`, `backend/app/conversation/`, `backend/app/conversation/realtime/`, `backend/app/services/resident_voice_invocation.py`, `backend/app/artifacts/`, focused Group L/M/N tests, ARM64/QNN readiness, and QNN STT live fixture.
