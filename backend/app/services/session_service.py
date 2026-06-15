@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Iterable, Protocol
+from typing import Callable, Iterable
 
 import numpy as np
 
@@ -11,6 +10,7 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,30 +33,13 @@ class SessionCloseResult:
     artifact_path: Path
 
 
-@dataclass(frozen=True, slots=True)
-class WakeMonitorStatus:
-    provider: str
-    available: bool
-    reason: str
-    active: bool = False
-    enabled: bool = False
-    monitoring: bool = False
-    last_detected: str | None = None
-    detection_count: int = 0
-    last_error: str | None = None
-    last_score: float | None = None
-    threshold: float | None = None
-
-
-class WakeRuntime(Protocol):
-    def is_available(self) -> bool:
-        ...
-
-    def detect(self, audio_chunk: np.ndarray) -> bool:
-        ...
-
-
 class SessionService:
+    _VOICE_TRANSIENT_STATES = {
+        ConversationState.TRANSCRIBING,
+        ConversationState.RESPONDING,
+        ConversationState.SPEAKING,
+    }
+
     def __init__(
         self,
         *,
@@ -77,7 +60,7 @@ class SessionService:
         self._failure_reason: str | None = None
         self._invocation_source: str | None = None
         self._tts_output_device: str | None = None
-        self._wake_status = WakeMonitorStatus(
+        self._wake_status_store = WakeStatusStore(
             provider="openwakeword",
             available=False,
             reason="wake readiness has not been configured",
@@ -146,7 +129,9 @@ class SessionService:
         self._invocation_source = source
         return self.status()
 
-    def mark_voice_state(self, state: ConversationState) -> SessionStatus:
+    def mark_voice_transient_state(self, state: ConversationState) -> SessionStatus:
+        if state not in self._VOICE_TRANSIENT_STATES:
+            raise ValueError(f"state is not a transient voice snapshot state: {state.value}")
         self._state = state.value
         return self.status()
 
@@ -166,123 +151,28 @@ class SessionService:
         return self.status()
 
     def configure_wake_status(self, *, provider: str, available: bool, reason: str) -> WakeMonitorStatus:
-        if self._wake_status.active or self._wake_status.last_detected is not None or self._wake_status.last_error is not None or "PTT-only fallback" in self._wake_status.reason:
-            return self._wake_status
-        self._wake_status = WakeMonitorStatus(
-            provider=provider,
-            available=available,
-            reason=reason,
-            active=self._wake_status.active,
-            enabled=self._wake_status.enabled,
-            monitoring=False,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=self._wake_status.last_error,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.configure(provider=provider, available=available, reason=reason)
 
     def wake_status(self) -> WakeMonitorStatus:
-        return self._wake_status
+        return self._wake_status_store.status()
 
     def start_wake_monitor(self, *, provider: str, available: bool, reason: str) -> WakeMonitorStatus:
-        if not available:
-            return self.record_wake_unavailable(reason or "wake runtime is unavailable; PTT-only fallback is active")
-        self._wake_status = WakeMonitorStatus(
-            provider=provider,
-            available=True,
-            reason=reason,
-            active=True,
-            enabled=True,
-            monitoring=True,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=None,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.start_monitor(provider=provider, available=available, reason=reason)
 
     def stop_wake_monitor(self, reason: str = "wake monitoring stopped; manual PTT is active") -> WakeMonitorStatus:
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=self._wake_status.available,
-            reason=reason,
-            active=False,
-            enabled=False,
-            monitoring=False,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=self._wake_status.last_error,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.stop_monitor(reason)
 
     def pause_wake_monitor(self, reason: str = "wake monitoring paused for resident voice invocation") -> WakeMonitorStatus:
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=self._wake_status.available,
-            reason=reason,
-            active=self._wake_status.active,
-            enabled=self._wake_status.enabled,
-            monitoring=False,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=self._wake_status.last_error,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.pause_monitor(reason)
 
     def record_wake_detection(self, *, last_score: float | None = None, threshold: float | None = None) -> WakeMonitorStatus:
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=True,
-            reason="wake detected",
-            active=self._wake_status.active,
-            enabled=self._wake_status.enabled,
-            monitoring=self._wake_status.monitoring,
-            last_detected=datetime.now(timezone.utc).isoformat(),
-            detection_count=self._wake_status.detection_count + 1,
-            last_error=None,
-            last_score=last_score if last_score is not None else self._wake_status.last_score,
-            threshold=threshold if threshold is not None else self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.record_detection(last_score=last_score, threshold=threshold)
 
     def record_wake_idle(self, reason: str = "wake listening", *, last_score: float | None = None, threshold: float | None = None) -> WakeMonitorStatus:
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=True,
-            reason=reason,
-            active=self._wake_status.active,
-            enabled=self._wake_status.enabled,
-            monitoring=self._wake_status.monitoring,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=None,
-            last_score=last_score if last_score is not None else self._wake_status.last_score,
-            threshold=threshold if threshold is not None else self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.record_idle(reason, last_score=last_score, threshold=threshold)
 
     def record_wake_unavailable(self, reason: str = "wake runtime is unavailable; PTT-only fallback is active") -> WakeMonitorStatus:
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=False,
-            reason=reason,
-            active=False,
-            enabled=False,
-            monitoring=False,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=None,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.record_unavailable(reason)
 
     def record_wake_error(
         self,
@@ -292,84 +182,10 @@ class SessionService:
         last_score: float | None = None,
         threshold: float | None = None,
     ) -> WakeMonitorStatus:
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=False,
-            reason=reason,
-            active=False,
-            enabled=False,
-            monitoring=False,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=str(error),
-            last_score=last_score if last_score is not None else self._wake_status.last_score,
-            threshold=threshold if threshold is not None else self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.record_error(error, reason, last_score=last_score, threshold=threshold)
 
     def process_wake_chunk(self, wake_runtime: WakeRuntime, audio_chunk: np.ndarray) -> WakeMonitorStatus:
-        return self.process_wake_chunks(wake_runtime, [audio_chunk])
+        return self._wake_status_store.process_chunk(wake_runtime, audio_chunk)
 
     def process_wake_chunks(self, wake_runtime: WakeRuntime, audio_chunks: Iterable[np.ndarray]) -> WakeMonitorStatus:
-        if not wake_runtime.is_available():
-            return self.record_wake_unavailable()
-
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=True,
-            reason=self._wake_status.reason,
-            active=self._wake_status.active,
-            enabled=self._wake_status.enabled,
-            monitoring=True,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=None,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        try:
-            for chunk in audio_chunks:
-                if wake_runtime.detect(np.asarray(chunk)):
-                    self.record_wake_detection(
-                        last_score=getattr(wake_runtime, "last_score", None),
-                        threshold=getattr(wake_runtime, "threshold", None),
-                    )
-                    self._wake_status = WakeMonitorStatus(
-                        provider=self._wake_status.provider,
-                        available=self._wake_status.available,
-                        reason=self._wake_status.reason,
-                        active=self._wake_status.active,
-                        enabled=self._wake_status.enabled,
-                        monitoring=False,
-                        last_detected=self._wake_status.last_detected,
-                        detection_count=self._wake_status.detection_count,
-                        last_error=self._wake_status.last_error,
-                        last_score=self._wake_status.last_score,
-                        threshold=self._wake_status.threshold,
-                    )
-                    return self._wake_status
-                self.record_wake_idle(
-                    last_score=getattr(wake_runtime, "last_score", None),
-                    threshold=getattr(wake_runtime, "threshold", None),
-                )
-        except Exception as exc:
-            return self.record_wake_error(
-                exc,
-                last_score=getattr(wake_runtime, "last_score", None),
-                threshold=getattr(wake_runtime, "threshold", None),
-            )
-
-        self._wake_status = WakeMonitorStatus(
-            provider=self._wake_status.provider,
-            available=True,
-            reason="wake not detected",
-            active=self._wake_status.active,
-            enabled=self._wake_status.enabled,
-            monitoring=False,
-            last_detected=self._wake_status.last_detected,
-            detection_count=self._wake_status.detection_count,
-            last_error=None,
-            last_score=self._wake_status.last_score,
-            threshold=self._wake_status.threshold,
-        )
-        return self._wake_status
+        return self._wake_status_store.process_chunks(wake_runtime, audio_chunks)

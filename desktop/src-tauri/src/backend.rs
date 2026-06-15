@@ -288,16 +288,6 @@ pub fn submit_text_turn(base_url: &str, text: &str, session_id: Option<&str>) ->
     Ok(body)
 }
 
-pub fn submit_voice_turn(base_url: &str, audio_bytes: &[u8]) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}/task/voice")).header("content-type", "application/octet-stream").body(audio_bytes.to_vec()).send().map_err(|err| format!("POST /task/voice failed: {err}"))?;
-    let status = response.status();
-    let body = response.text().map_err(|err| format!("POST /task/voice body read failed: {err}"))?;
-    if !status.is_success() {
-        return Err(format!("POST /task/voice returned {status}: {body}"));
-    }
-    Ok(body)
-}
-
 fn format_diagnostics(diagnostics: &BackendDiagnostics) -> String {
     format!(
         "python={}\nscript={}\nworking_directory={}\nhost={}\nport={}\nstdout_log={}\nstderr_log={}",

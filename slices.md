@@ -1975,7 +1975,7 @@ Source feedback: `20260615_slice-q.md`.
 
 **Goal.** Make resident/realtime voice invocation the single product voice path while resolving the legacy direct upload path truthfully.
 
-**Scope.** Inspect `backend/app/api/routes/voice.py`, `/task/voice` tests in `backend/tests/unit/api/test_routes.py`, `backend/app/services/resident_voice.py`, `backend/app/conversation/realtime/session.py`, `desktop/src-tauri/src/lib.rs`, `desktop/src/main.js`, and any script/proving-host references. Either remove `/task/voice` and `submit_voice` if unused, or explicitly mark them legacy/proving-host compatibility with tests and API naming that do not imply a second product execution path.
+**Scope.** Inspect `backend/app/api/routes/voice.py`, `/task/voice` tests in `backend/tests/unit/api/test_routes.py`, `backend/app/services/resident_voice_invocation.py`, `backend/app/conversation/realtime/session.py`, `desktop/src-tauri/src/lib.rs`, `desktop/src/main.js`, and any script/proving-host references. Either remove `/task/voice` and `submit_voice` if unused, or explicitly mark them legacy/proving-host compatibility with tests and API naming that do not imply a second product execution path.
 
 **Acceptance.** Focused API/desktop command tests prove the product path remains `/session/ptt` / `invoke_resident_ptt`; redundant legacy tests are removed or renamed only when the compatibility surface is removed or relabeled; adjacent voice/session/realtime tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
 
@@ -2015,7 +2015,7 @@ Source feedback: `20260615_slice-q.md`.
 
 **Goal.** Remove stale slice-era test scaffolding from product turn-engine code unless a current compatibility reason remains.
 
-**Scope.** Inspect `backend/app/conversation/engine.py`, `backend/tests/unit/conversation/test_engine.py`, interruption/recovery tests, and any external call sites for `enter_stub_state()`. If only tests use it, replace those tests with current public behavior or move the helper into test code. If a product compatibility need remains, rename/mark it explicitly as test/proving compatibility.
+**Scope.** Inspect `backend/app/conversation/engine.py`, `backend/tests/unit/conversation/test_engine.py`, interruption/recovery tests, and active runtime/test call sites for `enter_stub_state()`. Historical references in `docs/slices-done/**` are not cleanup targets. If only active tests use it, replace those tests with current public behavior or move the helper into test code. If a product compatibility need remains, rename/mark it explicitly as test/proving compatibility.
 
 **Acceptance.** Focused conversation/interruption/recovery tests pass without product code carrying obsolete C.1/C.2/C.5 scaffolding messages; redundant tests that assert the stale helper directly are removed or rewritten to public behavior; adjacent conversation/realtime tests pass; `backend/.venv/Scripts/python scripts/validate_backend.py regression` passes; `git diff --check` passes.
 

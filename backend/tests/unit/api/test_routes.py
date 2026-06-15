@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-import io
 import time
-import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 from fastapi.testclient import TestClient
 
+from backend.app.api import app as app_module
 from backend.app.api.routes import config as config_route
 from backend.app.api import service_status
 from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
@@ -28,6 +27,9 @@ class _FakeSTT:
     device = "cpu"
     model_path = Path("models/stt/fake")
 
+    def runtime_name(self) -> str:
+        return "fake-stt"
+
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         return "hello voice"
 
@@ -38,6 +40,9 @@ class _FakeSTT:
 class _FakeTTS:
     device = "cpu"
     model_path = Path("models/tts/fake")
+
+    def runtime_name(self) -> str:
+        return "fake-tts"
 
     def synthesize(self, text: str) -> np.ndarray:
         return np.zeros(8, dtype=np.float32)
@@ -194,14 +199,42 @@ def _client() -> TestClient:
     return TestClient(create_app(_state()))
 
 
-def _wav_bytes() -> bytes:
-    buffer = io.BytesIO()
-    with wave.open(buffer, "wb") as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(16000)
-        wav_file.writeframes((np.zeros(160, dtype="<i2")).tobytes())
-    return buffer.getvalue()
+def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
+    profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-test")
+    report = FullCapabilityReport(profile=profile, flags=CapabilityFlags())
+    preflight = PreflightResult(tokens=["import:ollama"], dll_discovery_log=[], probe_errors={})
+    policy = {"llm": {"cloud_enabled": False}}
+    selected_llm = _FakeLLM()
+    calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile]] = []
+
+    monkeypatch.setattr(app_module, "run_profiler", lambda: report)
+    monkeypatch.setattr(app_module, "resolve_required_extras", lambda profile: ["dev"])
+    monkeypatch.setattr(app_module, "run_preflight", lambda profile, extras: preflight)
+    monkeypatch.setattr(
+        app_module,
+        "_derive_readiness",
+        lambda preflight, profile: {
+            "stt": ("cpu", True, "stt ready"),
+            "tts": ("cpu", True, "tts ready"),
+            "llm": ("cpu", True, "llm ready"),
+            "wake": ("cpu", True, "wake ready"),
+        },
+    )
+    monkeypatch.setattr(app_module, "_load_runtime_policy", lambda: policy)
+    monkeypatch.setattr(app_module, "load_default_personality", lambda: _FakeEngine.personality)
+    monkeypatch.setattr(app_module, "select_stt_runtime", lambda preflight, profile: _FakeSTT())
+    monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
+
+    def fake_select_llm(runtime_policy, runtime_preflight, runtime_profile):
+        calls.append((runtime_policy, runtime_preflight, runtime_profile))
+        return selected_llm, object()
+
+    monkeypatch.setattr(app_module, "select_llm", fake_select_llm)
+
+    state = app_module.build_startup_state()
+
+    assert state.llm is selected_llm
+    assert calls == [(policy, preflight, profile)]
 
 
 def _wake_source(stop_event):
@@ -222,6 +255,10 @@ def test_readiness_returns_family_readiness() -> None:
     assert response.status_code == 200
     assert payload["profile_id"] == "profile-test"
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
+    assert payload["families"]["stt"]["runtime"] == "fake-stt"
+    assert payload["families"]["tts"]["runtime"] == "fake-tts"
+    assert payload["families"]["llm"]["runtime"] == "fake-llm"
+    assert payload["families"]["wake"]["runtime"] == "openwakeword"
     assert payload["families"]["wake"]["ready"] is True
 
 
@@ -389,16 +426,6 @@ def test_text_turn_returns_turn_result() -> None:
     assert payload["tool_calls"][0]["tool_name"] == "time"
 
 
-def test_voice_turn_response_tool_calls_none_when_absent() -> None:
-    response = _client().post(
-        "/task/voice",
-        content=_wav_bytes(),
-        headers={"content-type": "audio/wav"},
-    )
-    assert response.status_code == 200
-    assert response.json()["tool_calls"] is None
-
-
 def test_text_turn_accepts_active_session_id() -> None:
     client = _client()
     session_id = client.app.state.jarvis_state.session_service.status().session_id
@@ -416,19 +443,6 @@ def test_text_turn_rejects_mismatched_session_id() -> None:
 def test_text_turn_rejects_empty_text() -> None:
     response = _client().post("/task/text", json={"text": "   "})
     assert response.status_code == 400
-
-
-def test_voice_turn_accepts_wav_bytes_and_returns_result() -> None:
-    response = _client().post(
-        "/task/voice",
-        content=_wav_bytes(),
-        headers={"content-type": "audio/wav"},
-    )
-    payload = response.json()
-    assert response.status_code == 200
-    assert payload["turn_id"] == "turn-voice"
-    assert payload["tts_degraded"] is True
-    assert payload["stt_device"] in {"cpu", "cuda", "directml", "qnn", None}
 
 
 def test_diagnostics_profile_returns_profile_payload() -> None:

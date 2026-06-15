@@ -6,6 +6,7 @@ import numpy as np
 
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
+from backend.app.conversation.states import ConversationState
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.session_service import SessionService
 
@@ -144,6 +145,20 @@ def test_engine_is_bound_to_active_session_manager(tmp_path: Path) -> None:
     session_id = service.status().session_id
     result = service.engine().run_text_turn("bound session")
     assert result.session_id == session_id
+
+
+def test_voice_transient_state_marker_accepts_only_realtime_snapshot_phases(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+
+    status = service.mark_voice_transient_state(ConversationState.RESPONDING)
+
+    assert status.state == "RESPONDING"
+    try:
+        service.mark_voice_transient_state(ConversationState.IDLE)
+    except ValueError as exc:
+        assert str(exc) == "state is not a transient voice snapshot state: IDLE"
+    else:
+        raise AssertionError("non-transient voice snapshot state was accepted")
 
 
 def test_select_personality_updates_engine_without_resetting_session_or_wake(tmp_path: Path) -> None:

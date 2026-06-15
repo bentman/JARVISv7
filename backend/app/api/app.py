@@ -4,12 +4,14 @@ from dataclasses import dataclass
 
 
 from fastapi import FastAPI
+import yaml
 
 
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
+from backend.app.core.paths import CONFIG_DIR
 from backend.app.hardware.preflight import PreflightResult, run_preflight
 from backend.app.hardware.profiler import run_profiler
 from backend.app.hardware.provisioning import resolve_required_extras
@@ -22,18 +24,19 @@ from backend.app.hardware.readiness import (
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
-from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
+from backend.app.routing.runtime_selector import select_llm
 from backend.app.services.session_service import SessionService
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.wake_monitor import WakeMonitorService
 
 
 ReadinessMap = dict[str, tuple[str, bool, str]]
+DEFAULT_POLICY_PATH = CONFIG_DIR / "app" / "policies.yaml"
 
 
 @dataclass(slots=True)
@@ -64,6 +67,15 @@ def _derive_readiness(preflight: PreflightResult, profile: HardwareProfile) -> R
     }
 
 
+def _load_runtime_policy(path=DEFAULT_POLICY_PATH) -> dict[str, object]:
+    if not path.exists():
+        return {}
+    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if not isinstance(payload, dict):
+        raise ValueError("runtime policy must be a mapping")
+    return payload
+
+
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
     manager = session_manager or state.session_manager
     return TurnEngine(
@@ -91,7 +103,7 @@ def build_startup_state() -> ApiState:
     personality = load_default_personality()
     stt = select_stt_runtime(preflight, profile)
     tts = select_tts_runtime(preflight, profile)
-    llm = OllamaLLM()
+    llm, _llm_trace = select_llm(_load_runtime_policy(), preflight, profile)
     session_manager = SessionManager()
     cache_manager = CacheManager()
     state = ApiState(
@@ -138,7 +150,7 @@ def install_state(app: FastAPI, state: ApiState) -> None:
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
-    from backend.app.api.routes import agents, config, diagnostics, health, personality, readiness, session, status, task, voice
+    from backend.app.api.routes import agents, config, diagnostics, health, personality, readiness, session, status, task
 
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1")
     install_state(app, startup_state or build_startup_state())
@@ -147,7 +159,6 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.include_router(personality.router)
     app.include_router(session.router)
     app.include_router(task.router)
-    app.include_router(voice.router)
     app.include_router(diagnostics.router)
     app.include_router(agents.router)
     app.include_router(status.router)

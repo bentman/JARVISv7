@@ -118,13 +118,6 @@ class TurnEngine:
         except Exception as exc:
             return self._fail(context, transcript=None, response_text=None, reason=str(exc))
 
-    def enter_stub_state(self, state: ConversationState) -> None:
-        if state == ConversationState.SPEAKING:
-            return
-        if state in {ConversationState.ACTING, ConversationState.INTERRUPTED}:
-            raise NotImplementedError(f"{state.value} behavior pending C.2 / C.5")
-        raise ValueError(f"state is not stubbed in C.1: {state.value}")
-
     def _run_reasoning_path(
         self,
         context: TurnContext,

@@ -1,6 +1,8 @@
+import { createApiClient } from "./api-client.js";
 import { applyStored, initAppearanceControls } from "./components/appearance-controls.js";
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
+import { createResidentVoicePresenter } from "./components/resident-voice.js";
 import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
 import { setStateLabel } from "./components/state-label.js";
@@ -33,10 +35,10 @@ const voiceStatusEl = document.querySelector("#voice-status");
 const voiceDetailEl = document.querySelector("#voice-detail");
 
 const invoke = window.__TAURI__?.core?.invoke;
+const api = createApiClient(invoke);
 let activePersonalityId = "default";
 let wakePollTimer = null;
 let sessionPollTimer = null;
-let lastRenderedResidentTurnKey = "";
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -115,31 +117,15 @@ function updatePersonalityDisplay(profile) {
   personalityDetailEl.replaceChildren(heading, ...rows);
 }
 
-function setVoiceDetail(result) {
-  const lines = [
-    `state: ${result.state ?? ""}`,
-    `source: ${result.invocation_source ?? ""}`,
-    `transcript: ${result.last_transcript ?? ""}`,
-    `response: ${result.last_response ?? ""}`,
-    `failure_reason: ${result.failure_reason ?? ""}`,
-    `tts_output_device: ${result.tts_output_device ?? ""}`,
-    `turn_count: ${result.turn_count ?? 0}`,
-  ];
-  voiceDetailEl.textContent = lines.join("\n");
-}
-
-function setCaptureState(state) {
-  pttButton.dataset.captureState = state;
-  if (state === "processing") {
-    pttButton.disabled = true;
-    pttButton.setAttribute("aria-pressed", "false");
-    pttButton.textContent = "Voice Running…";
-    return;
-  }
-  pttButton.disabled = false;
-  pttButton.setAttribute("aria-pressed", "false");
-  pttButton.textContent = "Start Voice";
-}
+const residentVoice = createResidentVoicePresenter({
+  pttButton,
+  voiceStatusEl,
+  voiceDetailEl,
+  turnStateEl,
+  setState,
+  showError,
+  appendMessage,
+});
 
 function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);
@@ -149,10 +135,10 @@ function renderReadiness(readiness) {
 }
 
 async function refreshSessionStatus() {
-  const status = JSON.parse(await invoke("get_session_status"));
+  const status = await api.getSessionStatus();
   sessionEl.textContent = status.session_id || "not active";
   if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
-  renderResidentVoiceStatus(status);
+  residentVoice.renderResidentVoiceStatus(status);
   return status;
 }
 
@@ -169,57 +155,9 @@ function stopSessionPolling() {
   sessionPollTimer = null;
 }
 
-function renderResidentVoiceStatus(status) {
-  setVoiceDetail(status);
-  const state = status.state || "IDLE";
-  setStateLabel(state, turnStateEl);
-  const source = status.invocation_source || "";
-  const isResidentVoice = source === "ptt" || source === "wake";
-  if (!isResidentVoice) return;
-
-  if (state === "LISTENING") {
-    setCaptureState("processing");
-    voiceStatusEl.textContent = `${source.toUpperCase()} listening`;
-    setState("LISTENING");
-    return;
-  }
-  if (["TRANSCRIBING", "REASONING", "ACTING", "RESPONDING", "SPEAKING"].includes(state)) {
-    setCaptureState("processing");
-    voiceStatusEl.textContent = `${source.toUpperCase()} ${state.toLowerCase()}`;
-    setState(state);
-    return;
-  }
-  if (state === "FAILED") {
-    setCaptureState("idle");
-    voiceStatusEl.textContent = "Voice failed";
-    if (status.failure_reason) showError(status.failure_reason);
-    appendResidentVoiceCompletion(status);
-    return;
-  }
-  if (state === "IDLE") {
-    setCaptureState("idle");
-    voiceStatusEl.textContent = status.last_transcript || status.last_response ? "Voice complete" : "Voice idle";
-    appendResidentVoiceCompletion(status);
-  }
-}
-
-function appendResidentVoiceCompletion(status) {
-  if (!status.last_transcript && !status.last_response && !status.failure_reason) return;
-  const key = [
-    status.invocation_source ?? "",
-    status.last_transcript ?? "",
-    status.last_response ?? "",
-    status.failure_reason ?? "",
-  ].join("|");
-  if (key === lastRenderedResidentTurnKey) return;
-  lastRenderedResidentTurnKey = key;
-  if (status.last_transcript) appendMessage("user", status.last_transcript);
-  appendMessage("assistant", status.last_response || status.failure_reason);
-}
-
 async function refreshWakeStatus() {
   try {
-    const status = JSON.parse(await invoke("get_wake_status"));
+    const status = await api.getWakeStatus();
     renderWakeStatus(status, wakeIndicatorEl);
     if (wakeToggleEl) {
       wakeToggleEl.disabled = !status.available;
@@ -264,7 +202,7 @@ function stopWakePolling() {
 async function startWakeMonitorIfAvailable() {
   const status = await refreshWakeStatus();
   if (!status?.available || status.active || status.monitoring) return status;
-  const started = JSON.parse(await invoke("start_wake_monitor"));
+  const started = await api.startWakeMonitor();
   renderWakeStatus(started, wakeIndicatorEl);
   if (wakeToggleEl) {
     wakeToggleEl.disabled = !started.available;
@@ -275,7 +213,7 @@ async function startWakeMonitorIfAvailable() {
 }
 
 async function refreshPersonalityProfiles() {
-  const payload = JSON.parse(await invoke("get_personality_list"));
+  const payload = await api.getPersonalityList();
   activePersonalityId = payload.active_profile_id || "default";
   personalitySelectEl.innerHTML = "";
   for (const profile of payload.profiles || []) {
@@ -292,7 +230,7 @@ async function refreshPersonalityProfiles() {
 
 async function selectPersonality(profileId) {
   const before = await refreshSessionStatus();
-  const payload = JSON.parse(await invoke("select_personality", { profileId }));
+  const payload = await api.selectPersonality(profileId);
   updatePersonalityDisplay(payload.active);
   const after = await refreshSessionStatus();
   appendMessage("system", `Personality switched to ${payload.active.profile_id}; applies to the next turn. Session preserved: ${before.session_id === after.session_id}.`);
@@ -306,18 +244,18 @@ async function startDesktop() {
   inputEl.disabled = true;
   pttButton.disabled = true;
 
-  if (!invoke) {
+  if (!api) {
     showError("Tauri command bridge is unavailable; desktop backend lifecycle cannot start.");
     healthEl.textContent = "error";
     return;
   }
 
   try {
-    const startPayload = JSON.parse(await invoke("start_backend"));
+    const startPayload = await api.startBackend();
     sessionEl.textContent = startPayload.session_id || "created";
     if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
     healthEl.textContent = "ok";
-    const readiness = JSON.parse(await invoke("get_readiness"));
+    const readiness = await api.getReadiness();
     renderReadiness(readiness);
     await refreshSessionStatus();
     await startWakeMonitorIfAvailable();
@@ -336,14 +274,14 @@ async function startDesktop() {
 }
 
 async function restartBackendForSettings() {
-  await invoke("stop_backend");
+  await api.stopBackend();
   setState("STARTING");
   healthEl.textContent = "starting";
-  const startPayload = JSON.parse(await invoke("start_backend"));
+  const startPayload = await api.startBackend();
   sessionEl.textContent = startPayload.session_id || "created";
   if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
   healthEl.textContent = "ok";
-  const readiness = JSON.parse(await invoke("get_readiness"));
+  const readiness = await api.getReadiness();
   renderReadiness(readiness);
   await startWakeMonitorIfAvailable();
   startWakePolling();
@@ -359,16 +297,16 @@ function updateSettingsRestartRequired(required, details = {}) {
 async function invokeResidentPtt() {
   if (pttButton.dataset.captureState !== "idle") return;
   clearError();
-  setCaptureState("processing");
+  residentVoice.setCaptureState("processing");
   voiceStatusEl.textContent = "PTT invoked";
   setState("LISTENING");
   appendPresence("listening");
   try {
-    const status = JSON.parse(await invoke("invoke_resident_ptt"));
-    renderResidentVoiceStatus(status);
+    const status = await api.invokeResidentPtt();
+    residentVoice.renderResidentVoiceStatus(status);
     await refreshSessionStatus();
   } catch (error) {
-    setCaptureState("idle");
+    residentVoice.setCaptureState("idle");
     voiceStatusEl.textContent = "Voice failed";
     showError(`Resident voice invocation failed: ${String(error)}`);
   }
@@ -383,7 +321,7 @@ async function submitText(text) {
   sendButton.disabled = true;
 
   try {
-    const response = JSON.parse(await invoke("submit_text", { text }));
+    const response = await api.submitText(text);
     setStateLabel(response.final_state, turnStateEl);
     setState(response.failure_reason ? "FAILED" : response.final_state);
     if (response.failure_reason) {
@@ -421,8 +359,8 @@ personalitySelectEl.addEventListener("change", (event) => {
 settingsTriggerEl.addEventListener("click", () => {
   if (settingsPanelEl.hidden) {
     openSettings(settingsPanelEl, {
-      getOperatorConfig: async () => JSON.parse(await invoke("get_operator_config")),
-      writeOperatorConfig: async (fields) => JSON.parse(await invoke("write_operator_config", { fields })),
+      getOperatorConfig: api.getOperatorConfig,
+      writeOperatorConfig: api.writeOperatorConfig,
       restartBackend: restartBackendForSettings,
       onRestartRequiredChange: updateSettingsRestartRequired,
     }).catch((error) => showError(String(error)));
@@ -433,9 +371,8 @@ settingsTriggerEl.addEventListener("click", () => {
 
 if (wakeToggleEl) {
   wakeToggleEl.addEventListener("click", () => {
-    invoke("toggle_wake_monitor")
-      .then((payload) => {
-        const status = JSON.parse(payload);
+    api.toggleWakeMonitor()
+      .then((status) => {
         renderWakeStatus(status, wakeIndicatorEl);
         wakeToggleEl.disabled = !status.available;
         wakeToggleEl.textContent = status.active || status.monitoring ? "Stop" : "Start";
@@ -448,8 +385,8 @@ if (wakeToggleEl) {
 window.addEventListener("beforeunload", () => {
   stopWakePolling();
   stopSessionPolling();
-  invoke("stop_wake_monitor").catch(() => undefined);
-  invoke("stop_backend").catch(() => undefined);
+  api?.stopWakeMonitor().catch(() => undefined);
+  api?.stopBackend().catch(() => undefined);
 });
 
 async function startApp() {

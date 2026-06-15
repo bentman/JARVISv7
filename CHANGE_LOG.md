@@ -18,6 +18,69 @@
 
 ## Entries 
 
+- 2026-06-15 14:46
+  - Summary: Completed Slice Q.9 repo-tree governance reconciliation. Updated `repo_tree.md` to match the current post-Q backend route/service, wake status, agent spec, realtime conversation, and desktop module boundaries.
+  - Scope: `repo_tree.md`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\api\test_routes.py backend\tests\unit\services\test_session_service.py backend\tests\unit\services\test_wake_status.py -q` PASS (`79 passed`); `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615194618-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this corrected governance documentation and did not add a new capability.
+
+- 2026-06-15 14:44
+  - Summary: Completed Slice Q.8 desktop shell housekeeping. Extracted Tauri command calls into `api-client.js` and resident voice UI rendering into `components/resident-voice.js`, leaving `main.js` as the coordinator.
+  - Scope: `desktop/src/api-client.js`, `desktop/src/components/resident-voice.js`, `desktop/src/main.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`); `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615194411-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this reduced desktop module drift and did not add a new capability.
+
+- 2026-06-15 14:40
+  - Summary: Completed Slice Q.7 wake status ownership cleanup. Moved wake status mutation logic into `WakeStatusStore` while preserving the existing `SessionService` route/runtime compatibility methods.
+  - Scope: `backend/app/services/wake_status.py`, `backend/app/services/session_service.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/services/test_wake_status.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_wake_status.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\services\test_session_service.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`93 passed`); `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615194006-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this clarified wake status ownership and did not add a new capability.
+
+- 2026-06-15 14:37
+  - Summary: Completed Slice Q.6 realtime/session status ownership cleanup. Replaced the generic voice state marker with an explicit transient voice snapshot API and kept realtime event ordering owned by `RealtimeConversationSession`.
+  - Scope: `backend/app/services/session_service.py`, `backend/app/conversation/realtime/session.py`, `backend/tests/unit/services/test_session_service.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\realtime backend\tests\unit\services\test_session_service.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\api\test_routes.py -q` PASS (`62 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615193709-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this clarified an existing status boundary and did not add a new capability.
+
+- 2026-06-15 14:36
+  - Summary: Completed Slice Q.5 conversation-engine stub cleanup. Removed the obsolete `enter_stub_state()` helper and its legacy assertions now that SPEAKING, ACTING, and INTERRUPTED behavior is covered by real turn-engine paths.
+  - Scope: `backend/app/conversation/engine.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py backend\tests\unit\conversation\realtime -q` PASS (`49 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615193554-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this removed a residual test stub and did not add a new capability.
+
+- 2026-06-15 14:32
+  - Summary: Completed Slice Q.4 readiness label housekeeping. `/readiness` now derives family runtime labels from selected runtime metadata and wake provider state instead of a static route-level runtime map.
+  - Scope: `backend/app/api/routes/readiness.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\hardware\test_readiness.py backend\tests\unit\routing\test_runtime_selector.py -q` PASS (`44 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615193214-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this corrected readiness truthfulness and did not add a new capability.
+
+- 2026-06-15 14:30
+  - Summary: Completed Slice Q.3 startup LLM selection housekeeping. Backend startup now loads runtime policy and uses `routing.runtime_selector.select_llm()` instead of constructing `OllamaLLM()` directly.
+  - Scope: `backend/app/api/app.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\routing\test_runtime_selector.py -q` PASS (`35 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615193026-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this corrected startup ownership and did not add a new capability. `LlamaCppLLM` remains unavailable until the later local LLM runtime slice.
+
+- 2026-06-15 14:28
+  - Summary: Completed Slice Q.2 service-boundary housekeeping. Removed the thin `task_service.py` pass-through and made `turn_service.py` the canonical text/voice turn service boundary, including non-empty text validation.
+  - Scope: `backend/app/services/turn_service.py`, `backend/app/services/task_service.py`, `backend/app/api/routes/task.py`, `backend/tests/unit/services/test_turn_service.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_turn_service.py backend\tests\unit\api\test_routes.py backend\tests\unit\scripts\test_run_jarvis_script.py -q` PASS (`45 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615192822-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this collapsed a duplicate service wrapper and did not add a new capability.
+
+- 2026-06-15 14:27
+  - Summary: Completed Slice Q.1 voice ingress housekeeping. Removed the legacy direct `/task/voice` product path and desktop `submit_voice` upload command so resident `/session/ptt` is the single desktop voice ingress.
+  - Scope: `backend/app/api/app.py`, `backend/app/api/routes/voice.py`, `backend/app/api/schemas/voice.py`, `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/tests/static.test.mjs`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows x64 / amd64 current workspace
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\conversation\realtime -q` PASS (`79 passed`); `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260615192659-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No `SYSTEM_INVENTORY.md` update; this removed a legacy duplicate ingress path and did not add a new capability.
+
 - 2026-06-15 11:12
   - Summary: Returned backend validator pytest execution to pytest defaults. Removed validator-injected `--basetemp` and `no:cacheprovider` workaround flags, and cleaned residual pytest cache/temp workaround directories.
   - Scope: `scripts/validate_backend.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`, pytest cache/temp residuals

@@ -261,17 +261,6 @@ def test_turn_engine_closes_to_failed_on_llm_error():
     assert result.failure_reason == "llm failed"
 
 
-def test_speaking_state_no_longer_raises_not_implemented_in_c2():
-    _engine().enter_stub_state(ConversationState.SPEAKING)
-
-
-def test_interrupted_state_raises_not_implemented_stub():
-    engine = _engine()
-
-    with pytest.raises(NotImplementedError):
-        engine.enter_stub_state(ConversationState.INTERRUPTED)
-
-
 def test_acting_state_entered_when_tool_requested():
     llm = FakeLLM(response="ready")
     registry = FakeToolRegistry()

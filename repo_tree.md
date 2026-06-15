@@ -58,33 +58,41 @@ JARVISv7/
 ```text
 backend/
 ├─ app/
-│  ├─ agents/                        # role-separated agent framework (Group I); consumes runtimes + tools + turn engine
-│  │  ├─ base.py                     # common AgentBase interface + role contract enforcement
-│  │  ├─ critic.py                   # output validation role
-│  │  ├─ curator.py                  # training-data mining role
-│  │  ├─ executor.py                 # tool-invocation role
-│  │  ├─ learner.py                  # training-cycle orchestration role
-│  │  ├─ ledger.py                   # SQLite-backed agent message bus (I.2)
+│  ├─ agents/                        # spec-defined disabled agent boundary; consumes existing runtimes/tools/turns only through interfaces
+│  │  ├─ creator.py                  # deterministic spec-only Agent Creator
+│  │  ├─ critic.py                   # critic dry-run/spec surface
+│  │  ├─ curator.py                  # curator dry-run/spec surface
+│  │  ├─ executor.py                 # executor dry-run/spec surface
+│  │  ├─ learner.py                  # learner dry-run/spec surface
+│  │  ├─ ledger.py                   # local agent event/spec ledger
 │  │  ├─ messages.py                 # typed AgentMessage and message-type enums
-│  │  ├─ planner.py                  # task-decomposition role
-│  │  └─ schemas.py                  # JSON schemas for message payloads
+│  │  ├─ planner.py                  # planner dry-run/spec surface
+│  │  ├─ policy.py                   # disabled-by-default policy/status gate
+│  │  ├─ roles.py                    # validated role/spec identifier helpers
+│  │  ├─ specs.py                    # JarvisAgentSpec catalog loader/validator
+│  │  └─ trace.py                    # agent trace records
 │  ├─ api/
 │  │  ├─ dependencies.py             # route dependencies and shared request wiring
 │  │  ├─ routes/
 │  │  │  ├─ agents.py                # agent status/trace endpoints (read-only)
 │  │  │  ├─ diagnostics.py           # diagnostics and health-facing endpoints
 │  │  │  ├─ health.py                # health endpoints
+│  │  │  ├─ personality.py           # personality profile selection/list APIs
 │  │  │  ├─ readiness.py             # structured startup summary (family/device/model per subsystem)
-│  │  │  ├─ session.py               # session-facing APIs (create, tick, close)
+│  │  │  ├─ session.py               # session-facing APIs (create, status, PTT, close)
+│  │  │  ├─ status.py                # wake/status APIs
 │  │  │  ├─ task.py                  # normal conversation/task APIs (text ingress)
-│  │  │  └─ voice.py                 # voice-facing APIs (audio ingress)
 │  │  └─ schemas/
 │  │     ├─ agents.py                # agent-facing API schemas
 │  │     ├─ common.py                # shared API schemas
+│  │     ├─ config.py                # operator config schemas
+│  │     ├─ diagnostics.py           # diagnostics schemas
+│  │     ├─ personality.py           # personality schemas
 │  │     ├─ readiness.py             # startup/readiness response schema consumed by desktop shell
 │  │     ├─ session.py               # session schemas
+│  │     ├─ status.py                # wake/status schemas
 │  │     ├─ task.py                  # task schemas
-│  │     └─ voice.py                 # voice schemas
+│  │     └─ tools.py                 # tool-call metadata schemas
 │  ├─ artifacts/
 │  │  ├─ session_artifact.py         # session artifact definitions
 │  │  ├─ storage.py                  # artifact persistence helpers (writes to data/turns, data/sessions)
@@ -102,8 +110,16 @@ backend/
 │  │  ├─ prompt_assembler.py         # prompt assembly with personality + working + episodic memory inputs
 │  │  └─ responder.py                # response shaping logic + responder-boundary sanitation before TTS
 │  ├─ conversation/
+│  │  ├─ continuity.py               # session continuity packet types
+│  │  ├─ continuity_policy.py        # bounded continuity policy
 │  │  ├─ engine.py                   # turn lifecycle orchestration; explicit state transitions (no implicit)
-│  │  ├─ interruption.py             # interruption/barge-in handling (C.5)
+│  │  ├─ realtime/                   # realtime event/session boundary over committed turn execution
+│  │  │  ├─ events.py                # realtime event vocabulary
+│  │  │  ├─ interruption.py          # realtime interruption boundary event helpers
+│  │  │  ├─ ledger.py                # in-session realtime event ledger
+│  │  │  ├─ response_queue.py        # deterministic response queue for non-streaming responses
+│  │  │  ├─ session.py               # realtime invocation coordinator
+│  │  │  └─ turn_taking.py           # committed-audio boundary helpers
 │  │  ├─ session_manager.py          # session lifecycle management (C.3)
 │  │  ├─ states.py                   # canonical conversation states enum
 │  │  └─ turn_manager.py             # turn creation/update/finalization
@@ -176,12 +192,12 @@ backend/
 │  │     ├─ porcupine_runtime.py     # pvporcupine; optional alternative behind hw-wake-porcupine extra
 │  │     └─ wake_runtime.py          # selector: provider ∈ {openwakeword, porcupine}; openwakeword default
 │  ├─ services/
-│  │  ├─ diagnostics_service.py      # diagnostics-facing service layer
-│  │  ├─ session_service.py          # session service layer (resident lifecycle owner, D.3)
-│  │  ├─ startup_service.py          # startup/readiness summary service; consumed by desktop shell + proving host
-│  │  ├─ task_service.py             # host-facing task/text service (delegates to canonical turn execution)
-│  │  ├─ turn_service.py             # canonical transcript-bound turn executor shared by voice/text paths
-│  │  └─ voice_service.py            # voice-facing service layer
+│  │  ├─ resident_voice_invocation.py # resident PTT/wake invocation service
+│  │  ├─ session_service.py          # resident session snapshot/lifecycle service
+│  │  ├─ turn_service.py             # canonical transcript-bound turn executor
+│  │  ├─ voice_service.py            # microphone capture helpers
+│  │  ├─ wake_monitor.py             # wake monitor service
+│  │  └─ wake_status.py              # wake status store and transition owner
 │  └─ tools/
 │     ├─ filesystem/                 # filesystem tools (read-only at F.2 scope; write tools = future slice)
 │     ├─ registry.py                 # tool registry (F.2)
@@ -217,7 +233,7 @@ backend/
 **Note**: `backend/requirements.txt` is not a manual source of truth. It is a generated lockfile of the `pyproject.toml` base extra emitted by the provisioning script. The file carries a top-of-file comment saying so.
 
 **Backend-domain ownership notes:**
-- `agents/` consumes `runtimes/`, `tools/`, `services/turn_service.py`, and `memory/` — never reaches past their interfaces. Agent-aware branches in the turn engine are policy-gated; non-agent turns continue to work unchanged.
+- `agents/` owns spec validation, disabled status truth, dry-run role surfaces, and local ledger records. It consumes `runtimes/`, `tools/`, `services/turn_service.py`, and `memory/` only through existing interfaces. Agent execution remains disabled unless a later approved slice enables it.
 - `cognition/` owns prompt assembly, tool-execution coordination (ACTING), and response shaping. It is the only layer that combines personality + memory + runtime output into a prompt. Never calls runtimes directly — goes through `routing/runtime_selector.py`.
 - `conversation/` owns the state machine and session lifecycle. State transitions are explicit here, never implicit in prompt content.
 - `hardware/` is the root of runtime-selection authority. `profiler.py` detects; `provisioning.py` translates facts to extras; `preflight.py` verifies evidence. No runtime file contains host-detection logic.
@@ -225,7 +241,7 @@ backend/
 - `personality/` is a prompt-assembly input, not an orchestration layer. Never bypasses safety or policy; never lives as opaque prompt fragment.
 - `routing/runtime_selector.py` is the single escalation-policy owner for LLM and search. Tool files and cognition files never reach past it.
 - `runtimes/` contains one subdirectory per family. Each family has a `base.py` interface, one or more concrete runtimes, and a selector. Device is always a constructor parameter.
-- `services/` is the API-facing layer. It orchestrates runtimes, cognition, and memory through their public interfaces; it owns no domain logic itself. The desktop shell (D.2) and proving host (C.6) both consume services — never the layers below.
+- `services/` is the API-facing layer. It orchestrates runtimes, cognition, wake monitoring, resident voice invocation, and memory through their public interfaces; domain transition ownership is kept in named helpers such as `wake_status.py`. The desktop shell (D.2) and proving host (C.6) both consume services — never the layers below.
 - `tools/` depends on `runtimes/internetsearch/` (for search) but is otherwise self-contained. New tools drop in by registration; no redesign needed.
 
 ### Config Domains
@@ -233,7 +249,14 @@ backend/
 ```text
 config/
 ├─ agents/
-│  └─ roles.yaml                     # role definitions (system prompt refs, input/output schemas, policy constraints)
+│  ├─ roles.yaml                     # legacy role policy/config surface retained for compatibility
+│  └─ specs/                         # durable repo-owned disabled JarvisAgentSpec catalog
+│     ├─ agent_creator.yaml
+│     ├─ critic.yaml
+│     ├─ curator.yaml
+│     ├─ executor.yaml
+│     ├─ learner.yaml
+│     └─ planner.yaml
 ├─ app/
 │  ├─ defaults.yaml                  # global defaults
 │  ├─ policies.yaml                  # safety, fallback, LLM escalation, search escalation, execution,
@@ -280,6 +303,7 @@ config/
 - `config/redis/` owns Redis service configuration files; `cache/redis/` holds Redis runtime data only.
 - `.env` / `.env.example` own Redis/search connection settings, URLs, enable flags, and API-key placeholders.
 - `config/personality/` carries structured personality profiles. The `personality` domain in `backend/app/` loads them; the prompts themselves are structured config, not free-form prompt fragments.
+- `config/agents/specs/` owns durable disabled agent specs loaded by the agent spec catalog. Agent Creator writes repo-owned spec files there rather than temporary artifacts.
 - `config/prompts/` is split by consumer: `agents/` for the role framework, `planner/` + `responder/` for the turn-level cognition layer, `system/` for shared assets. Each role/layer has its own subdirectory so prompt edits have a single obvious location.
 
 ### Mutable Runtime Domains
@@ -335,16 +359,19 @@ models/
 
 ```text
 desktop/
-├─ src/                              # web UI: conversation display, status panel, hardware + LLM selection
-│  ├─ assets/
+├─ src/                              # web UI shell; backend/runtime logic stays behind Tauri commands and backend APIs
 │  ├─ components/
-│  │  ├─ conversation/               # conversation display + tool-grounded response rendering (F.3)
-│  │  ├─ hardware-selection/         # shows active family + device per STT/TTS/LLM/Wake
-│  │  ├─ llm-selection/              # policy-gated runtime switcher (local/Ollama/cloud)
-│  │  ├─ status/                     # tray + in-window state display (all 12 canonical states)
-│  │  └─ tray/                       # system tray presence + state icons + context menu
+│  │  ├─ appearance-controls.js      # localStorage-backed appearance controls
+│  │  ├─ degraded-list.js            # degraded readiness summary
+│  │  ├─ readiness-panel.js          # readiness family rendering
+│  │  ├─ resident-voice.js           # resident PTT/wake session rendering
+│  │  ├─ service-status.js           # Redis/SearXNG service-status rendering
+│  │  ├─ settings-panel.js           # operator config panel
+│  │  ├─ state-label.js              # canonical state label rendering
+│  │  └─ wake-indicator.js           # wake monitor status rendering
+│  ├─ api-client.js                  # Tauri command client wrapper
 │  ├─ index.html
-│  ├─ main.js
+│  ├─ main.js                        # desktop coordinator
 │  └─ style.css
 ├─ src-tauri/
 │  ├─ src/

@@ -27,9 +27,11 @@ def test_required_desktop_files_exist() -> None:
     for relative_path in [
         "desktop/package.json",
         "desktop/src/index.html",
+        "desktop/src/api-client.js",
         "desktop/src/main.js",
         "desktop/src/components/appearance-controls.js",
         "desktop/src/components/settings-panel.js",
+        "desktop/src/components/resident-voice.js",
         "desktop/src/components/service-status.js",
         "desktop/src/style.css",
         "desktop/src-tauri/Cargo.toml",
@@ -85,7 +87,7 @@ def test_desktop_references_only_approved_d1_endpoints_for_first_pass() -> None:
             DESKTOP / "src" / "main.js",
         ]
     )
-    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/session/ptt", "/status/wake", "/personality/list", "/personality/select", "/task/text", "/task/voice"]:
+    for endpoint in ["/health", "/readiness", "/session/create", "/session/close", "/session/status", "/session/ptt", "/status/wake", "/personality/list", "/personality/select", "/task/text"]:
         assert endpoint in source
     assert "/session/tick" not in source
     assert "websocket" not in source.lower()
@@ -95,6 +97,8 @@ def test_desktop_displays_resident_session_status() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
+    resident_voice = _read("desktop/src/components/resident-voice.js")
     index_html = _read("desktop/src/index.html")
     assert "get_session_status" in backend_rs
     assert "/session/status" in backend_rs
@@ -103,22 +107,26 @@ def test_desktop_displays_resident_session_status() -> None:
     assert "get_session_status" in lib_rs
     assert "invoke_resident_ptt" in lib_rs
     assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt" in lib_rs
-    assert 'invoke("get_session_status")' in main_js
-    assert 'invoke("invoke_resident_ptt")' in main_js
+    assert 'invoke("get_session_status")' in api_client
+    assert 'invoke("invoke_resident_ptt")' in api_client
+    assert "./api-client.js" in main_js
+    assert "./components/resident-voice.js" in main_js
     assert "refreshSessionStatus" in main_js
     assert "startSessionPolling" in main_js
-    assert "renderResidentVoiceStatus" in main_js
-    assert "appendResidentVoiceCompletion" in main_js
+    assert "residentVoice.renderResidentVoiceStatus" in main_js
+    assert "function renderResidentVoiceStatus(status)" in resident_voice
+    assert "function appendResidentVoiceCompletion(status)" in resident_voice
     assert "session-turn-count" in main_js
     assert "session-turn-count" in index_html
     for field in ["last_transcript", "last_response", "invocation_source", "failure_reason"]:
-        assert field in main_js
+        assert field in resident_voice
 
 
 def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
     index_html = _read("desktop/src/index.html")
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
     assert "get_wake_status" in backend_rs
@@ -133,10 +141,10 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "stop_wake_monitor" in lib_rs
     assert "toggle_wake_monitor" in lib_rs
     assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
-    assert 'invoke("get_wake_status")' in main_js
-    assert 'invoke("start_wake_monitor")' in main_js
-    assert 'invoke("stop_wake_monitor")' in main_js
-    assert 'invoke("toggle_wake_monitor")' in main_js
+    assert 'invoke("get_wake_status")' in api_client
+    assert 'invoke("start_wake_monitor")' in api_client
+    assert 'invoke("stop_wake_monitor")' in api_client
+    assert 'invoke("toggle_wake_monitor")' in api_client
     assert "refreshWakeStatus" in main_js
     assert "startWakeMonitorIfAvailable" in main_js
     assert "startWakePolling" in main_js
@@ -157,13 +165,14 @@ def test_desktop_displays_personality_selector_and_presence_ui() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
     index_html = _read("desktop/src/index.html")
     assert "/personality/list" in backend_rs
     assert "/personality/select" in backend_rs
     assert "get_personality_list" in lib_rs
     assert "select_personality" in lib_rs
-    assert 'invoke("get_personality_list")' in main_js
-    assert 'invoke("select_personality"' in main_js
+    assert 'invoke("get_personality_list")' in api_client
+    assert 'invoke("select_personality"' in api_client
     assert "personality-select" in index_html
     assert "personality-current" in index_html
     assert "appendPresence" in main_js
@@ -185,6 +194,7 @@ def test_desktop_displays_personality_selector_and_presence_ui() -> None:
 def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
     settings_panel = _read("desktop/src/components/settings-panel.js")
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
@@ -197,8 +207,8 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert 'id="settings-panel"' in index_html
     assert "./components/settings-panel.js" in main_js
     assert "openSettings(settingsPanelEl" in main_js
-    assert 'invoke("get_operator_config")' in main_js
-    assert 'invoke("write_operator_config"' in main_js
+    assert 'invoke("get_operator_config")' in api_client
+    assert 'invoke("write_operator_config"' in api_client
     assert "getOperatorConfig:" in main_js
     assert "writeOperatorConfig:" in main_js
     assert "closeSettings()" in main_js
@@ -231,14 +241,15 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
 def test_k2c_settings_restart_required_ux_contract() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
     settings_panel = _read("desktop/src/components/settings-panel.js")
 
     assert 'id="settings-restart-required"' in index_html
     assert "Restart required" in index_html
     assert "restartBackendForSettings" in main_js
-    assert 'invoke("stop_backend")' in main_js
-    assert 'invoke("start_backend")' in main_js
-    assert 'invoke("get_readiness")' in main_js
+    assert 'invoke("stop_backend")' in api_client
+    assert 'invoke("start_backend")' in api_client
+    assert 'invoke("get_readiness")' in api_client
     assert "renderReadiness(readiness)" in main_js
     assert "restartBackend: restartBackendForSettings" in main_js
     assert "onRestartRequiredChange: updateSettingsRestartRequired" in main_js
@@ -401,14 +412,17 @@ def test_desktop_ptt_uses_resident_voice_not_webview_wav_capture() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
+    resident_voice = _read("desktop/src/components/resident-voice.js")
     assert "POST /session/ptt" in backend_rs
     assert "invoke_resident_ptt" in backend_rs
     assert "invoke_resident_ptt" in lib_rs
-    assert 'invoke("invoke_resident_ptt")' in main_js
-    assert "renderResidentVoiceStatus" in main_js
-    assert "appendResidentVoiceCompletion" in main_js
+    assert 'invoke("invoke_resident_ptt")' in api_client
+    assert "residentVoice.renderResidentVoiceStatus" in main_js
+    assert "function renderResidentVoiceStatus(status)" in resident_voice
+    assert "function appendResidentVoiceCompletion(status)" in resident_voice
     for field in ["last_transcript", "last_response", "state", "invocation_source", "failure_reason", "turn_count"]:
-        assert field in main_js
+        assert field in resident_voice
     assert "MediaRecorder" not in main_js
     assert "getUserMedia" not in main_js
     assert "audioBytes" not in main_js
@@ -417,8 +431,10 @@ def test_desktop_ptt_uses_resident_voice_not_webview_wav_capture() -> None:
     assert "Stop and Submit" not in main_js
     assert "submit_voice" not in main_js
     assert "submit_voice_turn" not in main_js
-    assert "POST /task/voice" in backend_rs
-    assert "application/octet-stream" in backend_rs
+    assert "submit_voice" not in lib_rs
+    assert "submit_voice_turn" not in backend_rs
+    assert "POST /task/voice" not in backend_rs
+    assert "application/octet-stream" not in backend_rs
     assert "multipart" not in backend_rs.lower()
     assert "/stream" not in backend_rs.lower()
     assert "websocket" not in backend_rs.lower()
@@ -448,6 +464,7 @@ def test_desktop_can_render_optional_tool_calls_metadata() -> None:
 def test_j1_readiness_components_and_containers_exist() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
     readiness_panel = _read("desktop/src/components/readiness-panel.js")
     degraded_list = _read("desktop/src/components/degraded-list.js")
 
@@ -459,7 +476,7 @@ def test_j1_readiness_components_and_containers_exist() -> None:
     assert "export function renderDegradedList" in degraded_list
     assert "renderReadinessPanel(readiness, readinessEl)" in main_js
     assert "renderDegradedList(readiness, degradedEl)" in main_js
-    assert 'invoke("get_readiness")' in main_js
+    assert 'invoke("get_readiness")' in api_client
     assert "active_personality_profile_id" not in readiness_panel
     assert "ptt" in readiness_panel
     assert "PTT" in readiness_panel
@@ -490,6 +507,7 @@ def test_j1_voice_debug_is_collapsed_details_without_voice_capture_change() -> N
 def test_j3b_ptt_button_uses_click_start_click_stop_contract() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
+    resident_voice = _read("desktop/src/components/resident-voice.js")
 
     assert 'id="ptt-button"' in index_html
     assert 'aria-pressed="false"' in index_html
@@ -500,13 +518,14 @@ def test_j3b_ptt_button_uses_click_start_click_stop_contract() -> None:
     assert 'pttButton.addEventListener("pointerdown"' not in main_js
     assert 'pttButton.addEventListener("pointerup"' not in main_js
     assert 'pttButton.addEventListener("pointercancel"' not in main_js
-    assert "setCaptureState" in main_js
+    assert "setCaptureState" in resident_voice
     for capture_state in ["idle", "processing"]:
-        assert capture_state in main_js
+        assert capture_state in resident_voice
     assert "recording" not in main_js
+    assert "recording" not in resident_voice
     assert "invokeResidentPtt" in main_js
-    assert "Voice Running" in main_js
-    assert "Start Voice" in main_js
+    assert "Voice Running" in resident_voice
+    assert "Start Voice" in resident_voice
 
 
 def test_j3b_wake_indicator_component_renders_existing_wake_fields() -> None:
@@ -529,6 +548,7 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
     index_html = _read("desktop/src/index.html")
     style_css = _read("desktop/src/style.css")
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
@@ -538,9 +558,9 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
         assert command in lib_rs
     for endpoint in ["/status/wake/start", "/status/wake/stop", "/status/wake/toggle"]:
         assert endpoint in backend_rs
-    assert 'invoke("start_wake_monitor")' in main_js
-    assert 'invoke("stop_wake_monitor")' in main_js
-    assert 'invoke("toggle_wake_monitor")' in main_js
+    assert 'invoke("start_wake_monitor")' in api_client
+    assert 'invoke("stop_wake_monitor")' in api_client
+    assert 'invoke("toggle_wake_monitor")' in api_client
     assert "startWakeMonitorIfAvailable" in main_js
     assert "startWakePolling" in main_js
     assert "window.setInterval" in main_js

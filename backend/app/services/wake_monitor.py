@@ -8,7 +8,8 @@ import numpy as np
 
 from backend.app.runtimes.wake.base import WakeBase
 from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
-from backend.app.services.session_service import SessionService, WakeMonitorStatus
+from backend.app.services.session_service import SessionService
+from backend.app.services.wake_status import WakeMonitorStatus
 from backend.app.services.voice_service import wake_chunk_source
 
 
