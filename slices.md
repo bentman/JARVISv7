@@ -1731,17 +1731,29 @@ output contract
 
 # Group O — Agent Framework
 
-**Why this group exists here.** Agents belong after the core loop, tools, memory, acceleration normalization, readiness surfacing, and UI controls are stable. The agent framework is a role-separated orchestration layer on top of the turn engine, tool registry, memory, and turn artifacts already proven in C/F/G/H/I. Placing it here reduces the risk of agents being built against an unstable acceleration or readiness surface.
+**Why this group exists here.** Agents belong after the core loop, tools, memory, acceleration normalization, readiness surfacing, realtime invocation, and session continuity are stable. The agent framework is a role-separated orchestration layer on top of the turn engine, tool registry, memory, prompt envelope, API route, and turn artifact surfaces already proven in C/F/G/L/M/N. Placing it here reduces the risk of agents being built against unstable conversation, memory, readiness, or trace boundaries.
 
 Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
-## O.1 — Agent Role Contracts + Typed Message Protocol
+Extended implementation slice: `20260615_slice-o.md`.
 
-**Goal.** Five canonical agent roles with stable input/output schemas and a typed message protocol.
+## O.0 — Agent Boundary Census
 
-**Scope.** Canonical roles: Planner, Executor, Critic, Curator, Learner. Typed `AgentMessage` protocol. Role configs in `config/agents/roles.yaml`. Role system prompts in `config/prompts/agents/`.
+**Goal.** Freeze the implementation map before adding runtime code.
 
-**Acceptance.** Unit: message schema validation + role contract surface for all five roles.
+**Scope.** Inspect and align `backend/app/conversation/engine.py`, `backend/app/conversation/session_manager.py`, `backend/app/cognition/executor.py`, `backend/app/tools/registry.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `config/app/policies.yaml`, `config/agents/`, `config/prompts/`, `data/agents/`, and the existing `agents` pytest marker in `pyproject.toml`.
+
+**Acceptance.** Documentation-only confirmation that Group O uses actual repository names and boundaries.
+
+---
+
+## O.1 — Agent Role Contracts and Typed Message Protocol
+
+**Goal.** Five canonical agent roles with stable input/output schemas and typed inter-agent messages.
+
+**Scope.** Planned `backend/app/agents/` package with role/message contracts. Canonical roles: Planner, Executor, Critic, Curator, Learner. Role configs in `config/agents/roles.yaml`. Role prompts in `config/prompts/agents/`.
+
+**Acceptance.** Unit: message schema validation, role config loading, serialization, and contract surface for all five roles. No live turn integration.
 
 ---
 
@@ -1749,31 +1761,71 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 **Goal.** Persisted, queryable, restart-surviving message substrate for agent coordination.
 
-**Scope.** `backend/app/agents/ledger.py` — SQLite-backed. E.2 Redis used for caching; Redis-unavailable falls back to direct SQLite. Trace IDs connect a goal through the role chain.
+**Scope.** Planned `backend/app/agents/ledger.py` with durable local persistence under `data/agents/`. Redis, if used later, is cache-only; durable authority remains local ledger storage. Trace IDs connect session, turn, and role-chain records.
 
-**Acceptance.** Unit + runtime live: messages post, query, survive restart; trace assembly works.
-
----
-
-## O.3 — Planner + Executor + Critic on Live Path
-
-**Goal.** A multi-step request completes via Planner → Executor → Critic with all messages in the ledger and a full trace reconstructable.
-
-**Scope.** Turn engine consults `config/app/policies.yaml` for agent-opt-in. Non-agent turns continue to work unchanged. Agent decisions in turn artifacts via the optional `agent_trace` field.
-
-**Acceptance.** Runtime live: multi-step request completes via full planner → executor → critic chain.
+**Acceptance.** Unit: messages post, query, survive reopen, and reconstruct trace order. No live turn path calls the ledger until the policy gate exists.
 
 ---
 
-## O.4 — Curator + Learner Roles
+## O.3 — Agent Policy Gate and API Truthfulness
+
+**Goal.** Agent availability is explicit, disabled by default, and truthfully reported by the existing backend API surface.
+
+**Scope.** Extend `config/app/policies.yaml` with agent policy only when implementing Group O. Evolve `backend/app/api/routes/agents.py` and `backend/app/api/schemas/agents.py` from the current disabled read-only status stub. Non-agent turns through `/task/text`, `/task/voice`, and `/session/ptt` remain unchanged unless a request explicitly opts into agent orchestration.
+
+**Acceptance.** Unit: default disabled/read-only status; enabled status under test policy; existing task/session API tests remain green.
+
+---
+
+## O.4 — Planner, Executor, and Critic Dry-Run Orchestrator
+
+**Goal.** Planner → Executor → Critic can run as a policy-gated dry-run orchestration chain.
+
+**Scope.** Planned orchestrator under `backend/app/agents/`. Executor uses existing `ToolExecutor` and `ToolRegistry` only. Dry-run traces are artifact-compatible and do not change user-visible responses.
+
+**Acceptance.** Unit + integration: role chain produces ordered messages and trace output; disabled policy bypasses orchestration; normal text and voice turns remain unchanged when agents are disabled.
+
+---
+
+## O.5 — Agent Trace Integration With Turn Artifacts
+
+**Goal.** Agent behavior is reconstructable from turn artifacts and ledger records.
+
+**Scope.** Preserve existing `TurnArtifact.agent_trace` tool-call usage while adding agent trace metadata only when orchestration is active. Include role decisions, tool requests/results, critic outcome, policy decision, and ledger trace ID.
+
+**Acceptance.** Unit: legacy tool-only `agent_trace` remains readable; agent dry-run traces round-trip through `TurnArtifact.to_json()` / `from_json()`.
+
+---
+
+## O.6 — Agent API and Diagnostic Surface
+
+**Goal.** Provide minimal read-only backend status and trace diagnostics without adding desktop behavior.
+
+**Scope.** Keep `/agents/status` as the first truth surface. Add trace-read diagnostics only after ledger/artifact trace data exists. No action endpoint may trigger agent execution before policy-gated orchestration is proven.
+
+**Acceptance.** API unit tests prove disabled/default status and enabled/read-only diagnostic status. Trace-read endpoints, if added, return existing data only.
+
+---
+
+## O.7 — Curator and Learner Dry-Run Roles
 
 **Goal.** Curator and Learner run end-to-end in dry-run, producing a mixed training dataset and a proposed (not deployed) adapter.
 
-**Scope.** Curator mines turn artifacts; Learner orchestrates training cycle gated by regression suite. Regression gate (`validate_backend.py regression`) is non-negotiable before any adapter deploys.
+**Scope.** Curator mines existing turn/session artifacts. Learner produces proposal-only training/evaluation plans. No model training, deployment, adapter loading, model routing, semantic memory, or dependency changes.
 
-**Acceptance.** Unit: curator scoring + dedup. Runtime live: dry-run cycle produces a mixed dataset.
+**Acceptance.** Unit: curator scoring and dedup; learner output is proposal-only. Runtime live validation is deferred until a future training/deployment slice exists.
 
-**Finish line.** Agent framework runnable end-to-end as an optional orchestration layer. Non-agent turns unchanged.
+---
+
+## O.8 — Validation and Governance Closeout
+
+**Goal.** Close Group O only after observable agent behavior is validated and repository truth ledgers are updated with evidence.
+
+**Scope.** Use focused agent/API/conversation tests first, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`, `backend/.venv/Scripts/python scripts/validate_backend.py regression`, and `git diff --check`. Update `CHANGE_LOG.md` after each implemented sub-slice validation. Update `SYSTEM_INVENTORY.md` only after an observable agent capability exists and is validated.
+
+**Acceptance.** Validated optional agent layer with non-agent text, voice, session, memory, tool, and realtime behavior unchanged when disabled.
+
+**Finish line.** Agent framework runnable as an optional, policy-gated orchestration layer with persisted role messages, deterministic tool boundaries, reconstructable traces, and unchanged non-agent turns.
 
 ---
 
