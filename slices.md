@@ -1737,93 +1737,103 @@ Aligns with the Explicit Cognition Framework principles in `ProjectVision.md`.
 
 Extended implementation slice: `20260615_slice-o.md`.
 
-## O.0 — Agent Boundary Census
+## O.1 — Agent Role Contracts and Message Schema
 
-**Goal.** Freeze the implementation map before adding runtime code.
+**Goal.** Define agent roles, message types, and typed request/response contracts.
 
-**Scope.** Inspect and align `backend/app/conversation/engine.py`, `backend/app/conversation/session_manager.py`, `backend/app/cognition/executor.py`, `backend/app/tools/registry.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `config/app/policies.yaml`, `config/agents/`, `config/prompts/`, `data/agents/`, and the existing `agents` pytest marker in `pyproject.toml`.
+**Scope.** Code add: planned `backend/app/agents/` package with role/message contracts. Canonical roles: Planner, Executor, Critic, Curator, Learner. Role configs in `config/agents/roles.yaml`. Role prompts in `config/prompts/agents/`. No execution behavior yet.
 
-**Acceptance.** Documentation-only confirmation that Group O uses actual repository names and boundaries.
-
----
-
-## O.1 — Agent Role Contracts and Typed Message Protocol
-
-**Goal.** Five canonical agent roles with stable input/output schemas and typed inter-agent messages.
-
-**Scope.** Planned `backend/app/agents/` package with role/message contracts. Canonical roles: Planner, Executor, Critic, Curator, Learner. Role configs in `config/agents/roles.yaml`. Role prompts in `config/prompts/agents/`.
-
-**Acceptance.** Unit: message schema validation, role config loading, serialization, and contract surface for all five roles. No live turn integration.
+**Acceptance.** Unit: message schema validation, role config loading, serialization, and request/response contract surface for all five roles. No live turn integration and no agent execution.
 
 ---
 
-## O.2 — Agent Ledger
+## O.2 — Agent Ledger / Artifact Trail
 
-**Goal.** Persisted, queryable, restart-surviving message substrate for agent coordination.
+**Goal.** Durable agent records exist for future agent events, plans, outcomes, and policy decisions.
 
-**Scope.** Planned `backend/app/agents/ledger.py` with durable local persistence under `data/agents/`. Redis, if used later, is cache-only; durable authority remains local ledger storage. Trace IDs connect session, turn, and role-chain records.
+**Scope.** Code add: planned `backend/app/agents/ledger.py` with durable local persistence under `data/agents/`, plus artifact-compatible records for future trace reconstruction. Redis, if used later, is cache-only; durable authority remains local ledger storage. No hidden or background behavior.
 
-**Acceptance.** Unit: messages post, query, survive reopen, and reconstruct trace order. No live turn path calls the ledger until the policy gate exists.
-
----
-
-## O.3 — Agent Policy Gate and API Truthfulness
-
-**Goal.** Agent availability is explicit, disabled by default, and truthfully reported by the existing backend API surface.
-
-**Scope.** Extend `config/app/policies.yaml` with agent policy only when implementing Group O. Evolve `backend/app/api/routes/agents.py` and `backend/app/api/schemas/agents.py` from the current disabled read-only status stub. Non-agent turns through `/task/text`, `/task/voice`, and `/session/ptt` remain unchanged unless a request explicitly opts into agent orchestration.
-
-**Acceptance.** Unit: default disabled/read-only status; enabled status under test policy; existing task/session API tests remain green.
+**Acceptance.** Unit: records post, query, survive reopen, and reconstruct trace order. No live turn path calls the ledger for hidden work.
 
 ---
 
-## O.4 — Planner, Executor, and Critic Dry-Run Orchestrator
+## O.3 — Agent Policy Gate and API Truth Surface
 
-**Goal.** Planner → Executor → Critic can run as a policy-gated dry-run orchestration chain.
+**Goal.** Agent availability and constraints are explicit, disabled by default, and truthfully reported by the existing backend API surface.
 
-**Scope.** Planned orchestrator under `backend/app/agents/`. Executor uses existing `ToolExecutor` and `ToolRegistry` only. Dry-run traces are artifact-compatible and do not change user-visible responses.
+**Scope.** Code add: explicit enabled/disabled status, allowed roles, allowed tools, and truthful API/status response. Extend `config/app/policies.yaml` with agent policy only when implementing Group O. Evolve `backend/app/api/routes/agents.py` and `backend/app/api/schemas/agents.py` from the current disabled read-only status stub. Agents are disabled by default. Normal non-agent turns through `/task/text`, `/task/voice`, and `/session/ptt` remain unchanged.
 
-**Acceptance.** Unit + integration: role chain produces ordered messages and trace output; disabled policy bypasses orchestration; normal text and voice turns remain unchanged when agents are disabled.
-
----
-
-## O.5 — Agent Trace Integration With Turn Artifacts
-
-**Goal.** Agent behavior is reconstructable from turn artifacts and ledger records.
-
-**Scope.** Preserve existing `TurnArtifact.agent_trace` tool-call usage while adding agent trace metadata only when orchestration is active. Include role decisions, tool requests/results, critic outcome, policy decision, and ledger trace ID.
-
-**Acceptance.** Unit: legacy tool-only `agent_trace` remains readable; agent dry-run traces round-trip through `TurnArtifact.to_json()` / `from_json()`.
+**Acceptance.** Unit: default disabled/read-only status; allowed roles/tools are reported from policy; enabled status under test policy is truthful; existing task/session API tests remain green.
 
 ---
 
-## O.6 — Agent API and Diagnostic Surface
+## O.4 — Minimum Truthful Agent Boundary Validation
 
-**Goal.** Provide minimal read-only backend status and trace diagnostics without adding desktop behavior.
+**Goal.** Prove O.1 through O.3 together before any planner/executor/critic behavior begins.
 
-**Scope.** Keep `/agents/status` as the first truth surface. Add trace-read diagnostics only after ledger/artifact trace data exists. No action endpoint may trigger agent execution before policy-gated orchestration is proven.
+**Scope.** Validation item: roles/messages exist, ledger/artifact trail exists, policy gate exists, status is truthful, agents do not execute, and normal conversation still works.
 
-**Acceptance.** API unit tests prove disabled/default status and enabled/read-only diagnostic status. Trace-read endpoints, if added, return existing data only.
+**Acceptance.** Focused unit/API/conversation validation passes. `SYSTEM_INVENTORY.md` may add the agent boundary only after this validation passes. No planner, executor, critic, tool-using agent, hidden, or background behavior is claimed.
 
 ---
 
-## O.7 — Curator and Learner Dry-Run Roles
+## O.5 — Planner Dry-Run Role
+
+**Goal.** Planner produces a typed plan record without executing tools or altering conversation output.
+
+**Scope.** Code add: planned planner module under `backend/app/agents/` that reads typed requests and writes proposed plan records to the ledger/artifact trail under the O.3 policy gate.
+
+**Acceptance.** Focused validation proves planner records are persisted, policy-gated, dry-run marked, and inventory remains unchanged until behavior exists and passes validation.
+
+---
+
+## O.6 — Executor Dry-Run Tool Boundary
+
+**Goal.** Executor can evaluate planned tool requests against existing deterministic tool boundaries without hidden execution.
+
+**Scope.** Code add: planned executor role module under `backend/app/agents/`. Any tool-capable path must use existing `ToolExecutor` and `ToolRegistry`, must be policy-gated by allowed tools, and must be explicit dry-run until a later approved execution slice.
+
+**Acceptance.** Focused validation proves allowed/blocked tool decisions are truthful, no unregistered tool dispatch occurs, and normal non-agent tool behavior remains unchanged.
+
+---
+
+## O.7 — Critic Dry-Run Review Role
+
+**Goal.** Critic reviews planner/executor records and writes typed review outcomes without controlling final responses.
+
+**Scope.** Code add: planned critic module under `backend/app/agents/` that reads ledger trace records and writes review outcomes, policy decisions, and warnings.
+
+**Acceptance.** Focused validation proves critic review records persist, correlate to a trace, and do not alter non-agent responses unless a later approved orchestration slice enables that behavior.
+
+---
+
+## O.8 — Agent Trace Diagnostics
+
+**Goal.** Read-only trace diagnostics expose existing agent ledger/artifact records without triggering agent work.
+
+**Scope.** Code add: read-only diagnostics in `backend/app/api/routes/agents.py` and `backend/app/api/schemas/agents.py` only after ledger/artifact trace data exists.
+
+**Acceptance.** API tests prove trace-read endpoints return existing records only, never execute agents, and remain truthful when agents are disabled.
+
+---
+
+## O.9 — Curator and Learner Dry-Run Roles
 
 **Goal.** Curator and Learner run end-to-end in dry-run, producing a mixed training dataset and a proposed (not deployed) adapter.
 
-**Scope.** Curator mines existing turn/session artifacts. Learner produces proposal-only training/evaluation plans. No model training, deployment, adapter loading, model routing, semantic memory, or dependency changes.
+**Scope.** Code add: Curator mines existing turn/session artifacts; Learner produces proposal-only training/evaluation plans. No model training, deployment, adapter loading, model routing, semantic memory, or dependency changes.
 
-**Acceptance.** Unit: curator scoring and dedup; learner output is proposal-only. Runtime live validation is deferred until a future training/deployment slice exists.
+**Acceptance.** Focused validation proves curator scoring/dedup and learner proposal-only output. No inventory claim until capability exists and passes validation.
 
 ---
 
-## O.8 — Validation and Governance Closeout
+## O.10 — Validation and Governance Closeout
 
-**Goal.** Close Group O only after observable agent behavior is validated and repository truth ledgers are updated with evidence.
+**Goal.** Close each Group O capability only after observable behavior is validated and repository truth ledgers are updated with evidence.
 
-**Scope.** Use focused agent/API/conversation tests first, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`, `backend/.venv/Scripts/python scripts/validate_backend.py regression`, and `git diff --check`. Update `CHANGE_LOG.md` after each implemented sub-slice validation. Update `SYSTEM_INVENTORY.md` only after an observable agent capability exists and is validated.
+**Scope.** Each sub-slice must name the code add and its own validation. Use focused agent/API/conversation tests first, then `backend/.venv/Scripts/python scripts/validate_backend.py unit`, `backend/.venv/Scripts/python scripts/validate_backend.py regression`, and `git diff --check` when implementation requires governance closeout. Update `CHANGE_LOG.md` after each implemented sub-slice validation. Update `SYSTEM_INVENTORY.md` only after an observable agent capability exists and passes validation.
 
-**Acceptance.** Validated optional agent layer with non-agent text, voice, session, memory, tool, and realtime behavior unchanged when disabled.
+**Acceptance.** Truthful boundary first, then validated optional agent capabilities with non-agent text, voice, session, memory, tool, and realtime behavior unchanged when disabled.
 
 **Finish line.** Agent framework runnable as an optional, policy-gated orchestration layer with persisted role messages, deterministic tool boundaries, reconstructable traces, and unchanged non-agent turns.
 
