@@ -1951,7 +1951,7 @@ Correction slice: `20260615_slice-p.md`.
 
 ---
 
-# Group Q — General Housekeeping Items
+~~# Group Q — General Housekeeping Items~~ Completed
 
 **Why this group exists here.** Recent architecture slices left the product path broadly coherent, but the repository now carries compatibility ingress paths, thin pass-through service layers, stale slice-era helpers, and duplicated status ownership. These are cleanup items, not new product features. They should be resolved before adding streaming voice, enabled agents, semantic memory, or new model/runtime behavior so later work lands on one clear boundary per concern.
 
