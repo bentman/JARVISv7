@@ -2065,43 +2065,219 @@ Source feedback: `20260615_slice-q.md`.
 
 # Group R — Ollama.cpp / Local LLM Runtime
 
-**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, and server binary availability so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
+**Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, server binary availability, and sidecar lifecycle truth so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
 **Local-first preference.** Prefer prebuilt server binaries or existing runtime packages over source-build Docker routes unless source-build is separately proven viable on both host classes.
 
-## R.0 — Local LLM Viability Census
+**Validated direction.** R.0 census work may replace the original operator-only endpoint assumption with a JARVIS-managed `llama-server`-class sidecar if research and repo evidence support it. This is allowed because it reuses existing ownership boundaries: `config/models/llm.yaml` for declarative model/profile metadata, `backend/app/models/catalog.py` for catalog loading, `backend/app/services/**` for lifecycle, `backend/app/runtimes/llm/local_runtime.py` for HTTP client behavior, and `backend/app/routing/runtime_selector.py` for local → Ollama → cloud/null selection.
 
-**Goal.** Non-mutating census: what quantized model formats are available within the ARM64 memory budget; whether a prebuilt local LLM server binary exists for Windows ARM64 without source compilation; what the minimum viable operator setup is.
+**Care point.** Do not let sidecar lifecycle become a second selector. The sidecar service may start/stop/probe the selected local runtime process, but selection remains profile/catalog/preflight/selector owned.
+
+**Decision integration.** Slice R adopts these decisions from the Slice R analysis file: JARVIS-managed external sidecar; no Python local LLM inference path; `LlamaCppLLM` is HTTP client only; sidecar lifecycle belongs in `backend/app/services/local_llm_sidecar.py`; `config/models/llm.yaml` is the catalog authority for LLM artifacts and serve profiles; launch and generation tuning live in catalog metadata; acceleration is serve-profile metadata inside one runtime family; AMD64 and ARM64 move together; default managed local LLM port is `8080` with SearXNG moved to `8888` if needed; route-aware selection is explicit metadata now and advanced routing later.
+
+**Tandem host rule.** Slice R is shared code developed in tandem across Windows AMD64 and Windows ARM64. Most sub-slices are not ARM64-specific. If a sub-slice changes code, close it only after the change is validated on both AMD64 and ARM64, or after the unavailable host records an explicit degraded/skipped reason. `CHANGE_LOG.md` gets one entry for the code-change host and a second entry when the other architecture validates the same sub-slice. `SYSTEM_INVENTORY.md` gets no new capability item until R.9 completes on both AMD64 and ARM64.
+
+**Dependency order.** Do not test or validate a runtime before the prerequisites exist. The order is hardware/profile evidence, catalog/settings shape, model artifact fetch/verification, serve-profile resolution, command construction, sidecar lifecycle, HTTP runtime, selector/readiness, tandem validation, then governance. During development, target a lower quant GGUF model first, with configuration allowing the model/quant/profile to change later. CPU-only is the fallback profile for every host class.
+
+## R.0 — Hardware and Binary Evidence Census
+
+**Goal.** Non-mutating census of the hardware facts, sidecar binary evidence, and minimum viable host paths needed before any local LLM implementation starts.
 
 **Scope.**
+- Read current `HardwareProfile`, capability flags, and preflight evidence on the host doing the work.
+- Confirm which existing profile fields are sufficient for Slice R: OS, arch, CPU, memory, GPU/vendor/VRAM, CUDA, NPU/vendor/TOPS, device class, profile id, timestamp, local LLM flags, GPU/CUDA LLM flags, DirectML candidacy, and QNN availability.
+- Confirm whether current upstream `llama-server` release assets cover Windows AMD64 CPU-only and Windows ARM64 CPU-only without source compilation.
 - Enumerate available GGUF quantization levels (Q4, Q5, Q8) against ARM64 memory budget.
-- Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible server is needed.
-- If a prebuilt binary is available for Windows ARM64: document operator install path.
-- If source-build is required on ARM64: document as a `Degraded-memory-constrained` or `SKIP-build-toolchain` candidate.
-- Census recorded in `CHANGE_LOG.md` before R.1 begins.
+- Confirm whether `ollama serve` (already operational) is sufficient or whether a separate llama.cpp-compatible sidecar is justified.
+- Record which upstream server endpoints and command-line controls are stable enough to model in repo configuration.
+- Record the initial serve-profile vocabulary as metadata, not architecture: `cpu`, `gpu.cuda`, `gpu.hip`, `gpu.vulkan`, `gpu.metal`, `gpu.sycl`, `gpu.opencl`, `gpu.openvino`, `npu.cann`, `npu.qnn`, and `directml_candidate`.
+- Identify which accelerator paths are backed by binary/release evidence. Unproven paths remain declared/degraded only.
 
-**Acceptance.** Census table produced with close states for both host classes. No code changes.
+**Acceptance.** Census table produced with close states for Windows AMD64 CPU-only, Windows ARM64 CPU-only, Windows AMD64 GPU/CUDA candidates, and Windows ARM64 NPU/QNN candidates. No product code changes. The chosen managed-sidecar direction is recorded before R.1 begins.
 
 ---
 
-## R.1 — Local LLM Service + Runtime Adapter
+## R.1 — Local LLM Settings + Catalog Shape
 
-**Depends on:** R.0 census closes as viable on at least one host class.
+**Depends on:** R.0 census closes CPU-only as viable or degraded-but-representable on both AMD64 and ARM64.
 
-**Goal.** Local LLM turn completes via the local runtime; Ollama remains the explicit fallback; selector reports the correct active runtime.
+**Goal.** Extend the existing model/settings shape so local LLM models and sidecar serve profiles are declarative and repo-native.
 
 **Scope.**
-- Activate `LlamaCppLLM.is_available()` and `generate()` in `backend/app/runtimes/llm/local_runtime.py` (was `NotImplementedError` since B.3).
-- Local server endpoint configurable via `.env`; modeled after the Ollama endpoint pattern.
-- Selector updated to prefer local → Ollama → cloud per `config/app/policies.yaml`.
-- `BackendReadiness.llm_local_ready` and `llm_selected_runtime` populated from real probe evidence.
-- ARM64 acceptance: if model runs but is memory-constrained, close R.1 on ARM64 as `Degraded-memory-constrained` with documented memory parameters. This is a valid closeout state, not a failure.
+- Inspect and update `config/models/llm.yaml` so it can represent repo-managed local GGUF artifacts using the existing catalog pattern (`default_model`, `models`, `source`, `local_path`) rather than a parallel manifest.
+- Keep Ollama configuration distinguishable from repo-managed local model artifacts. Ollama models remain server-managed unless a later sub-slice proves otherwise.
+- Represent logical model id, source/provenance metadata, local GGUF path, supported routes, supported host classes, supported accelerator profiles, sidecar binary path per profile, serve host/port/base URL, launch tuning, generation defaults, and degraded/skip labels.
+- Make a lower quant model the development default. The catalog must allow changing model id, quant, local path, and serve profile without code changes.
+- Add only necessary settings to `backend/app/core/settings.py`, `.env.example`, and `/config/operator` for sidecar endpoint/lifecycle control: `LLAMA_CPP_BASE_URL`, `LLAMA_CPP_HOST`, `LLAMA_CPP_PORT`, `LLAMA_CPP_BINARY_PATH`, `LLAMA_CPP_MANAGED`, `LLAMA_CPP_MODEL_NAME`, and `LLAMA_CPP_TIMEOUT_SECONDS`. Keep existing `LLAMA_CPP_MODEL_PATH` as compatibility/evidence unless replaced by catalog-local paths with tests.
+- Treat `LLAMA_CPP_BASE_URL=http://127.0.0.1:8080` as the default managed local LLM endpoint. If that conflicts with SearXNG, move SearXNG to `8888` through existing config/status surfaces.
+- Include Windows AMD64 CPU-only and Windows ARM64 CPU-only profiles first. Add AMD64 GPU/CUDA and ARM64 NPU/QNN only as declared/degraded placeholders until binary, hardware, and runtime evidence exist.
+- Do not add Python inference dependencies.
 
-**Out of scope.** LLM device acceleration belongs to the local LLM runtime boundary as a separate capability decision.
+**Acceptance.** LLM catalog data loads through existing catalog code or a minimal helper layered on it; settings tests cover new local LLM controls; lower quant model is the default development target; CPU-only profile shape is present for Windows AMD64 and Windows ARM64; accelerator placeholders do not claim validation; existing STT/TTS catalog tests remain green; change is validated on both AMD64 and ARM64 before closeout.
 
-**Acceptance.** Runtime live: turn completes via local LLM on at least x64; Ollama fallback proven. ARM64: `PASS`, `Degraded-memory-constrained`, or `SKIP-no-viable-binary` — all acceptable with documentation.
+---
 
-**Finish line.** Local LLM is the preferred runtime on hosts where it is viable. Ollama remains the reliable fallback everywhere.
+## R.2 — Local LLM Model Artifact Fetch and Verification
+
+**Depends on:** R.1.
+
+**Goal.** Ensure the selected lower quant GGUF artifact can be acquired, located, and verified before any sidecar command or runtime test depends on it.
+
+**Scope.**
+- Extend the existing catalog/model acquisition path rather than adding a parallel downloader.
+- Use the catalog source metadata and local artifact path for the selected development model.
+- Verify model presence, expected filename/path, size or checksum metadata when available, and readable access from the backend process.
+- Record missing model as `Degraded-no-local-model-artifact`, not as a runtime failure.
+- Keep model artifacts under `models/`; never place model binaries under `backend/` or `config/`.
+
+**Acceptance.** Model artifact verification can pass or report a deterministic degraded reason without launching `llama-server`; lower quant development model path resolves through catalog metadata; tests cover present and missing artifact states; change is validated on both AMD64 and ARM64 before closeout.
+
+---
+
+## R.3 — Local LLM Serve Profile Resolution
+
+**Depends on:** R.2.
+
+**Goal.** Resolve the selected local model and serve profile from catalog metadata plus existing hardware profile, capability flags, and preflight evidence.
+
+**Scope.**
+- Add the smallest helper needed under existing model/routing ownership to select a serve profile for a requested route.
+- Inputs include requested route, `HardwareProfile`, `CapabilityFlags` or `FullCapabilityReport`, `PreflightResult`, settings, and `config/models/llm.yaml`.
+- Output records logical model id, route, serve profile id, local model path, binary path, base URL, accelerator label, launch tuning, generation defaults, selected reason, and degraded/fallback reason.
+- Supported route labels are explicit metadata only at this stage: `voice_chat`, `text_chat`, `research`, `code_plan`, `tool_plan`, `agent_plan_disabled`. Initial implementation may route all active routes to one model.
+- Windows x64 and Windows ARM64 use the same catalog shape. Linux/macOS may be represented as declared-not-validated only.
+- Selection order starts with the current host's CPU-only profile. Stronger accelerator profiles are selected only when profiler/preflight, binary, and model artifact evidence support them.
+- Unproven accelerator paths, including Qualcomm/QNN local LLM sidecar execution, must close as degraded/skipped until binary and runtime evidence exists.
+
+**Acceptance.** Unit tests cover Windows AMD64 CPU-only and Windows ARM64 CPU-only first, then AMD64 CUDA and ARM64 NPU/QNN degraded/skipped candidates. Missing binary and missing model artifact produce explicit degraded reasons. Existing Ollama/cloud/null fallback behavior remains reachable. Change is validated on both AMD64 and ARM64 before closeout.
+
+---
+
+## R.4 — Sidecar Command Builder
+
+**Depends on:** R.3.
+
+**Goal.** Translate a selected serve profile into a safe `llama-server` launch command without starting a process.
+
+**Scope.**
+- Create command construction in `backend/app/services/local_llm_sidecar.py` or an adjacent service-owned helper.
+- Use binary path from selected serve profile or settings override.
+- Use model path from selected catalog entry.
+- Pass host/port and launch tuning supported by the selected profile.
+- Treat unsupported tuning fields as explicit warnings/degraded evidence, not silent no-ops.
+- Never shell-concatenate untrusted strings; return an argv-style command list.
+- Translate the initial catalog tuning vocabulary only where supported by the selected sidecar: `ctx_size`, `threads`, `threads_batch`, `batch_size`, `ubatch_size`, `gpu_layers`, `device`, `split_mode`, `tensor_split`, `main_gpu`, `flash_attn`, `cache_type_k`, `cache_type_v`, `cache_ram_mb`, `parallel`, `cont_batching`, and `warmup`.
+- If port `8080` becomes the local LLM default, move the SearXNG default to `8888` through the existing config/service-status surfaces in the same or immediately adjacent sub-slice.
+
+**Acceptance.** Unit tests prove command construction for Windows AMD64 CPU-only and Windows ARM64 CPU-only profiles before accelerator profiles; AMD64 CUDA and ARM64 NPU/QNN command construction close as pass/degraded/skipped according to available evidence; invalid/missing binary path fails safely; invalid/missing model path fails safely; unsupported tuning keys are reported; no process is launched; change is validated on both AMD64 and ARM64 before closeout.
+
+---
+
+## R.5 — Sidecar Lifecycle Service
+
+**Depends on:** R.4.
+
+**Goal.** Let JARVIS start, stop, restart, and inspect the selected local LLM sidecar while keeping lifecycle separate from runtime selection and HTTP generation.
+
+**Scope.**
+- Implement sidecar lifecycle in `backend/app/services/local_llm_sidecar.py`.
+- Own process start, stop, restart, status, PID/process handle, last command, last selected profile, last error/degraded reason, and health probe delegation.
+- Do not own model selection policy, hardware profiling, catalog loading policy, prompt construction, or turn execution.
+- `LlamaCppLLM` remains an HTTP client and does not launch processes directly.
+- Lifecycle operations must be idempotent: starting an already-running matching sidecar is safe; stopping when no sidecar is running is safe.
+- Physical device parity is tracked through `docs/handoff.md` when validation moves between AMD64 and ARM64 hosts.
+
+**Acceptance.** Unit tests use mocked process creation; changed model/profile either restarts deterministically or reports restart-required; start failures produce degraded reasons; no unit tests require a real model; change is validated on both AMD64 and ARM64 before closeout.
+
+---
+
+## R.6 — `LlamaCppLLM` HTTP Runtime
+
+**Depends on:** R.5.
+
+**Goal.** Activate `backend/app/runtimes/llm/local_runtime.py::LlamaCppLLM` as an HTTP client for the managed sidecar endpoint.
+
+**Scope.**
+- Implement `is_available()` through sidecar health/model endpoints.
+- Implement `generate()` through a compatible completion route, preferring OpenAI-compatible endpoints when the selected sidecar supports them.
+- Base URL comes from selected sidecar status or settings.
+- Generation defaults come from selected model/profile metadata.
+- Generation defaults supported by catalog metadata include `temperature`, `top_p`, `top_k`, `repeat_penalty`, `max_tokens`, and `stop`.
+- Errors are clear and local-runtime-specific.
+- No Python inference bindings, `llama-cpp-python`, or in-process model loading.
+
+**Acceptance.** Mocked HTTP tests cover available/unavailable probe, successful generation, empty response, timeout/connection failure, invalid JSON, and unsupported endpoint response. `runtime_name()` remains stable. Existing Ollama tests still pass. Change is validated on both AMD64 and ARM64 before closeout.
+
+---
+
+## R.7 — Runtime Selection, Readiness, and Trace
+
+**Depends on:** R.6.
+
+**Goal.** Make `select_llm()` prefer viable managed local LLM, then Ollama, then policy-gated cloud, then null runtime, while exposing truthful readiness/status evidence.
+
+**Scope.**
+- Update `backend/app/routing/runtime_selector.py` without creating a second selector.
+- Extend selection trace only as needed to include runtime name, logical model id, requested route, serve profile id, accelerator, base URL, selected reason, and fallback/degraded reason.
+- Startup continues to use the same selector path.
+- Route selection is explicit metadata and never LLM-decided or agentic.
+- Initial route-aware implementation may route all active routes to one local model; the important behavior is traceable explicit route metadata.
+- Update readiness route/schema and startup state only where needed.
+- Surface active LLM runtime, selected logical model, selected serve profile, accelerator label, base URL, managed sidecar status, degraded/fallback reason, and route metadata if present.
+- Surface CPU-only fallback clearly when AMD64 GPU/CUDA or ARM64 NPU/QNN evidence is absent.
+- Desktop status/settings rendering changes are allowed only after backend truth exists and must remain adapter-thin.
+
+**Acceptance.** Tests prove local preferred when viable, Ollama fallback when local is degraded, cloud remains policy-gated, null runtime reports a clear reason, startup uses the same path, readiness reflects selected/degraded local LLM truth, and no readiness field claims QNN/CUDA/Metal/etc. validation without evidence. Change is validated on both AMD64 and ARM64 before closeout.
+
+---
+
+## R.8 — Tandem Live Local LLM Validation
+
+**Depends on:** R.7.
+
+**Goal.** Validate the completed local LLM path on both AMD64 and ARM64 after hardware evidence, model artifact verification, sidecar lifecycle, HTTP runtime, and selector/readiness are already in place.
+
+**Scope.**
+- Add live-gated runtime tests for sidecar availability and generation.
+- Add a live-gated turn test only after sidecar generation is proven.
+- Keep Ollama fallback live tests.
+- Validate CPU-only first on the architecture that developed the code change, then validate the same sub-slice on the other architecture.
+- Validate AMD64 GPU/CUDA and ARM64 NPU/QNN only after both CPU-only paths are truthful.
+- Accelerator and unavailable-host paths may close as `PASS`, `SKIP-no-viable-binary`, `Degraded-no-local-model-artifact`, `Degraded-memory-constrained`, `Degraded-accelerator-unavailable`, or `Degraded-sidecar-unreachable` with evidence.
+- Update `docs/handoff.md` before switching devices so the next host can continue the same sub-slice without relying on chat history.
+
+**Acceptance.** Runtime live: a turn completes via local LLM on Windows AMD64 CPU-only and Windows ARM64 CPU-only when model/binary are present. AMD64 GPU/CUDA and ARM64 NPU/QNN close states are explicit and evidence-backed. Ollama fallback remains proven. Each code-changing sub-slice has a code-change log entry from the development host and a second validation log entry from the other host.
+
+---
+
+## R.9 — Governance and Closeout
+
+**Depends on:** R.8 completes on both AMD64 and ARM64.
+
+**Goal.** Reconcile docs and inventory only after behavior is proven.
+
+**Scope.**
+- Update `CHANGE_LOG.md` with exact validation evidence.
+- Update `SYSTEM_INVENTORY.md` only after both AMD64 and ARM64 have completed R.8 or recorded explicit degraded/skipped close states.
+- Update `repo_tree.md` only if actual ownership text changed.
+- Update `docs/handoff.md` with the latest sub-slice, host class, validation, and next host before changing devices.
+- Update active Slice R status only after validation evidence exists.
+
+**Required validation.**
+```powershell
+backend\.venv\Scripts\python scripts\validate_backend.py unit
+backend\.venv\Scripts\python scripts\validate_backend.py regression
+git diff --check
+```
+
+If desktop files change:
+```powershell
+node desktop\tests\static.test.mjs
+```
+
+**Acceptance.** Changelog records tandem sub-slice evidence from both host classes; inventory claims only proven behavior after both AMD64 and ARM64 close; Linux/macOS profiles remain declared-not-validated unless actually validated; ARM64/QNN profile is either proven or truthfully degraded/skipped; no Python local LLM inference dependency exists.
+
+**Finish line.** Local LLM is the preferred runtime on hosts where a managed sidecar is viable. Ollama remains the reliable fallback everywhere. The repo uses one LLM runtime family, one model catalog authority, one sidecar lifecycle service, one HTTP local runtime client, and one selector path.
 
 ---
 
