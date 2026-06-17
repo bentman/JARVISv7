@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 12:57
+  - Summary: Completed the Slice R.1 ARM64 validation leg for local LLM settings and catalog shape. The existing R.1 catalog/settings changes loaded and tested on Windows ARM64 with CPU-only shape present and QNN retained as a degraded placeholder.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.1 surfaces in `config/models/llm.yaml`, `.env.example`, `backend/app/core/settings.py`, `backend/app/models/catalog.py`, and related unit tests.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\routing\test_runtime_selector.py backend\tests\unit\runtimes\llm\test_llm_runtime.py backend\tests\unit\scripts\test_ensure_models_script.py -q` PASS (`30 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260617175623-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`).
+  - Note: No product code or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.1 remains declarative only; local llama.cpp runtime behavior is still not activated.
+
 - 2026-06-17 11:55
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.1 local LLM settings and catalog shape. Added declarative llama.cpp sidecar settings, made the LLM catalog load through the existing catalog pattern, declared a lower-quant GGUF development default, moved the SearXNG default to `8888`, and kept accelerator profiles evidence-gated.
   - Scope: `.env.example`, `backend/app/core/settings.py`, `config/models/llm.yaml`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`

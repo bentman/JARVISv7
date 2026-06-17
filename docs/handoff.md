@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 12:57 -05:00 — R.1 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.1 local LLM settings and catalog shape.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.1 settings and catalog shape on ARM64 without product code changes. `config/models/llm.yaml` defaults to lower-quant `assistant-small-q4`, includes `windows_arm64_cpu`, keeps `windows_arm64_qnn` as `declared-degraded` with `SKIP-no-viable-binary`, and keeps llama.cpp declarative only.
+- Validation run: Focused R.1 pytest passed (`30 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`116 passed, 4 deselected`, report `reports\validation\20260617175623-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.1 is now validated on both AMD64 and ARM64 according to the tandem host rule. No `SYSTEM_INVENTORY.md` update; R.1 added declarative shape/settings only and did not activate local llama.cpp runtime behavior.
+- Next needed: Start R.2 local LLM model artifact fetch and verification. Do not launch or validate a sidecar before R.2 verifies or degrades the selected lower-quant GGUF artifact path.
+- Next host class: Either host can begin R.2, but code-changing work must validate on both AMD64 and ARM64 or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 11:55 -05:00 — R.1 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.1 local LLM settings and catalog shape.
