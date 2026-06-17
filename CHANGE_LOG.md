@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 18:46
+  - Summary: Completed the Windows AMD64 code-change leg of Slice R.7 runtime selection, readiness, and trace. Extended the existing LLM selector to prefer viable managed local llama.cpp, then Ollama, then policy-gated cloud, then null, and surfaced selector trace metadata through startup state and readiness without claiming unvalidated accelerator paths.
+  - Scope: `backend/app/routing/runtime_selector.py`, `backend/app/api/app.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/routing/test_runtime_selector.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`, `docs/handoff.md`
+  - Host class(es): Windows AMD64 / amd64 current workspace; Windows ARM64 validation pending per Slice R tandem rule.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\routing\test_runtime_selector.py backend\tests\unit\api\test_routes.py backend\tests\unit\runtimes\llm\test_llm_runtime.py` PASS (`58 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617234636-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No model artifact was downloaded, no real sidecar process was launched, no live completion was attempted, and no `SYSTEM_INVENTORY.md` update was made. Real local llama.cpp completion remains required in R.8 before Slice R closeout.
+
 - 2026-06-17 18:40
   - Summary: Completed the Slice R.6 ARM64 validation leg for the `LlamaCppLLM` HTTP runtime. The existing R.6 runtime passed Windows ARM64 mocked HTTP validation for availability probing, OpenAI-compatible chat completion, generation defaults, error handling, stable runtime naming, and default-disabled behavior before R.7 selection changes.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.6 surfaces in `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, and `backend/tests/unit/routing/test_runtime_selector.py`.

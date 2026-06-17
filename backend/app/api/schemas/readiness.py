@@ -11,6 +11,12 @@ class FamilyReadiness(BaseModel):
     model: str
     ready: bool
     reason: str
+    route: str | None = None
+    serve_profile_id: str | None = None
+    accelerator: str | None = None
+    base_url: str | None = None
+    selected_reason: str | None = None
+    degraded_reason: str | None = None
 
 
 class PreflightSummary(BaseModel):

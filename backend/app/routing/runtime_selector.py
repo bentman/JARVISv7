@@ -21,6 +21,13 @@ from backend.app.runtimes.llm.zai_runtime import ZaiLLM
 class SelectionTrace:
     runtime_name: str
     reason: str
+    model_id: str | None = None
+    route: str | None = None
+    serve_profile_id: str | None = None
+    accelerator: str | None = None
+    base_url: str | None = None
+    selected_reason: str | None = None
+    degraded_reason: str | None = None
 
 
 class NullLLMRuntime(LLMBase):
@@ -56,22 +63,46 @@ def select_llm(
     policy: dict[str, Any],
     preflight: PreflightResult,
     profile: HardwareProfile,
+    local: LlamaCppLLM | None = None,
     ollama: OllamaLLM | None = None,
 ) -> tuple[LLMBase, SelectionTrace]:
-    local = LlamaCppLLM()
-    if local.is_available():
-        return local, SelectionTrace(local.runtime_name(), "local llama.cpp available")
+    local_runtime = local or LlamaCppLLM()
+    if local_runtime.is_available():
+        return local_runtime, _local_trace(local_runtime, "local llama.cpp available")
+    local_degraded_reason = getattr(local_runtime, "reason", "local llama.cpp unavailable")
 
     ollama_runtime = ollama or OllamaLLM()
     if ollama_runtime.is_available():
-        return ollama_runtime, SelectionTrace("ollama", ollama_runtime.reason)
+        return ollama_runtime, SelectionTrace(
+            "ollama",
+            ollama_runtime.reason,
+            degraded_reason=local_degraded_reason,
+        )
 
     for runtime in _cloud_runtimes(policy):
         if runtime.is_available():
-            return runtime, SelectionTrace(runtime.runtime_name(), getattr(runtime, "reason", "available"))
+            return runtime, SelectionTrace(
+                runtime.runtime_name(),
+                getattr(runtime, "reason", "available"),
+                degraded_reason=local_degraded_reason,
+            )
 
-    reason = "no LLM runtime available"
+    reason = f"no LLM runtime available; local={local_degraded_reason}; ollama={ollama_runtime.reason}"
     return NullLLMRuntime(reason), SelectionTrace("null", reason)
+
+
+def _local_trace(local: LlamaCppLLM, reason: str) -> SelectionTrace:
+    return SelectionTrace(
+        runtime_name=local.runtime_name(),
+        reason=reason,
+        model_id=getattr(local, "model", None),
+        route=getattr(local, "route", None),
+        serve_profile_id=getattr(local, "serve_profile_id", None),
+        accelerator=getattr(local, "accelerator", None),
+        base_url=getattr(local, "base_url", None),
+        selected_reason=getattr(local, "selected_reason", None),
+        degraded_reason=getattr(local, "reason", None),
+    )
 
 
 def select_search_runtime(settings: Settings) -> tuple[SearchBase, SelectionTrace]:

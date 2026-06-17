@@ -25,6 +25,10 @@ class LlamaCppLLM(LLMBase):
         timeout: float | None = None,
         sidecar_status: Callable[[], LocalLLMSidecarStatus] | None = None,
         managed: bool | None = None,
+        route: str | None = None,
+        serve_profile_id: str | None = None,
+        accelerator: str | None = None,
+        selected_reason: str | None = None,
     ) -> None:
         settings = load_settings()
         self._explicit_base_url = base_url is not None
@@ -34,6 +38,10 @@ class LlamaCppLLM(LLMBase):
         self.timeout = timeout if timeout is not None else settings.llama_cpp_timeout_seconds
         self.sidecar_status = sidecar_status
         self.managed = settings.llama_cpp_managed if managed is None else managed
+        self.route = route
+        self.serve_profile_id = serve_profile_id
+        self.accelerator = accelerator
+        self.selected_reason = selected_reason
         self.reason = "not probed"
 
     def is_available(self) -> bool:
@@ -83,6 +91,14 @@ class LlamaCppLLM(LLMBase):
                 return False
             if status.base_url:
                 self.base_url = status.base_url.rstrip("/")
+            if status.model_id:
+                self.model = status.model_id
+            if status.route:
+                self.route = status.route
+            if status.serve_profile_id:
+                self.serve_profile_id = status.serve_profile_id
+            if status.accelerator:
+                self.accelerator = status.accelerator
             return True
 
         if self._explicit_base_url or self.managed:

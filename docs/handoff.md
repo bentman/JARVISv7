@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 18:46 -05:00 — R.7 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.7 runtime selection, readiness, and trace.
+- Last worked on: Windows AMD64.
+- Most recent change: Extended the existing `select_llm()` path to prefer viable managed local llama.cpp, then Ollama, then policy-gated cloud, then null. `SelectionTrace` now carries optional local model/route/serve profile/accelerator/base URL/selected/degraded metadata. Startup state stores the LLM trace, and `/readiness` surfaces LLM trace metadata without claiming CUDA/QNN validation.
+- Validation run: Focused R.7 pytest passed (`58 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617234636-regression.txt`); `git diff --check` passed with line-ending warnings only. Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: No model artifact was downloaded, no real sidecar process was launched, no live completion was attempted, and no `SYSTEM_INVENTORY.md` update was made. Real local llama.cpp completion remains required in R.8 before Slice R closeout.
+- Next needed: Windows ARM64 should run focused R.7 pytest, regression, and diff check against the same changes. After R.7 validates on both hosts, proceed to R.8 tandem live local LLM validation with real model/binary/sidecar evidence.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 18:40 -05:00 — R.6 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.6 `LlamaCppLLM` HTTP runtime.

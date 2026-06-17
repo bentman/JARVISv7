@@ -29,7 +29,7 @@ from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
-from backend.app.routing.runtime_selector import select_llm
+from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.services.session_service import SessionService
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.wake_monitor import WakeMonitorService
@@ -56,6 +56,7 @@ class ApiState:
     wake_monitor: WakeMonitorService
     cache_manager: CacheManager
     resident_voice: ResidentVoiceInvocationService | None = None
+    llm_trace: SelectionTrace | None = None
 
 
 def _derive_readiness(preflight: PreflightResult, profile: HardwareProfile) -> ReadinessMap:
@@ -103,7 +104,7 @@ def build_startup_state() -> ApiState:
     personality = load_default_personality()
     stt = select_stt_runtime(preflight, profile)
     tts = select_tts_runtime(preflight, profile)
-    llm, _llm_trace = select_llm(_load_runtime_policy(), preflight, profile)
+    llm, llm_trace = select_llm(_load_runtime_policy(), preflight, profile)
     session_manager = SessionManager()
     cache_manager = CacheManager()
     state = ApiState(
@@ -122,6 +123,7 @@ def build_startup_state() -> ApiState:
         resident_voice=None,  # type: ignore[arg-type]
         wake_monitor=None,  # type: ignore[arg-type]
         cache_manager=cache_manager,
+        llm_trace=llm_trace,
     )
     state.engine = build_engine(state, session_manager)
     state.session_service = SessionService(

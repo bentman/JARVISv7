@@ -21,6 +21,7 @@ from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.session_service import SessionService
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.wake_monitor import WakeMonitorService
+from backend.app.routing.runtime_selector import SelectionTrace
 
 
 class _FakeSTT:
@@ -63,6 +64,16 @@ class _FakeLLM:
 
     def generate(self, prompt: str, **kwargs: object) -> str:
         return f"response to {prompt}"
+
+
+class _FakeLocalLLM(_FakeLLM):
+    def runtime_name(self) -> str:
+        return "llama.cpp"
+
+
+class _FakeOllamaLLM(_FakeLLM):
+    def runtime_name(self) -> str:
+        return "ollama"
 
 
 class _FakeWakeRuntime:
@@ -260,6 +271,55 @@ def test_readiness_returns_family_readiness() -> None:
     assert payload["families"]["llm"]["runtime"] == "fake-llm"
     assert payload["families"]["wake"]["runtime"] == "openwakeword"
     assert payload["families"]["wake"]["ready"] is True
+
+
+def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
+    state = _state()
+    state.llm = _FakeLocalLLM()  # type: ignore[assignment]
+    state.llm_trace = SelectionTrace(
+        runtime_name="llama.cpp",
+        reason="local llama.cpp available",
+        model_id="assistant-small-q4",
+        route="voice_chat",
+        serve_profile_id="windows_amd64_cpu",
+        accelerator="cpu",
+        base_url="http://127.0.0.1:8080",
+        selected_reason="selected current-host CPU serve profile windows_amd64_cpu",
+    )
+
+    response = TestClient(create_app(state)).get("/readiness")
+    llm = response.json()["families"]["llm"]
+
+    assert response.status_code == 200
+    assert llm["runtime"] == "llama.cpp"
+    assert llm["ready"] is True
+    assert llm["model"] == "assistant-small-q4"
+    assert llm["route"] == "voice_chat"
+    assert llm["serve_profile_id"] == "windows_amd64_cpu"
+    assert llm["accelerator"] == "cpu"
+    assert llm["base_url"] == "http://127.0.0.1:8080"
+    assert llm["selected_reason"] == "selected current-host CPU serve profile windows_amd64_cpu"
+    assert llm["degraded_reason"] is None
+
+
+def test_readiness_returns_llm_fallback_degraded_reason() -> None:
+    state = _state()
+    state.llm = _FakeOllamaLLM()  # type: ignore[assignment]
+    state.llm_trace = SelectionTrace(
+        runtime_name="ollama",
+        reason="test ollama available",
+        degraded_reason="Degraded-no-local-model-artifact",
+    )
+
+    response = TestClient(create_app(state)).get("/readiness")
+    llm = response.json()["families"]["llm"]
+
+    assert response.status_code == 200
+    assert llm["runtime"] == "ollama"
+    assert llm["ready"] is True
+    assert llm["reason"] == "test ollama available"
+    assert llm["degraded_reason"] == "Degraded-no-local-model-artifact"
+    assert llm["accelerator"] is None
 
 
 def test_readiness_returns_additive_service_status(monkeypatch) -> None:
