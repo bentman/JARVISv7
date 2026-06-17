@@ -12,12 +12,177 @@ from backend.app.routing.runtime_selector import NullLLMRuntime
 
 
 def test_local_runtime_is_available_returns_false():
-    assert LlamaCppLLM().is_available() is False
+    runtime = LlamaCppLLM()
+
+    assert runtime.is_available() is False
+    assert "disabled" in runtime.reason
 
 
-def test_local_runtime_generate_raises_not_implemented():
-    with pytest.raises(NotImplementedError, match="not wired as a verified runtime"):
-        LlamaCppLLM().generate("hello")
+def test_local_runtime_is_available_true_when_models_endpoint_reachable(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.get",
+        lambda *args, **kwargs: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"data": [{"id": "assistant-small-q4"}]},
+        ),
+    )
+    runtime = LlamaCppLLM(base_url="http://test", model="assistant-small-q4")
+
+    assert runtime.is_available() is True
+    assert runtime.reason == "llama.cpp /v1/models reachable"
+
+
+def test_local_runtime_is_available_falls_back_to_health_endpoint(monkeypatch):
+    calls = []
+
+    def fake_get(url, *, timeout):
+        calls.append((url, timeout))
+        if url.endswith("/v1/models"):
+            raise RuntimeError("models route missing")
+        return SimpleNamespace(raise_for_status=lambda: None)
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.get", fake_get)
+    runtime = LlamaCppLLM(base_url="http://test", model="assistant-small-q4")
+
+    assert runtime.is_available() is True
+    assert runtime.reason == "llama.cpp health endpoint reachable"
+    assert calls[0] == ("http://test/v1/models", 10.0)
+    assert calls[1] == ("http://test/health", 10.0)
+
+
+def test_local_runtime_is_available_false_when_sidecar_status_not_running():
+    runtime = LlamaCppLLM(
+        sidecar_status=lambda: SimpleNamespace(
+            running=False,
+            base_url="http://test",
+            degraded_reason="sidecar stopped",
+            last_error=None,
+        )
+    )
+
+    assert runtime.is_available() is False
+    assert runtime.reason == "sidecar stopped"
+
+
+def test_local_runtime_is_available_false_when_probe_unavailable(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("offline")),
+    )
+    runtime = LlamaCppLLM(base_url="http://test", model="assistant-small-q4")
+
+    assert runtime.is_available() is False
+    assert "offline" in runtime.reason
+
+
+def test_local_runtime_is_available_false_on_invalid_models_payload(monkeypatch):
+    calls = []
+
+    def fake_get(url, *, timeout):
+        calls.append(url)
+        if url.endswith("/v1/models"):
+            return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"bad": []})
+        raise RuntimeError("no health")
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.get", fake_get)
+    runtime = LlamaCppLLM(base_url="http://test", model="assistant-small-q4")
+
+    assert runtime.is_available() is False
+    assert "invalid payload" in runtime.reason
+
+
+def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append((url, json, timeout))
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready"}}]},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+    runtime = LlamaCppLLM(
+        base_url="http://test",
+        model="assistant-small-q4",
+        timeout=7.0,
+        generation_defaults={
+            "temperature": 0.4,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 256,
+            "stop": ["\nUser:"],
+        },
+    )
+
+    assert runtime.generate("Reply ready") == "ready"
+    assert calls == [
+        (
+            "http://test/v1/chat/completions",
+            {
+                "model": "assistant-small-q4",
+                "messages": [{"role": "user", "content": "Reply ready"}],
+                "stream": False,
+                "temperature": 0.4,
+                "top_p": 0.9,
+                "top_k": 40,
+                "repeat_penalty": 1.08,
+                "max_tokens": 256,
+                "stop": ["\nUser:"],
+            },
+            7.0,
+        )
+    ]
+
+
+def test_local_runtime_generate_fails_on_empty_response(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.post",
+        lambda *args, **kwargs: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": ""}}]},
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="empty response"):
+        LlamaCppLLM(base_url="http://test").generate("hello")
+
+
+def test_local_runtime_generate_fails_on_timeout_or_connection_failure(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.post",
+        lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("timeout")),
+    )
+
+    with pytest.raises(RuntimeError, match="llama.cpp chat completion failed"):
+        LlamaCppLLM(base_url="http://test").generate("hello")
+
+
+def test_local_runtime_generate_fails_on_invalid_json_payload(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.post",
+        lambda *args, **kwargs: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: [],
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="invalid JSON payload"):
+        LlamaCppLLM(base_url="http://test").generate("hello")
+
+
+def test_local_runtime_generate_fails_on_unsupported_endpoint_response(monkeypatch):
+    def raise_unsupported():
+        raise RuntimeError("HTTP 404")
+
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.post",
+        lambda *args, **kwargs: SimpleNamespace(raise_for_status=raise_unsupported),
+    )
+
+    with pytest.raises(RuntimeError, match="HTTP 404"):
+        LlamaCppLLM(base_url="http://test").generate("hello")
 
 
 def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():

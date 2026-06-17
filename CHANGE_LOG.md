@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 18:35
+  - Summary: Completed the Windows AMD64 code-change leg of Slice R.6 `LlamaCppLLM` HTTP runtime. Activated `LlamaCppLLM` as an HTTP client for a managed llama.cpp sidecar endpoint using OpenAI-compatible `/v1/models` and `/v1/chat/completions`, while leaving runtime selection unchanged until R.7.
+  - Scope: `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `CHANGE_LOG.md`, `docs/handoff.md`
+  - Host class(es): Windows AMD64 / amd64 current workspace; Windows ARM64 validation pending per Slice R tandem rule.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_runtime.py backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\routing\test_runtime_selector.py` PASS (`40 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617233539-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: HTTP tests are mocked for this sub-slice. No model artifact was downloaded, no real sidecar process was launched, no runtime selection behavior was changed, and no `SYSTEM_INVENTORY.md` update was made. Real local llama.cpp completion remains required before Slice R closeout.
+
 - 2026-06-17 18:24
   - Summary: Completed the Slice R.5 ARM64 validation leg for the sidecar lifecycle service. The existing R.5 service passed Windows ARM64 validation for mocked process start/stop/restart/status behavior, restart-required reporting, degraded start failures, and health probe delegation while keeping lifecycle separate from runtime selection and HTTP generation.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.5 surfaces in `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, and `backend/tests/unit/runtimes/llm/test_llm_runtime.py`.

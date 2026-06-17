@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 18:35 -05:00 — R.6 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.6 `LlamaCppLLM` HTTP runtime.
+- Last worked on: Windows AMD64.
+- Most recent change: Activated `backend/app/runtimes/llm/local_runtime.py::LlamaCppLLM` as an HTTP client for the managed sidecar endpoint. It probes `/v1/models` with health fallback, calls `/v1/chat/completions`, maps generation defaults into OpenAI-compatible payloads, keeps `runtime_name()` stable, and remains disabled by default unless explicitly configured or supplied sidecar status so R.7 still owns selection changes.
+- Validation run: Focused R.6 pytest passed (`40 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617233539-regression.txt`); `git diff --check` passed with line-ending warnings only. Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: HTTP tests are mocked for this sub-slice. No model artifact was downloaded, no real sidecar process was launched, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made. Real local llama.cpp completion must still be validated before Slice R closeout.
+- Next needed: Windows ARM64 should run focused R.6 pytest, regression, and diff check against the same changes. Confirm default-disabled behavior still prevents accidental local runtime selection before R.7.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 18:24 -05:00 — R.5 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.5 sidecar lifecycle service.
