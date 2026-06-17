@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 11:45
+  - Summary: Completed Slice R.0 hardware and binary evidence census. Recorded the non-mutating AMD64/ARM64 close states and selected the JARVIS-managed `llama-server`-class sidecar direction before R.1.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; inspected `AGENTS.md`, `20260616_slice-r.md`, `slices.md`, `config/models/llm.yaml`, `backend/app/runtimes/llm/local_runtime.py`, `scripts/ensure_models.py`, and current upstream llama.cpp/Ollama documentation.
+  - Host class(es): Windows ARM64 / arm64 current workspace; Windows AMD64 / amd64 evidence carried from `docs/handoff.md` 2026-06-17 11:34 entry.
+  - Evidence: `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS on ARM64 (`arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`; Qualcomm NPU/QNN available; CUDA unavailable; 15.61 GB RAM). Upstream llama.cpp release `b9682` listed Windows x64 CPU, Windows arm64 CPU, Windows x64 CUDA 12/13, Vulkan, OpenVINO, SYCL, and HIP assets; no Windows arm64 QNN sidecar asset was observed. Repo evidence confirmed local llama.cpp remains not wired and Ollama remains the existing LLM model-manager/runtime path.
+  - Note: No product code or `SYSTEM_INVENTORY.md` update; R.0 produced census evidence only. R.0 close states: AMD64 CPU-only `PASS-binary-available`; ARM64 CPU-only `PASS-binary-available`; AMD64 GPU/CUDA candidate `PASS-binary-available-not-runtime-validated`; ARM64 NPU/QNN candidate `SKIP-no-viable-binary`.
+
 - 2026-06-15 14:46
   - Summary: Completed Slice Q.9 repo-tree governance reconciliation. Updated `repo_tree.md` to match the current post-Q backend route/service, wake status, agent spec, realtime conversation, and desktop module boundaries.
   - Scope: `repo_tree.md`

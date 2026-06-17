@@ -4,6 +4,18 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 11:45 -05:00 — R.0 hardware/binary census closed on ARM64
+
+- Active slice/sub-slice: Slice R / R.0 hardware and binary evidence census.
+- Last worked on: Windows ARM64.
+- Most recent change: Non-mutating census closeout. Current host is ARM64 Windows laptop, 10 logical cores, 15.61 GB RAM, Qualcomm NPU present, QNN available, CUDA unavailable, DirectML candidate true. Existing AMD64 handoff evidence records a Windows AMD64 laptop with NVIDIA RTX 3060 12 GB VRAM, CUDA available, Intel NPU present, QNN unavailable, and local/GPU/CUDA LLM flags true.
+- Validation run: `backend\.venv\Scripts\python scripts\validate_backend.py profile` passed on ARM64. Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- R.0 notes: Upstream llama.cpp release `b9682` lists Windows x64 CPU and Windows arm64 CPU assets, so CPU-only sidecar binaries are viable without source compilation for both target host classes. It also lists Windows x64 CUDA 12/13, Vulkan, OpenVINO, SYCL, and HIP assets. No Windows arm64 QNN sidecar asset was observed, so ARM64 NPU/QNN remains declared/degraded only. Repo state still has local llama.cpp not wired: `config/models/llm.yaml` marks `local.state: not_wired`, `LlamaCppLLM` is unavailable/NotImplemented, and `scripts/ensure_models.py` treats LLM as `ollama_manages_models`.
+- R.0 close state: Windows AMD64 CPU-only `PASS-binary-available`; Windows ARM64 CPU-only `PASS-binary-available`; Windows AMD64 GPU/CUDA candidate `PASS-binary-available-not-runtime-validated`; Windows ARM64 NPU/QNN candidate `SKIP-no-viable-binary`.
+- Chosen direction before R.1: proceed with a JARVIS-managed external `llama-server`-class sidecar, with Ollama retained as existing fallback and model-manager path until later sub-slices wire repo-managed GGUF artifacts.
+- Next needed: Start R.1 local LLM settings and catalog shape. Continue one sub-slice at a time and preserve AMD64/ARM64 evidence separately.
+- Next host class: Windows AMD64 or Windows ARM64 can start R.1, but any code-changing sub-slice must validate on both host classes or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 11:34 -05:00 — R.0 hardware/binary census on AMD64
 
 - Active slice/sub-slice: Slice R / R.0 hardware and binary evidence census.
