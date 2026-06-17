@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:15 -05:00 — R.3 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.3 local LLM serve profile resolution.
+- Last worked on: Windows AMD64.
+- Most recent change: Added `backend/app/models/llm_profiles.py` as a resolution-only helper under model/catalog ownership. It selects the current host CPU-only llama.cpp serve profile, returns model id, route, profile id, model path, binary path, base URL, accelerator, launch tuning, generation defaults, selected reason, and degraded evidence. Missing local GGUF and missing `llama-server.exe` report degraded reasons; AMD64 CUDA and ARM64 QNN remain degraded/skipped candidates until later binary/model/runtime evidence exists.
+- Validation run: Focused R.3 pytest passed (`20 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617181533-regression.txt`); `git diff --check` passed. Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: No model artifact was downloaded, no sidecar command was built, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made. R.3 is not complete until Windows ARM64 validates the same resolver behavior or records an explicit degraded/skipped reason.
+- Next needed: Windows ARM64 should run focused R.3 pytest, regression, and diff check against the same changes. Confirm ARM64 CPU profile selection and QNN skipped/degraded candidate behavior.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 13:09 -05:00 — R.2 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.2 local LLM model artifact fetch and verification.
