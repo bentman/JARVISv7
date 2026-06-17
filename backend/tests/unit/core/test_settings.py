@@ -12,6 +12,13 @@ ENV_NAMES = (
     "USE_LOCAL_MODEL",
     "LOCAL_MODEL_FETCH",
     "LLAMA_CPP_MODEL_PATH",
+    "LLAMA_CPP_BASE_URL",
+    "LLAMA_CPP_HOST",
+    "LLAMA_CPP_PORT",
+    "LLAMA_CPP_BINARY_PATH",
+    "LLAMA_CPP_MANAGED",
+    "LLAMA_CPP_MODEL_NAME",
+    "LLAMA_CPP_TIMEOUT_SECONDS",
     "USE_OLLAMA",
     "OLLAMA_BASE_URL",
     "JARVISV7_OLLAMA_URL",
@@ -44,6 +51,13 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "USE_LOCAL_MODEL",
     "LOCAL_MODEL_FETCH",
     "LLAMA_CPP_MODEL_PATH",
+    "LLAMA_CPP_BASE_URL",
+    "LLAMA_CPP_HOST",
+    "LLAMA_CPP_PORT",
+    "LLAMA_CPP_BINARY_PATH",
+    "LLAMA_CPP_MANAGED",
+    "LLAMA_CPP_MODEL_NAME",
+    "LLAMA_CPP_TIMEOUT_SECONDS",
     "USE_OLLAMA",
     "OLLAMA_BASE_URL",
     "OLLAMA_MODEL",
@@ -166,6 +180,52 @@ def test_settings_allow_legacy_jarvisv7_ollama_url_alias(monkeypatch, tmp_path):
     assert settings.ollama_model == "env-model"
 
 
+def test_llama_cpp_sidecar_settings_read_from_env(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "\n".join(
+            [
+                "LLAMA_CPP_MODEL_PATH=models/llm/dev/model.gguf",
+                "LLAMA_CPP_BASE_URL=http://127.0.0.1:18080",
+                "LLAMA_CPP_HOST=127.0.0.2",
+                "LLAMA_CPP_PORT=18080",
+                "LLAMA_CPP_BINARY_PATH=runtimes/llama.cpp/llama-server.exe",
+                "LLAMA_CPP_MANAGED=true",
+                "LLAMA_CPP_MODEL_NAME=dev-q4",
+                "LLAMA_CPP_TIMEOUT_SECONDS=12.5",
+            ]
+        )
+        + "\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.llama_cpp_model_path == "models/llm/dev/model.gguf"
+    assert settings.llama_cpp_base_url == "http://127.0.0.1:18080"
+    assert settings.llama_cpp_host == "127.0.0.2"
+    assert settings.llama_cpp_port == 18080
+    assert settings.llama_cpp_binary_path == "runtimes/llama.cpp/llama-server.exe"
+    assert settings.llama_cpp_managed is True
+    assert settings.llama_cpp_model_name == "dev-q4"
+    assert settings.llama_cpp_timeout_seconds == 12.5
+
+
+def test_llama_cpp_sidecar_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, None, None)
+
+    settings = settings_module.load_settings()
+
+    assert settings.llama_cpp_base_url == "http://127.0.0.1:8080"
+    assert settings.llama_cpp_host == "127.0.0.1"
+    assert settings.llama_cpp_port == 8080
+    assert settings.llama_cpp_binary_path is None
+    assert settings.llama_cpp_managed is False
+    assert settings.llama_cpp_model_name is None
+    assert settings.llama_cpp_timeout_seconds == 30.0
+
+
 def test_redis_settings_read_from_env(monkeypatch, tmp_path):
     settings_module = _reload_settings(
         monkeypatch,
@@ -218,7 +278,7 @@ def test_search_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
     settings = settings_module.load_settings()
 
     assert settings.use_searxng is True
-    assert settings.searxng_base_url == "http://127.0.0.1:8080"
+    assert settings.searxng_base_url == "http://127.0.0.1:8888"
     assert settings.use_ddgs is True
     assert settings.use_tavily is False
     assert settings.tavily_api_key == ""
@@ -260,6 +320,13 @@ def test_env_example_covers_current_settings_env_variables():
     assert values["OLLAMA_BASE_URL"]
     assert values["OLLAMA_MODEL"]
     assert values["OLLAMA_NUM_CTX"]
+    assert values["LLAMA_CPP_BASE_URL"] == "http://127.0.0.1:8080"
+    assert values["LLAMA_CPP_HOST"] == "127.0.0.1"
+    assert values["LLAMA_CPP_PORT"] == "8080"
+    assert values["LLAMA_CPP_MODEL_NAME"] == "assistant-small-q4"
+    assert values["LLAMA_CPP_TIMEOUT_SECONDS"] == "30"
+    assert values["SEARXNG_BASE_URL"] == "http://127.0.0.1:8888"
     assert values["JARVISV7_LIVE_TESTS"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["LOCAL_MODEL_FETCH"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+    assert values["LLAMA_CPP_MANAGED"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["PICOVOICE_ACCESS_KEY"] in {"", "<placeholder>", "<secret>"}

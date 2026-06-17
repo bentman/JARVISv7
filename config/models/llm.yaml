@@ -1,9 +1,111 @@
+default_model: assistant-small-q4
+
 ollama:
   base_url: ${OLLAMA_BASE_URL}
   model: ${OLLAMA_MODEL}
   num_ctx: ${OLLAMA_NUM_CTX}
   version_note: "Ollama HTTP API validated with local phi4-mini; host-specific context is env-owned."
 
-local:
-  model_path: ${LLAMA_CPP_MODEL_PATH}
-  state: not_wired
+models:
+  assistant-small-q4:
+    family: llm
+    runtime: llama_cpp
+    format: gguf
+    quantization: q4_k_m
+    local_path: models/llm/assistant-small-q4/model.gguf
+    source:
+      type: declared
+      note: "R.1 catalog shape only; R.2 selects and verifies the concrete lower-quant GGUF artifact."
+    routes:
+      - voice_chat
+      - text_chat
+      - research
+      - code_plan
+      - tool_plan
+      - agent_plan_disabled
+    generation_defaults:
+      temperature: 0.4
+      top_p: 0.9
+      top_k: 40
+      repeat_penalty: 1.08
+      max_tokens: 256
+      stop:
+        - "\nUser:"
+        - "\nAssistant:"
+        - "User:"
+        - "Assistant:"
+    serve_profiles:
+      windows_amd64_cpu:
+        os: windows
+        arch: amd64
+        accelerator: cpu
+        binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
+        host: 127.0.0.1
+        port: 8080
+        base_url: http://127.0.0.1:8080
+        validation_status: declared-not-validated
+        launch:
+          ctx_size: 4096
+          threads: auto
+          threads_batch: auto
+          batch_size: 1024
+          ubatch_size: 256
+          gpu_layers: 0
+          cache_type_k: f16
+          cache_type_v: f16
+          parallel: 1
+          cont_batching: true
+          warmup: true
+      windows_arm64_cpu:
+        os: windows
+        arch: arm64
+        accelerator: cpu
+        binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
+        host: 127.0.0.1
+        port: 8080
+        base_url: http://127.0.0.1:8080
+        validation_status: declared-not-validated
+        launch:
+          ctx_size: 4096
+          threads: auto
+          threads_batch: auto
+          batch_size: 1024
+          ubatch_size: 256
+          gpu_layers: 0
+          cache_ram_mb: 4096
+          parallel: 1
+          cont_batching: true
+          warmup: true
+      windows_amd64_cuda:
+        os: windows
+        arch: amd64
+        accelerator: gpu.cuda
+        binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
+        host: 127.0.0.1
+        port: 8080
+        base_url: http://127.0.0.1:8080
+        validation_status: declared-not-validated
+        close_if_unavailable: Degraded-accelerator-unavailable
+        launch:
+          ctx_size: 4096
+          gpu_layers: auto
+          split_mode: layer
+          main_gpu: 0
+          flash_attn: auto
+          cache_type_k: f16
+          cache_type_v: f16
+          cache_ram_mb: 8192
+      windows_arm64_qnn:
+        os: windows
+        arch: arm64
+        accelerator: npu.qnn
+        binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
+        host: 127.0.0.1
+        port: 8080
+        base_url: http://127.0.0.1:8080
+        validation_status: declared-degraded
+        close_if_unavailable: SKIP-no-viable-binary
+        launch:
+          ctx_size: 4096
+          device: qnn
+          cache_ram_mb: 4096

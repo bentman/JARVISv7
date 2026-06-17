@@ -63,6 +63,19 @@ class Settings:
     llama_cpp_model_path: str | None = field(
         default_factory=lambda: os.getenv("LLAMA_CPP_MODEL_PATH")
     )
+    llama_cpp_base_url: str = field(
+        default_factory=lambda: os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080")
+    )
+    llama_cpp_host: str = field(default_factory=lambda: os.getenv("LLAMA_CPP_HOST", "127.0.0.1"))
+    llama_cpp_port: int = field(default_factory=lambda: _env_int("LLAMA_CPP_PORT") or 8080)
+    llama_cpp_binary_path: str | None = field(
+        default_factory=lambda: os.getenv("LLAMA_CPP_BINARY_PATH")
+    )
+    llama_cpp_managed: bool = field(default_factory=lambda: _env_bool("LLAMA_CPP_MANAGED", False))
+    llama_cpp_model_name: str | None = field(default_factory=lambda: os.getenv("LLAMA_CPP_MODEL_NAME"))
+    llama_cpp_timeout_seconds: float = field(
+        default_factory=lambda: _env_float("LLAMA_CPP_TIMEOUT_SECONDS") or 30.0
+    )
     use_ollama: bool = field(default_factory=lambda: _env_bool("USE_OLLAMA", False))
     ollama_base_url: str = field(
         default_factory=lambda: os.getenv("OLLAMA_BASE_URL")
@@ -93,7 +106,7 @@ class Settings:
     )
     use_searxng: bool = field(default_factory=lambda: _env_bool("USE_SEARXNG", True))
     searxng_base_url: str = field(
-        default_factory=lambda: os.getenv("SEARXNG_BASE_URL", "http://127.0.0.1:8080")
+        default_factory=lambda: os.getenv("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
     )
     use_ddgs: bool = field(default_factory=lambda: _env_bool("USE_DDGS", True))
     use_tavily: bool = field(default_factory=lambda: _env_bool("USE_TAVILY", False))

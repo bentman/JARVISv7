@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.app.models.catalog import get_model_entry
 from backend.app.runtimes.llm.claude_runtime import ClaudeLLM
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
@@ -17,6 +18,34 @@ def test_local_runtime_is_available_returns_false():
 def test_local_runtime_generate_raises_not_implemented():
     with pytest.raises(NotImplementedError, match="not wired as a verified runtime"):
         LlamaCppLLM().generate("hello")
+
+
+def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
+    entry = get_model_entry("llm")
+
+    assert entry.name == "assistant-small-q4"
+    assert entry.local_path.as_posix().endswith("models/llm/assistant-small-q4/model.gguf")
+    assert entry.config["quantization"] == "q4_k_m"
+    assert entry.config["source"]["type"] == "declared"
+    assert "voice_chat" in entry.config["routes"]
+
+    profiles = entry.config["serve_profiles"]
+    assert profiles["windows_amd64_cpu"]["accelerator"] == "cpu"
+    assert profiles["windows_amd64_cpu"]["base_url"] == "http://127.0.0.1:8080"
+    assert profiles["windows_amd64_cpu"]["launch"]["gpu_layers"] == 0
+    assert profiles["windows_arm64_cpu"]["accelerator"] == "cpu"
+    assert profiles["windows_arm64_cpu"]["launch"]["gpu_layers"] == 0
+
+
+def test_llm_catalog_accelerator_profiles_are_declared_without_validation_claims():
+    entry = get_model_entry("llm")
+    profiles = entry.config["serve_profiles"]
+
+    assert profiles["windows_amd64_cuda"]["accelerator"] == "gpu.cuda"
+    assert profiles["windows_amd64_cuda"]["validation_status"] == "declared-not-validated"
+    assert profiles["windows_arm64_qnn"]["accelerator"] == "npu.qnn"
+    assert profiles["windows_arm64_qnn"]["validation_status"] == "declared-degraded"
+    assert profiles["windows_arm64_qnn"]["close_if_unavailable"] == "SKIP-no-viable-binary"
 
 
 def test_ollama_runtime_is_available_true_when_reachable(monkeypatch):

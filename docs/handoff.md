@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 11:55 -05:00 — R.1 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.1 local LLM settings and catalog shape.
+- Last worked on: Windows AMD64.
+- Most recent change: Added llama.cpp sidecar settings, expanded `.env.example`, replaced `config/models/llm.yaml` with an existing-catalog-compatible `default_model`/`models` shape, declared lower-quant `assistant-small-q4` as the development target, added AMD64/ARM64 CPU-only serve profiles, kept AMD64 CUDA and ARM64 QNN as evidence-gated placeholders, and moved the SearXNG default to `8888`.
+- Validation run: Focused R.1 pytest passed (`24 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`116 passed, 4 deselected`, report `reports\validation\20260617165457-regression.txt`); `git diff --check` passed with line-ending warnings only. Full `validate_backend.py unit` is blocked by unrelated agent ledger ordering assertions outside R.1.
+- Note: Agent ledger ordering issue is recorded in `bug_fix.md`; proposed fix is separate from Slice R.1.
+- Next needed: Windows ARM64 should validate the same R.1 files and behavior, especially settings parsing, catalog loading, ARM64 CPU profile shape, accelerator placeholder truth, regression, and diff check. Do not start R.2 until ARM64 records R.1 validation or a justified degraded/skipped reason.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 11:45 -05:00 — R.0 hardware/binary census closed on ARM64
 
 - Active slice/sub-slice: Slice R / R.0 hardware and binary evidence census.

@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 11:55
+  - Summary: Completed the Windows AMD64 code-change leg of Slice R.1 local LLM settings and catalog shape. Added declarative llama.cpp sidecar settings, made the LLM catalog load through the existing catalog pattern, declared a lower-quant GGUF development default, moved the SearXNG default to `8888`, and kept accelerator profiles evidence-gated.
+  - Scope: `.env.example`, `backend/app/core/settings.py`, `config/models/llm.yaml`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`
+  - Host class(es): Windows AMD64 / amd64 current workspace; Windows ARM64 validation pending per Slice R tandem rule.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\runtimes\llm\test_llm_runtime.py` PASS (`24 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`116 passed, 4 deselected`, report `reports\validation\20260617165457-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: `backend\.venv\Scripts\python scripts\validate_backend.py unit` is not green on this workspace due unrelated agent ledger ordering assertions outside R.1 (`test_agent_creator_writes_valid_disabled_spec_file` then `test_critic_dry_run_reviews_existing_records` on rerun). No `SYSTEM_INVENTORY.md` update; inventory waits for R.9 completion on both AMD64 and ARM64.
+
 - 2026-06-17 11:45
   - Summary: Completed Slice R.0 hardware and binary evidence census. Recorded the non-mutating AMD64/ARM64 close states and selected the JARVIS-managed `llama-server`-class sidecar direction before R.1.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; inspected `AGENTS.md`, `20260616_slice-r.md`, `slices.md`, `config/models/llm.yaml`, `backend/app/runtimes/llm/local_runtime.py`, `scripts/ensure_models.py`, and current upstream llama.cpp/Ollama documentation.
