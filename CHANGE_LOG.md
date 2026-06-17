@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 13:09
+  - Summary: Completed the Slice R.2 ARM64 validation leg for local LLM model artifact fetch and verification. The existing R.2 catalog/script changes loaded on Windows ARM64, reported the missing selected GGUF as a deterministic degraded state, and planned the artifact in dry-run without downloading or launching a sidecar.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.2 surfaces in `config/models/llm.yaml`, `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_script.py`, and `backend/tests/unit/runtimes/llm/test_llm_runtime.py`.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_runtime.py backend\tests\unit\scripts\test_ensure_models_script.py -q` PASS (`16 passed`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` returned expected degraded state (`Degraded-no-local-model-artifact`, missing `qwen2.5-0.5b-instruct-q4_k_m.gguf`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` PASS (`acquired: qwen2.5-0.5b-instruct-q4_k_m.gguf`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617180737-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`).
+  - Note: No product code, model artifact download, sidecar launch, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.2 is now validated on both AMD64 and ARM64.
+
 - 2026-06-17 13:04
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.2 local LLM model artifact fetch and verification. The LLM catalog now points at the selected lower-quant GGUF artifact, and `scripts/ensure_models.py` verifies/fetch-plans the artifact through the existing catalog acquisition path instead of treating LLM models as Ollama-managed.
   - Scope: `config/models/llm.yaml`, `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_script.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `docs/handoff.md`, `CHANGE_LOG.md`

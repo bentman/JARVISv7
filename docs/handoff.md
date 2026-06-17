@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:09 -05:00 — R.2 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.2 local LLM model artifact fetch and verification.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.2 catalog/script behavior on ARM64 without product code changes. `config/models/llm.yaml` selects `qwen2.5-0.5b-instruct-q4_k_m.gguf`; `scripts/ensure_models.py --family llm --verify-only` reports the missing GGUF as `Degraded-no-local-model-artifact`; dry-run plans the selected artifact without download.
+- Validation run: Focused R.2 pytest passed (`16 passed`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` returned expected nonzero degraded state; `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` passed; `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617180737-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.2 is now validated on both AMD64 and ARM64 according to the tandem host rule. No model artifact was downloaded, no sidecar/runtime validation was attempted, and no `SYSTEM_INVENTORY.md` update was made.
+- Next needed: Start R.3 local LLM serve profile resolution. Selection must start with the current host CPU-only profile; AMD64 CUDA and ARM64 QNN remain degraded/skipped until profiler/preflight, binary, and artifact evidence support them.
+- Next host class: Either host can begin R.3, but code-changing work must validate on both AMD64 and ARM64 or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 13:04 -05:00 — R.2 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.2 local LLM model artifact fetch and verification.
