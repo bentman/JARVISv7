@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:28 -05:00 — R.4 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.4 sidecar command builder.
+- Last worked on: Windows AMD64.
+- Most recent change: Added `backend/app/services/local_llm_sidecar.py` as a command-builder-only service helper. It consumes `LLMServeProfileResolution` and returns an argv-style `llama-server` command plan with `--model`, `--host`, `--port`, supported launch tuning, warnings for unsupported launch keys/values, and degraded states for missing binary/model paths. It does not launch a process.
+- Validation run: Focused R.4 pytest passed (`17 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617182749-regression.txt`); `git diff --check` passed. Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: No model artifact was downloaded, no sidecar process was launched, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made. R.4 is not complete until Windows ARM64 validates the same command-builder behavior or records an explicit degraded/skipped reason.
+- Next needed: Windows ARM64 should run focused R.4 pytest, regression, and diff check against the same changes. Confirm ARM64 CPU command construction and ARM64 QNN degraded command behavior.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 13:22 -05:00 — R.3 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.3 local LLM serve profile resolution.

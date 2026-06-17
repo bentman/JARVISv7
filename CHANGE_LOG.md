@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 13:28
+  - Summary: Completed the Windows AMD64 code-change leg of Slice R.4 sidecar command builder. Added a service-owned llama.cpp sidecar command builder that consumes the selected R.3 serve profile resolution and returns an argv-style `llama-server` command plan with safe degraded states and unsupported tuning warnings, without launching a process.
+  - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `CHANGE_LOG.md`, `docs/handoff.md`
+  - Host class(es): Windows AMD64 / amd64 current workspace; Windows ARM64 validation pending per Slice R tandem rule.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py backend\tests\unit\routing\test_runtime_selector.py` PASS (`17 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617182749-regression.txt`); `git diff --check` PASS.
+  - Note: No model artifact was downloaded, no sidecar process was launched, no runtime selection behavior was changed, and no `SYSTEM_INVENTORY.md` update was made. R.4 must be validated on Windows ARM64 before moving to R.5.
+
 - 2026-06-17 13:22
   - Summary: Completed the Slice R.3 ARM64 validation leg for local LLM serve profile resolution. The existing R.3 resolver selected the ARM64 CPU profile first, surfaced missing model and sidecar binary as degraded evidence, and retained ARM64 QNN as a degraded/skipped candidate without changing runtime selection or starting a sidecar.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.3 surfaces in `backend/app/models/llm_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, and `backend/tests/unit/scripts/test_ensure_models_script.py`.
