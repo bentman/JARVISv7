@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:37 -05:00 — R.5 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.5 sidecar lifecycle service.
+- Last worked on: Windows AMD64.
+- Most recent change: Extended `backend/app/services/local_llm_sidecar.py` with `LocalLLMSidecarService`, an idempotent lifecycle wrapper around the R.4 command builder. It owns mocked/injectable process start, stop, restart, status, PID, last command, selected profile metadata, last degraded/error reason, restart-required reporting for changed model/profile, and health probe delegation. It does not change `LlamaCppLLM`, runtime selection, model/profile selection, or HTTP generation.
+- Validation run: Focused R.5 pytest passed (`25 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617183734-regression.txt`); `git diff --check` passed with line-ending warnings only. Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: Unit tests use mocked process creation only. No model artifact was downloaded, no real sidecar process was launched, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made. R.5 is not complete until Windows ARM64 validates the same lifecycle behavior or records an explicit degraded/skipped reason.
+- Next needed: Windows ARM64 should run focused R.5 pytest, regression, and diff check against the same changes. Confirm idempotent lifecycle behavior and restart-required reporting on ARM64.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 13:31 -05:00 — R.4 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.4 sidecar command builder.

@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 13:37
+  - Summary: Completed the Windows AMD64 code-change leg of Slice R.5 sidecar lifecycle service. Extended the local LLM sidecar service with idempotent start, stop, restart, and status operations over an injectable process factory, while retaining command construction and keeping lifecycle separate from runtime selection and HTTP generation.
+  - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `CHANGE_LOG.md`, `docs/handoff.md`
+  - Host class(es): Windows AMD64 / amd64 current workspace; Windows ARM64 validation pending per Slice R tandem rule.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py backend\tests\unit\routing\test_runtime_selector.py` PASS (`25 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617183734-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: Tests use mocked process creation only. No model artifact was downloaded, no real sidecar process was launched, no HTTP runtime was activated, no runtime selection behavior was changed, and no `SYSTEM_INVENTORY.md` update was made. R.5 must be validated on Windows ARM64 before moving to R.6.
+
 - 2026-06-17 13:31
   - Summary: Completed the Slice R.4 ARM64 validation leg for the sidecar command builder. The existing R.4 command builder produced argv-style llama.cpp server plans on Windows ARM64, covered ARM64 CPU command construction, and kept ARM64 QNN missing-binary behavior degraded without launching a process.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.4 surfaces in `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, and `backend/tests/unit/runtimes/llm/test_llm_runtime.py`.

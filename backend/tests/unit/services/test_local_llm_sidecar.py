@@ -5,11 +5,32 @@ from pathlib import Path
 import pytest
 
 from backend.app.models.llm_profiles import LLMServeProfileResolution
-from backend.app.services.local_llm_sidecar import build_llama_server_command
+from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, build_llama_server_command
+
+
+class _FakeProcess:
+    def __init__(self, pid: int = 1234) -> None:
+        self.pid = pid
+        self.terminated = False
+        self.killed = False
+        self.wait_calls = 0
+
+    def poll(self) -> int | None:
+        return 0 if self.terminated or self.killed else None
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        return 0
+
+    def kill(self) -> None:
+        self.killed = True
 
 
 def _write_file(path: Path, content: bytes = b"x") -> Path:
-    path.parent.mkdir(parents=True)
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(content)
     return path
 
@@ -219,3 +240,130 @@ def test_unsupported_launch_keys_are_reported_without_silent_noop(tmp_path: Path
 def test_invalid_base_url_fails_before_command_is_returned(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="invalid llama.cpp base URL"):
         build_llama_server_command(_resolution(tmp_path, base_url="not-a-url"))
+
+
+def test_lifecycle_start_uses_mocked_process_creation_and_records_status(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    process = _FakeProcess(pid=2468)
+    service = LocalLLMSidecarService(process_factory=lambda argv: calls.append(argv) or process)
+    resolution = _resolution(tmp_path)
+
+    status = service.start(resolution)
+
+    assert status.state == "running"
+    assert status.running is True
+    assert status.pid == 2468
+    assert status.model_id == "assistant-small-q4"
+    assert status.serve_profile_id == "windows_amd64_cpu"
+    assert status.last_command == calls[0]
+    assert calls[0][0] == str(resolution.binary_path)
+
+
+def test_lifecycle_start_is_idempotent_for_same_running_profile(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=1111)
+    )
+    resolution = _resolution(tmp_path)
+
+    first = service.start(resolution)
+    second = service.start(resolution)
+
+    assert first.state == "running"
+    assert second.state == "running"
+    assert second.pid == 1111
+    assert len(calls) == 1
+
+
+def test_lifecycle_stop_is_idempotent(tmp_path: Path) -> None:
+    process = _FakeProcess()
+    service = LocalLLMSidecarService(process_factory=lambda argv: process)
+    service.start(_resolution(tmp_path))
+
+    stopped = service.stop()
+    stopped_again = service.stop()
+
+    assert process.terminated is True
+    assert process.wait_calls == 1
+    assert stopped.state == "stopped"
+    assert stopped.running is False
+    assert stopped_again.state == "stopped"
+    assert stopped_again.running is False
+
+
+def test_lifecycle_start_failure_reports_degraded_reason(tmp_path: Path) -> None:
+    def fail_start(argv: list[str]) -> _FakeProcess:
+        raise RuntimeError("spawn failed")
+
+    service = LocalLLMSidecarService(process_factory=fail_start)
+
+    status = service.start(_resolution(tmp_path))
+
+    assert status.state == "degraded"
+    assert status.running is False
+    assert status.degraded_reason == "Degraded-sidecar-start-failed: spawn failed"
+    assert status.last_error == "Degraded-sidecar-start-failed: spawn failed"
+
+
+def test_lifecycle_start_with_missing_command_inputs_reports_degraded_without_spawn(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess()
+    )
+
+    status = service.start(_resolution(tmp_path, binary_exists=False))
+
+    assert status.state == "degraded"
+    assert status.running is False
+    assert status.degraded_reason == "Degraded-no-sidecar-binary"
+    assert calls == []
+
+
+def test_lifecycle_changed_profile_reports_restart_required(tmp_path: Path) -> None:
+    calls: list[list[str]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=3333)
+    )
+    service.start(_resolution(tmp_path, profile_id="windows_amd64_cpu"))
+
+    status = service.start(_resolution(tmp_path, profile_id="windows_arm64_cpu"))
+
+    assert status.state == "restart-required"
+    assert status.running is True
+    assert status.restart_required is True
+    assert status.degraded_reason == "restart-required"
+    assert len(calls) == 1
+
+
+def test_lifecycle_restart_replaces_running_process_deterministically(tmp_path: Path) -> None:
+    processes = [_FakeProcess(pid=1001), _FakeProcess(pid=1002)]
+    calls: list[list[str]] = []
+
+    def factory(argv: list[str]) -> _FakeProcess:
+        calls.append(argv)
+        return processes[len(calls) - 1]
+
+    service = LocalLLMSidecarService(process_factory=factory)
+    service.start(_resolution(tmp_path, profile_id="windows_amd64_cpu"))
+
+    status = service.restart(_resolution(tmp_path, profile_id="windows_arm64_cpu"))
+
+    assert processes[0].terminated is True
+    assert status.state == "running"
+    assert status.pid == 1002
+    assert status.serve_profile_id == "windows_arm64_cpu"
+    assert len(calls) == 2
+
+
+def test_lifecycle_status_delegates_health_probe_when_running(tmp_path: Path) -> None:
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: _FakeProcess(),
+        health_probe=lambda base_url: (True, f"healthy:{base_url}"),
+    )
+    resolution = _resolution(tmp_path, base_url="http://127.0.0.1:18080")
+
+    service.start(resolution)
+    status = service.status()
+
+    assert status.health_ready is True
+    assert status.health_reason == "healthy:http://127.0.0.1:18080"
