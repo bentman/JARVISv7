@@ -12,10 +12,12 @@ models:
     runtime: llama_cpp
     format: gguf
     quantization: q4_k_m
-    local_path: models/llm/assistant-small-q4/model.gguf
+    local_path: models/llm/assistant-small-q4/qwen2.5-0.5b-instruct-q4_k_m.gguf
     source:
-      type: declared
-      note: "R.1 catalog shape only; R.2 selects and verifies the concrete lower-quant GGUF artifact."
+      type: huggingface
+      repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
+      file: qwen2.5-0.5b-instruct-q4_k_m.gguf
+      expected_size_mb: 491
     routes:
       - voice_chat
       - text_chat

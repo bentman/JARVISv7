@@ -24,9 +24,13 @@ def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
     entry = get_model_entry("llm")
 
     assert entry.name == "assistant-small-q4"
-    assert entry.local_path.as_posix().endswith("models/llm/assistant-small-q4/model.gguf")
+    assert entry.local_path.as_posix().endswith(
+        "models/llm/assistant-small-q4/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    )
     assert entry.config["quantization"] == "q4_k_m"
-    assert entry.config["source"]["type"] == "declared"
+    assert entry.config["source"]["type"] == "huggingface"
+    assert entry.config["source"]["repo_id"] == "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
+    assert entry.config["source"]["file"] == "qwen2.5-0.5b-instruct-q4_k_m.gguf"
     assert "voice_chat" in entry.config["routes"]
 
     profiles = entry.config["serve_profiles"]

@@ -100,3 +100,74 @@ def test_download_url_zip_preserves_relative_layout(tmp_path: Path, monkeypatch)
     assert (model_root / "models" / "encoder_model.onnx").is_file()
     assert (model_root / "models" / "decoder_model_merged.onnx").is_file()
     assert (model_root / "models" / "assets" / "weights.bin").is_file()
+
+
+def test_verify_llm_single_file_artifact_reports_present_when_file_exists(tmp_path: Path) -> None:
+    model_file = tmp_path / "models" / "llm" / "assistant-small-q4" / "model-q4.gguf"
+    model_file.parent.mkdir(parents=True)
+    model_file.write_bytes(b"gguf")
+    entry = ensure_models.ModelEntry(
+        family="llm",
+        name="assistant-small-q4",
+        config={
+            "local_path": str(model_file),
+            "source": {
+                "type": "huggingface",
+                "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+                "file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            },
+        },
+    )
+
+    result = ensure_models._verify_entry(entry)
+
+    assert result["ready"] is True
+    assert result["present"] == ["model-q4.gguf"]
+    assert result["missing"] == []
+    assert result["degraded_reason"] is None
+
+
+def test_verify_llm_single_file_artifact_reports_degraded_when_missing(tmp_path: Path) -> None:
+    model_file = tmp_path / "models" / "llm" / "assistant-small-q4" / "model-q4.gguf"
+    entry = ensure_models.ModelEntry(
+        family="llm",
+        name="assistant-small-q4",
+        config={
+            "local_path": str(model_file),
+            "source": {
+                "type": "huggingface",
+                "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+                "file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            },
+        },
+    )
+
+    result = ensure_models._verify_entry(entry)
+
+    assert result["ready"] is False
+    assert result["missing"] == ["model-q4.gguf"]
+    assert result["degraded_reason"] == "Degraded-no-local-model-artifact"
+
+
+def test_ensure_llm_single_file_huggingface_dry_run_uses_catalog_file(tmp_path: Path) -> None:
+    model_file = tmp_path / "models" / "llm" / "assistant-small-q4" / "model-q4.gguf"
+    entry = ensure_models.ModelEntry(
+        family="llm",
+        name="assistant-small-q4",
+        config={
+            "local_path": str(model_file),
+            "source": {
+                "type": "huggingface",
+                "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+                "file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            },
+        },
+    )
+
+    result = ensure_models._ensure_entry(entry, dry_run=True)
+
+    assert result["family"] == "llm"
+    assert result["model"] == "assistant-small-q4"
+    assert result["dry_run"] is True
+    assert result["acquired"] == ["model-q4.gguf"]
+    assert result["ready"] is True

@@ -45,12 +45,39 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def _source_files(entry: ModelEntry) -> list[tuple[str, str]]:
     source = entry.source
+    file_name = source.get("file")
+    if isinstance(file_name, str) and file_name.strip():
+        target_name = entry.local_path.name if _entry_targets_single_file(entry) else Path(file_name).name
+        return [(target_name, file_name)]
     files = source.get("files", [])
     if isinstance(files, list):
         return [(str(file_name), str(file_name)) for file_name in files]
     if isinstance(files, dict):
         return [(str(file_name), str(source_ref)) for file_name, source_ref in files.items()]
     raise ValueError(f"model '{entry.name}' has invalid source files metadata")
+
+
+def _entry_targets_single_file(entry: ModelEntry) -> bool:
+    return bool(entry.local_path.suffix)
+
+
+def _target_for_file(entry: ModelEntry, file_name: str) -> Path:
+    if _entry_targets_single_file(entry):
+        return entry.local_path
+    return entry.local_path / file_name
+
+
+def _relative_local_path(path: Path) -> str:
+    try:
+        return str(path.relative_to(REPO_ROOT))
+    except ValueError:
+        return str(path)
+
+
+def _missing_artifact_reason(entry: ModelEntry, missing: list[str]) -> str | None:
+    if entry.family == "llm" and missing:
+        return "Degraded-no-local-model-artifact"
+    return None
 
 
 def _verify_entry(entry: ModelEntry) -> dict[str, Any]:
@@ -96,12 +123,13 @@ def _verify_entry(entry: ModelEntry) -> dict[str, Any]:
             "present": present,
             "missing": missing,
             "ready": not missing,
+            "degraded_reason": _missing_artifact_reason(entry, missing),
         }
 
     missing: list[str] = []
     present: list[str] = []
     for file_name, _source_ref in _source_files(entry):
-        target = entry.local_path / file_name
+        target = _target_for_file(entry, file_name)
         if target.exists() and target.is_file() and target.stat().st_size > 0:
             present.append(file_name)
         else:
@@ -110,17 +138,15 @@ def _verify_entry(entry: ModelEntry) -> dict[str, Any]:
     return {
         "family": entry.family,
         "model": entry.name,
-        "local_path": str(entry.local_path.relative_to(REPO_ROOT)),
+        "local_path": _relative_local_path(entry.local_path),
         "present": present,
         "missing": missing,
         "ready": not missing,
+        "degraded_reason": _missing_artifact_reason(entry, missing),
     }
 
 
 def _verify_family(family: str, model_name: str | None = None) -> tuple[int, dict[str, Any]]:
-    if family == "llm":
-        return 0, {"family": "llm", "ready": True, "status": "ollama_manages_models"}
-
     if model_name:
         entries = [get_model_entry(family, model_name)]
     else:
@@ -143,7 +169,8 @@ def _download_huggingface(entry: ModelEntry, dry_run: bool) -> list[str]:
 
     acquired: list[str] = []
     if not dry_run:
-        entry.local_path.mkdir(parents=True, exist_ok=True)
+        target_root = entry.local_path.parent if _entry_targets_single_file(entry) else entry.local_path
+        target_root.mkdir(parents=True, exist_ok=True)
 
     for file_name, source_ref in _source_files(entry):
         if source_ref != file_name:
@@ -152,7 +179,7 @@ def _download_huggingface(entry: ModelEntry, dry_run: bool) -> list[str]:
             repo_filename = f"{subfolder.strip('/')}/{file_name}"
         else:
             repo_filename = file_name
-        target = entry.local_path / file_name
+        target = _target_for_file(entry, file_name)
         if dry_run:
             acquired.append(file_name)
             continue
@@ -245,9 +272,6 @@ def _ensure_entry(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
 
 
 def _ensure_family(family: str, model_name: str | None, dry_run: bool) -> tuple[int, dict[str, Any]]:
-    if family == "llm":
-        return 0, {"family": "llm", "status": "ollama_manages_models", "ready": True}
-
     if model_name:
         entries = [get_model_entry(family, model_name)]
     else:

@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:04 -05:00 — R.2 AMD64 code-change leg
+
+- Active slice/sub-slice: Slice R / R.2 local LLM model artifact fetch and verification.
+- Last worked on: Windows AMD64.
+- Most recent change: Pointed `config/models/llm.yaml` at the selected lower-quant Qwen2.5 0.5B Instruct GGUF artifact (`qwen2.5-0.5b-instruct-q4_k_m.gguf`) and extended the existing `scripts/ensure_models.py` catalog acquisition/verification path to handle single-file LLM artifacts. LLM verify now reports missing local GGUF as `Degraded-no-local-model-artifact`; dry-run reports the planned artifact without downloading.
+- Validation run: Focused R.2 pytest passed (`16 passed`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` produced the expected degraded/nonzero missing-artifact state; `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` passed and planned `qwen2.5-0.5b-instruct-q4_k_m.gguf`; `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617180423-regression.txt`). Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: No model artifact was downloaded, no sidecar/runtime validation was attempted, and no `SYSTEM_INVENTORY.md` update was made. R.2 is not complete until Windows ARM64 validates the same catalog/script behavior or records an explicit degraded/skipped reason.
+- Next needed: Windows ARM64 should run focused R.2 pytest, `ensure_models.py --family llm --verify-only`, `ensure_models.py --family llm --dry-run`, regression, and diff check against the same changes.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 12:57 -05:00 — R.1 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.1 local LLM settings and catalog shape.

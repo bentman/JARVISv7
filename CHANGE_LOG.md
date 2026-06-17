@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 13:04
+  - Summary: Completed the Windows AMD64 code-change leg of Slice R.2 local LLM model artifact fetch and verification. The LLM catalog now points at the selected lower-quant GGUF artifact, and `scripts/ensure_models.py` verifies/fetch-plans the artifact through the existing catalog acquisition path instead of treating LLM models as Ollama-managed.
+  - Scope: `config/models/llm.yaml`, `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_script.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `docs/handoff.md`, `CHANGE_LOG.md`
+  - Host class(es): Windows AMD64 / amd64 current workspace; Windows ARM64 validation pending per Slice R tandem rule.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_script.py backend\tests\unit\runtimes\llm\test_llm_runtime.py` PASS (`16 passed`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` expected degraded/nonzero state (`Degraded-no-local-model-artifact`, missing `qwen2.5-0.5b-instruct-q4_k_m.gguf`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` PASS (`acquired`: `qwen2.5-0.5b-instruct-q4_k_m.gguf`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617180423-regression.txt`); `git diff --check` PASS with line-ending warnings only.
+  - Note: No model artifact was downloaded in this leg, no sidecar/runtime validation was attempted, and no `SYSTEM_INVENTORY.md` update was made. R.2 must be validated on Windows ARM64 before moving to R.3.
+
 - 2026-06-17 12:57
   - Summary: Completed the Slice R.1 ARM64 validation leg for local LLM settings and catalog shape. The existing R.1 catalog/settings changes loaded and tested on Windows ARM64 with CPU-only shape present and QNN retained as a degraded placeholder.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.1 surfaces in `config/models/llm.yaml`, `.env.example`, `backend/app/core/settings.py`, `backend/app/models/catalog.py`, and related unit tests.
