@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:22 -05:00 — R.3 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.3 local LLM serve profile resolution.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.3 resolver behavior on ARM64 without product code changes. `backend/app/models/llm_profiles.py` selects `windows_arm64_cpu` first for the current host, reports missing local GGUF and missing `llama-server.exe` as degraded evidence, and keeps ARM64 QNN as a degraded/skipped candidate until viable binary/model/runtime evidence exists.
+- Validation run: Focused R.3 pytest passed (`21 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617182208-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.3 is now validated on both AMD64 and ARM64 according to the tandem host rule. No model artifact was downloaded, no sidecar command was built, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made.
+- Next needed: Start R.4 sidecar command builder. It must consume the selected serve profile and return an argv-style command list only; no process launch.
+- Next host class: Either host can begin R.4, but code-changing work must validate on both AMD64 and ARM64 or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 13:15 -05:00 — R.3 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.3 local LLM serve profile resolution.

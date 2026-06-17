@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 13:22
+  - Summary: Completed the Slice R.3 ARM64 validation leg for local LLM serve profile resolution. The existing R.3 resolver selected the ARM64 CPU profile first, surfaced missing model and sidecar binary as degraded evidence, and retained ARM64 QNN as a degraded/skipped candidate without changing runtime selection or starting a sidecar.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.3 surfaces in `backend/app/models/llm_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, and `backend/tests/unit/scripts/test_ensure_models_script.py`.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py backend\tests\unit\runtimes\llm\test_llm_runtime.py backend\tests\unit\scripts\test_ensure_models_script.py -q` PASS (`21 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617182208-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`); `git diff --check` PASS before documentation edits.
+  - Note: No product code, model artifact download, sidecar command construction, sidecar launch, runtime selection change, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.3 is now validated on both AMD64 and ARM64.
+
 - 2026-06-17 13:15
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.3 local LLM serve profile resolution. Added a catalog-owned resolver that selects the current host CPU-only llama.cpp serve profile, carries model/profile/base URL/launch/default generation metadata, and records missing model artifact, missing sidecar binary, and unproven accelerator candidates as degraded/skipped evidence without starting a runtime.
   - Scope: `backend/app/models/llm_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `CHANGE_LOG.md`, `docs/handoff.md`
