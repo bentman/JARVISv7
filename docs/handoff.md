@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 18:52 -05:00 — R.7 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.7 runtime selection, readiness, and trace.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.7 selector/readiness behavior on ARM64 without product code changes. `select_llm()` prefers viable managed local llama.cpp, then Ollama, then policy-gated cloud, then null; readiness surfaces LLM trace metadata and degraded reasons without claiming CUDA/QNN validation.
+- Validation run: Focused R.7 pytest passed (`74 passed`, one existing Starlette `TestClient` deprecation warning); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617235140-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.7 is now validated on both AMD64 and ARM64 according to the tandem host rule. No model artifact was downloaded, no real sidecar process was launched, no live completion was attempted, and no `SYSTEM_INVENTORY.md` update was made. Real local llama.cpp completion remains required in R.8 before Slice R closeout.
+- Next needed: Start R.8 tandem live local LLM validation with real model, binary, sidecar, HTTP generation, and selector/readiness evidence. Validate CPU-only first; keep AMD64 CUDA and ARM64 QNN explicit as pass/degraded/skipped based on evidence.
+- Next host class: Either host can begin R.8, but live validation evidence must be tracked for both AMD64 and ARM64 or record explicit degraded/skipped reasons.
+
 ### 2026-06-17 18:46 -05:00 — R.7 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.7 runtime selection, readiness, and trace.

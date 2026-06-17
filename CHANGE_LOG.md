@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 18:52
+  - Summary: Completed the Slice R.7 ARM64 validation leg for runtime selection, readiness, and trace. The existing R.7 selector/readiness path passed Windows ARM64 validation for local-first selection, Ollama/cloud/null fallback behavior, LLM trace metadata, and degraded reason surfacing without claiming unvalidated CUDA/QNN paths.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.7 surfaces in `backend/app/routing/runtime_selector.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/routing/test_runtime_selector.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, and `backend/tests/unit/services/test_local_llm_sidecar.py`.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\routing\test_runtime_selector.py backend\tests\unit\api\test_routes.py backend\tests\unit\runtimes\llm\test_llm_runtime.py backend\tests\unit\services\test_local_llm_sidecar.py -q` PASS (`74 passed`, one existing Starlette `TestClient` deprecation warning); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617235140-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`); `git diff --check` PASS before documentation edits.
+  - Note: No product code, model artifact download, real sidecar process launch, live completion, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.7 is now validated on both AMD64 and ARM64.
+
 - 2026-06-17 18:46
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.7 runtime selection, readiness, and trace. Extended the existing LLM selector to prefer viable managed local llama.cpp, then Ollama, then policy-gated cloud, then null, and surfaced selector trace metadata through startup state and readiness without claiming unvalidated accelerator paths.
   - Scope: `backend/app/routing/runtime_selector.py`, `backend/app/api/app.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/routing/test_runtime_selector.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`, `docs/handoff.md`
