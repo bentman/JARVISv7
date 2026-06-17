@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 18:40 -05:00 — R.6 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.6 `LlamaCppLLM` HTTP runtime.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.6 HTTP runtime behavior on ARM64 without product code changes. `LlamaCppLLM` remains HTTP-client only, probes `/v1/models` with health fallback, posts `/v1/chat/completions`, maps generation defaults, handles empty/timeout/invalid/unsupported responses, keeps `runtime_name()` stable, and remains default-disabled before R.7 selection changes.
+- Validation run: Focused R.6 pytest passed (`40 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617233937-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.6 is now validated on both AMD64 and ARM64 according to the tandem host rule. HTTP tests are mocked for this sub-slice. No model artifact was downloaded, no real sidecar process was launched, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made. Real local llama.cpp completion remains required before Slice R closeout.
+- Next needed: Start R.7 runtime selection, readiness, and trace. Selection must prefer viable managed local LLM only when profile/model/binary/sidecar evidence supports it, then fall back to Ollama/cloud/null with truthful degraded reasons.
+- Next host class: Either host can begin R.7, but code-changing work must validate on both AMD64 and ARM64 or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 18:35 -05:00 — R.6 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.6 `LlamaCppLLM` HTTP runtime.

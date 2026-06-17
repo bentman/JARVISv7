@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 18:40
+  - Summary: Completed the Slice R.6 ARM64 validation leg for the `LlamaCppLLM` HTTP runtime. The existing R.6 runtime passed Windows ARM64 mocked HTTP validation for availability probing, OpenAI-compatible chat completion, generation defaults, error handling, stable runtime naming, and default-disabled behavior before R.7 selection changes.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.6 surfaces in `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, and `backend/tests/unit/routing/test_runtime_selector.py`.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_runtime.py backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\routing\test_runtime_selector.py -q` PASS (`40 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617233937-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`); `git diff --check` PASS before documentation edits.
+  - Note: HTTP tests are mocked for this sub-slice. No product code, model artifact download, real sidecar process launch, runtime selection change, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.6 is now validated on both AMD64 and ARM64.
+
 - 2026-06-17 18:35
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.6 `LlamaCppLLM` HTTP runtime. Activated `LlamaCppLLM` as an HTTP client for a managed llama.cpp sidecar endpoint using OpenAI-compatible `/v1/models` and `/v1/chat/completions`, while leaving runtime selection unchanged until R.7.
   - Scope: `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `CHANGE_LOG.md`, `docs/handoff.md`
