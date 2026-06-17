@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 13:31 -05:00 — R.4 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.4 sidecar command builder.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.4 command-builder behavior on ARM64 without product code changes. `backend/app/services/local_llm_sidecar.py` returns argv-style `llama-server` command plans only, covers ARM64 CPU command construction, warns on unsupported launch keys/values, and closes ARM64 QNN missing binary as degraded without launching a process.
+- Validation run: Focused R.4 pytest passed (`24 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617183058-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.4 is now validated on both AMD64 and ARM64 according to the tandem host rule. No model artifact was downloaded, no sidecar process was launched, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made.
+- Next needed: Start R.5 sidecar lifecycle service. Lifecycle work must remain separate from model/profile selection and HTTP generation, use mocked process creation in tests, and stay idempotent.
+- Next host class: Either host can begin R.5, but code-changing work must validate on both AMD64 and ARM64 or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 13:28 -05:00 — R.4 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.4 sidecar command builder.

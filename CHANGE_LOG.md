@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 13:31
+  - Summary: Completed the Slice R.4 ARM64 validation leg for the sidecar command builder. The existing R.4 command builder produced argv-style llama.cpp server plans on Windows ARM64, covered ARM64 CPU command construction, and kept ARM64 QNN missing-binary behavior degraded without launching a process.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.4 surfaces in `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, and `backend/tests/unit/runtimes/llm/test_llm_runtime.py`.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py backend\tests\unit\runtimes\llm\test_llm_runtime.py -q` PASS (`24 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617183058-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`); `git diff --check` PASS before documentation edits.
+  - Note: No product code, model artifact download, sidecar process launch, runtime selection change, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.4 is now validated on both AMD64 and ARM64.
+
 - 2026-06-17 13:28
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.4 sidecar command builder. Added a service-owned llama.cpp sidecar command builder that consumes the selected R.3 serve profile resolution and returns an argv-style `llama-server` command plan with safe degraded states and unsupported tuning warnings, without launching a process.
   - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `CHANGE_LOG.md`, `docs/handoff.md`
