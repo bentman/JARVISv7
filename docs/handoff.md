@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 18:24 -05:00 — R.5 ARM64 validation leg
+
+- Active slice/sub-slice: Slice R / R.5 sidecar lifecycle service.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.5 lifecycle service behavior on ARM64 without product code changes. `LocalLLMSidecarService` uses mocked/injectable process creation, supports idempotent start/stop, deterministic restart, restart-required reporting for changed model/profile, degraded start failures, status metadata, and health probe delegation.
+- Validation run: Focused R.5 pytest passed (`32 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260617232221-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Note: R.5 is now validated on both AMD64 and ARM64 according to the tandem host rule. Unit tests use mocked process creation only. No model artifact was downloaded, no real sidecar process was launched, no HTTP runtime was activated, runtime selection was not changed, and no `SYSTEM_INVENTORY.md` update was made.
+- Next needed: Start R.6 `LlamaCppLLM` HTTP runtime. It must remain an HTTP client only and use mocked HTTP tests first; no Python inference bindings or in-process model loading.
+- Next host class: Either host can begin R.6, but code-changing work must validate on both AMD64 and ARM64 or record an explicit degraded/skipped reason.
+
 ### 2026-06-17 13:37 -05:00 — R.5 AMD64 code-change leg
 
 - Active slice/sub-slice: Slice R / R.5 sidecar lifecycle service.

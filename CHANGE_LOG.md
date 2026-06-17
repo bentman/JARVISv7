@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 18:24
+  - Summary: Completed the Slice R.5 ARM64 validation leg for the sidecar lifecycle service. The existing R.5 service passed Windows ARM64 validation for mocked process start/stop/restart/status behavior, restart-required reporting, degraded start failures, and health probe delegation while keeping lifecycle separate from runtime selection and HTTP generation.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.5 surfaces in `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, and `backend/tests/unit/runtimes/llm/test_llm_runtime.py`.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py backend\tests\unit\runtimes\llm\test_llm_runtime.py -q` PASS (`32 passed`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260617232221-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`); `git diff --check` PASS before documentation edits.
+  - Note: No product code, model artifact download, real sidecar process launch, HTTP runtime activation, runtime selection change, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.5 is now validated on both AMD64 and ARM64.
+
 - 2026-06-17 13:37
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.5 sidecar lifecycle service. Extended the local LLM sidecar service with idempotent start, stop, restart, and status operations over an injectable process factory, while retaining command construction and keeping lifecycle separate from runtime selection and HTTP generation.
   - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `CHANGE_LOG.md`, `docs/handoff.md`
