@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
 
 from backend.app.models.llm_profiles import LLMServeProfileResolution
+from backend.app.services import local_llm_sidecar
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, build_llama_server_command
 
 
@@ -27,6 +29,14 @@ class _FakeProcess:
 
     def kill(self) -> None:
         self.killed = True
+
+
+class _SlowStopProcess(_FakeProcess):
+    def wait(self, timeout: float | None = None) -> int:
+        self.wait_calls += 1
+        if self.terminated and not self.killed:
+            raise subprocess.TimeoutExpired(cmd="llama-server", timeout=timeout)
+        return 0
 
 
 def _write_file(path: Path, content: bytes = b"x") -> Path:
@@ -259,6 +269,42 @@ def test_lifecycle_start_uses_mocked_process_creation_and_records_status(tmp_pat
     assert calls[0][0] == str(resolution.binary_path)
 
 
+def test_default_process_factory_uses_binary_parent_as_working_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    captured: dict[str, object] = {}
+    binary_path = _write_file(tmp_path / "runtime" / "llama-server.exe")
+
+    class DummyProcess:
+        pid = 123
+
+        def poll(self) -> int | None:
+            return None
+
+        def terminate(self) -> None:
+            return None
+
+        def wait(self, timeout: float | None = None) -> int:
+            return 0
+
+        def kill(self) -> None:
+            return None
+
+    def fake_popen(argv: list[str], *, cwd: Path | None = None) -> DummyProcess:
+        captured["argv"] = argv
+        captured["cwd"] = cwd
+        return DummyProcess()
+
+    monkeypatch.setattr(local_llm_sidecar.subprocess, "Popen", fake_popen)
+
+    process = local_llm_sidecar._default_process_factory([str(binary_path), "--help"])
+
+    assert process.pid == 123
+    assert captured["argv"] == [str(binary_path), "--help"]
+    assert captured["cwd"] == binary_path.parent
+
+
 def test_lifecycle_start_is_idempotent_for_same_running_profile(tmp_path: Path) -> None:
     calls: list[list[str]] = []
     service = LocalLLMSidecarService(
@@ -289,6 +335,20 @@ def test_lifecycle_stop_is_idempotent(tmp_path: Path) -> None:
     assert stopped.running is False
     assert stopped_again.state == "stopped"
     assert stopped_again.running is False
+
+
+def test_lifecycle_stop_kills_process_when_terminate_times_out(tmp_path: Path) -> None:
+    process = _SlowStopProcess()
+    service = LocalLLMSidecarService(process_factory=lambda argv: process)
+    service.start(_resolution(tmp_path))
+
+    stopped = service.stop()
+
+    assert process.terminated is True
+    assert process.killed is True
+    assert process.wait_calls == 2
+    assert stopped.state == "stopped"
+    assert stopped.running is False
 
 
 def test_lifecycle_start_failure_reports_degraded_reason(tmp_path: Path) -> None:

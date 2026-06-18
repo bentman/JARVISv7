@@ -159,7 +159,10 @@ class LocalLLMSidecarService:
             process.terminate()
             try:
                 process.wait(timeout=self._stop_timeout_seconds)
-            except TimeoutError:
+            except (TimeoutError, subprocess.TimeoutExpired):
+                process.kill()
+                process.wait(timeout=self._stop_timeout_seconds)
+            if process.poll() is None:
                 process.kill()
                 process.wait(timeout=self._stop_timeout_seconds)
         self._process = None
@@ -250,7 +253,9 @@ def build_llama_server_command(resolution: LLMServeProfileResolution) -> LocalLL
 
 
 def _default_process_factory(argv: list[str]) -> SidecarProcess:
-    return subprocess.Popen(argv)  # noqa: S603
+    binary_path = Path(argv[0])
+    cwd = binary_path.parent if binary_path.parent.is_dir() else None
+    return subprocess.Popen(argv, cwd=cwd)  # noqa: S603
 
 
 def _resolution_signature(resolution: LLMServeProfileResolution) -> tuple[str, str, str]:

@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 19:59
+  - Summary: Corrected the Slice R.8 AMD64 local llama.cpp validation from mock/degraded evidence to real application evidence. The proving host now starts a real local `llama-server.exe`, loads the selected GGUF, selects `llama.cpp`, completes one text turn, returns non-empty response text, and stops the sidecar.
+  - Scope: `.env.example`, `.gitignore`, `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `scripts/run_jarvis.py`, `docs/handoff.md`, `CHANGE_LOG.md`; local ignored `.env` was also corrected for this workspace run.
+  - Host class(es): Windows AMD64 / amd64 current workspace. Windows ARM64 remains pending/unproven for this correction.
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assistant-small-q4 --verify-only` PASS (`ready=true`, `models\llm\assistant-small-q4\qwen2.5-0.5b-instruct-q4_k_m.gguf` present). `USE_LOCAL_MODEL=true` + `LLAMA_CPP_MANAGED=true` `backend\.venv\Scripts\python scripts\run_jarvis.py --text-only --turns 1 --trace-to reports\validation\slice_r_app_live` PASS with `llm_selected runtime=llama.cpp reason=local llama.cpp available model=assistant-small-q4 profile=windows_amd64_cpu accelerator=cpu`, `server is listening on http://127.0.0.1:8080`, `final_state=IDLE`, and non-empty `response_text`. `Get-Process -Name llama-server -ErrorAction SilentlyContinue` returned no process. `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py -q` PASS (`18 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260618005915-regression.txt`). `git diff --check` PASS with line-ending warnings only.
+  - Note: This does not close Slice R and does not update `SYSTEM_INVENTORY.md`. AMD64 CPU-only local llama.cpp app path is proven; AMD64 CUDA and ARM64 local llama.cpp still require real host evidence.
+
 - 2026-06-17 19:13
   - Summary: Completed the Slice R.8 ARM64 degraded live validation leg. The live test shape ran on Windows ARM64, Ollama fallback passed, and local llama.cpp CPU/QNN paths closed as explicit degraded/skipped states because the selected GGUF and ARM64 llama-server binaries were absent and the sidecar endpoint refused connections.
   - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.8 surfaces in `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_local_llm_turn_live.py`, `backend/tests/runtime/turn`, `backend/tests/conftest.py`, and `pyproject.toml` marker registration.

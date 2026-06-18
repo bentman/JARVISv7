@@ -230,3 +230,6 @@ Thumbs.db
 **/*.pth
 **/*.ckpt
 **/*.ppn
+
+# Local runtime binaries are operator-acquired artifacts, not source.
+/runtimes/llama.cpp/*
