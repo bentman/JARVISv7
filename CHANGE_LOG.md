@@ -19,7 +19,7 @@
 ## Entries 
 
 - 2026-06-18 04:59
-  - Summary: Completed the narrow post-R cleanup. Removed obsolete temporary cross-device context, removed active Slice R cross-device process references, fixed nondeterministic same-timestamp agent ledger ordering, deleted the resolved root bug note, and removed the unused `SEARXNG_PORT` key from `.env.example`.
+  - Summary: Completed the narrow post-R cleanup. Removed obsolete temporary cross-device context, removed active Slice R cross-device process references, fixed nondeterministic same-timestamp agent ledger ordering, deleted the resolved root bug note~~, and removed the unused `SEARXNG_PORT` key from `.env.example`.~~ 2026-06-18 05:58 DO NOT REMOVE `SEARXNG_PORT`, IS IN USE!
   - Scope: `slices.md`, `bug_fix.md`, `.env.example`, ignored local `.env`, `backend/app/agents/ledger.py`, `backend/tests/unit/agents/test_ledger.py`
   - Host class(es): Windows AMD64 / amd64 validated.
   - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\agents\test_ledger.py -q` PASS (`3 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\api\test_routes.py -q` PASS (`49 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`546 passed, 1 skipped`; fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`121 passed, 4 deselected`, report `reports\validation\20260618045943-regression.txt`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `git diff --check` PASS with line-ending warnings only.
