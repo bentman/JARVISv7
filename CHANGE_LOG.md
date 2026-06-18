@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 04:29
+  - Summary: Validated the backend managed local LLM shutdown lifecycle cleanup on Windows AMD64. The same commit now has AMD64 evidence for focused API lifecycle tests, unit validation, regression validation, desktop static checks, and diff cleanliness.
+  - Scope: validation of `CHANGE_LOG.md`, `backend/app/api/app.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows AMD64 / amd64 validated for commit `8990e54 R.9 — More Adjustments`.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q` PASS (`36 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`545 passed, 1 skipped`; fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`121 passed, 4 deselected`, report `reports\validation\20260618042927-regression.txt`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `git diff --check` PASS.
+  - Note: This validates the committed shutdown lifecycle cleanup on AMD64; it does not add new Slice R feature work or claim CUDA local llama.cpp live completion.
+
 - 2026-06-18 04:22
   - Summary: Completed the backend managed local LLM lifecycle boundary by stopping any stored local llama.cpp sidecar during FastAPI shutdown. Shutdown is idempotent when no managed sidecar exists.
   - Scope: `backend/app/api/app.py`, `backend/tests/unit/api/test_routes.py`

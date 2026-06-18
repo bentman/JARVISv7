@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 23:29 -05:00 — Slice R AMD64 lifecycle cleanup validation passed
+
+- Active slice/sub-slice: Slice R / R.9 validation of managed local LLM shutdown lifecycle cleanup.
+- Last worked on: Windows AMD64.
+- Most recent change: No code change in this handoff step; validated commit `8990e54 R.9 — More Adjustments`, which stops any stored `local_llm_sidecar` during FastAPI shutdown and clears the reference.
+- Validation run: Focused API tests passed (`36 passed`). AMD64 unit passed (`545 passed, 1 skipped`). AMD64 regression passed (`121 passed, 4 deselected`, report `reports\validation\20260618042927-regression.txt`). Desktop static test passed. `git diff --check` passed.
+- Current state: AMD64 validation is green for this lifecycle cleanup. CUDA-capable host evidence is present in the fingerprint, but CUDA local llama.cpp live completion is not claimed here.
+- Next needed: R.9 closeout should use repo evidence only and avoid new Slice R feature work unless an explicit remaining blocker is identified.
+- Next host class: No cross-device validation required for this exact AMD64 validation note.
+
 ### 2026-06-18 04:15 -05:00 — Slice R backend startup boundary correction ready for AMD64 validation
 
 - Active slice/sub-slice: Slice R / narrow stabilization of managed local LLM startup ownership; R.9 remains open.
