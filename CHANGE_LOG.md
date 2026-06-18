@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 20:20
+  - Summary: Validated the Slice S.2 runtime-artifact state adjustment on Windows ARM64. Pending LLM runtime sources report explicit skipped states, and runtime artifact output includes the current-host applicable and selected profile state.
+  - Scope: `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `CHANGE_LOG.md`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_llm_runtime_artifacts.py -q` PASS (`10 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_script.py -q` PASS (`5 passed`). `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with separate `models` and `runtime_artifacts`, `current_host.selected_profile_id=windows_arm64_cpu`, ARM64 CPU runtime `ready`, and pending CUDA/QNN/NPU sources reported as `skipped`. `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` PASS with pending runtime sources reported as `skipped` and no planned runtime downloads. `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`557 passed, 1 warning`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`131 passed, 4 deselected`, report `reports\validation\20260618202050-regression.txt`).
+  - Note: Existing GGUF verification/acquisition behavior was preserved. No live CUDA/QNN acquisition, resolver/sidecar/desktop/provisioning behavior, runtime binary, model artifact, or `SYSTEM_INVENTORY.md` capability truth changed.
+
 - 2026-06-18 20:11
   - Summary: Completed the Slice S.2 runtime-artifact state adjustment. Pending LLM runtime sources now report explicit skipped states instead of planned downloads, and runtime artifact output includes the current-host applicable and selected profile state.
   - Scope: `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `CHANGE_LOG.md`
