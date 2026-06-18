@@ -121,7 +121,13 @@ def test_selector_emits_selection_trace_with_runtime_name_and_reason():
 
 
 def test_selector_skips_local_when_not_available():
-    runtime, trace = select_llm({}, _preflight(), HardwareProfile(), ollama=_AvailableOllama())
+    runtime, trace = select_llm(
+        {},
+        _preflight(),
+        HardwareProfile(),
+        local=_UnavailableLocal(),  # type: ignore[arg-type]
+        ollama=_AvailableOllama(),
+    )
 
     assert runtime.runtime_name() == "ollama"
     assert trace.runtime_name != "llama.cpp"

@@ -12,7 +12,7 @@ from backend.app.routing.runtime_selector import NullLLMRuntime
 
 
 def test_local_runtime_is_available_returns_false():
-    runtime = LlamaCppLLM()
+    runtime = LlamaCppLLM(managed=False)
 
     assert runtime.is_available() is False
     assert "disabled" in runtime.reason
@@ -198,23 +198,39 @@ def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
     assert entry.config["source"]["file"] == "qwen2.5-0.5b-instruct-q4_k_m.gguf"
     assert "voice_chat" in entry.config["routes"]
 
-    profiles = entry.config["serve_profiles"]
+    profiles = entry.config["serve_profiles"]["hardware_profiles"]
     assert profiles["windows_amd64_cpu"]["accelerator"] == "cpu"
+    assert profiles["windows_amd64_cpu"]["profile_id"] == "windows_amd64_cpu"
+    assert profiles["windows_amd64_cpu"]["provisioning_extras"] == [
+        "hw-cpu-base",
+        "hw-x64-base",
+        "hw-x64-ort-cpu",
+    ]
     assert profiles["windows_amd64_cpu"]["base_url"] == "http://127.0.0.1:8080"
     assert profiles["windows_amd64_cpu"]["launch"]["gpu_layers"] == 0
+    assert profiles["windows_amd64_cpu"]["runtime_artifact"]["required_files"] == ["llama-server.exe"]
     assert profiles["windows_arm64_cpu"]["accelerator"] == "cpu"
     assert profiles["windows_arm64_cpu"]["launch"]["gpu_layers"] == 0
 
 
 def test_llm_catalog_accelerator_profiles_are_declared_without_validation_claims():
     entry = get_model_entry("llm")
-    profiles = entry.config["serve_profiles"]
+    profiles = entry.config["serve_profiles"]["hardware_profiles"]
 
-    assert profiles["windows_amd64_cuda"]["accelerator"] == "gpu.cuda"
-    assert profiles["windows_amd64_cuda"]["validation_status"] == "declared-not-validated"
-    assert profiles["windows_arm64_qnn"]["accelerator"] == "npu.qnn"
-    assert profiles["windows_arm64_qnn"]["validation_status"] == "declared-degraded"
-    assert profiles["windows_arm64_qnn"]["close_if_unavailable"] == "Degraded-no-sidecar-binary"
+    assert profiles["windows_amd64_gpu_nvidia_cuda"]["accelerator"] == "gpu.cuda"
+    assert profiles["windows_amd64_gpu_nvidia_cuda"]["validation_status"] == "declared-not-validated"
+    assert profiles["windows_amd64_gpu_amd"]["accelerator"] == "gpu.vulkan"
+    assert profiles["windows_amd64_gpu_amd"]["validation_status"] == "declared-degraded"
+    assert profiles["windows_amd64_gpu_intel"]["accelerator"] == "gpu.vulkan"
+    assert profiles["windows_amd64_gpu_intel"]["validation_status"] == "declared-degraded"
+    assert profiles["windows_arm64_npu_qualcomm_base"]["accelerator"] == "npu.hexagon_candidate"
+    assert profiles["windows_arm64_npu_qualcomm_base"]["validation_status"] == "declared-degraded"
+    assert profiles["windows_arm64_npu_qualcomm_qnn"]["accelerator"] == "npu.qnn"
+    assert profiles["windows_arm64_npu_qualcomm_qnn"]["validation_status"] == "declared-degraded"
+    assert (
+        profiles["windows_arm64_npu_qualcomm_qnn"]["close_if_unavailable"]
+        == "Degraded-no-sidecar-binary"
+    )
 
 
 def test_ollama_runtime_is_available_true_when_reachable(monkeypatch):

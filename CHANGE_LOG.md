@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 13:36
+  - Summary: Completed Slice S.1 catalog reconfiguration around explicit LLM hardware profile nodes. The resolver now reads the grouped hardware-profile catalog shape while preserving CPU fallback and strict degraded accelerator selection.
+  - Scope: `config/models/llm.yaml`, `backend/app/models/llm_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/runtime/hardware/test_llm_serve_profile_resolution.py`, `backend/tests/unit/routing/test_runtime_selector.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`8 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\runtime\hardware\test_llm_serve_profile_resolution.py -q` PASS (`1 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`546 passed, 1 skipped`; fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`121 passed, 4 deselected`, report `reports\validation\20260618183549-regression.txt`). `git diff --check` PASS with line-ending warnings only.
+  - Note: No runtime artifact acquisition, accelerator live proof, selector override, desktop behavior, provisioning change, runtime binary, model artifact, or `SYSTEM_INVENTORY.md` capability truth was changed.
+
 - 2026-06-18 13:21
   - Summary: Completed Slice S.0 runtime artifact census on Windows ARM64. Confirmed the Slice S planning artifact is present, current LLM model acquisition verifies the GGUF artifact only, and llama.cpp runtime binaries remain path-consumed rather than repo-acquired.
   - Scope: `CHANGE_LOG.md`; read-only census of `20260618_slice-s.md`, `config/models/llm.yaml`, `pyproject.toml`, `backend/app/hardware/provisioning.py`, `scripts/ensure_models.py`, `backend/app/models/catalog.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_sidecar.py`, `backend/app/services/local_llm_startup.py`, `backend/app/core/settings.py`, `scripts/provision.py`, and existing LLM tests.

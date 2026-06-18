@@ -56,9 +56,7 @@ def resolve_llm_serve_profile(
     if route not in routes:
         raise ModelCatalogError(f"route '{route}' is not declared for LLM model '{selected_entry.name}'")
 
-    serve_profiles = config.get("serve_profiles", {})
-    if not isinstance(serve_profiles, dict):
-        raise ModelCatalogError(f"LLM model '{selected_entry.name}' has invalid serve_profiles metadata")
+    serve_profiles = _serve_profiles(config, selected_entry.name)
 
     cpu_profile_id = _cpu_profile_id(profile)
     cpu_serve_profile = serve_profiles.get(cpu_profile_id)
@@ -104,6 +102,21 @@ def resolve_llm_serve_profile(
 
 def _cpu_profile_id(profile: HardwareProfile) -> str:
     return f"{profile.os_name}_{profile.arch}_cpu"
+
+
+def _serve_profiles(config: dict[str, Any], model_name: str) -> dict[str, Any]:
+    raw_profiles = config.get("serve_profiles", {})
+    if not isinstance(raw_profiles, dict):
+        raise ModelCatalogError(f"LLM model '{model_name}' has invalid serve_profiles metadata")
+
+    hardware_profiles = raw_profiles.get("hardware_profiles")
+    if hardware_profiles is None:
+        return raw_profiles
+    if not isinstance(hardware_profiles, dict):
+        raise ModelCatalogError(
+            f"LLM model '{model_name}' has invalid serve_profiles.hardware_profiles metadata"
+        )
+    return hardware_profiles
 
 
 def _select_current_host_profile(

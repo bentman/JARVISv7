@@ -29,7 +29,7 @@ def test_current_host_llm_serve_profile_resolution_uses_real_evidence(
             (
                 candidate
                 for candidate in resolution.degraded_candidates
-                if candidate.profile_id == "windows_arm64_qnn"
+                if candidate.profile_id == "windows_arm64_npu_qualcomm_qnn"
             ),
             None,
         )
@@ -41,7 +41,7 @@ def test_current_host_llm_serve_profile_resolution_uses_real_evidence(
         qnn_binary = REPO_ROOT / "runtimes" / "llama.cpp" / "windows-arm64-qnn" / "llama-server.exe"
 
         if qnn_ready and qnn_binary.is_file() and resolution.local_model_path.is_file():
-            assert resolution.serve_profile_id == "windows_arm64_qnn"
+            assert resolution.serve_profile_id == "windows_arm64_npu_qualcomm_qnn"
             assert resolution.accelerator == "npu.qnn"
         else:
             assert resolution.serve_profile_id == "windows_arm64_cpu"

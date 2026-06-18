@@ -31,48 +31,105 @@ def _entry(tmp_path: Path) -> ModelEntry:
                 "max_tokens": 256,
             },
             "serve_profiles": {
-                "windows_amd64_cpu": {
-                    "os": "windows",
-                    "arch": "amd64",
-                    "accelerator": "cpu",
-                    "binary_path": str(tmp_path / "bin" / "amd64-cpu" / "llama-server.exe"),
-                    "base_url": "http://127.0.0.1:8080",
-                    "launch": {
-                        "ctx_size": 4096,
-                        "gpu_layers": 0,
+                "hardware_profiles": {
+                    "windows_amd64_cpu": {
+                        "profile_id": "windows_amd64_cpu",
+                        "os": "windows",
+                        "arch": "amd64",
+                        "provisioning_extras": ["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu"],
+                        "accelerator": "cpu",
+                        "runtime_artifact": {
+                            "source": {"type": "pending-pinned-release", "reason": "S-G1-pending"},
+                            "binary_path": str(tmp_path / "bin" / "amd64-cpu" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(tmp_path / "bin" / "amd64-cpu" / "llama-server.exe"),
+                        "base_url": "http://127.0.0.1:8080",
+                        "launch": {
+                            "ctx_size": 4096,
+                            "gpu_layers": 0,
+                        },
                     },
-                },
-                "windows_arm64_cpu": {
-                    "os": "windows",
-                    "arch": "arm64",
-                    "accelerator": "cpu",
-                    "binary_path": str(tmp_path / "bin" / "arm64-cpu" / "llama-server.exe"),
-                    "base_url": "http://127.0.0.1:8080",
-                    "launch": {
-                        "ctx_size": 4096,
-                        "gpu_layers": 0,
+                    "windows_arm64_cpu": {
+                        "profile_id": "windows_arm64_cpu",
+                        "os": "windows",
+                        "arch": "arm64",
+                        "provisioning_extras": ["hw-cpu-base", "hw-arm64-base", "hw-arm64-ort-cpu"],
+                        "accelerator": "cpu",
+                        "runtime_artifact": {
+                            "source": {"type": "pending-pinned-release", "reason": "S-G1-pending"},
+                            "binary_path": str(tmp_path / "bin" / "arm64-cpu" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(tmp_path / "bin" / "arm64-cpu" / "llama-server.exe"),
+                        "base_url": "http://127.0.0.1:8080",
+                        "launch": {
+                            "ctx_size": 4096,
+                            "gpu_layers": 0,
+                        },
                     },
-                },
-                "windows_amd64_cuda": {
-                    "os": "windows",
-                    "arch": "amd64",
-                    "accelerator": "gpu.cuda",
-                    "binary_path": str(tmp_path / "bin" / "amd64-cuda" / "llama-server.exe"),
-                    "close_if_unavailable": "Degraded-accelerator-unavailable",
-                    "launch": {
-                        "ctx_size": 4096,
-                        "gpu_layers": "auto",
+                    "windows_amd64_gpu_nvidia_cuda": {
+                        "profile_id": "windows_amd64_gpu_nvidia_cuda",
+                        "os": "windows",
+                        "arch": "amd64",
+                        "provisioning_extras": ["hw-gpu-nvidia-cuda"],
+                        "accelerator": "gpu.cuda",
+                        "runtime_artifact": {
+                            "source": {"type": "pending-pinned-release", "reason": "S-G1-pending"},
+                            "binary_path": str(tmp_path / "bin" / "amd64-cuda" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(tmp_path / "bin" / "amd64-cuda" / "llama-server.exe"),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                        "launch": {
+                            "ctx_size": 4096,
+                            "gpu_layers": "auto",
+                        },
                     },
-                },
-                "windows_arm64_qnn": {
-                    "os": "windows",
-                    "arch": "arm64",
-                    "accelerator": "npu.qnn",
-                    "binary_path": str(tmp_path / "bin" / "arm64-qnn" / "llama-server.exe"),
-                    "close_if_unavailable": "Degraded-no-sidecar-binary",
-                    "launch": {
-                        "ctx_size": 4096,
-                        "device": "qnn",
+                    "windows_amd64_gpu_amd": {
+                        "profile_id": "windows_amd64_gpu_amd",
+                        "os": "windows",
+                        "arch": "amd64",
+                        "provisioning_extras": ["hw-gpu-amd"],
+                        "accelerator": "gpu.vulkan",
+                        "binary_path": str(tmp_path / "bin" / "amd64-amd" / "llama-server.exe"),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                    },
+                    "windows_amd64_gpu_intel": {
+                        "profile_id": "windows_amd64_gpu_intel",
+                        "os": "windows",
+                        "arch": "amd64",
+                        "provisioning_extras": ["hw-gpu-intel"],
+                        "accelerator": "gpu.vulkan",
+                        "binary_path": str(tmp_path / "bin" / "amd64-intel" / "llama-server.exe"),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                    },
+                    "windows_arm64_npu_qualcomm_base": {
+                        "profile_id": "windows_arm64_npu_qualcomm_base",
+                        "os": "windows",
+                        "arch": "arm64",
+                        "provisioning_extras": ["hw-npu-qualcomm-qnn"],
+                        "accelerator": "npu.hexagon_candidate",
+                        "binary_path": str(tmp_path / "bin" / "arm64-hexagon" / "llama-server.exe"),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                    },
+                    "windows_arm64_npu_qualcomm_qnn": {
+                        "profile_id": "windows_arm64_npu_qualcomm_qnn",
+                        "os": "windows",
+                        "arch": "arm64",
+                        "provisioning_extras": ["hw-npu-qualcomm-qnn"],
+                        "accelerator": "npu.qnn",
+                        "runtime_artifact": {
+                            "source": {"type": "pending-viability", "reason": "S-G1-pending"},
+                            "binary_path": str(tmp_path / "bin" / "arm64-qnn" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(tmp_path / "bin" / "arm64-qnn" / "llama-server.exe"),
+                        "close_if_unavailable": "Degraded-no-sidecar-binary",
+                        "launch": {
+                            "ctx_size": 4096,
+                            "device": "qnn",
+                        },
                     },
                 },
             },
@@ -155,7 +212,9 @@ def test_resolve_reports_amd64_cuda_as_degraded_until_evidence_exists(tmp_path: 
     )
 
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
-        ("windows_amd64_cuda", "Degraded-accelerator-unavailable")
+        ("windows_amd64_gpu_nvidia_cuda", "Degraded-accelerator-unavailable"),
+        ("windows_amd64_gpu_amd", "Degraded-accelerator-unavailable"),
+        ("windows_amd64_gpu_intel", "Degraded-accelerator-unavailable"),
     ]
 
 
@@ -182,11 +241,13 @@ def test_resolve_selects_amd64_cuda_when_runtime_evidence_exists(tmp_path: Path)
         entry=entry,
     )
 
-    assert resolution.serve_profile_id == "windows_amd64_cuda"
+    assert resolution.serve_profile_id == "windows_amd64_gpu_nvidia_cuda"
     assert resolution.accelerator == "gpu.cuda"
     assert resolution.binary_path == cuda_binary
     assert resolution.degraded_reason is None
-    assert resolution.degraded_candidates == []
+    assert "windows_amd64_gpu_nvidia_cuda" not in {
+        candidate.profile_id for candidate in resolution.degraded_candidates
+    }
 
 
 def test_resolve_reports_arm64_qnn_as_skipped_until_viable_binary_exists(tmp_path: Path) -> None:
@@ -205,7 +266,8 @@ def test_resolve_reports_arm64_qnn_as_skipped_until_viable_binary_exists(tmp_pat
     )
 
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
-        ("windows_arm64_qnn", "Degraded-no-sidecar-binary")
+        ("windows_arm64_npu_qualcomm_base", "Degraded-accelerator-unavailable"),
+        ("windows_arm64_npu_qualcomm_qnn", "Degraded-no-sidecar-binary"),
     ]
     assert resolution.serve_profile_id == "windows_arm64_cpu"
     assert resolution.accelerator == "cpu"
@@ -233,13 +295,18 @@ def test_resolve_selects_arm64_qnn_when_runtime_evidence_exists(tmp_path: Path) 
         entry=entry,
     )
 
-    assert resolution.serve_profile_id == "windows_arm64_qnn"
+    assert resolution.serve_profile_id == "windows_arm64_npu_qualcomm_qnn"
     assert resolution.accelerator == "npu.qnn"
     assert resolution.binary_path == qnn_binary
     assert resolution.launch["device"] == "qnn"
-    assert resolution.selected_reason == "selected current-host npu.qnn serve profile windows_arm64_qnn"
+    assert (
+        resolution.selected_reason
+        == "selected current-host npu.qnn serve profile windows_arm64_npu_qualcomm_qnn"
+    )
     assert resolution.degraded_reason is None
-    assert resolution.degraded_candidates == []
+    assert "windows_arm64_npu_qualcomm_qnn" not in {
+        candidate.profile_id for candidate in resolution.degraded_candidates
+    }
 
 
 def test_global_binary_override_does_not_make_arm64_qnn_candidate_viable(tmp_path: Path) -> None:
@@ -272,7 +339,8 @@ def test_global_binary_override_does_not_make_arm64_qnn_candidate_viable(tmp_pat
     assert resolution.accelerator == "cpu"
     assert resolution.binary_path == cpu_binary
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
-        ("windows_arm64_qnn", "Degraded-no-sidecar-binary")
+        ("windows_arm64_npu_qualcomm_base", "Degraded-accelerator-unavailable"),
+        ("windows_arm64_npu_qualcomm_qnn", "Degraded-no-sidecar-binary"),
     ]
 
 

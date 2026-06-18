@@ -37,77 +37,214 @@ models:
         - "User:"
         - "Assistant:"
     serve_profiles:
-      windows_amd64_cpu:
-        os: windows
-        arch: amd64
-        accelerator: cpu
-        binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-        host: 127.0.0.1
-        port: 8080
-        base_url: http://127.0.0.1:8080
-        validation_status: declared-not-validated
-        launch:
-          ctx_size: 4096
-          threads: auto
-          threads_batch: auto
-          batch_size: 1024
-          ubatch_size: 256
-          gpu_layers: 0
-          cache_type_k: f16
-          cache_type_v: f16
-          parallel: 1
-          cont_batching: true
-          warmup: true
-      windows_arm64_cpu:
-        os: windows
-        arch: arm64
-        accelerator: cpu
-        binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-        host: 127.0.0.1
-        port: 8080
-        base_url: http://127.0.0.1:8080
-        validation_status: declared-not-validated
-        launch:
-          ctx_size: 4096
-          threads: auto
-          threads_batch: auto
-          batch_size: 1024
-          ubatch_size: 256
-          gpu_layers: 0
-          cache_ram_mb: 4096
-          parallel: 1
-          cont_batching: true
-          warmup: true
-      windows_amd64_cuda:
-        os: windows
-        arch: amd64
-        accelerator: gpu.cuda
-        binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-        host: 127.0.0.1
-        port: 8080
-        base_url: http://127.0.0.1:8080
-        validation_status: declared-not-validated
-        close_if_unavailable: Degraded-accelerator-unavailable
-        launch:
-          ctx_size: 4096
-          gpu_layers: auto
-          split_mode: layer
-          main_gpu: 0
-          flash_attn: auto
-          cache_type_k: f16
-          cache_type_v: f16
-          cache_ram_mb: 8192
-      windows_arm64_qnn:
-        os: windows
-        arch: arm64
-        accelerator: npu.qnn
-        binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-        host: 127.0.0.1
-        port: 8080
-        base_url: http://127.0.0.1:8080
-        validation_status: declared-degraded
-        close_if_unavailable: Degraded-no-sidecar-binary
-        launch:
-          ctx_size: 4096
-          device: qnn
-          cache_ram_mb: 4096
+      hardware_profiles:
+        windows_amd64_cpu:
+          profile_id: windows_amd64_cpu
+          os: windows
+          arch: amd64
+          provisioning_extras:
+            - hw-cpu-base
+            - hw-x64-base
+            - hw-x64-ort-cpu
+          accelerator: cpu
+          runtime_artifact:
+            source:
+              type: pending-pinned-release
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-not-validated
+          launch:
+            ctx_size: 4096
+            threads: auto
+            threads_batch: auto
+            batch_size: 1024
+            ubatch_size: 256
+            gpu_layers: 0
+            cache_type_k: f16
+            cache_type_v: f16
+            parallel: 1
+            cont_batching: true
+            warmup: true
+        windows_arm64_cpu:
+          profile_id: windows_arm64_cpu
+          os: windows
+          arch: arm64
+          provisioning_extras:
+            - hw-cpu-base
+            - hw-arm64-base
+            - hw-arm64-ort-cpu
+          accelerator: cpu
+          runtime_artifact:
+            source:
+              type: pending-pinned-release
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-not-validated
+          launch:
+            ctx_size: 4096
+            threads: auto
+            threads_batch: auto
+            batch_size: 1024
+            ubatch_size: 256
+            gpu_layers: 0
+            cache_ram_mb: 4096
+            parallel: 1
+            cont_batching: true
+            warmup: true
+        windows_amd64_gpu_nvidia_cuda:
+          profile_id: windows_amd64_gpu_nvidia_cuda
+          os: windows
+          arch: amd64
+          provisioning_extras:
+            - hw-gpu-nvidia-cuda
+          accelerator: gpu.cuda
+          runtime_artifact:
+            source:
+              type: pending-pinned-release
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-not-validated
+          close_if_unavailable: Degraded-accelerator-unavailable
+          launch:
+            ctx_size: 4096
+            gpu_layers: auto
+            split_mode: layer
+            main_gpu: 0
+            flash_attn: auto
+            cache_type_k: f16
+            cache_type_v: f16
+            cache_ram_mb: 8192
+        windows_amd64_gpu_amd:
+          profile_id: windows_amd64_gpu_amd
+          os: windows
+          arch: amd64
+          provisioning_extras:
+            - hw-gpu-amd
+          accelerator: gpu.vulkan
+          runtime_artifact:
+            source:
+              type: pending-pinned-release
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-degraded
+          close_if_unavailable: Degraded-accelerator-unavailable
+          launch:
+            ctx_size: 4096
+            gpu_layers: auto
+            cache_ram_mb: 8192
+        windows_amd64_gpu_intel:
+          profile_id: windows_amd64_gpu_intel
+          os: windows
+          arch: amd64
+          provisioning_extras:
+            - hw-gpu-intel
+          accelerator: gpu.vulkan
+          runtime_artifact:
+            source:
+              type: pending-pinned-release
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-degraded
+          close_if_unavailable: Degraded-accelerator-unavailable
+          launch:
+            ctx_size: 4096
+            gpu_layers: auto
+            cache_ram_mb: 8192
+        windows_arm64_npu_qualcomm_base:
+          profile_id: windows_arm64_npu_qualcomm_base
+          os: windows
+          arch: arm64
+          provisioning_extras:
+            - hw-npu-qualcomm-qnn
+          accelerator: npu.hexagon_candidate
+          runtime_artifact:
+            source:
+              type: pending-viability
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-degraded
+          close_if_unavailable: Degraded-accelerator-unavailable
+          launch:
+            ctx_size: 4096
+            cache_ram_mb: 4096
+        windows_arm64_npu_qualcomm_qnn:
+          profile_id: windows_arm64_npu_qualcomm_qnn
+          os: windows
+          arch: arm64
+          provisioning_extras:
+            - hw-npu-qualcomm-qnn
+          accelerator: npu.qnn
+          runtime_artifact:
+            source:
+              type: pending-viability
+              reason: S-G1-pending
+            binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-degraded
+          close_if_unavailable: Degraded-no-sidecar-binary
+          launch:
+            ctx_size: 4096
+            device: qnn
+            cache_ram_mb: 4096
