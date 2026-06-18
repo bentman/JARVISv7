@@ -160,7 +160,7 @@ The active pain list still includes:
 
 * * *
 
-## 🏃‍♂️‍➡️ Hardware and Runtime Reality ("x64, ARM64, and the tiny furnace of truth")
+## 🏃‍♂️‍➡️ Runtime Reality ("x64, ARM64, and the tiny furnace of truth")
 
 JARVISv7 was explicitly shaped by the requirement that hardware support must not be retrofitted later while everyone pretends that was the plan. The project now has verified foundations across Windows x64 and Windows ARM64 for major parts of the stack. That includes profiling, provisioning, readiness, runtime validation, desktop host behavior, voice runtime matrices, and regression coverage across both host classes.
 
