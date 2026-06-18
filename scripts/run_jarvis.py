@@ -2,13 +2,10 @@ from __future__ import annotations
 
 import argparse
 import sys
-import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TextIO
-
-import httpx
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -29,14 +26,12 @@ from backend.app.hardware.readiness import (
     derive_tts_device_readiness,
     derive_wake_device_readiness,
 )
-from backend.app.core.settings import load_settings
-from backend.app.models.llm_profiles import resolve_llm_serve_profile
 from backend.app.personality.loader import load_default_personality
 from backend.app.routing.runtime_selector import SelectionTrace, select_llm
-from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
+from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services import turn_service, voice_service
 
 
@@ -165,76 +160,21 @@ def _mode_name(args: argparse.Namespace) -> str:
 def _build_engine(context: StartupContext) -> TurnEngine:
     stt = select_stt_runtime(context.preflight, context.profile)
     tts = select_tts_runtime(context.preflight, context.profile)
-    local_llm = _start_local_llm_if_configured(context)
+    local_llm = prepare_managed_local_llm(
+        context.profile,
+        context.preflight,
+        flags=context.report.flags,
+    )
+    context.local_llm_sidecar = local_llm.sidecar
     llm, llm_trace = select_llm(
         {},
         context.preflight,
         context.profile,
-        local=local_llm,
+        local=local_llm.runtime,
     )
     context.llm_trace = llm_trace
     personality = load_default_personality()
     return TurnEngine(stt=stt, tts=tts, llm=llm, personality=personality)
-
-
-def _start_local_llm_if_configured(context: StartupContext) -> LlamaCppLLM | None:
-    settings = load_settings()
-    if not settings.use_local_model and not settings.llama_cpp_managed:
-        return None
-
-    resolution = resolve_llm_serve_profile(
-        "voice_chat",
-        context.profile,
-        context.preflight,
-        settings=settings,
-        flags=context.report.flags,
-    )
-    if resolution.degraded_reason:
-        return None
-
-    service = LocalLLMSidecarService()
-    status = service.start(resolution)
-    context.local_llm_sidecar = service
-    if not status.running:
-        return None
-
-    ready, _reason = _wait_for_llama_cpp_ready(resolution.base_url)
-    if not ready:
-        service.stop()
-        context.local_llm_sidecar = None
-        return None
-
-    return LlamaCppLLM(
-        base_url=resolution.base_url,
-        model=resolution.model_id,
-        generation_defaults=resolution.generation_defaults,
-        sidecar_status=service.status,
-        managed=True,
-        route=resolution.route,
-        serve_profile_id=resolution.serve_profile_id,
-        accelerator=resolution.accelerator,
-        selected_reason=resolution.selected_reason,
-    )
-
-
-def _wait_for_llama_cpp_ready(base_url: str, *, timeout_seconds: float = 45.0) -> tuple[bool, str]:
-    deadline = time.monotonic() + timeout_seconds
-    last_reason = "not probed"
-    url = base_url.rstrip("/")
-    while time.monotonic() < deadline:
-        try:
-            health = httpx.get(f"{url}/health", timeout=2.0)
-            health.raise_for_status()
-            models = httpx.get(f"{url}/v1/models", timeout=2.0)
-            models.raise_for_status()
-            payload = models.json()
-            if isinstance(payload, dict) and isinstance(payload.get("data"), list):
-                return True, "health and /v1/models reachable"
-            last_reason = "/v1/models returned invalid payload"
-        except Exception as exc:
-            last_reason = str(exc)
-        time.sleep(0.25)
-    return False, last_reason
 
 
 def _stop_local_llm_sidecar(context: StartupContext) -> None:

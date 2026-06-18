@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 04:15
+  - Summary: Corrected the managed local LLM ownership boundary so durable backend startup prepares the local llama.cpp candidate before runtime selection. `scripts/run_jarvis.py` now calls the same backend-owned helper instead of owning separate sidecar startup/readiness orchestration.
+  - Scope: `backend/app/services/local_llm_startup.py`, `backend/app/api/app.py`, `scripts/run_jarvis.py`, `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/scripts/test_run_jarvis_script.py`
+  - Host class(es): Windows ARM64 / arm64 validated. Windows AMD64 validation pending for the same boundary correction.
+  - Evidence: Focused ownership tests PASS (`50 passed`, one existing Starlette warning). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`544 passed`, one existing Starlette warning). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`121 passed, 4 deselected`, report `reports\validation\20260618041436-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `git diff --check` PASS with line-ending warnings only.
+  - Note: This does not add new Slice R features or claim live ARM64 QNN completion; it makes the normal backend startup path canonical for managed local LLM preparation.
+
 - 2026-06-17 22:20
   - Summary: Corrected Slice R live llama.cpp validation so live tests start the repo-managed sidecar themselves, fail on unreachable sidecar when artifacts exist, and verify cleanup. The AMD64 CPU-only local llama.cpp app path and live tests now prove real model/server/turn behavior without relying on a manually pre-started sidecar.
   - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/conftest.py`, `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_local_llm_turn_live.py`

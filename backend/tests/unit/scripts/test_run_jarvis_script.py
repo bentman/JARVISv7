@@ -164,6 +164,59 @@ def test_text_only_turns_one_delegates_through_text_service(monkeypatch, capsys)
     assert "final_state=IDLE" in output
 
 
+def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> None:
+    context = run_jarvis.StartupContext(
+        report=_fake_report(),
+        profile=_fake_report().profile,
+        extras=["dev"],
+        preflight=_fake_preflight(),
+        readiness={
+            "stt": ("cpu", True, "stt ready"),
+            "tts": ("cpu", True, "tts ready"),
+            "llm": ("cpu", True, "llm ready"),
+            "wake": ("cpu", True, "wake ready"),
+        },
+        readiness_summary="ready; tokens=3",
+    )
+    prepared_runtime = _FakeLLM()
+    selected_runtime = _FakeLLM()
+    prepare_calls = []
+    selector_calls = []
+
+    class CapturedEngine:
+        def __init__(self, *, stt, tts, llm, personality):
+            self.stt = stt
+            self.tts = tts
+            self.llm = llm
+            self.personality = personality
+
+    monkeypatch.setattr(run_jarvis, "select_stt_runtime", lambda preflight, profile: object())
+    monkeypatch.setattr(run_jarvis, "select_tts_runtime", lambda preflight, profile: object())
+    monkeypatch.setattr(run_jarvis, "load_default_personality", lambda: object())
+    monkeypatch.setattr(run_jarvis, "TurnEngine", CapturedEngine)
+
+    def fake_prepare(profile, preflight, *, flags):
+        prepare_calls.append((profile, preflight, flags))
+        return SimpleNamespace(runtime=prepared_runtime, sidecar="sidecar")
+
+    def fake_select(policy, preflight, profile, *, local=None):
+        selector_calls.append((policy, preflight, profile, local))
+        return selected_runtime, "trace"
+
+    monkeypatch.setattr(run_jarvis, "prepare_managed_local_llm", fake_prepare)
+    monkeypatch.setattr(run_jarvis, "select_llm", fake_select)
+
+    engine = run_jarvis._build_engine(context)
+
+    assert engine.llm is selected_runtime
+    assert context.local_llm_sidecar == "sidecar"
+    assert context.llm_trace == "trace"
+    assert prepare_calls == [(context.profile, context.preflight, context.report.flags)]
+    assert selector_calls == [({}, context.preflight, context.profile, prepared_runtime)]
+    assert not hasattr(run_jarvis, "_start_local_llm_if_configured")
+    assert not hasattr(run_jarvis, "_wait_for_llama_cpp_ready")
+
+
 def test_text_only_turns_two_executes_two_turns(monkeypatch, capsys) -> None:
     _patch_startup(monkeypatch)
     calls = []

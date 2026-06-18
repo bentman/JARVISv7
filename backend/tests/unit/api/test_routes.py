@@ -216,7 +216,9 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     preflight = PreflightResult(tokens=["import:ollama"], dll_discovery_log=[], probe_errors={})
     policy = {"llm": {"cloud_enabled": False}}
     selected_llm = _FakeLLM()
-    calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile]] = []
+    prepared_local = _FakeLocalLLM()
+    prepare_calls: list[tuple[HardwareProfile, PreflightResult, CapabilityFlags]] = []
+    selector_calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile, object]] = []
 
     monkeypatch.setattr(app_module, "run_profiler", lambda: report)
     monkeypatch.setattr(app_module, "resolve_required_extras", lambda profile: ["dev"])
@@ -236,16 +238,26 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     monkeypatch.setattr(app_module, "select_stt_runtime", lambda preflight, profile: _FakeSTT())
     monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
 
-    def fake_select_llm(runtime_policy, runtime_preflight, runtime_profile):
-        calls.append((runtime_policy, runtime_preflight, runtime_profile))
+    def fake_prepare_managed_local_llm(runtime_profile, runtime_preflight, *, flags):
+        prepare_calls.append((runtime_profile, runtime_preflight, flags))
+        return type(
+            "PreparedLocal",
+            (),
+            {"runtime": prepared_local, "sidecar": None, "degraded_reason": None},
+        )()
+
+    def fake_select_llm(runtime_policy, runtime_preflight, runtime_profile, *, local=None):
+        selector_calls.append((runtime_policy, runtime_preflight, runtime_profile, local))
         return selected_llm, object()
 
+    monkeypatch.setattr(app_module, "prepare_managed_local_llm", fake_prepare_managed_local_llm)
     monkeypatch.setattr(app_module, "select_llm", fake_select_llm)
 
     state = app_module.build_startup_state()
 
     assert state.llm is selected_llm
-    assert calls == [(policy, preflight, profile)]
+    assert prepare_calls == [(profile, preflight, report.flags)]
+    assert selector_calls == [(policy, preflight, profile, prepared_local)]
 
 
 def _wake_source(stop_event):

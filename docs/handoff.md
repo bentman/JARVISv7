@@ -4,6 +4,15 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-18 04:15 -05:00 — Slice R backend startup boundary correction ready for AMD64 validation
+
+- Active slice/sub-slice: Slice R / narrow stabilization of managed local LLM startup ownership; R.9 remains open.
+- Last worked on: Windows ARM64.
+- Most recent change: Added backend-owned `prepare_managed_local_llm()` and wired normal API startup to prepare/pass the local llama.cpp candidate into `select_llm()`. `scripts/run_jarvis.py` now calls the same helper and no longer owns separate sidecar startup/readiness orchestration.
+- Validation run: Focused ownership tests passed (`50 passed`). ARM64 unit passed (`544 passed`, one existing Starlette warning). ARM64 regression passed (`121 passed, 4 deselected`, report `reports\validation\20260618041436-regression.txt`). `node desktop\tests\static.test.mjs` passed. `git diff --check` passed with line-ending warnings only.
+- Next needed on AMD64: Run focused ownership tests if desired, then `backend\.venv\Scripts\python scripts\validate_backend.py unit`, `backend\.venv\Scripts\python scripts\validate_backend.py regression`, `node desktop\tests\static.test.mjs`, and `git diff --check`.
+- Next host class: Windows AMD64.
+
 ### 2026-06-17 22:20 -05:00 — Slice R AMD64 live tests corrected to managed sidecar
 
 - Active slice/sub-slice: Slice R / R.8 live validation correction; R.9 remains open.
