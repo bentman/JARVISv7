@@ -106,7 +106,7 @@ models:
         port: 8080
         base_url: http://127.0.0.1:8080
         validation_status: declared-degraded
-        close_if_unavailable: SKIP-no-viable-binary
+        close_if_unavailable: Degraded-no-sidecar-binary
         launch:
           ctx_size: 4096
           device: qnn

@@ -69,7 +69,7 @@ def _entry(tmp_path: Path) -> ModelEntry:
                     "arch": "arm64",
                     "accelerator": "npu.qnn",
                     "binary_path": str(tmp_path / "bin" / "arm64-qnn" / "llama-server.exe"),
-                    "close_if_unavailable": "SKIP-no-viable-binary",
+                    "close_if_unavailable": "Degraded-no-sidecar-binary",
                     "launch": {
                         "ctx_size": 4096,
                         "device": "qnn",
@@ -240,6 +240,40 @@ def test_resolve_selects_arm64_qnn_when_runtime_evidence_exists(tmp_path: Path) 
     assert resolution.selected_reason == "selected current-host npu.qnn serve profile windows_arm64_qnn"
     assert resolution.degraded_reason is None
     assert resolution.degraded_candidates == []
+
+
+def test_global_binary_override_does_not_make_arm64_qnn_candidate_viable(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    entry.local_path.parent.mkdir(parents=True)
+    entry.local_path.write_bytes(b"gguf")
+    cpu_binary = tmp_path / "bin" / "arm64-cpu" / "llama-server.exe"
+    cpu_binary.parent.mkdir(parents=True)
+    cpu_binary.write_bytes(b"exe")
+
+    resolution = resolve_llm_serve_profile(
+        "tool_plan",
+        HardwareProfile(
+            os_name="windows",
+            arch="arm64",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+        _preflight(["ep:QNNExecutionProvider", "dll:QnnHtp"]),
+        settings=Settings(
+            llama_cpp_base_url="",
+            llama_cpp_model_path=None,
+            llama_cpp_binary_path=str(cpu_binary),
+        ),
+        flags=CapabilityFlags(qnn_available=True),
+        entry=entry,
+    )
+
+    assert resolution.serve_profile_id == "windows_arm64_cpu"
+    assert resolution.accelerator == "cpu"
+    assert resolution.binary_path == cpu_binary
+    assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
+        ("windows_arm64_qnn", "Degraded-no-sidecar-binary")
+    ]
 
 
 def test_resolve_rejects_routes_not_declared_in_catalog(tmp_path: Path) -> None:

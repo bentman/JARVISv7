@@ -77,7 +77,6 @@ def resolve_llm_serve_profile(
         preflight,
         flags,
         local_model_path,
-        resolved_settings,
     )
     binary_path = _settings_path_override(
         resolved_settings.llama_cpp_binary_path,
@@ -115,7 +114,6 @@ def _select_current_host_profile(
     preflight: PreflightResult,
     flags: CapabilityFlags | None,
     local_model_path: Path,
-    settings: Settings,
 ) -> tuple[str, dict[str, Any], list[ServeProfileCandidate]]:
     selected_profile_id = cpu_profile_id
     selected_profile = cpu_serve_profile
@@ -140,7 +138,6 @@ def _select_current_host_profile(
             preflight,
             flags,
             local_model_path,
-            settings,
         )
         if reason is None and selected_profile_id == cpu_profile_id:
             selected_profile_id = profile_id
@@ -209,7 +206,6 @@ def _degraded_accelerator_candidates(
     preflight: PreflightResult,
     flags: CapabilityFlags | None,
     local_model_path: Path,
-    settings: Settings | None = None,
 ) -> list[ServeProfileCandidate]:
     candidates: list[ServeProfileCandidate] = []
     for profile_id, candidate in serve_profiles.items():
@@ -227,7 +223,6 @@ def _degraded_accelerator_candidates(
             preflight,
             flags,
             local_model_path,
-            settings or load_settings(),
         )
         if reason is not None:
             candidates.append(
@@ -247,7 +242,6 @@ def _accelerator_degraded_reason(
     preflight: PreflightResult,
     flags: CapabilityFlags | None,
     local_model_path: Path,
-    settings: Settings,
 ) -> str | None:
     close_reason = candidate.get("close_if_unavailable")
     accelerator = str(candidate.get("accelerator", ""))
@@ -274,10 +268,7 @@ def _accelerator_degraded_reason(
     else:
         return str(close_reason or "Degraded-accelerator-unavailable")
 
-    binary_path = _settings_path_override(
-        settings.llama_cpp_binary_path,
-        _profile_path(candidate, "binary_path", "llm", profile_id),
-    )
+    binary_path = _profile_path(candidate, "binary_path", "llm", profile_id)
     if not binary_path.is_file() or binary_path.stat().st_size <= 0:
         return "Degraded-no-sidecar-binary"
     if not local_model_path.is_file() or local_model_path.stat().st_size <= 0:

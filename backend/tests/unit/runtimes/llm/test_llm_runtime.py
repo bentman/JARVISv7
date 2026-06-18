@@ -214,7 +214,7 @@ def test_llm_catalog_accelerator_profiles_are_declared_without_validation_claims
     assert profiles["windows_amd64_cuda"]["validation_status"] == "declared-not-validated"
     assert profiles["windows_arm64_qnn"]["accelerator"] == "npu.qnn"
     assert profiles["windows_arm64_qnn"]["validation_status"] == "declared-degraded"
-    assert profiles["windows_arm64_qnn"]["close_if_unavailable"] == "SKIP-no-viable-binary"
+    assert profiles["windows_arm64_qnn"]["close_if_unavailable"] == "Degraded-no-sidecar-binary"
 
 
 def test_ollama_runtime_is_available_true_when_reachable(monkeypatch):
