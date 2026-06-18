@@ -17,6 +17,7 @@ REPO_ROOT = SCRIPT_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.settings import load_settings
 from backend.app.models.catalog import ModelEntry, get_model_entry, list_models
@@ -24,6 +25,7 @@ from backend.app.hardware.provisioning import resolve_required_extras
 
 MODEL_FAMILIES = ("stt", "tts", "wake")
 ALL_FAMILIES = (*MODEL_FAMILIES, "llm")
+_PENDING_RUNTIME_SOURCE_TYPES = {"pending-pinned-release", "pending-viability"}
 
 
 def _load_profiler():
@@ -124,6 +126,13 @@ def _runtime_source(profile: dict[str, Any]) -> dict[str, Any]:
     return source
 
 
+def _runtime_source_type(profile: dict[str, Any]) -> str:
+    source_type = _runtime_source(profile).get("type")
+    if not isinstance(source_type, str) or not source_type.strip():
+        raise ValueError("runtime_artifact.source.type must be a non-empty string")
+    return source_type
+
+
 def _runtime_required_files(profile_id: str, profile: dict[str, Any]) -> list[str]:
     artifact = profile.get("runtime_artifact", {})
     required = artifact.get("required_files", []) if isinstance(artifact, dict) else []
@@ -150,11 +159,14 @@ def _runtime_required_extensions(profile_id: str, profile: dict[str, Any]) -> li
 def _runtime_missing_reason(profile: dict[str, Any], source: dict[str, Any], missing: list[str]) -> str | None:
     if not missing:
         return None
+    source_type = source.get("type")
+    if source_type == "pending-viability":
+        return "SKIP-no-viable-binary"
+    if source_type == "pending-pinned-release":
+        return "SKIP-source-pending"
     close_reason = profile.get("close_if_unavailable")
     if isinstance(close_reason, str) and close_reason.strip():
         return close_reason
-    if source.get("type") == "pending-viability":
-        return "SKIP-no-viable-binary"
     return "Degraded-no-sidecar-binary"
 
 
@@ -194,19 +206,105 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
     }
 
 
-def _verify_runtime_artifacts(entry: ModelEntry) -> dict[str, Any]:
+def _runtime_profile_matches_host(
+    profile_id: str,
+    profile: dict[str, Any],
+    hardware_profile: HardwareProfile | None,
+    extras: list[str] | None,
+) -> bool:
+    del profile_id
+    if hardware_profile is None:
+        return False
+    if profile.get("os") != hardware_profile.os_name or profile.get("arch") != hardware_profile.arch:
+        return False
+    accelerator = str(profile.get("accelerator", "cpu"))
+    if accelerator == "cpu":
+        return True
+    provisioning_extras = profile.get("provisioning_extras", [])
+    if not isinstance(provisioning_extras, list) or extras is None:
+        return False
+    return any(isinstance(extra, str) and extra in extras for extra in provisioning_extras)
+
+
+def _runtime_current_host_summary(
+    profiles: dict[str, dict[str, Any]],
+    results: list[dict[str, Any]],
+    hardware_profile: HardwareProfile | None,
+    extras: list[str] | None,
+) -> dict[str, Any] | None:
+    if hardware_profile is None:
+        return None
+    by_id = {str(result["profile_id"]): result for result in results}
+    applicable_ids = [
+        profile_id
+        for profile_id, profile in profiles.items()
+        if _runtime_profile_matches_host(profile_id, profile, hardware_profile, extras)
+    ]
+    if not applicable_ids:
+        return {
+            "os": hardware_profile.os_name,
+            "arch": hardware_profile.arch,
+            "applicable_profiles": [],
+            "selected_profile_id": None,
+            "selected_state": "missing",
+            "selected_degraded_reason": "No current-host runtime artifact profile",
+        }
+    ready_accelerator = next(
+        (
+            profile_id
+            for profile_id in applicable_ids
+            if by_id.get(profile_id, {}).get("ready") and by_id[profile_id].get("accelerator") != "cpu"
+        ),
+        None,
+    )
+    cpu_profile_id = f"{hardware_profile.os_name}_{hardware_profile.arch}_cpu"
+    selected_profile_id = ready_accelerator or (cpu_profile_id if cpu_profile_id in applicable_ids else applicable_ids[0])
+    selected = by_id.get(selected_profile_id, {})
+    return {
+        "os": hardware_profile.os_name,
+        "arch": hardware_profile.arch,
+        "applicable_profiles": applicable_ids,
+        "selected_profile_id": selected_profile_id,
+        "selected_state": selected.get("state"),
+        "selected_ready": selected.get("ready", False),
+        "selected_degraded_reason": selected.get("degraded_reason"),
+    }
+
+
+def _verify_runtime_artifacts(
+    entry: ModelEntry,
+    hardware_profile: HardwareProfile | None = None,
+    extras: list[str] | None = None,
+) -> dict[str, Any]:
     profiles = _hardware_profiles(entry)
     results = [_verify_runtime_profile(profile_id, profile) for profile_id, profile in profiles.items()]
-    return {
+    payload = {
         "model": entry.name,
         "profiles": results,
         "ready": all(result["ready"] for result in results),
     }
+    current_host = _runtime_current_host_summary(profiles, results, hardware_profile, extras)
+    if current_host is not None:
+        payload["current_host"] = current_host
+    return payload
 
 
 def _planned_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[str, Any]:
     binary_path = _runtime_binary_path(profile_id, profile)
     source = _runtime_source(profile)
+    source_type = _runtime_source_type(profile)
+    if source_type in _PENDING_RUNTIME_SOURCE_TYPES:
+        reason = "SKIP-no-viable-binary" if source_type == "pending-viability" else "SKIP-source-pending"
+        return {
+            "profile_id": profile_id,
+            "accelerator": str(profile.get("accelerator", "cpu")),
+            "binary_path": _relative_local_path(binary_path),
+            "source_type": source_type,
+            "planned": [],
+            "ready": False,
+            "state": "skipped",
+            "degraded_reason": reason,
+        }
     return {
         "profile_id": profile_id,
         "accelerator": str(profile.get("accelerator", "cpu")),
@@ -221,6 +319,9 @@ def _planned_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[s
 
 def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run: bool) -> list[str]:
     source = _runtime_source(profile)
+    source_type = _runtime_source_type(profile)
+    if source_type != "url_zip":
+        raise ValueError(f"LLM serve profile '{profile_id}' has unsupported runtime source type '{source_type}'")
     url = source.get("url")
     if not isinstance(url, str) or not url.startswith("https://"):
         raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip source")
@@ -248,7 +349,7 @@ def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run:
 
 def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: bool) -> dict[str, Any]:
     source = _runtime_source(profile)
-    source_type = source.get("type")
+    source_type = _runtime_source_type(profile)
     if dry_run:
         return _planned_runtime_profile(profile_id, profile)
     if source_type == "url_zip":
@@ -264,17 +365,26 @@ def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: b
     }
 
 
-def _ensure_runtime_artifacts(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
+def _ensure_runtime_artifacts(
+    entry: ModelEntry,
+    dry_run: bool,
+    hardware_profile: HardwareProfile | None = None,
+    extras: list[str] | None = None,
+) -> dict[str, Any]:
     profiles = _hardware_profiles(entry)
     results = [
         _ensure_runtime_profile(profile_id, profile, dry_run=dry_run)
         for profile_id, profile in profiles.items()
     ]
-    return {
+    payload = {
         "model": entry.name,
         "profiles": results,
         "ready": all(result["ready"] for result in results),
     }
+    current_host = _runtime_current_host_summary(profiles, results, hardware_profile, extras)
+    if current_host is not None:
+        payload["current_host"] = current_host
+    return payload
 
 
 def _runtime_fetch_allowed(args: argparse.Namespace) -> tuple[bool, str]:
@@ -354,14 +464,22 @@ def _verify_entry(entry: ModelEntry) -> dict[str, Any]:
     }
 
 
-def _verify_family(family: str, model_name: str | None = None) -> tuple[int, dict[str, Any]]:
+def _verify_family(
+    family: str,
+    model_name: str | None = None,
+    hardware_profile: HardwareProfile | None = None,
+    extras: list[str] | None = None,
+) -> tuple[int, dict[str, Any]]:
     if model_name:
         entries = [get_model_entry(family, model_name)]
     else:
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
 
     results = [_verify_entry(entry) for entry in entries]
-    runtime_results = [_verify_runtime_artifacts(entry) for entry in entries] if family == "llm" else []
+    runtime_results = [
+        _verify_runtime_artifacts(entry, hardware_profile=hardware_profile, extras=extras)
+        for entry in entries
+    ] if family == "llm" else []
     return (0 if all(result["ready"] for result in results) else 1), {
         "family": family,
         "models": results,
@@ -487,6 +605,8 @@ def _ensure_family(
     dry_run: bool,
     runtime_fetch_allowed: bool = True,
     runtime_fetch_reason: str = "explicit-cli",
+    hardware_profile: HardwareProfile | None = None,
+    extras: list[str] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     if model_name:
         entries = [get_model_entry(family, model_name)]
@@ -497,7 +617,15 @@ def _ensure_family(
     runtime_results: list[dict[str, Any]] = []
     if family == "llm":
         if runtime_fetch_allowed:
-            runtime_results = [_ensure_runtime_artifacts(entry, dry_run=dry_run) for entry in entries]
+            runtime_results = [
+                _ensure_runtime_artifacts(
+                    entry,
+                    dry_run=dry_run,
+                    hardware_profile=hardware_profile,
+                    extras=extras,
+                )
+                for entry in entries
+            ]
         else:
             runtime_results = [
                 {
@@ -531,7 +659,7 @@ def main(argv: list[str] | None = None) -> int:
     results: list[dict[str, Any]] = []
     for family in families:
         if args.verify_only:
-            code, result = _verify_family(family, args.model)
+            code, result = _verify_family(family, args.model, hardware_profile=report.profile, extras=extras)
         else:
             code, result = _ensure_family(
                 family,
@@ -539,6 +667,8 @@ def main(argv: list[str] | None = None) -> int:
                 args.dry_run,
                 runtime_fetch_allowed=runtime_fetch_allowed,
                 runtime_fetch_reason=runtime_fetch_reason,
+                hardware_profile=report.profile,
+                extras=extras,
             )
         exit_code = max(exit_code, code)
         results.append(result)

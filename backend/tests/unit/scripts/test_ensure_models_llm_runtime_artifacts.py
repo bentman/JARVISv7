@@ -5,6 +5,9 @@ import io
 import zipfile
 from pathlib import Path
 
+import pytest
+
+from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.settings import Settings
 from scripts import ensure_models
 
@@ -123,10 +126,34 @@ def test_verify_runtime_artifacts_reports_separate_profile_states(tmp_path: Path
     assert profiles["windows_amd64_cpu"]["ready"] is True
     assert profiles["windows_amd64_cpu"]["state"] == "ready"
     assert profiles["windows_amd64_gpu_nvidia_cuda"]["ready"] is False
-    assert profiles["windows_amd64_gpu_nvidia_cuda"]["state"] == "degraded"
-    assert profiles["windows_amd64_gpu_nvidia_cuda"]["degraded_reason"] == "Degraded-accelerator-unavailable"
+    assert profiles["windows_amd64_gpu_nvidia_cuda"]["state"] == "skipped"
+    assert profiles["windows_amd64_gpu_nvidia_cuda"]["degraded_reason"] == "SKIP-source-pending"
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["ready"] is False
-    assert profiles["windows_arm64_npu_qualcomm_qnn"]["degraded_reason"] == "Degraded-no-sidecar-binary"
+    assert profiles["windows_arm64_npu_qualcomm_qnn"]["degraded_reason"] == "SKIP-no-viable-binary"
+
+
+def test_verify_runtime_artifacts_reports_current_host_summary(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    cpu_binary = tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu" / "llama-server.exe"
+    cpu_binary.parent.mkdir(parents=True)
+    cpu_binary.write_bytes(b"exe")
+    (cpu_binary.parent / "ggml.dll").write_bytes(b"dll")
+
+    result = ensure_models._verify_runtime_artifacts(
+        entry,
+        hardware_profile=HardwareProfile(os_name="windows", arch="amd64"),
+        extras=["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu"],
+    )
+
+    assert result["current_host"] == {
+        "os": "windows",
+        "arch": "amd64",
+        "applicable_profiles": ["windows_amd64_cpu"],
+        "selected_profile_id": "windows_amd64_cpu",
+        "selected_state": "ready",
+        "selected_ready": True,
+        "selected_degraded_reason": None,
+    }
 
 
 def test_ensure_llm_family_keeps_model_ready_separate_from_runtime_state(tmp_path: Path, monkeypatch) -> None:
@@ -162,7 +189,7 @@ def test_runtime_url_zip_acquisition_extracts_and_verifies_required_files(
 
 
 def test_runtime_dry_run_reports_planned_required_files_without_writing(tmp_path: Path) -> None:
-    entry = _entry(tmp_path)
+    entry = _entry(tmp_path, source_type="url_zip")
 
     result = ensure_models._ensure_runtime_artifacts(entry, dry_run=True)
 
@@ -170,6 +197,35 @@ def test_runtime_dry_run_reports_planned_required_files_without_writing(tmp_path
     assert profiles["windows_amd64_cpu"]["state"] == "planned"
     assert profiles["windows_amd64_cpu"]["planned"] == ["llama-server.exe"]
     assert not (tmp_path / "runtimes").exists()
+
+
+def test_runtime_dry_run_reports_pending_source_as_skipped(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+
+    result = ensure_models._ensure_runtime_artifacts(entry, dry_run=True)
+
+    profiles = {profile["profile_id"]: profile for profile in result["profiles"]}
+    assert profiles["windows_amd64_cpu"]["state"] == "skipped"
+    assert profiles["windows_amd64_cpu"]["planned"] == []
+    assert profiles["windows_amd64_cpu"]["degraded_reason"] == "SKIP-source-pending"
+
+
+def test_runtime_source_metadata_rejects_missing_source_type(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
+    profile["runtime_artifact"]["source"] = {}
+
+    with pytest.raises(ValueError, match="source.type"):
+        ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=True)
+
+
+def test_runtime_source_metadata_rejects_invalid_url_zip_source(tmp_path: Path) -> None:
+    entry = _entry(tmp_path, source_type="url_zip")
+    profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
+    profile["runtime_artifact"]["source"]["url"] = "http://not-secure.invalid/archive.zip"
+
+    with pytest.raises(ValueError, match="invalid runtime url_zip source"):
+        ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
 
 
 def test_automatic_runtime_fetch_policy_honors_local_fetch_disabled(monkeypatch) -> None:
