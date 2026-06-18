@@ -97,18 +97,17 @@ One of the more surprising developments in JARVISv7 is that significant portions
 
 Examples include:
 
-* Hardware profiling, provisioning, readiness, and validation foundations
-* Cross-platform voice runtime families for STT, TTS, LLM, and Wake
+* Voice interaction pipelines (API layered backend - Python)
+* Desktop runtime integration (Rust/Tauri/JavaScript)
+* Hardware-aware execution paths (need more hardware - donations?)
+* Persistent memory architecture (partial)
+* Structured agent lifecycle management (almost)
+* Multi-turn interaction foundations (needs work to be "conversational")
 * Canonical turn/session engine shared across text and voice paths
-* Durable desktop host and backend application surface
 * Local Redis/SearXNG service substrate
 * Deterministic tool execution foundation
-* Disk-backed episodic memory and cached recall foundation
 * Voice acceleration matrix and live turn gates
-* Hardware path normalization across Windows x64 and Windows ARM64
-* Runtime/readiness UX and desktop interaction surfacing
 * Operator controls, settings UX, readiness panels, and degraded-state visibility
-* ARM64/QNN voice validation for the supported voice path
 * Personality policy envelope with structured, bounded presentation controls
 * Realtime conversation session boundary
 * Conversation continuity and session memory boundary
