@@ -190,13 +190,11 @@ It is not the final memory system.
 
 In normal human terms:
 
-> It can remember more than before.  
-> It does not yet have a soul.  
-> Please stop checking.
+> It can remember more than before. It does not yet have a soul. Please stop checking.
 
 * * *
 
-## ⚖️ Governance ("Assistants now have rules, which was apparently necessary")
+## ⚖️ Governance ("Assistants now have rules, it is apparently necessary")
 
 One of the original reasons v7 exists was agentic coding assistant drift. Not the charming kind of drift. The kind where a system receives a scoped request and returns with an architecture, a migration plan, three abstractions, and a faint smell of ozone. v7 responds to that lesson by treating governance as architecture, not paperwork.
 
