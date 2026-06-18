@@ -174,7 +174,7 @@ It is also not the same thing as saying every accelerator target is done. AMD64 
 
 * * *
 
-## 💾 Memory and Continuity ("It remembers things now, but let's not get emotional")
+## 💾 Memory ("It remembers things now, but let's not get emotional")
 
 Memory is no longer just a concept duct taped to the side of the conversation engine. JARVISv7 now has a disk-backed episodic memory foundation with retrieval, write policy, cached recall, prompt assembly integration, and provenance tracking.
 
