@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 19:45
+  - Summary: Validated Slice S.2 ensure-models runtime artifact framework on Windows ARM64. LLM verification reports GGUF model state separately from llama.cpp runtime artifact state, and automatic versus explicit runtime fetch policy is respected.
+  - Scope: `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_llm_runtime_artifacts.py -q` PASS (`6 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_script.py -q` PASS (`5 passed`). `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with LLM GGUF `ready=true`, separate `runtime_artifacts` output, current ARM64 CPU runtime `ready=true` (present files: `llama-server.exe`, `ggml*.dll`, `llama*.dll`), and missing CUDA/QNN/NPU profiles reported as degraded runtime states. `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` PASS with planned runtime artifacts and no filesystem mutation. `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`553 passed, 1 warning`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`127 passed, 4 deselected`, report `reports\validation\20260618194551-regression.txt`).
+  - Note: Existing GGUF verification/acquisition behavior was preserved. No live CUDA/QNN acquisition, resolver/sidecar/desktop behavior, provisioning behavior, runtime binary, model artifact, or `SYSTEM_INVENTORY.md` capability truth was changed.
+
 - 2026-06-18 14:29
   - Summary: Completed Slice S.2 ensure-models runtime artifact framework. LLM verification now reports GGUF model state separately from llama.cpp runtime artifact state, and automatic versus explicit runtime fetch policy is defined and unit-tested.
   - Scope: `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`
