@@ -223,6 +223,9 @@ Thumbs.db
 # Note: `.onnx` is NOT globally banned — ONNX models live under /models/**
 # and are gated by the per-folder rules above. Other locations (tests/fixtures)
 # should hold small ONNX files only when intentional.
+**/*.exe
+**/*.dll
+**/*.zip
 **/*.gguf
 **/*.bin
 **/*.safetensors
