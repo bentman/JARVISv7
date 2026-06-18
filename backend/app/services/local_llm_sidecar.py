@@ -272,7 +272,7 @@ def _reap_processes_for_binary(binary_path: Path, timeout_seconds: float) -> Non
     resolved_binary = _normalized_path(binary_path)
     matches: list[psutil.Process] = []
     current_pid = psutil.Process().pid
-    for process in psutil.process_iter(["pid", "exe", "cmdline"]):
+    for process in psutil.process_iter(["pid", "exe", "cmdline", "name"]):
         if process.info.get("pid") == current_pid:
             continue
         if _process_matches_binary(process, resolved_binary):
@@ -303,10 +303,12 @@ def _process_matches_binary(process: psutil.Process, binary_path: Path) -> bool:
             return True
         cmdline = process.info.get("cmdline") or process.cmdline()
     except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
-        return False
+        return process.info.get("name") == binary_path.name
     if not cmdline:
-        return False
-    return _normalized_path(Path(cmdline[0])) == binary_path
+        return process.info.get("name") == binary_path.name
+    if _normalized_path(Path(cmdline[0])) == binary_path:
+        return True
+    return process.info.get("name") == binary_path.name
 
 
 def _normalized_path(path: Path) -> Path:

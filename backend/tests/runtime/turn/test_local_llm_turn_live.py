@@ -11,7 +11,7 @@ from backend.app.personality.loader import load_default_personality
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime
-from backend.tests.conftest import SKIP_UNLESS_LIVE, llama_cpp_base_url, llama_cpp_model_name
+from backend.tests.conftest import SKIP_UNLESS_LIVE
 
 
 class UnusedSTT(STTBase):
@@ -25,15 +25,20 @@ class UnusedSTT(STTBase):
         return False
 
 
-def _live_llama_cpp_runtime() -> LlamaCppLLM:
+def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:
+    resolution = live_llama_cpp_sidecar.resolution
     runtime = LlamaCppLLM(
-        base_url=llama_cpp_base_url(),
-        model=llama_cpp_model_name(),
+        base_url=resolution.base_url,
+        model=resolution.model_id,
+        sidecar_status=live_llama_cpp_sidecar.service.status,
         generation_defaults={"max_tokens": 24, "temperature": 0},
         managed=True,
+        route=resolution.route,
+        serve_profile_id=resolution.serve_profile_id,
+        accelerator=resolution.accelerator,
+        selected_reason=resolution.selected_reason,
     )
-    if not runtime.is_available():
-        pytest.skip(f"requires live llama.cpp sidecar: {runtime.reason}")
+    assert runtime.is_available(), runtime.reason
     return runtime
 
 
@@ -42,11 +47,11 @@ def _live_llama_cpp_runtime() -> LlamaCppLLM:
 @pytest.mark.llm
 @pytest.mark.requires_llama_cpp
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
-def test_text_turn_returns_string_response_via_llama_cpp():
+def test_text_turn_returns_string_response_via_llama_cpp(live_llama_cpp_sidecar):
     engine = TurnEngine(
         stt=UnusedSTT(),
         tts=NullTTSRuntime(reason="not used by text turn"),
-        llm=_live_llama_cpp_runtime(),
+        llm=_live_llama_cpp_runtime(live_llama_cpp_sidecar),
         personality=load_default_personality(),
     )
 

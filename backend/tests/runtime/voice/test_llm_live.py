@@ -7,21 +7,24 @@ from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.tests.conftest import (
     SKIP_UNLESS_LIVE,
     SKIP_UNLESS_OLLAMA,
-    llama_cpp_base_url,
-    llama_cpp_model_name,
     ollama_base_url,
 )
 
 
-def _live_llama_cpp_runtime() -> LlamaCppLLM:
+def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:
+    resolution = live_llama_cpp_sidecar.resolution
     runtime = LlamaCppLLM(
-        base_url=llama_cpp_base_url(),
-        model=llama_cpp_model_name(),
+        base_url=resolution.base_url,
+        model=resolution.model_id,
+        sidecar_status=live_llama_cpp_sidecar.service.status,
         generation_defaults={"max_tokens": 16, "temperature": 0},
         managed=True,
+        route=resolution.route,
+        serve_profile_id=resolution.serve_profile_id,
+        accelerator=resolution.accelerator,
+        selected_reason=resolution.selected_reason,
     )
-    if not runtime.is_available():
-        pytest.skip(f"requires live llama.cpp sidecar: {runtime.reason}")
+    assert runtime.is_available(), runtime.reason
     return runtime
 
 
@@ -46,8 +49,8 @@ def test_llm_ollama_returns_valid_string_response_to_known_prompt():
 @pytest.mark.llm
 @pytest.mark.requires_llama_cpp
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
-def test_llm_llama_cpp_sidecar_is_available():
-    runtime = _live_llama_cpp_runtime()
+def test_llm_llama_cpp_sidecar_is_available(live_llama_cpp_sidecar):
+    runtime = _live_llama_cpp_runtime(live_llama_cpp_sidecar)
 
     assert runtime.runtime_name() == "llama.cpp"
     assert runtime.reason in {
@@ -60,8 +63,8 @@ def test_llm_llama_cpp_sidecar_is_available():
 @pytest.mark.llm
 @pytest.mark.requires_llama_cpp
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
-def test_llm_llama_cpp_returns_valid_string_response_to_known_prompt():
-    runtime = _live_llama_cpp_runtime()
+def test_llm_llama_cpp_returns_valid_string_response_to_known_prompt(live_llama_cpp_sidecar):
+    runtime = _live_llama_cpp_runtime(live_llama_cpp_sidecar)
 
     response = runtime.generate("Reply with exactly: ready")
 

@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 22:20 -05:00 — Slice R AMD64 live tests corrected to managed sidecar
+
+- Active slice/sub-slice: Slice R / R.8 live validation correction; R.9 remains open.
+- Last worked on: Windows AMD64.
+- Most recent change: Corrected live llama.cpp tests so they resolve the current host serve profile, start a real sidecar through `LocalLLMSidecarService`, poll real `/health` and `/v1/models`, run real generation/text-turn behavior, and fail if the selected sidecar process remains after cleanup. Fixed Windows process reaping fallback for `llama-server.exe` when exact path metadata is inaccessible.
+- Validation run: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assistant-small-q4 --verify-only` PASS (`ready=true`). `Test-Path runtimes\llama.cpp\windows-amd64-cpu\llama-server.exe` = `True`; `Test-Path runtimes\llama.cpp\windows-amd64-cuda\llama-server.exe` = `False`. `JARVISV7_LIVE_TESTS=true` live LLM pytest PASS (`3 passed`, no skips). `JARVISV7_LIVE_TESTS=true` live local turn pytest PASS (`1 passed`, no skips). Managed app proof PASS with `llm_selected runtime=llama.cpp`, profile `windows_amd64_cpu`, `final_state=IDLE`, and non-empty response. Sidecar cleanup checked after each live run: `Get-Process -Name llama-server -ErrorAction SilentlyContinue` returned no process. Focused sidecar pytest PASS (`20 passed`). AMD64 unit PASS (`538 passed, 1 skipped`). AMD64 regression PASS (`119 passed, 4 deselected`, report `reports\validation\20260618032011-regression.txt`). `git diff --check` PASS with line-ending warnings only.
+- Current state: AMD64 CPU-only local llama.cpp is real `PASS-live` on managed sidecar tests and app proof. AMD64 CUDA host capability is present, but CUDA llama.cpp sidecar artifact is absent (`windows-amd64-cuda\llama-server.exe` false), so CUDA local llama.cpp remains unvalidated. No `SYSTEM_INVENTORY.md` update.
+- Next needed: Windows ARM64 should revalidate this corrected live-test cleanup path against ARM64 CPU sidecar and retain ARM64 QNN as `SKIP-no-viable-binary` unless a real QNN-capable sidecar artifact exists.
+- Next host class: Windows ARM64.
+
 ### 2026-06-18 02:49 -05:00 — Slice R selector correction ready for AMD64 validation
 
 - Active slice/sub-slice: Slice R / functional correction after R.8 review; R.9 remains open.
