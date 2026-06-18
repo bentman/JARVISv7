@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 13:11
+  - Summary: Completed Slice S.0 runtime artifact census. Confirmed the updated Slice S plan is present, current LLM model acquisition verifies the GGUF artifact only, and llama.cpp runtime binaries are still path-consumed rather than repo-acquired.
+  - Scope: `CHANGE_LOG.md`; read-only census of `20260618_slice-s.md`, `config/models/llm.yaml`, `pyproject.toml`, `backend/app/hardware/provisioning.py`, `backend/app/hardware/profiler.py`, `backend/app/hardware/preflight.py`, `scripts/ensure_models.py`, `backend/app/models/catalog.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_sidecar.py`, `backend/app/services/local_llm_startup.py`, `backend/app/core/settings.py`, `scripts/provision.py`, and existing LLM tests.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS (`arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`, LLM `ready=true`, GGUF `missing=[]`). `backend\.venv\Scripts\python scripts\provision.py verify` PASS with expected CUDA host requirements present. `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`8 passed`). Artifact probes: `20260618_slice-s.md` present, selected GGUF present, `windows-amd64-cpu\llama-server.exe` present, `windows-amd64-cuda\llama-server.exe` absent.
+  - Note: No product code, config, tests, runtime artifacts, model artifacts, or `SYSTEM_INVENTORY.md` capability truth changed.
+
 - 2026-06-18 04:59
   - Summary: Completed the narrow post-R cleanup. Removed obsolete temporary cross-device context, removed active Slice R cross-device process references, fixed nondeterministic same-timestamp agent ledger ordering, deleted the resolved root bug note~~, and removed the unused `SEARXNG_PORT` key from `.env.example`.~~ 2026-06-18 05:58 DO NOT REMOVE `SEARXNG_PORT`, IS IN USE!
   - Scope: `slices.md`, `bug_fix.md`, `.env.example`, ignored local `.env`, `backend/app/agents/ledger.py`, `backend/tests/unit/agents/test_ledger.py`

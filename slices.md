@@ -1,5 +1,5 @@
 
-# JARVISv7 — Slice Roadmap
+# JARVISv7 — Slice Roadmap (Obsolete - considered redundant, maintained as historical)
 
 > Authoritative roadmap baseline. Shapes architecture only as much as necessary to prevent drift; does not specify implementation.  
 > Every slice must land on the real runtime used by the product on every host class it targets before it is considered complete.  
@@ -2198,26 +2198,3 @@ node desktop\tests\static.test.mjs
 - **No slice claims completion** without evidence in `SYSTEM_INVENTORY.md` and `CHANGE_LOG.md` with repo-path-accurate Location and Validation fields.
 - **Governance docs are not conflated**: `ProjectVision.md` = target state; `SYSTEM_INVENTORY.md` = observable capabilities now; `CHANGE_LOG.md` = completed work with evidence; `slices.md` (this doc) = planned sequencing.
 
----
-
-# Group S — Realtime voice streaming and latency path
-
-Once local reasoning selection is honest, the next advancement should be the voice loop itself: partial STT events, response-start timing, streaming or chunked response emission where runtime allows, and UI state updates for listening/transcribing/thinking/speaking. The vision’s product outcome emphasizes natural spoken interaction, immediate feedback, visible transitions, and low-friction invocation. This slice category should extend the existing realtime boundary rather than bypassing it.
-
----
-
-# Group T — Deterministic interruption and recovery
-
-This should be separate from streaming because interruption is a policy/state/artifact problem, not only an audio problem. The finish line should be the initial acceptable behavior from the vision: user interrupts while speaking, speech stops, interruption is recorded, and the session transitions cleanly without corruption. It should explicitly distinguish true acoustic barge-in from stop-and-reinvoke fallback, with clear degraded-mode surfacing when full barge-in is unavailable.
-
----
-
-# Group U — Turn artifact, memory write policy, and semantic retrieval foundation
-
-After realtime/interruption are stronger, advance the external cognition record. The vision says every turn artifact should capture hardware/capability profile, personality, audio references, transcript, final prompt, memory/context references, tools invoked, agent trace if active, response, interruption events, final state, failure reason, and phase timestamps. This category should fix the durable artifact boundary before semantic memory is added, then introduce semantic indexing/retrieval as an explicit, policy-governed layer—not hidden model memory.
-
----
-
-# Group V — Tool-grounded cognition and opt-in agent activation gate
-
-Only after Groups R–U should the project enable more intelligent action. The vision is explicit that agents should compose the turn engine, tool registry, memory, and LLM runtime, not replace them, and that agent behavior must be opt-in, policy-gated, and traceable. This category should start with safer tool-use decisioning and traceable planning inside normal turns, then expose a narrow opt-in agent execution path. It should not jump directly to autonomous background agents.
