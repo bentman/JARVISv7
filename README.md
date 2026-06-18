@@ -197,7 +197,7 @@ In normal human terms:
 
 * * *
 
-## ⚖️ Governance ("The assistants now have rules, which was apparently necessary")
+## ⚖️ Governance ("Assistants now have rules, which was apparently necessary")
 
 One of the original reasons v7 exists was agentic coding assistant drift. Not the charming kind of drift. The kind where a system receives a scoped request and returns with an architecture, a migration plan, three abstractions, and a faint smell of ozone. v7 responds to that lesson by treating governance as architecture, not paperwork.
 
