@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-17 19:13
+  - Summary: Completed the Slice R.8 ARM64 degraded live validation leg. The live test shape ran on Windows ARM64, Ollama fallback passed, and local llama.cpp CPU/QNN paths closed as explicit degraded/skipped states because the selected GGUF and ARM64 llama-server binaries were absent and the sidecar endpoint refused connections.
+  - Scope: `docs/handoff.md`, `CHANGE_LOG.md`; validated existing R.8 surfaces in `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_local_llm_turn_live.py`, `backend/tests/runtime/turn`, `backend/tests/conftest.py`, and `pyproject.toml` marker registration.
+  - Host class(es): Windows ARM64 / arm64 current workspace.
+  - Evidence: `Test-Path models\llm\assistant-small-q4\qwen2.5-0.5b-instruct-q4_k_m.gguf` = `False`; `Test-Path runtimes\llama.cpp\windows-arm64-cpu\llama-server.exe` = `False`; `Test-Path runtimes\llama.cpp\windows-arm64-qnn\llama-server.exe` = `False`; `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` expected degraded/nonzero state (`Degraded-no-local-model-artifact`); live LLM pytest with `JARVISV7_LIVE_TESTS=true` PASS (`1 passed, 2 skipped`, local llama.cpp skipped with `WinError 10061`); live turn pytest with `JARVISV7_LIVE_TESTS=true` and workspace `TMP`/`TEMP` PASS (`10 passed, 2 skipped`, local llama.cpp skipped with `WinError 10061`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`119 passed, 4 deselected`, report `reports\validation\20260618001029-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`).
+  - Note: This does not close Slice R. No product code, model artifact download, real local llama.cpp sidecar launch, real local llama.cpp completion, or `SYSTEM_INVENTORY.md` update in this ARM64 validation leg. R.8 close state: ARM64 CPU-only `Degraded-no-local-model-artifact` plus `Degraded-sidecar-unreachable`; ARM64 NPU/QNN `SKIP-no-viable-binary`; Ollama fallback `PASS`. Slice R remains open until all changes are verified live.
+
 - 2026-06-17 19:04
   - Summary: Completed the Windows AMD64 code-change leg of Slice R.8 tandem live local LLM validation. Added live-gated llama.cpp availability/generation and text-turn tests beside the existing Ollama live tests, while preserving Ollama as the fallback live path.
   - Scope: `backend/tests/conftest.py`, `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_local_llm_turn_live.py`, `pyproject.toml`, `CHANGE_LOG.md`, `docs/handoff.md`

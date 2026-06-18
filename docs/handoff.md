@@ -4,6 +4,17 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 19:13 -05:00 — R.8 ARM64 degraded live validation leg
+
+- Active slice/sub-slice: Slice R / R.8 tandem live local LLM validation.
+- Last worked on: Windows ARM64.
+- Most recent change: Validated the already-landed R.8 live test shape on ARM64 without product code changes. Selected GGUF, ARM64 CPU llama-server binary, and ARM64 QNN llama-server binary were absent; live llama.cpp tests skipped with sidecar connection refused; Ollama fallback live validation passed.
+- Validation run: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` returned expected degraded state (`Degraded-no-local-model-artifact`); live LLM pytest with `JARVISV7_LIVE_TESTS=true` passed with local skips (`1 passed, 2 skipped`); live turn pytest with workspace `TMP`/`TEMP` passed with local/x64 skips (`10 passed, 2 skipped`); `backend\.venv\Scripts\python scripts\validate_backend.py regression` passed (`119 passed, 4 deselected`, report `reports\validation\20260618001029-regression.txt`). Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Close state: ARM64 CPU-only `Degraded-no-local-model-artifact` plus `Degraded-sidecar-unreachable`; ARM64 NPU/QNN `SKIP-no-viable-binary`; Ollama fallback `PASS`.
+- Note: This does not close Slice R. No model artifact was downloaded, no real local llama.cpp sidecar was launched, real local llama.cpp completion is still not proven on ARM64, and no `SYSTEM_INVENTORY.md` update was made. Slice R remains open until all changes are verified live.
+- Next needed: Acquire the selected GGUF and appropriate `llama-server.exe`, start the sidecar, then rerun live LLM and live turn validators on both AMD64 and ARM64 so R.8 can be closed with real local llama.cpp completion evidence.
+- Next host class: Either host can continue R.8 artifact acquisition/live proof.
+
 ### 2026-06-17 19:04 -05:00 — R.8 AMD64 code-change/degraded live leg
 
 - Active slice/sub-slice: Slice R / R.8 tandem live local LLM validation.
