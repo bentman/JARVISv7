@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 13:44
+  - Summary: Validated Slice S.1 catalog reconfiguration on Windows ARM64. The grouped LLM hardware-profile catalog shape, ARM64 CPU fallback, and strict degraded accelerator selection remained clean on the ARM64/QNN host.
+  - Scope: validation of `config/models/llm.yaml`, `backend/app/models/llm_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/runtime/hardware/test_llm_serve_profile_resolution.py`, and existing backend validation surfaces; `CHANGE_LOG.md`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`8 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\runtime\hardware\test_llm_serve_profile_resolution.py -q` PASS (`1 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`547 passed, 1 warning`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`121 passed, 4 deselected`, report `reports\validation\20260618184348-regression.txt`). `git diff --check` PASS.
+  - Note: No runtime artifact acquisition, accelerator live proof, selector override, desktop behavior, provisioning change, runtime binary, model artifact, or `SYSTEM_INVENTORY.md` capability truth changed.
+
 - 2026-06-18 13:36
   - Summary: Completed Slice S.1 catalog reconfiguration around explicit LLM hardware profile nodes. The resolver now reads the grouped hardware-profile catalog shape while preserving CPU fallback and strict degraded accelerator selection.
   - Scope: `config/models/llm.yaml`, `backend/app/models/llm_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/runtime/hardware/test_llm_serve_profile_resolution.py`, `backend/tests/unit/routing/test_runtime_selector.py`
