@@ -1,8 +1,8 @@
 
 # JARVISv7 — Slice Roadmap
 
-> Authoritative roadmap baseline. Shapes architecture only as much as necessary to prevent drift; does not specify implementation.
-> Every slice must land on the real runtime used by the product on every host class it targets before it is considered complete.
+> Authoritative roadmap baseline. Shapes architecture only as much as necessary to prevent drift; does not specify implementation.  
+> Every slice must land on the real runtime used by the product on every host class it targets before it is considered complete.  
 > Proven boundaries from one slice are consumed by later slices unchanged unless explicitly revoked.
 
 ## Rules
@@ -13,93 +13,6 @@
 - Hardware-authority rule: hardware-dependent runtime selection starts in the profiler. Config files define catalog / default metadata. Runtime modules execute the selected runtime, model, and device; they do not invent hardware policy locally.
 - Every voice-family runtime (STT/TTS/LLM/Wake) accepts `device` as a parameter from day one. New device support is a branch inside an existing runtime, never a new runtime family.
 - A slice is complete only when the highest relevant acceptance surface (unit → runtime → live → desktop live) is green on every host class the slice targets, and both the x64 and ARM64 regression suites remain green.
-
----
-
-## Preferred Slice Order
-
-```
-Group A — Host Reality & Provisioning
-  A.1  Hardware Profiler + Capability Flags
-  A.2  Provisioning Model (base requirements + declarative hardware extras, pyproject-native)
-  A.3  Readiness Rail (preflight ownership + evidence tokens)
-  A.4  Arch-Aware Test Harness + Validation Script Design
-  A.5  Provisioning Gate (CPU x64 + CPU ARM64 clean-install proof)
-  A.6  QNN Definition (extras, tokens, device slot — no wiring)
-
-Group B — Cross-Platform Voice Runtime Strategy
-  B.1  STT Runtime Family + Device Matrix
-  B.2  TTS Runtime Family + Device Matrix
-  B.3  LLM Runtime Family + Escalation Surface
-  B.4  Wake Runtime Family (openWakeWord primary, Porcupine optional)
-  B.5  Acceleration Vetting Gate (CPU / CUDA / DirectML / QNN-slot across all 4 families)
-
-Group C — Canonical Turn Engine
-  C.1  Minimal Voice Turn
-  C.2  Spoken Response + SPEAKING State
-  C.3  Session Continuity + Canonical Turn Artifact
-  C.4  Live Multi-Turn Spoken Continuity
-  C.5  Interruption / Barge-In
-  C.6  Developer Usability Surface
-
-Group D — Durable Application Surface
-  D.1  Application Shell Contract
-  D.2  Durable Desktop Host (with arch-aware build/dev prerequisites)
-  D.3  Resident Session Loop
-  D.4  Wake Integration in Durable Host
-  D.5  Personality / Presence Polish
-
-Group E — Local Service Substrate
-  E.1  Redis + SearXNG via docker-compose
-  E.2  Cache Layer Wired to Redis
-  E.3  Internet Search Runtime (SearXNG primary, DDGS + Tavily escalation)
-
-Group F — Tool Foundation + ACTING Path
-  F.1  Executor + ACTING State
-  F.2  Tool Registry + First Tool Set
-  F.3  Tool Result Rendering in Desktop + Text Shells
-
-Group G — Cross-Session Episodic Retrieval
-  G.1  Episodic Write + Retrieve
-  G.2  Retrieval Injected into Prompt Assembly
-  G.3  Redis-Cached Retrieval
-
-Group H — Voice Acceleration
-  H.0  Voice acceleration viability census (non-mutating; produces device/host state table)
-  H.1  STT CPU baseline reconfirmation post-G
-  H.2  ARM64 QNN prerequisite gate (QNN provider/HTP discovery gate only)
-  H.3  ARM64 QNN STT activation (requires H.2 PASS + pre-qual: 2026-05-11-slice_h.3_pre-qual.md)
-  H.4  x64 CUDA STT readiness / regression guard
-  H.5  Windows DirectML voice viability gate
-  H.6  DirectML STT/TTS device option activation where H.5 proved viable
-  H.7  TTS acceleration viability / device slot normalization
-  H.8  Voice acceleration live turn matrix
-
-Group I — Hardware Path Normalization
-  I.1  ARM acceleration sequence normalization (CPU / QNN / NPU fallback chain)
-  I.2  x64 acceleration sequence normalization (CPU / CUDA / DirectML / non-NVIDIA fallback chain)
-  I.3  Live mic/audio user-interaction matrix on both host classes
-
-Group J — Runtime/Readiness UX + Degraded-State Surfacing
-
-Group K — UI Controls + Operator Settings
-
-Group L — Personality Policy Envelope
-
-Group M — Realtime Conversation Session Boundary
-
-Group N — Conversation Continuity and Session Memory Boundary
-
-Group O — Agent Framework
-
-Group P — Agent Framework Correction (Agent System)
-
-Group Q — General Housekeeping Items
-
-Group R — Ollama.cpp / Local LLM Runtime
-```
-
-No slice in a later group may reopen a decision owned by an earlier group without an explicit revocation note.
 
 ---
 
