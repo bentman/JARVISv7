@@ -2063,7 +2063,7 @@ Source feedback: `20260615_slice-q.md`.
 
 ---
 
-# Group R — Ollama.cpp / Local LLM Runtime
+~~# Group R — Ollama.cpp / Local LLM Runtime~~ Completed
 
 **Why this group exists here.** Local LLM service work has distinct resource and build-environment constraints that must be assessed independently of voice acceleration. The local LLM runtime boundary owns ARM64 memory limits, model quantization choices, server binary availability, and sidecar lifecycle truth so they are evaluated against a mature, stable system rather than folded into the hardware acceleration boundary.
 
