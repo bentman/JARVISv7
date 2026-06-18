@@ -4,6 +4,16 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-17 19:04 -05:00 — R.8 AMD64 code-change/degraded live leg
+
+- Active slice/sub-slice: Slice R / R.8 tandem live local LLM validation.
+- Last worked on: Windows AMD64.
+- Most recent change: Added live-gated llama.cpp availability/generation tests and a local llama.cpp text-turn live test beside the existing Ollama live tests. Registered `requires_llama_cpp` for strict pytest markers and added conftest helpers for llama.cpp base URL/model name.
+- Validation run: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` reported `Degraded-no-local-model-artifact` for `models\llm\assistant-small-q4\qwen2.5-0.5b-instruct-q4_k_m.gguf`. Configured AMD64 CPU/CUDA and ARM64 CPU `llama-server.exe` paths were absent. Live LLM validator with `JARVISV7_LIVE_TESTS=true` passed (`1 passed, 3 skipped`): Ollama fallback passed, local llama.cpp skipped with connection refused. Live turn validator with workspace `TMP`/`TEMP` passed (`9 passed, 3 skipped`): local llama.cpp turn skipped with connection refused. Regression passed (`119 passed, 4 deselected`, report `reports\validation\20260618000309-regression.txt`). `git diff --check` passed with line-ending warnings only. Fingerprint: `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`.
+- Note: Real local llama.cpp completion is still not proven on AMD64. Current AMD64 CPU-only close state is `Degraded-no-local-model-artifact` plus `Degraded-sidecar-unreachable`; AMD64 CUDA remains missing configured binary/unvalidated. No `SYSTEM_INVENTORY.md` update was made.
+- Next needed: Windows ARM64 should validate the same R.8 test shape. To actually close R.8 as live-complete on either host, acquire the selected GGUF and appropriate `llama-server.exe`, start the sidecar, then rerun live LLM and live turn validators. If artifacts remain absent on ARM64, record the explicit degraded/skipped close state.
+- Next host class: Windows ARM64.
+
 ### 2026-06-17 18:52 -05:00 — R.7 ARM64 validation leg
 
 - Active slice/sub-slice: Slice R / R.7 runtime selection, readiness, and trace.

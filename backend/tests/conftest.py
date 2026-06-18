@@ -57,6 +57,15 @@ def _settings():
     return load_settings()
 
 
+def llama_cpp_base_url() -> str:
+    return _settings().llama_cpp_base_url.strip()
+
+
+def llama_cpp_model_name() -> str | None:
+    model_name = _settings().llama_cpp_model_name
+    return model_name.strip() if model_name else None
+
+
 SKIP_UNLESS_X64 = _profile_report().profile.arch != "amd64"
 SKIP_UNLESS_ARM64 = _profile_report().profile.arch != "arm64"
 SKIP_UNLESS_CUDA = not _has_token("ep:CUDAExecutionProvider")
