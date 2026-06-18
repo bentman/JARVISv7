@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 04:22
+  - Summary: Completed the backend managed local LLM lifecycle boundary by stopping any stored local llama.cpp sidecar during FastAPI shutdown. Shutdown is idempotent when no managed sidecar exists.
+  - Scope: `backend/app/api/app.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows ARM64 / arm64 validated. Windows AMD64 validation pending for the same lifecycle cleanup.
+  - Evidence: Focused API lifecycle tests PASS (`7 passed`, one existing Starlette warning). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`546 passed`, one existing Starlette warning). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`121 passed, 4 deselected`, report `reports\validation\20260618042139-regression.txt`; fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `git diff --check` PASS with line-ending warnings only.
+  - Note: The proving script cleanup remains unchanged and still stops its own managed sidecar after text/voice turns.
+
 - 2026-06-18 04:15
   - Summary: Corrected the managed local LLM ownership boundary so durable backend startup prepares the local llama.cpp candidate before runtime selection. `scripts/run_jarvis.py` now calls the same backend-owned helper instead of owning separate sidecar startup/readiness orchestration.
   - Scope: `backend/app/services/local_llm_startup.py`, `backend/app/api/app.py`, `scripts/run_jarvis.py`, `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/scripts/test_run_jarvis_script.py`

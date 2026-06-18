@@ -76,6 +76,14 @@ class _FakeOllamaLLM(_FakeLLM):
         return "ollama"
 
 
+class _FakeSidecar:
+    def __init__(self) -> None:
+        self.stop_calls = 0
+
+    def stop(self) -> None:
+        self.stop_calls += 1
+
+
 class _FakeWakeRuntime:
     last_score = 0.0
     threshold = 0.5
@@ -258,6 +266,28 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     assert state.llm is selected_llm
     assert prepare_calls == [(profile, preflight, report.flags)]
     assert selector_calls == [(policy, preflight, profile, prepared_local)]
+
+
+def test_app_shutdown_stops_managed_local_llm_sidecar() -> None:
+    state = _state()
+    sidecar = _FakeSidecar()
+    state.local_llm_sidecar = sidecar  # type: ignore[assignment]
+
+    with TestClient(create_app(state)) as client:
+        assert client.get("/health").status_code == 200
+
+    assert sidecar.stop_calls == 1
+    assert state.local_llm_sidecar is None
+
+
+def test_app_shutdown_tolerates_missing_managed_local_llm_sidecar() -> None:
+    state = _state()
+    state.local_llm_sidecar = None
+
+    with TestClient(create_app(state)) as client:
+        assert client.get("/health").status_code == 200
+
+    assert state.local_llm_sidecar is None
 
 
 def _wake_source(stop_event):

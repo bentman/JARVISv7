@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 
 
@@ -156,10 +157,25 @@ def install_state(app: FastAPI, state: ApiState) -> None:
     app.state.jarvis_state = state
 
 
+def stop_managed_local_llm(state: ApiState | None) -> None:
+    if state is None or state.local_llm_sidecar is None:
+        return
+    state.local_llm_sidecar.stop()
+    state.local_llm_sidecar = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    try:
+        yield
+    finally:
+        stop_managed_local_llm(getattr(app.state, "jarvis_state", None))
+
+
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
     from backend.app.api.routes import agents, config, diagnostics, health, personality, readiness, session, status, task
 
-    app = FastAPI(title="JARVISv7 Backend API", version="0.0.1")
+    app = FastAPI(title="JARVISv7 Backend API", version="0.0.1", lifespan=lifespan)
     install_state(app, startup_state or build_startup_state())
     app.include_router(health.router)
     app.include_router(readiness.router)
