@@ -75,7 +75,7 @@ class AgentLedger:
                        parent_record_id, created_at, payload_json
                 FROM agent_ledger_records
                 WHERE trace_id = ?
-                ORDER BY created_at ASC, record_id ASC
+                ORDER BY created_at ASC, rowid ASC
                 """,
                 (trace_id,),
             ).fetchall()
@@ -89,7 +89,7 @@ class AgentLedger:
                        parent_record_id, created_at, payload_json
                 FROM agent_ledger_records
                 WHERE session_id = ? AND turn_id = ?
-                ORDER BY created_at ASC, record_id ASC
+                ORDER BY created_at ASC, rowid ASC
                 """,
                 (session_id, turn_id),
             ).fetchall()

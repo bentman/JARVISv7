@@ -2185,7 +2185,6 @@ Source feedback: `20260615_slice-q.md`.
 - Do not own model selection policy, hardware profiling, catalog loading policy, prompt construction, or turn execution.
 - `LlamaCppLLM` remains an HTTP client and does not launch processes directly.
 - Lifecycle operations must be idempotent: starting an already-running matching sidecar is safe; stopping when no sidecar is running is safe.
-- Physical device parity is tracked through `docs/handoff.md` when validation moves between AMD64 and ARM64 hosts.
 
 **Acceptance.** Unit tests use mocked process creation; changed model/profile either restarts deterministically or reports restart-required; start failures produce degraded reasons; no unit tests require a real model; change is validated on both AMD64 and ARM64 before closeout.
 
@@ -2244,7 +2243,6 @@ Source feedback: `20260615_slice-q.md`.
 - Validate CPU-only first on the architecture that developed the code change, then validate the same sub-slice on the other architecture.
 - Validate AMD64 GPU/CUDA and ARM64 NPU/QNN only after both CPU-only paths are truthful.
 - Accelerator and unavailable-host paths may close as `PASS`, `SKIP-no-viable-binary`, `Degraded-no-local-model-artifact`, `Degraded-memory-constrained`, `Degraded-accelerator-unavailable`, or `Degraded-sidecar-unreachable` with evidence.
-- Update `docs/handoff.md` before switching devices so the next host can continue the same sub-slice without relying on chat history.
 
 **Acceptance.** Runtime live: a turn completes via local LLM on Windows AMD64 CPU-only and Windows ARM64 CPU-only when model/binary are present. AMD64 GPU/CUDA and ARM64 NPU/QNN close states are explicit and evidence-backed. Ollama fallback remains proven. Each code-changing sub-slice has a code-change log entry from the development host and a second validation log entry from the other host.
 
@@ -2260,7 +2258,6 @@ Source feedback: `20260615_slice-q.md`.
 - Update `CHANGE_LOG.md` with exact validation evidence.
 - Update `SYSTEM_INVENTORY.md` only after both AMD64 and ARM64 have completed R.8 or recorded explicit degraded/skipped close states.
 - Update `repo_tree.md` only if actual ownership text changed.
-- Update `docs/handoff.md` with the latest sub-slice, host class, validation, and next host before changing devices.
 - Update active Slice R status only after validation evidence exists.
 
 **Required validation.**

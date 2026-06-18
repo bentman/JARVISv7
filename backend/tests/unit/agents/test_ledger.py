@@ -46,3 +46,32 @@ def test_agent_ledger_preserves_trace_order(tmp_path) -> None:
     ledger.append(first)
 
     assert ledger.list_by_trace("trace-1") == [first, second]
+
+
+def test_agent_ledger_preserves_append_order_for_same_timestamp(tmp_path) -> None:
+    ledger = AgentLedger(tmp_path / "agent_ledger.sqlite3")
+    created_at = "2026-06-15T00:00:00+00:00"
+    first = AgentLedgerRecord(
+        record_id="record-z",
+        trace_id="trace-1",
+        session_id="session-1",
+        turn_id="turn-1",
+        record_type="event",
+        payload={"event": "first"},
+        created_at=created_at,
+    )
+    second = AgentLedgerRecord(
+        record_id="record-a",
+        trace_id="trace-1",
+        session_id="session-1",
+        turn_id="turn-1",
+        record_type="event",
+        payload={"event": "second"},
+        created_at=created_at,
+    )
+
+    ledger.append(first)
+    ledger.append(second)
+
+    assert ledger.list_by_trace("trace-1") == [first, second]
+    assert ledger.list_by_turn("session-1", "turn-1") == [first, second]
