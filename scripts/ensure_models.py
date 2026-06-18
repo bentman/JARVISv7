@@ -18,6 +18,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
+from backend.app.core.settings import load_settings
 from backend.app.models.catalog import ModelEntry, get_model_entry, list_models
 from backend.app.hardware.provisioning import resolve_required_extras
 
@@ -41,6 +42,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--family", choices=ALL_FAMILIES)
     parser.add_argument("--model")
     return parser.parse_args(argv)
+
+
+def _explicit_cli(args: argparse.Namespace) -> bool:
+    return bool(args.family or args.model)
 
 
 def _source_files(entry: ModelEntry) -> list[tuple[str, str]]:
@@ -78,6 +83,209 @@ def _missing_artifact_reason(entry: ModelEntry, missing: list[str]) -> str | Non
     if entry.family == "llm" and missing:
         return "Degraded-no-local-model-artifact"
     return None
+
+
+def _hardware_profiles(entry: ModelEntry) -> dict[str, dict[str, Any]]:
+    serve_profiles = entry.config.get("serve_profiles", {})
+    if not isinstance(serve_profiles, dict):
+        raise ValueError(f"model '{entry.name}' has invalid serve_profiles metadata")
+    profiles = serve_profiles.get("hardware_profiles", serve_profiles)
+    if not isinstance(profiles, dict):
+        raise ValueError(f"model '{entry.name}' has invalid serve_profiles.hardware_profiles metadata")
+    return {
+        profile_id: profile
+        for profile_id, profile in profiles.items()
+        if isinstance(profile_id, str) and isinstance(profile, dict)
+    }
+
+
+def _runtime_binary_path(profile_id: str, profile: dict[str, Any]) -> Path:
+    artifact = profile.get("runtime_artifact", {})
+    raw_path: object = None
+    if isinstance(artifact, dict):
+        raw_path = artifact.get("binary_path")
+    if raw_path is None:
+        raw_path = profile.get("binary_path")
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        raise ValueError(f"LLM serve profile '{profile_id}' has no runtime binary path")
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    return REPO_ROOT / path
+
+
+def _runtime_source(profile: dict[str, Any]) -> dict[str, Any]:
+    artifact = profile.get("runtime_artifact", {})
+    if not isinstance(artifact, dict):
+        raise ValueError("runtime_artifact metadata must be a mapping")
+    source = artifact.get("source", {})
+    if not isinstance(source, dict):
+        raise ValueError("runtime_artifact.source metadata must be a mapping")
+    return source
+
+
+def _runtime_required_files(profile_id: str, profile: dict[str, Any]) -> list[str]:
+    artifact = profile.get("runtime_artifact", {})
+    required = artifact.get("required_files", []) if isinstance(artifact, dict) else []
+    if required is None:
+        required = []
+    if not isinstance(required, list) or not all(isinstance(item, str) for item in required):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime required_files")
+    if required:
+        return required
+    return [_runtime_binary_path(profile_id, profile).name]
+
+
+def _runtime_required_extensions(profile_id: str, profile: dict[str, Any]) -> list[str]:
+    artifact = profile.get("runtime_artifact", {})
+    adjacent = artifact.get("required_adjacent", {}) if isinstance(artifact, dict) else {}
+    extensions = adjacent.get("dll_extensions", []) if isinstance(adjacent, dict) else []
+    if extensions is None:
+        extensions = []
+    if not isinstance(extensions, list) or not all(isinstance(item, str) for item in extensions):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime dll_extensions")
+    return extensions
+
+
+def _runtime_missing_reason(profile: dict[str, Any], source: dict[str, Any], missing: list[str]) -> str | None:
+    if not missing:
+        return None
+    close_reason = profile.get("close_if_unavailable")
+    if isinstance(close_reason, str) and close_reason.strip():
+        return close_reason
+    if source.get("type") == "pending-viability":
+        return "SKIP-no-viable-binary"
+    return "Degraded-no-sidecar-binary"
+
+
+def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+    binary_path = _runtime_binary_path(profile_id, profile)
+    source = _runtime_source(profile)
+    required_files = _runtime_required_files(profile_id, profile)
+    required_extensions = _runtime_required_extensions(profile_id, profile)
+    root = binary_path.parent
+    discovered_files = [path for path in root.rglob("*") if path.is_file() and path.stat().st_size > 0]
+    discovered_names = {path.name for path in discovered_files}
+    discovered_exts = {path.suffix.lower() for path in discovered_files}
+
+    missing: list[str] = []
+    for file_name in required_files:
+        if file_name not in discovered_names:
+            missing.append(file_name)
+    for extension in required_extensions:
+        normalized = extension.lower()
+        if normalized not in discovered_exts:
+            missing.append(f"*{normalized}")
+
+    present = sorted(str(path.relative_to(root)).replace("\\", "/") for path in discovered_files)
+    reason = _runtime_missing_reason(profile, source, missing)
+    ready = not missing
+    state = "ready" if ready else ("skipped" if reason and reason.startswith("SKIP-") else "degraded")
+    return {
+        "profile_id": profile_id,
+        "accelerator": str(profile.get("accelerator", "cpu")),
+        "binary_path": _relative_local_path(binary_path),
+        "source_type": str(source.get("type", "unknown")),
+        "present": present,
+        "missing": missing,
+        "ready": ready,
+        "state": state,
+        "degraded_reason": reason,
+    }
+
+
+def _verify_runtime_artifacts(entry: ModelEntry) -> dict[str, Any]:
+    profiles = _hardware_profiles(entry)
+    results = [_verify_runtime_profile(profile_id, profile) for profile_id, profile in profiles.items()]
+    return {
+        "model": entry.name,
+        "profiles": results,
+        "ready": all(result["ready"] for result in results),
+    }
+
+
+def _planned_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[str, Any]:
+    binary_path = _runtime_binary_path(profile_id, profile)
+    source = _runtime_source(profile)
+    return {
+        "profile_id": profile_id,
+        "accelerator": str(profile.get("accelerator", "cpu")),
+        "binary_path": _relative_local_path(binary_path),
+        "source_type": str(source.get("type", "unknown")),
+        "planned": _runtime_required_files(profile_id, profile),
+        "ready": True,
+        "state": "planned",
+        "degraded_reason": None,
+    }
+
+
+def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run: bool) -> list[str]:
+    source = _runtime_source(profile)
+    url = source.get("url")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip source")
+    if dry_run:
+        return _runtime_required_files(profile_id, profile)
+
+    binary_path = _runtime_binary_path(profile_id, profile)
+    binary_path.parent.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(follow_redirects=True, timeout=300.0) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        payload = response.content
+
+    extracted: list[str] = []
+    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        for member in archive.infolist():
+            archive.extract(member, path=binary_path.parent)
+            if member.is_dir():
+                continue
+            extracted.append(member.filename.replace("\\", "/"))
+    if not extracted:
+        raise RuntimeError(f"runtime artifact source for profile '{profile_id}' extracted no files")
+    return extracted
+
+
+def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: bool) -> dict[str, Any]:
+    source = _runtime_source(profile)
+    source_type = source.get("type")
+    if dry_run:
+        return _planned_runtime_profile(profile_id, profile)
+    if source_type == "url_zip":
+        acquired = _download_runtime_url_zip(profile_id, profile, dry_run=False)
+        verify = _verify_runtime_profile(profile_id, profile)
+        return {**verify, "acquired": acquired}
+    verify = _verify_runtime_profile(profile_id, profile)
+    return {
+        **verify,
+        "acquired": [],
+        "state": "skipped" if not verify["ready"] else verify["state"],
+        "degraded_reason": verify["degraded_reason"] or f"SKIP-unsupported-runtime-source:{source_type}",
+    }
+
+
+def _ensure_runtime_artifacts(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
+    profiles = _hardware_profiles(entry)
+    results = [
+        _ensure_runtime_profile(profile_id, profile, dry_run=dry_run)
+        for profile_id, profile in profiles.items()
+    ]
+    return {
+        "model": entry.name,
+        "profiles": results,
+        "ready": all(result["ready"] for result in results),
+    }
+
+
+def _runtime_fetch_allowed(args: argparse.Namespace) -> tuple[bool, str]:
+    if _explicit_cli(args):
+        return True, "explicit-cli"
+    settings = load_settings()
+    if not settings.use_local_model:
+        return False, "local model disabled"
+    if not settings.local_model_fetch:
+        return False, "LOCAL_MODEL_FETCH disabled"
+    return True, "automatic-local-fetch-enabled"
 
 
 def _verify_entry(entry: ModelEntry) -> dict[str, Any]:
@@ -153,9 +361,11 @@ def _verify_family(family: str, model_name: str | None = None) -> tuple[int, dic
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
 
     results = [_verify_entry(entry) for entry in entries]
+    runtime_results = [_verify_runtime_artifacts(entry) for entry in entries] if family == "llm" else []
     return (0 if all(result["ready"] for result in results) else 1), {
         "family": family,
         "models": results,
+        "runtime_artifacts": runtime_results,
         "ready": all(result["ready"] for result in results),
     }
 
@@ -271,16 +481,38 @@ def _ensure_entry(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
     }
 
 
-def _ensure_family(family: str, model_name: str | None, dry_run: bool) -> tuple[int, dict[str, Any]]:
+def _ensure_family(
+    family: str,
+    model_name: str | None,
+    dry_run: bool,
+    runtime_fetch_allowed: bool = True,
+    runtime_fetch_reason: str = "explicit-cli",
+) -> tuple[int, dict[str, Any]]:
     if model_name:
         entries = [get_model_entry(family, model_name)]
     else:
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
 
     results = [_ensure_entry(entry, dry_run) for entry in entries]
+    runtime_results: list[dict[str, Any]] = []
+    if family == "llm":
+        if runtime_fetch_allowed:
+            runtime_results = [_ensure_runtime_artifacts(entry, dry_run=dry_run) for entry in entries]
+        else:
+            runtime_results = [
+                {
+                    "model": entry.name,
+                    "profiles": [],
+                    "ready": False,
+                    "state": "skipped",
+                    "degraded_reason": runtime_fetch_reason,
+                }
+                for entry in entries
+            ]
     return (0 if all(result["ready"] for result in results) else 1), {
         "family": family,
         "models": results,
+        "runtime_artifacts": runtime_results,
         "ready": all(result["ready"] for result in results),
     }
 
@@ -294,13 +526,20 @@ def main(argv: list[str] | None = None) -> int:
     emit_host_fingerprint(report.profile, extras, readiness="models")
 
     families = [args.family] if args.family else list(ALL_FAMILIES)
+    runtime_fetch_allowed, runtime_fetch_reason = _runtime_fetch_allowed(args)
     exit_code = 0
     results: list[dict[str, Any]] = []
     for family in families:
         if args.verify_only:
             code, result = _verify_family(family, args.model)
         else:
-            code, result = _ensure_family(family, args.model, args.dry_run)
+            code, result = _ensure_family(
+                family,
+                args.model,
+                args.dry_run,
+                runtime_fetch_allowed=runtime_fetch_allowed,
+                runtime_fetch_reason=runtime_fetch_reason,
+            )
         exit_code = max(exit_code, code)
         results.append(result)
 

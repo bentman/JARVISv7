@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-18 14:29
+  - Summary: Completed Slice S.2 ensure-models runtime artifact framework. LLM verification now reports GGUF model state separately from llama.cpp runtime artifact state, and automatic versus explicit runtime fetch policy is defined and unit-tested.
+  - Scope: `scripts/ensure_models.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_llm_runtime_artifacts.py -q` PASS (`6 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_script.py -q` PASS (`5 passed`). `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with LLM GGUF `ready=true`, separate `runtime_artifacts` output, current AMD64 CPU runtime `ready=true`, and missing CUDA/QNN profiles reported as degraded runtime states. `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run` PASS with planned runtime artifacts and no filesystem mutation. `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`552 passed, 1 skipped`; fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`127 passed, 4 deselected`, report `reports\validation\20260618192903-regression.txt`). `git diff --check` PASS with line-ending warnings only.
+  - Note: Existing GGUF verification/acquisition behavior was preserved. No live CUDA/QNN acquisition, resolver/sidecar/desktop behavior, provisioning behavior, runtime binary, model artifact, or `SYSTEM_INVENTORY.md` capability truth was changed.
+
 - 2026-06-18 13:52
   - Summary: Completed the Slice S.1 follow-up test coverage alignment. The current-host LLM serve-profile runtime test now includes the AMD64 NVIDIA CUDA degraded/selected branch matching the existing ARM64 Qualcomm QNN branch.
   - Scope: `backend/tests/runtime/hardware/test_llm_serve_profile_resolution.py`, `CHANGE_LOG.md`
