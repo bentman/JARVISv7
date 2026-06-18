@@ -799,3 +799,37 @@ def test_operator_config_write_appends_missing_allowlisted_key_without_creating_
     assert response.status_code == 200
     assert response.json() == {"written": ["REDIS_HOST"], "rejected": []}
     assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=true\nREDIS_HOST=127.0.0.1\n"
+
+
+def test_operator_config_exposes_llama_cpp_sidecar_controls(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "LLAMA_CPP_MODEL_PATH=models/llm/assistant-small-q4/qwen2.5-0.5b-instruct-q4_k_m.gguf\n"
+        "LLAMA_CPP_BASE_URL=http://127.0.0.1:8080\n"
+        "LLAMA_CPP_HOST=127.0.0.1\n"
+        "LLAMA_CPP_PORT=8080\n"
+        "LLAMA_CPP_BINARY_PATH=\n"
+        "LLAMA_CPP_MANAGED=false\n"
+        "LLAMA_CPP_MODEL_NAME=assistant-small-q4\n"
+        "LLAMA_CPP_TIMEOUT_SECONDS=30\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().get("/config/operator")
+    fields = {field["key"]: field for field in response.json()["fields"]}
+
+    assert response.status_code == 200
+    for key in (
+        "LLAMA_CPP_MODEL_PATH",
+        "LLAMA_CPP_BASE_URL",
+        "LLAMA_CPP_HOST",
+        "LLAMA_CPP_PORT",
+        "LLAMA_CPP_BINARY_PATH",
+        "LLAMA_CPP_MANAGED",
+        "LLAMA_CPP_MODEL_NAME",
+        "LLAMA_CPP_TIMEOUT_SECONDS",
+    ):
+        assert key in fields
+        assert fields[key]["editable"] is True
+        assert fields[key]["restart_required"] is True

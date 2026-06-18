@@ -159,6 +159,36 @@ def test_resolve_reports_amd64_cuda_as_degraded_until_evidence_exists(tmp_path: 
     ]
 
 
+def test_resolve_selects_amd64_cuda_when_runtime_evidence_exists(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    entry.local_path.parent.mkdir(parents=True)
+    entry.local_path.write_bytes(b"gguf")
+    cuda_binary = tmp_path / "bin" / "amd64-cuda" / "llama-server.exe"
+    cuda_binary.parent.mkdir(parents=True)
+    cuda_binary.write_bytes(b"exe")
+
+    resolution = resolve_llm_serve_profile(
+        "research",
+        HardwareProfile(
+            os_name="windows",
+            arch="amd64",
+            gpu_available=True,
+            gpu_vendor="nvidia",
+            cuda_available=True,
+        ),
+        _preflight(["ep:CUDAExecutionProvider"]),
+        settings=_settings(),
+        flags=CapabilityFlags(supports_cuda_llm=True),
+        entry=entry,
+    )
+
+    assert resolution.serve_profile_id == "windows_amd64_cuda"
+    assert resolution.accelerator == "gpu.cuda"
+    assert resolution.binary_path == cuda_binary
+    assert resolution.degraded_reason is None
+    assert resolution.degraded_candidates == []
+
+
 def test_resolve_reports_arm64_qnn_as_skipped_until_viable_binary_exists(tmp_path: Path) -> None:
     resolution = resolve_llm_serve_profile(
         "tool_plan",
@@ -177,6 +207,39 @@ def test_resolve_reports_arm64_qnn_as_skipped_until_viable_binary_exists(tmp_pat
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
         ("windows_arm64_qnn", "Degraded-no-sidecar-binary")
     ]
+    assert resolution.serve_profile_id == "windows_arm64_cpu"
+    assert resolution.accelerator == "cpu"
+
+
+def test_resolve_selects_arm64_qnn_when_runtime_evidence_exists(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    entry.local_path.parent.mkdir(parents=True)
+    entry.local_path.write_bytes(b"gguf")
+    qnn_binary = tmp_path / "bin" / "arm64-qnn" / "llama-server.exe"
+    qnn_binary.parent.mkdir(parents=True)
+    qnn_binary.write_bytes(b"exe")
+
+    resolution = resolve_llm_serve_profile(
+        "tool_plan",
+        HardwareProfile(
+            os_name="windows",
+            arch="arm64",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+        _preflight(["ep:QNNExecutionProvider", "dll:QnnHtp"]),
+        settings=_settings(),
+        flags=CapabilityFlags(qnn_available=True),
+        entry=entry,
+    )
+
+    assert resolution.serve_profile_id == "windows_arm64_qnn"
+    assert resolution.accelerator == "npu.qnn"
+    assert resolution.binary_path == qnn_binary
+    assert resolution.launch["device"] == "qnn"
+    assert resolution.selected_reason == "selected current-host npu.qnn serve profile windows_arm64_qnn"
+    assert resolution.degraded_reason is None
+    assert resolution.degraded_candidates == []
 
 
 def test_resolve_rejects_routes_not_declared_in_catalog(tmp_path: Path) -> None:

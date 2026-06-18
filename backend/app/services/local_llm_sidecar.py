@@ -6,6 +6,8 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 from urllib.parse import urlparse
 
+import psutil
+
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 
 
@@ -23,6 +25,7 @@ class SidecarProcess(Protocol):
 
 ProcessFactory = Callable[[list[str]], SidecarProcess]
 HealthProbe = Callable[[str], tuple[bool, str]]
+ProcessReaper = Callable[[Path, float], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,10 +89,12 @@ class LocalLLMSidecarService:
         *,
         process_factory: ProcessFactory | None = None,
         health_probe: HealthProbe | None = None,
+        process_reaper: ProcessReaper | None = None,
         stop_timeout_seconds: float = 5.0,
     ) -> None:
         self._process_factory = process_factory or _default_process_factory
         self._health_probe = health_probe
+        self._process_reaper = process_reaper or _reap_processes_for_binary
         self._stop_timeout_seconds = stop_timeout_seconds
         self._process: SidecarProcess | None = None
         self._last_resolution: LLMServeProfileResolution | None = None
@@ -149,13 +154,8 @@ class LocalLLMSidecarService:
         return self.status()
 
     def stop(self) -> LocalLLMSidecarStatus:
-        if not self._is_running():
-            self._process = None
-            self._restart_required = False
-            return self._status(state="stopped", running=False)
-
         process = self._process
-        if process is not None:
+        if process is not None and process.poll() is None:
             process.terminate()
             try:
                 process.wait(timeout=self._stop_timeout_seconds)
@@ -165,6 +165,9 @@ class LocalLLMSidecarService:
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=self._stop_timeout_seconds)
+        binary_path = self._last_binary_path()
+        if binary_path is not None:
+            self._process_reaper(binary_path, self._stop_timeout_seconds)
         self._process = None
         self._restart_required = False
         return self._status(state="stopped", running=False)
@@ -180,6 +183,13 @@ class LocalLLMSidecarService:
         if self._last_resolution is None:
             return False
         return _resolution_signature(self._last_resolution) == _resolution_signature(resolution)
+
+    def _last_binary_path(self) -> Path | None:
+        if self._last_command is not None and self._last_command.argv:
+            return Path(self._last_command.argv[0])
+        if self._last_resolution is not None:
+            return self._last_resolution.binary_path
+        return None
 
     def _status(
         self,
@@ -256,6 +266,54 @@ def _default_process_factory(argv: list[str]) -> SidecarProcess:
     binary_path = Path(argv[0])
     cwd = binary_path.parent if binary_path.parent.is_dir() else None
     return subprocess.Popen(argv, cwd=cwd)  # noqa: S603
+
+
+def _reap_processes_for_binary(binary_path: Path, timeout_seconds: float) -> None:
+    resolved_binary = _normalized_path(binary_path)
+    matches: list[psutil.Process] = []
+    current_pid = psutil.Process().pid
+    for process in psutil.process_iter(["pid", "exe", "cmdline"]):
+        if process.info.get("pid") == current_pid:
+            continue
+        if _process_matches_binary(process, resolved_binary):
+            matches.append(process)
+
+    if not matches:
+        return
+
+    for process in matches:
+        try:
+            process.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    gone, alive = psutil.wait_procs(matches, timeout=timeout_seconds)
+    del gone
+    for process in alive:
+        try:
+            process.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    psutil.wait_procs(alive, timeout=timeout_seconds)
+
+
+def _process_matches_binary(process: psutil.Process, binary_path: Path) -> bool:
+    try:
+        exe = process.info.get("exe") or process.exe()
+        if exe and _normalized_path(Path(exe)) == binary_path:
+            return True
+        cmdline = process.info.get("cmdline") or process.cmdline()
+    except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+        return False
+    if not cmdline:
+        return False
+    return _normalized_path(Path(cmdline[0])) == binary_path
+
+
+def _normalized_path(path: Path) -> Path:
+    try:
+        return path.resolve()
+    except OSError:
+        return path.absolute()
 
 
 def _resolution_signature(resolution: LLMServeProfileResolution) -> tuple[str, str, str]:

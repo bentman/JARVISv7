@@ -337,6 +337,44 @@ def test_lifecycle_stop_is_idempotent(tmp_path: Path) -> None:
     assert stopped_again.running is False
 
 
+def test_lifecycle_stop_reaps_selected_binary_process(tmp_path: Path) -> None:
+    process = _FakeProcess()
+    reaped: list[tuple[Path, float]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: process,
+        process_reaper=lambda path, timeout: reaped.append((path, timeout)),
+        stop_timeout_seconds=3.0,
+    )
+    resolution = _resolution(tmp_path)
+    service.start(resolution)
+
+    stopped = service.stop()
+
+    assert process.terminated is True
+    assert reaped == [(resolution.binary_path, 3.0)]
+    assert stopped.state == "stopped"
+    assert stopped.running is False
+
+
+def test_lifecycle_stop_reaps_even_when_launcher_handle_exited(tmp_path: Path) -> None:
+    process = _FakeProcess()
+    reaped: list[Path] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: process,
+        process_reaper=lambda path, timeout: reaped.append(path),
+    )
+    resolution = _resolution(tmp_path, profile_id="windows_arm64_cpu")
+    service.start(resolution)
+    process.terminated = True
+
+    stopped = service.stop()
+
+    assert process.wait_calls == 0
+    assert reaped == [resolution.binary_path]
+    assert stopped.state == "stopped"
+    assert stopped.running is False
+
+
 def test_lifecycle_stop_kills_process_when_terminate_times_out(tmp_path: Path) -> None:
     process = _SlowStopProcess()
     service = LocalLLMSidecarService(process_factory=lambda argv: process)

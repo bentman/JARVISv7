@@ -60,47 +60,108 @@ def resolve_llm_serve_profile(
     if not isinstance(serve_profiles, dict):
         raise ModelCatalogError(f"LLM model '{selected_entry.name}' has invalid serve_profiles metadata")
 
-    profile_id = _cpu_profile_id(profile)
-    serve_profile = serve_profiles.get(profile_id)
-    if not isinstance(serve_profile, dict):
+    cpu_profile_id = _cpu_profile_id(profile)
+    cpu_serve_profile = serve_profiles.get(cpu_profile_id)
+    if not isinstance(cpu_serve_profile, dict):
         raise ModelCatalogError(
             f"LLM model '{selected_entry.name}' has no CPU serve profile for {profile.os_name}/{profile.arch}"
         )
 
     resolved_settings = settings or load_settings()
     local_model_path = _settings_path_override(resolved_settings.llama_cpp_model_path, selected_entry.local_path)
+    selected_profile_id, selected_profile, degraded_candidates = _select_current_host_profile(
+        serve_profiles,
+        cpu_profile_id,
+        cpu_serve_profile,
+        profile,
+        preflight,
+        flags,
+        local_model_path,
+        resolved_settings,
+    )
     binary_path = _settings_path_override(
         resolved_settings.llama_cpp_binary_path,
-        _profile_path(serve_profile, "binary_path", selected_entry.name, profile_id),
+        _profile_path(selected_profile, "binary_path", selected_entry.name, selected_profile_id),
     )
-    base_url = _base_url(serve_profile, resolved_settings)
-    accelerator = str(serve_profile.get("accelerator", "cpu"))
+    base_url = _base_url(selected_profile, resolved_settings)
+    accelerator = str(selected_profile.get("accelerator", "cpu"))
     degraded_reasons = _selected_degraded_reasons(local_model_path, binary_path)
 
     return LLMServeProfileResolution(
         model_id=selected_entry.name,
         route=route,
-        serve_profile_id=profile_id,
+        serve_profile_id=selected_profile_id,
         local_model_path=local_model_path,
         binary_path=binary_path,
         base_url=base_url,
         accelerator=accelerator,
-        launch=dict(serve_profile.get("launch", {})),
+        launch=dict(selected_profile.get("launch", {})),
         generation_defaults=dict(config.get("generation_defaults", {})),
-        selected_reason=f"selected current-host CPU serve profile {profile_id}",
+        selected_reason=_selected_reason(selected_profile_id, accelerator),
         degraded_reasons=degraded_reasons,
-        degraded_candidates=_degraded_accelerator_candidates(
-            serve_profiles,
-            profile,
-            preflight,
-            flags,
-            local_model_path,
-        ),
+        degraded_candidates=degraded_candidates,
     )
 
 
 def _cpu_profile_id(profile: HardwareProfile) -> str:
     return f"{profile.os_name}_{profile.arch}_cpu"
+
+
+def _select_current_host_profile(
+    serve_profiles: dict[str, Any],
+    cpu_profile_id: str,
+    cpu_serve_profile: dict[str, Any],
+    profile: HardwareProfile,
+    preflight: PreflightResult,
+    flags: CapabilityFlags | None,
+    local_model_path: Path,
+    settings: Settings,
+) -> tuple[str, dict[str, Any], list[ServeProfileCandidate]]:
+    selected_profile_id = cpu_profile_id
+    selected_profile = cpu_serve_profile
+    degraded_candidates: list[ServeProfileCandidate] = []
+
+    for profile_id, candidate in serve_profiles.items():
+        if not isinstance(candidate, dict):
+            continue
+        if profile_id == cpu_profile_id:
+            continue
+        if candidate.get("os") != profile.os_name or candidate.get("arch") != profile.arch:
+            continue
+
+        accelerator = str(candidate.get("accelerator", "cpu"))
+        if accelerator == "cpu":
+            continue
+
+        reason = _accelerator_degraded_reason(
+            profile_id,
+            candidate,
+            profile,
+            preflight,
+            flags,
+            local_model_path,
+            settings,
+        )
+        if reason is None and selected_profile_id == cpu_profile_id:
+            selected_profile_id = profile_id
+            selected_profile = candidate
+            continue
+        if reason is not None:
+            degraded_candidates.append(
+                ServeProfileCandidate(
+                    profile_id=profile_id,
+                    accelerator=accelerator,
+                    reason=reason,
+                )
+            )
+
+    return selected_profile_id, selected_profile, degraded_candidates
+
+
+def _selected_reason(profile_id: str, accelerator: str) -> str:
+    if accelerator == "cpu":
+        return f"selected current-host CPU serve profile {profile_id}"
+    return f"selected current-host {accelerator} serve profile {profile_id}"
 
 
 def _settings_path_override(raw_path: str | None, default_path: Path) -> Path:
@@ -148,6 +209,7 @@ def _degraded_accelerator_candidates(
     preflight: PreflightResult,
     flags: CapabilityFlags | None,
     local_model_path: Path,
+    settings: Settings | None = None,
 ) -> list[ServeProfileCandidate]:
     candidates: list[ServeProfileCandidate] = []
     for profile_id, candidate in serve_profiles.items():
@@ -165,6 +227,7 @@ def _degraded_accelerator_candidates(
             preflight,
             flags,
             local_model_path,
+            settings or load_settings(),
         )
         if reason is not None:
             candidates.append(
@@ -184,6 +247,7 @@ def _accelerator_degraded_reason(
     preflight: PreflightResult,
     flags: CapabilityFlags | None,
     local_model_path: Path,
+    settings: Settings,
 ) -> str | None:
     close_reason = candidate.get("close_if_unavailable")
     accelerator = str(candidate.get("accelerator", ""))
@@ -210,7 +274,10 @@ def _accelerator_degraded_reason(
     else:
         return str(close_reason or "Degraded-accelerator-unavailable")
 
-    binary_path = _profile_path(candidate, "binary_path", "llm", profile_id)
+    binary_path = _settings_path_override(
+        settings.llama_cpp_binary_path,
+        _profile_path(candidate, "binary_path", "llm", profile_id),
+    )
     if not binary_path.is_file() or binary_path.stat().st_size <= 0:
         return "Degraded-no-sidecar-binary"
     if not local_model_path.is_file() or local_model_path.stat().st_size <= 0:

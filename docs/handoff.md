@@ -4,6 +4,38 @@ This file preserves enough context for another device or Codex session to contin
 
 ## Entries
 
+### 2026-06-18 02:49 -05:00 — Slice R selector correction ready for AMD64 validation
+
+- Active slice/sub-slice: Slice R / functional correction after R.8 review; R.9 remains open.
+- Last worked on: Windows ARM64.
+- Most recent change: Corrected local LLM serve-profile resolution so current-host accelerator profiles can become active when complete evidence exists. ARM64 QNN now selects only when Qualcomm/QNN readiness, selected GGUF model, and QNN sidecar binary evidence are all present; otherwise ARM64 falls back to CPU. AMD64 CUDA follows the same evidence-gated path.
+- Validation run: Focused selector/sidecar pytest passed (`backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py backend\tests\unit\services\test_local_llm_sidecar.py -q` -> `27 passed`). ARM64 unit validator passed (`539 passed`, one existing Starlette warning). ARM64 regression passed (`119 passed, 4 deselected`, report `reports\validation\20260618024925-regression.txt`, fingerprint `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`). `git diff --check` passed with line-ending warnings only.
+- Current state: Ready for Windows AMD64 validation of the same selector correction. Not ready for Slice R closeout; live ARM64 QNN still requires a QNN-capable `llama-server.exe` artifact and live runtime proof.
+- Next needed on AMD64: Run focused selector/sidecar pytest, `backend\.venv\Scripts\python scripts\validate_backend.py unit`, `backend\.venv\Scripts\python scripts\validate_backend.py regression`, and `git diff --check`. If AMD64 CUDA artifact evidence exists, verify CUDA profile selection; otherwise confirm CPU fallback remains intact.
+- Next host class: Windows AMD64.
+
+### 2026-06-17 21:24 -05:00 — Group R ARM64 live surfaces clear, AMD64 handoff
+
+- Active slice/sub-slice: Slice R / ARM64 adjusted live validation for R.8, with R.9 still blocked until AMD64 validates the same changed code.
+- Last worked on: Windows ARM64.
+- Most recent change: Completed the ARM64 live validation items that were missing from the prior handoff. A real ARM64 CPU `llama-server.exe` sidecar was started with absolute model/binary paths, live LLM pytest ran against both Ollama and llama.cpp with no skips, and the direct local llama.cpp text-turn live test passed with no skips. Manual sidecar cleanup was verified. Model and binary close-state probes were refreshed.
+- Validation run: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assistant-small-q4 --verify-only` PASS (`ready=true`, selected GGUF present). `Test-Path runtimes\llama.cpp\windows-arm64-cpu\llama-server.exe` returned `True`. `Test-Path runtimes\llama.cpp\windows-arm64-qnn\llama-server.exe` returned `False`. Live sidecar readiness via `http://127.0.0.1:8080/v1/models` returned ready. Live LLM pytest passed with no skips (`backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_llm_live.py -q` -> `3 passed`): Ollama fallback and llama.cpp availability/generation all ran. Live local text-turn pytest passed with no skips (`backend\.venv\Scripts\python -m pytest backend\tests\runtime\turn\test_local_llm_turn_live.py -q` -> `1 passed`). Manual `llama-server` was stopped and `Get-Process -Name llama-server -ErrorAction SilentlyContinue` returned no process.
+- ARM64 clear state: CPU-only local llama.cpp `PASS-live`; Ollama fallback `PASS-live`; ARM64 NPU/QNN `SKIP-no-viable-binary` with explicit `Test-Path=False` evidence; no related ARM64 live item is omitted. This is ARM64-clear, not Slice R-closed.
+- Note: Slice R is still open. Do not update `SYSTEM_INVENTORY.md` or close R.9 until Windows AMD64 validates these latest shared code/config changes and records equivalent evidence. Runtime/model/cache/report artifacts remain local process artifacts and should not be committed.
+- Next needed: Windows AMD64 should run the same final validation set: focused config/settings/sidecar pytest, real managed app proof using catalog/default paths, live LLM pytest with no skips, live local llama.cpp text-turn pytest with no skips, no lingering `llama-server`, model/binary/QNN/CUDA close-state probes, `validate_backend.py unit`, `validate_backend.py regression`, and `git diff --check`.
+- Next host class: Windows AMD64.
+
+### 2026-06-17 21:17 -05:00 — Group R ARM64 adjusted validation, still open
+
+- Active slice/sub-slice: Slice R / R.8 adjusted ARM64 live validation and R.9 pre-closeout readiness.
+- Last worked on: Windows ARM64.
+- Most recent change: Fixed the shared managed llama.cpp sidecar lifecycle so both ARM64 and AMD64 use exact-binary-path cleanup after normal `Popen` stop handling. Aligned local `.env` with `.env.example`/catalog for the selected GGUF path and Ollama context value. Exposed the full llama.cpp sidecar control set through `/config/operator` so settings, `.env.example`, and operator config align.
+- Validation run: Focused config/settings/sidecar pytest passed (`67 passed`, one existing Starlette `TestClient` deprecation warning). ARM64 managed app proof passed using catalog/default paths with only `USE_LOCAL_MODEL=true` and `LLAMA_CPP_MANAGED=true`: selected `llama.cpp`, profile `windows_arm64_cpu`, accelerator `cpu`, loaded `models\llm\assistant-small-q4\qwen2.5-0.5b-instruct-q4_k_m.gguf`, served on `http://127.0.0.1:8080`, completed one text turn with non-empty `response_text`, and exited with no lingering `llama-server` process. R.9-required validators passed on ARM64: `backend\.venv\Scripts\python scripts\validate_backend.py unit` (`537 passed`, one existing warning) and `backend\.venv\Scripts\python scripts\validate_backend.py regression` (`119 passed, 4 deselected`, report `reports\validation\20260618021720-regression.txt`). `git diff --check` passed with line-ending warnings only before governance edits. Fingerprint: `arch=arm64 python=3.13.13 extras=[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev] readiness=ready`.
+- Close state: ARM64 CPU-only local llama.cpp application path is now real `PASS`; ARM64 NPU/QNN remains `SKIP-no-viable-binary`; Ollama fallback remains available as fallback, but this entry did not rerun Ollama-specific live validation.
+- Note: Slice R is not closed. AMD64 must validate the latest shared sidecar cleanup and operator/env alignment changes before R.9 governance closeout or `SYSTEM_INVENTORY.md` promotion. Local artifact paths under `models\`, `runtimes\`, `cache\`, and `reports\` remain process artifacts and should not be committed.
+- Next needed: Windows AMD64 should validate the same changes: focused config/settings/sidecar tests, real managed llama.cpp app proof using catalog/default paths, no lingering `llama-server`, `validate_backend.py unit`, `validate_backend.py regression`, and `git diff --check`. Then update governance only if AMD64 is green or records explicit degraded/skipped evidence.
+- Next host class: Windows AMD64.
+
 ### 2026-06-17 19:59 -05:00 — R.8 AMD64 real local llama.cpp app proof
 
 - Active slice/sub-slice: Slice R / R.8 tandem live local LLM validation correction.
