@@ -6,7 +6,7 @@ import json
 import shutil
 import sys
 import zipfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import httpx
@@ -181,8 +181,10 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
     discovered_exts = {path.suffix.lower() for path in discovered_files}
 
     missing: list[str] = []
+    if not binary_path.is_file() or binary_path.stat().st_size <= 0:
+        missing.append(binary_path.name)
     for file_name in required_files:
-        if file_name not in discovered_names:
+        if file_name not in discovered_names and file_name not in missing:
             missing.append(file_name)
     for extension in required_extensions:
         normalized = extension.lower()
@@ -337,11 +339,18 @@ def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run:
 
     extracted: list[str] = []
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+        strip_prefix = _zip_common_file_prefix(archive.infolist())
         for member in archive.infolist():
-            archive.extract(member, path=binary_path.parent)
             if member.is_dir():
                 continue
-            extracted.append(member.filename.replace("\\", "/"))
+            target_name = _zip_member_target(member.filename, strip_prefix)
+            if target_name is None:
+                continue
+            target = binary_path.parent / target_name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, target.open("wb") as destination:
+                shutil.copyfileobj(source, destination)
+            extracted.append(str(target_name).replace("\\", "/"))
     if not extracted:
         raise RuntimeError(f"runtime artifact source for profile '{profile_id}' extracted no files")
     return extracted
@@ -352,16 +361,18 @@ def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: b
     source_type = _runtime_source_type(profile)
     if dry_run:
         return _planned_runtime_profile(profile_id, profile)
+    existing = _verify_runtime_profile(profile_id, profile)
+    if existing["ready"]:
+        return {**existing, "acquired": []}
     if source_type == "url_zip":
         acquired = _download_runtime_url_zip(profile_id, profile, dry_run=False)
         verify = _verify_runtime_profile(profile_id, profile)
         return {**verify, "acquired": acquired}
-    verify = _verify_runtime_profile(profile_id, profile)
     return {
-        **verify,
+        **existing,
         "acquired": [],
-        "state": "skipped" if not verify["ready"] else verify["state"],
-        "degraded_reason": verify["degraded_reason"] or f"SKIP-unsupported-runtime-source:{source_type}",
+        "state": "skipped",
+        "degraded_reason": existing["degraded_reason"] or f"SKIP-unsupported-runtime-source:{source_type}",
     }
 
 
@@ -396,6 +407,37 @@ def _runtime_fetch_allowed(args: argparse.Namespace) -> tuple[bool, str]:
     if not settings.local_model_fetch:
         return False, "LOCAL_MODEL_FETCH disabled"
     return True, "automatic-local-fetch-enabled"
+
+
+def _zip_common_file_prefix(members: list[zipfile.ZipInfo]) -> str | None:
+    file_parts = [
+        _zip_member_parts(member.filename)
+        for member in members
+        if not member.is_dir()
+    ]
+    if not file_parts or not all(len(parts) > 1 for parts in file_parts):
+        return None
+    prefix = file_parts[0][0]
+    if all(parts[0] == prefix for parts in file_parts):
+        return prefix
+    return None
+
+
+def _zip_member_parts(member_name: str) -> tuple[str, ...]:
+    path = PurePosixPath(member_name.replace("\\", "/"))
+    parts = tuple(part for part in path.parts if part not in {"", "."})
+    if not parts or any(part == ".." for part in parts):
+        raise RuntimeError(f"unsafe zip member path: {member_name}")
+    return parts
+
+
+def _zip_member_target(member_name: str, strip_prefix: str | None) -> Path | None:
+    parts = _zip_member_parts(member_name)
+    if strip_prefix and len(parts) > 1 and parts[0] == strip_prefix:
+        parts = parts[1:]
+    if not parts:
+        return None
+    return Path(*parts)
 
 
 def _verify_entry(entry: ModelEntry) -> dict[str, Any]:

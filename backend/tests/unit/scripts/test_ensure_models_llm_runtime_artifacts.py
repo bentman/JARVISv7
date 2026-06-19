@@ -184,8 +184,51 @@ def test_runtime_url_zip_acquisition_extracts_and_verifies_required_files(
 
     assert result["ready"] is True
     assert result["state"] == "ready"
+    assert "llama-server.exe" in result["acquired"]
+    assert "ggml.dll" in result["acquired"]
+    assert (tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu" / "llama-server.exe").is_file()
+    assert (tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu" / "ggml.dll").is_file()
+
+
+def test_runtime_url_zip_acquisition_requires_configured_binary_path(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    payload = _zip_bytes({"llama-b9704/bin/llama-server.exe": b"exe", "llama-b9704/bin/ggml.dll": b"dll"})
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: _FakeClient(payload))
+    entry = _entry(tmp_path, source_type="url_zip")
+    profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
+
+    result = ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
+
+    assert result["ready"] is False
+    assert result["state"] == "degraded"
+    assert result["missing"] == ["llama-server.exe"]
     assert "bin/llama-server.exe" in result["acquired"]
     assert "bin/ggml.dll" in result["acquired"]
+    assert (tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu" / "bin" / "llama-server.exe").is_file()
+
+
+def test_runtime_url_zip_acquisition_skips_ready_runtime(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_client(**kwargs):
+        raise AssertionError("ready runtime should not be downloaded")
+
+    monkeypatch.setattr(ensure_models.httpx, "Client", fail_client)
+    entry = _entry(tmp_path, source_type="url_zip")
+    profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
+    runtime_file = tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu" / "llama-server.exe"
+    runtime_file.parent.mkdir(parents=True)
+    runtime_file.write_bytes(b"exe")
+    (runtime_file.parent / "ggml.dll").write_bytes(b"dll")
+
+    result = ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
+
+    assert result["ready"] is True
+    assert result["state"] == "ready"
+    assert result["acquired"] == []
 
 
 def test_runtime_dry_run_reports_planned_required_files_without_writing(tmp_path: Path) -> None:
@@ -226,6 +269,27 @@ def test_runtime_source_metadata_rejects_invalid_url_zip_source(tmp_path: Path) 
 
     with pytest.raises(ValueError, match="invalid runtime url_zip source"):
         ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
+
+
+def test_catalog_cpu_runtime_profiles_use_pinned_url_zip_sources() -> None:
+    entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
+    profiles = ensure_models._hardware_profiles(entry)
+
+    amd64_source = profiles["windows_amd64_cpu"]["runtime_artifact"]["source"]
+    arm64_source = profiles["windows_arm64_cpu"]["runtime_artifact"]["source"]
+
+    assert amd64_source == {
+        "type": "url_zip",
+        "release": "b9704",
+        "asset": "llama-b9704-bin-win-cpu-x64.zip",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-x64.zip",
+    }
+    assert arm64_source == {
+        "type": "url_zip",
+        "release": "b9704",
+        "asset": "llama-b9704-bin-win-cpu-arm64.zip",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-arm64.zip",
+    }
 
 
 def test_automatic_runtime_fetch_policy_honors_local_fetch_disabled(monkeypatch) -> None:
