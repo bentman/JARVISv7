@@ -322,21 +322,50 @@ def _planned_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[s
 def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run: bool) -> list[str]:
     source = _runtime_source(profile)
     source_type = _runtime_source_type(profile)
-    if source_type != "url_zip":
+    if source_type not in {"url_zip", "url_zip_set"}:
         raise ValueError(f"LLM serve profile '{profile_id}' has unsupported runtime source type '{source_type}'")
-    url = source.get("url")
-    if not isinstance(url, str) or not url.startswith("https://"):
-        raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip source")
+    archives = _runtime_source_archives(profile_id, source)
     if dry_run:
         return _runtime_required_files(profile_id, profile)
 
     binary_path = _runtime_binary_path(profile_id, profile)
     binary_path.parent.mkdir(parents=True, exist_ok=True)
-    with httpx.Client(follow_redirects=True, timeout=300.0) as client:
-        response = client.get(url)
-        response.raise_for_status()
-        payload = response.content
 
+    extracted: list[str] = []
+    with httpx.Client(follow_redirects=True, timeout=300.0) as client:
+        for runtime_archive in archives:
+            response = client.get(runtime_archive["url"])
+            response.raise_for_status()
+            extracted.extend(_extract_runtime_zip_payload(response.content, binary_path.parent))
+    if not extracted:
+        raise RuntimeError(f"runtime artifact source for profile '{profile_id}' extracted no files")
+    return extracted
+
+
+def _runtime_source_archives(profile_id: str, source: dict[str, Any]) -> list[dict[str, str]]:
+    source_type = source.get("type")
+    if source_type == "url_zip":
+        url = source.get("url")
+        if not isinstance(url, str) or not url.startswith("https://"):
+            raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip source")
+        return [{"url": url}]
+    if source_type == "url_zip_set":
+        archives = source.get("archives")
+        if not isinstance(archives, list) or not archives:
+            raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip_set source")
+        parsed: list[dict[str, str]] = []
+        for archive in archives:
+            if not isinstance(archive, dict):
+                raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip_set source")
+            url = archive.get("url")
+            if not isinstance(url, str) or not url.startswith("https://"):
+                raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_zip_set source")
+            parsed.append({"url": url})
+        return parsed
+    raise ValueError(f"LLM serve profile '{profile_id}' has unsupported runtime source type '{source_type}'")
+
+
+def _extract_runtime_zip_payload(payload: bytes, target_root: Path) -> list[str]:
     extracted: list[str] = []
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         strip_prefix = _zip_common_file_prefix(archive.infolist())
@@ -346,13 +375,11 @@ def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run:
             target_name = _zip_member_target(member.filename, strip_prefix)
             if target_name is None:
                 continue
-            target = binary_path.parent / target_name
+            target = target_root / target_name
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member) as source, target.open("wb") as destination:
                 shutil.copyfileobj(source, destination)
             extracted.append(str(target_name).replace("\\", "/"))
-    if not extracted:
-        raise RuntimeError(f"runtime artifact source for profile '{profile_id}' extracted no files")
     return extracted
 
 
@@ -364,7 +391,7 @@ def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: b
     existing = _verify_runtime_profile(profile_id, profile)
     if existing["ready"]:
         return {**existing, "acquired": []}
-    if source_type == "url_zip":
+    if source_type in {"url_zip", "url_zip_set"}:
         acquired = _download_runtime_url_zip(profile_id, profile, dry_run=False)
         verify = _verify_runtime_profile(profile_id, profile)
         return {**verify, "acquired": acquired}

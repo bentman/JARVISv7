@@ -92,6 +92,15 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "arch": "amd64",
                         "provisioning_extras": ["hw-gpu-amd"],
                         "accelerator": "gpu.vulkan",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "pending-pinned-release",
+                                "reason": "S-G1-pending",
+                                "candidate_artifact_families": ["vulkan", "hip"],
+                            },
+                            "binary_path": str(tmp_path / "bin" / "amd64-amd" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
                         "binary_path": str(tmp_path / "bin" / "amd64-amd" / "llama-server.exe"),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                     },
@@ -101,6 +110,15 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "arch": "amd64",
                         "provisioning_extras": ["hw-gpu-intel"],
                         "accelerator": "gpu.vulkan",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "pending-pinned-release",
+                                "reason": "S-G1-pending",
+                                "candidate_artifact_families": ["vulkan", "openvino", "sycl"],
+                            },
+                            "binary_path": str(tmp_path / "bin" / "amd64-intel" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
                         "binary_path": str(tmp_path / "bin" / "amd64-intel" / "llama-server.exe"),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                     },
@@ -110,6 +128,19 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "arch": "arm64",
                         "provisioning_extras": ["hw-npu-qualcomm-qnn"],
                         "accelerator": "npu.hexagon_candidate",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "pending-viability",
+                                "reason": "S-G1-pending",
+                                "candidate_runtime_findings": {
+                                    "windows_on_snapdragon": "build-package-flow",
+                                    "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
+                                    "release_asset": "none-confirmed",
+                                },
+                            },
+                            "binary_path": str(tmp_path / "bin" / "arm64-hexagon" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
                         "binary_path": str(tmp_path / "bin" / "arm64-hexagon" / "llama-server.exe"),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                     },
@@ -120,7 +151,17 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "provisioning_extras": ["hw-npu-qualcomm-qnn"],
                         "accelerator": "npu.qnn",
                         "runtime_artifact": {
-                            "source": {"type": "pending-viability", "reason": "S-G1-pending"},
+                            "source": {
+                                "type": "pending-viability",
+                                "reason": "S-G1-pending",
+                                "project_label": "npu.qnn",
+                                "runtime_mapping": "pending-hexagon-qnn-viability",
+                                "candidate_runtime_findings": {
+                                    "windows_on_snapdragon": "build-package-flow",
+                                    "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
+                                    "release_asset": "none-confirmed",
+                                },
+                            },
                             "binary_path": str(tmp_path / "bin" / "arm64-qnn" / "llama-server.exe"),
                             "required_files": ["llama-server.exe"],
                         },
@@ -218,6 +259,49 @@ def test_resolve_reports_amd64_cuda_as_degraded_until_evidence_exists(tmp_path: 
     ]
 
 
+def test_non_cuda_gpu_profiles_do_not_block_cpu_fallback(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    entry.local_path.parent.mkdir(parents=True)
+    entry.local_path.write_bytes(b"gguf")
+    cpu_binary = tmp_path / "bin" / "amd64-cpu" / "llama-server.exe"
+    cpu_binary.parent.mkdir(parents=True)
+    cpu_binary.write_bytes(b"exe")
+
+    resolution = resolve_llm_serve_profile(
+        "research",
+        HardwareProfile(os_name="windows", arch="amd64", gpu_available=True, gpu_vendor="amd"),
+        _preflight(),
+        settings=_settings(),
+        entry=entry,
+    )
+
+    assert resolution.serve_profile_id == "windows_amd64_cpu"
+    assert resolution.accelerator == "cpu"
+    assert resolution.binary_path == cpu_binary
+    assert resolution.degraded_reason is None
+    assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
+        ("windows_amd64_gpu_nvidia_cuda", "Degraded-accelerator-unavailable"),
+        ("windows_amd64_gpu_amd", "Degraded-accelerator-unavailable"),
+        ("windows_amd64_gpu_intel", "Degraded-accelerator-unavailable"),
+    ]
+
+
+def test_non_cuda_gpu_profiles_are_not_selected_for_unrelated_hardware(tmp_path: Path) -> None:
+    resolution = resolve_llm_serve_profile(
+        "research",
+        HardwareProfile(os_name="windows", arch="arm64"),
+        _preflight(),
+        settings=_settings(),
+        entry=_entry(tmp_path),
+    )
+
+    assert resolution.serve_profile_id == "windows_arm64_cpu"
+    assert {candidate.profile_id for candidate in resolution.degraded_candidates} == {
+        "windows_arm64_npu_qualcomm_base",
+        "windows_arm64_npu_qualcomm_qnn",
+    }
+
+
 def test_resolve_selects_amd64_cuda_when_runtime_evidence_exists(tmp_path: Path) -> None:
     entry = _entry(tmp_path)
     entry.local_path.parent.mkdir(parents=True)
@@ -271,6 +355,22 @@ def test_resolve_reports_arm64_qnn_as_skipped_until_viable_binary_exists(tmp_pat
     ]
     assert resolution.serve_profile_id == "windows_arm64_cpu"
     assert resolution.accelerator == "cpu"
+
+
+def test_qualcomm_npu_base_profile_is_separate_from_qnn_sidecar(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    profiles = entry.config["serve_profiles"]["hardware_profiles"]
+    base_profile = profiles["windows_arm64_npu_qualcomm_base"]
+    qnn_profile = profiles["windows_arm64_npu_qualcomm_qnn"]
+
+    assert base_profile["accelerator"] == "npu.hexagon_candidate"
+    assert qnn_profile["accelerator"] == "npu.qnn"
+    assert base_profile["runtime_artifact"]["source"]["candidate_runtime_findings"] == {
+        "windows_on_snapdragon": "build-package-flow",
+        "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
+        "release_asset": "none-confirmed",
+    }
+    assert qnn_profile["runtime_artifact"]["source"]["runtime_mapping"] == "pending-hexagon-qnn-viability"
 
 
 def test_resolve_selects_arm64_qnn_when_runtime_evidence_exists(tmp_path: Path) -> None:

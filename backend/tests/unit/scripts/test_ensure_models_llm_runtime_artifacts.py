@@ -48,6 +48,14 @@ def _entry(tmp_path: Path, *, source_type: str = "pending-pinned-release") -> en
     source: dict[str, object] = {"type": source_type, "reason": "test-pending"}
     if source_type == "url_zip":
         source = {"type": "url_zip", "url": "https://example.invalid/llama.zip"}
+    if source_type == "url_zip_set":
+        source = {
+            "type": "url_zip_set",
+            "archives": [
+                {"asset": "llama.zip", "url": "https://example.invalid/llama.zip"},
+                {"asset": "cudart.zip", "url": "https://example.invalid/cudart.zip"},
+            ],
+        }
     return ensure_models.ModelEntry(
         family="llm",
         name="assistant-small-q4",
@@ -90,13 +98,101 @@ def _entry(tmp_path: Path, *, source_type: str = "pending-pinned-release") -> en
                         ),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                     },
+                    "windows_amd64_gpu_amd": {
+                        "profile_id": "windows_amd64_gpu_amd",
+                        "os": "windows",
+                        "arch": "amd64",
+                        "accelerator": "gpu.vulkan",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "pending-pinned-release",
+                                "reason": "test-pending",
+                                "candidate_artifact_families": ["vulkan", "hip"],
+                            },
+                            "binary_path": str(
+                                tmp_path
+                                / "runtimes"
+                                / "llama.cpp"
+                                / "windows-amd64-gpu-amd"
+                                / "llama-server.exe"
+                            ),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(
+                            tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-gpu-amd" / "llama-server.exe"
+                        ),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                    },
+                    "windows_amd64_gpu_intel": {
+                        "profile_id": "windows_amd64_gpu_intel",
+                        "os": "windows",
+                        "arch": "amd64",
+                        "accelerator": "gpu.vulkan",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "pending-pinned-release",
+                                "reason": "test-pending",
+                                "candidate_artifact_families": ["vulkan", "openvino", "sycl"],
+                            },
+                            "binary_path": str(
+                                tmp_path
+                                / "runtimes"
+                                / "llama.cpp"
+                                / "windows-amd64-gpu-intel"
+                                / "llama-server.exe"
+                            ),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(
+                            tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-gpu-intel" / "llama-server.exe"
+                        ),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                    },
+                    "windows_arm64_npu_qualcomm_base": {
+                        "profile_id": "windows_arm64_npu_qualcomm_base",
+                        "os": "windows",
+                        "arch": "arm64",
+                        "accelerator": "npu.hexagon_candidate",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "pending-viability",
+                                "reason": "test-pending",
+                                "candidate_runtime_findings": {
+                                    "windows_on_snapdragon": "build-package-flow",
+                                    "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
+                                    "release_asset": "none-confirmed",
+                                },
+                            },
+                            "binary_path": str(
+                                tmp_path
+                                / "runtimes"
+                                / "llama.cpp"
+                                / "windows-arm64-npu-qualcomm"
+                                / "llama-server.exe"
+                            ),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(
+                            tmp_path
+                            / "runtimes"
+                            / "llama.cpp"
+                            / "windows-arm64-npu-qualcomm"
+                            / "llama-server.exe"
+                        ),
+                        "close_if_unavailable": "Degraded-accelerator-unavailable",
+                    },
                     "windows_arm64_npu_qualcomm_qnn": {
                         "profile_id": "windows_arm64_npu_qualcomm_qnn",
                         "os": "windows",
                         "arch": "arm64",
                         "accelerator": "npu.qnn",
                         "runtime_artifact": {
-                            "source": {"type": "pending-viability", "reason": "test-pending"},
+                            "source": {
+                                "type": "pending-viability",
+                                "reason": "test-pending",
+                                "project_label": "npu.qnn",
+                                "runtime_mapping": "pending-hexagon-qnn-viability",
+                            },
                             "binary_path": str(
                                 tmp_path / "runtimes" / "llama.cpp" / "windows-arm64-qnn" / "llama-server.exe"
                             ),
@@ -128,6 +224,12 @@ def test_verify_runtime_artifacts_reports_separate_profile_states(tmp_path: Path
     assert profiles["windows_amd64_gpu_nvidia_cuda"]["ready"] is False
     assert profiles["windows_amd64_gpu_nvidia_cuda"]["state"] == "skipped"
     assert profiles["windows_amd64_gpu_nvidia_cuda"]["degraded_reason"] == "SKIP-source-pending"
+    assert profiles["windows_amd64_gpu_amd"]["state"] == "skipped"
+    assert profiles["windows_amd64_gpu_amd"]["degraded_reason"] == "SKIP-source-pending"
+    assert profiles["windows_amd64_gpu_intel"]["state"] == "skipped"
+    assert profiles["windows_amd64_gpu_intel"]["degraded_reason"] == "SKIP-source-pending"
+    assert profiles["windows_arm64_npu_qualcomm_base"]["ready"] is False
+    assert profiles["windows_arm64_npu_qualcomm_base"]["degraded_reason"] == "SKIP-no-viable-binary"
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["ready"] is False
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["degraded_reason"] == "SKIP-no-viable-binary"
 
@@ -231,6 +333,51 @@ def test_runtime_url_zip_acquisition_skips_ready_runtime(
     assert result["acquired"] == []
 
 
+def test_runtime_url_zip_set_acquisition_extracts_split_archives(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    payloads = [
+        _zip_bytes({"llama-server.exe": b"exe", "ggml-cuda.dll": b"dll"}),
+        _zip_bytes({"cudart64_13.dll": b"dll", "cublas64_13.dll": b"dll", "cublasLt64_13.dll": b"dll"}),
+    ]
+
+    class SplitClient:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def get(self, url: str) -> _FakeResponse:
+            assert payloads
+            return _FakeResponse(payloads.pop(0))
+
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: SplitClient())
+    entry = _entry(tmp_path, source_type="url_zip_set")
+    profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
+    profile["runtime_artifact"]["required_files"] = [
+        "llama-server.exe",
+        "ggml-cuda.dll",
+        "cudart64_13.dll",
+        "cublas64_13.dll",
+        "cublasLt64_13.dll",
+    ]
+
+    result = ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
+
+    assert result["ready"] is True
+    assert result["state"] == "ready"
+    assert result["missing"] == []
+    assert result["acquired"] == [
+        "llama-server.exe",
+        "ggml-cuda.dll",
+        "cudart64_13.dll",
+        "cublas64_13.dll",
+        "cublasLt64_13.dll",
+    ]
+
+
 def test_runtime_dry_run_reports_planned_required_files_without_writing(tmp_path: Path) -> None:
     entry = _entry(tmp_path, source_type="url_zip")
 
@@ -290,6 +437,71 @@ def test_catalog_cpu_runtime_profiles_use_pinned_url_zip_sources() -> None:
         "asset": "llama-b9704-bin-win-cpu-arm64.zip",
         "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-arm64.zip",
     }
+
+
+def test_catalog_non_cuda_gpu_profiles_record_deferred_candidates() -> None:
+    entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
+    profiles = ensure_models._hardware_profiles(entry)
+
+    amd_source = profiles["windows_amd64_gpu_amd"]["runtime_artifact"]["source"]
+    intel_source = profiles["windows_amd64_gpu_intel"]["runtime_artifact"]["source"]
+
+    assert amd_source["type"] == "pending-pinned-release"
+    assert amd_source["candidate_artifact_families"] == ["vulkan", "hip"]
+    assert profiles["windows_amd64_gpu_amd"]["validation_status"] == "declared-degraded"
+    assert intel_source["type"] == "pending-pinned-release"
+    assert intel_source["candidate_artifact_families"] == ["vulkan", "openvino", "sycl"]
+    assert profiles["windows_amd64_gpu_intel"]["validation_status"] == "declared-degraded"
+
+
+def test_catalog_cuda_runtime_profile_uses_pinned_split_archives() -> None:
+    entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
+    profiles = ensure_models._hardware_profiles(entry)
+
+    cuda_profile = profiles["windows_amd64_gpu_nvidia_cuda"]
+    source = cuda_profile["runtime_artifact"]["source"]
+
+    assert source["type"] == "url_zip_set"
+    assert source["release"] == "b9704"
+    assert source["cuda_version"] == "13.3"
+    assert source["archives"] == [
+        {
+            "asset": "llama-b9704-bin-win-cuda-13.3-x64.zip",
+            "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cuda-13.3-x64.zip",
+        },
+        {
+            "asset": "cudart-llama-bin-win-cuda-13.3-x64.zip",
+            "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/cudart-llama-bin-win-cuda-13.3-x64.zip",
+        },
+    ]
+    assert cuda_profile["runtime_artifact"]["required_files"] == [
+        "llama-server.exe",
+        "ggml-cuda.dll",
+        "cudart64_13.dll",
+        "cublas64_13.dll",
+        "cublasLt64_13.dll",
+    ]
+
+
+def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> None:
+    entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
+    profiles = ensure_models._hardware_profiles(entry)
+
+    base_profile = profiles["windows_arm64_npu_qualcomm_base"]
+    qnn_profile = profiles["windows_arm64_npu_qualcomm_qnn"]
+    base_source = base_profile["runtime_artifact"]["source"]
+    qnn_source = qnn_profile["runtime_artifact"]["source"]
+
+    assert base_profile["accelerator"] == "npu.hexagon_candidate"
+    assert qnn_profile["accelerator"] == "npu.qnn"
+    assert base_source["candidate_runtime_findings"] == {
+        "windows_on_snapdragon": "build-package-flow",
+        "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
+        "release_asset": "none-confirmed",
+    }
+    assert qnn_source["project_label"] == "npu.qnn"
+    assert qnn_source["runtime_mapping"] == "pending-hexagon-qnn-viability"
+    assert qnn_source["candidate_runtime_findings"] == base_source["candidate_runtime_findings"]
 
 
 def test_automatic_runtime_fetch_policy_honors_local_fetch_disabled(monkeypatch) -> None:

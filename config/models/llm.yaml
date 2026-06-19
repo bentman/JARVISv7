@@ -122,11 +122,21 @@ models:
           accelerator: gpu.cuda
           runtime_artifact:
             source:
-              type: pending-pinned-release
-              reason: S-G1-pending
+              type: url_zip_set
+              release: b9704
+              cuda_version: "13.3"
+              archives:
+                - asset: llama-b9704-bin-win-cuda-13.3-x64.zip
+                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cuda-13.3-x64.zip
+                - asset: cudart-llama-bin-win-cuda-13.3-x64.zip
+                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/cudart-llama-bin-win-cuda-13.3-x64.zip
             binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
             required_files:
               - llama-server.exe
+              - ggml-cuda.dll
+              - cudart64_13.dll
+              - cublas64_13.dll
+              - cublasLt64_13.dll
             required_adjacent:
               dll_extensions:
                 - .dll
@@ -156,6 +166,9 @@ models:
             source:
               type: pending-pinned-release
               reason: S-G1-pending
+              candidate_artifact_families:
+                - vulkan
+                - hip
             binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
             required_files:
               - llama-server.exe
@@ -183,6 +196,10 @@ models:
             source:
               type: pending-pinned-release
               reason: S-G1-pending
+              candidate_artifact_families:
+                - vulkan
+                - openvino
+                - sycl
             binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
             required_files:
               - llama-server.exe
@@ -210,6 +227,13 @@ models:
             source:
               type: pending-viability
               reason: S-G1-pending
+              candidate_runtime_findings:
+                windows_on_snapdragon: build-package-flow
+                device_examples:
+                  - cpu
+                  - adreno-opencl
+                  - hexagon-htp
+                release_asset: none-confirmed
             binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
             required_files:
               - llama-server.exe
@@ -236,6 +260,15 @@ models:
             source:
               type: pending-viability
               reason: S-G1-pending
+              project_label: npu.qnn
+              runtime_mapping: pending-hexagon-qnn-viability
+              candidate_runtime_findings:
+                windows_on_snapdragon: build-package-flow
+                device_examples:
+                  - cpu
+                  - adreno-opencl
+                  - hexagon-htp
+                release_asset: none-confirmed
             binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
             required_files:
               - llama-server.exe
