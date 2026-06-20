@@ -6,6 +6,7 @@ from pathlib import Path
 
 ENV_NAMES = (
     "APP_NAME",
+    "JARVIS_LANGUAGE",
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
@@ -45,6 +46,7 @@ ENV_NAMES = (
 
 ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "APP_NAME",
+    "JARVIS_LANGUAGE",
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
@@ -105,16 +107,18 @@ def test_settings_prefer_env_file_over_shell_env_when_env_file_exists(monkeypatc
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "OLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=2048\nJARVISV7_LIVE_TESTS=false\n",
+        "JARVIS_LANGUAGE=fr\nOLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=2048\nJARVISV7_LIVE_TESTS=false\n",
         "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nJARVISV7_LIVE_TESTS=false\n",
     )
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://shell:11434")
+    monkeypatch.setenv("JARVIS_LANGUAGE", "pl")
     monkeypatch.setenv("OLLAMA_MODEL", "shell-model")
     monkeypatch.setenv("OLLAMA_NUM_CTX", "8192")
     monkeypatch.setenv("JARVISV7_LIVE_TESTS", "true")
 
     settings = settings_module.load_settings()
 
+    assert settings.jarvis_language == "fr"
     assert settings.ollama_base_url == "http://env-file:11434"
     assert settings.ollama_model == "env-file-model"
     assert settings.ollama_num_ctx == 2048
@@ -318,6 +322,7 @@ def test_env_example_covers_current_settings_env_variables():
     advertised_aliases = sorted(ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES & set(values))
     assert advertised_aliases == []
     assert values["OLLAMA_BASE_URL"]
+    assert values["JARVIS_LANGUAGE"] == "english"
     assert values["OLLAMA_MODEL"]
     assert values["OLLAMA_NUM_CTX"]
     assert values["LLAMA_CPP_BASE_URL"] == "http://127.0.0.1:8080"

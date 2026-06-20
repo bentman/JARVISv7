@@ -25,6 +25,7 @@ def test_assemble_includes_personality_policy():
     prompt = assemble_prompt("hello world", _profile())
 
     assert "[PERSONALITY STYLE - trusted]" in prompt
+    assert "Response language: english" in prompt
     assert "Tone: professional" in prompt
     assert "Brevity: concise" in prompt
     assert "Formality: semi-formal" in prompt

@@ -4,6 +4,8 @@
 
 Status: Open
 
+2026-06-20 update: The language-control portion was addressed separately from the PTT capture-window issue. JARVIS now has a global `JARVIS_LANGUAGE` setting, personality profiles expose `response_language`, prompt policy carries that language to local Ollama and llama.cpp, and QNN Whisper decode derives its prefix from tokenizer configuration instead of a fixed start token only. The PTT duration, empty transcript, audio diagnostics, and microphone contention items remain open.
+
 Observed on Windows ARM64 Qualcomm profile after S.7 Adreno OpenCL local LLM path was operational.
 
 Symptoms:

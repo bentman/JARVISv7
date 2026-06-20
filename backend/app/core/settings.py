@@ -50,6 +50,7 @@ def _env_float(name: str) -> float | None:
 @dataclass(slots=True)
 class Settings:
     app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "JARVISv7"))
+    jarvis_language: str = field(default_factory=lambda: os.getenv("JARVIS_LANGUAGE", "english"))
     config_path: Path = field(
         default_factory=lambda: Path(os.getenv("CONFIG_PATH", str(CONFIG_DIR)))
     )

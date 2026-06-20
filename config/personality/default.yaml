@@ -5,6 +5,7 @@ tone: professional
 brevity: concise
 formality: semi-formal
 system_prompt_addendum: ""
+response_language: ""
 warmth: moderate
 assertiveness: moderate
 humor_policy: none

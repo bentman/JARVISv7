@@ -110,7 +110,7 @@ def test_qnn_runtime_is_not_available_when_model_files_absent(tmp_path):
 def test_qnn_runtime_ensure_preprocessors_imports_transformers_boundary(monkeypatch, tmp_path):
     import sys
 
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str] | tuple[str, str, dict[str, object]]] = []
 
     class FakeWhisperFeatureExtractor:
         @classmethod
@@ -120,8 +120,8 @@ def test_qnn_runtime_ensure_preprocessors_imports_transformers_boundary(monkeypa
 
     class FakeWhisperTokenizer:
         @classmethod
-        def from_pretrained(cls, model_name: str):
-            calls.append(("tokenizer", model_name))
+        def from_pretrained(cls, model_name: str, **kwargs):
+            calls.append(("tokenizer", model_name, kwargs))
             return SimpleNamespace(kind="tokenizer")
 
     monkeypatch.setitem(
@@ -139,10 +139,114 @@ def test_qnn_runtime_ensure_preprocessors_imports_transformers_boundary(monkeypa
 
     assert calls == [
         ("feature_extractor", "openai/whisper-base"),
-        ("tokenizer", "openai/whisper-base"),
+        (
+            "tokenizer",
+            "openai/whisper-base",
+            {"language": "english", "task": "transcribe", "predict_timestamps": False},
+        ),
     ]
     assert runtime._feature_extractor.kind == "feature_extractor"
     assert runtime._tokenizer.kind == "tokenizer"
+
+
+def test_qnn_runtime_uses_configured_language_for_tokenizer_prefix(monkeypatch, tmp_path):
+    import sys
+
+    calls: list[dict[str, object]] = []
+
+    class FakeWhisperFeatureExtractor:
+        @classmethod
+        def from_pretrained(cls, model_name: str):
+            return SimpleNamespace(kind="feature_extractor")
+
+    class FakeWhisperTokenizer:
+        @classmethod
+        def from_pretrained(cls, model_name: str, **kwargs):
+            calls.append(kwargs)
+            return SimpleNamespace(kind="tokenizer", prefix_tokens=[10, 11, 12])
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(
+            WhisperFeatureExtractor=FakeWhisperFeatureExtractor,
+            WhisperTokenizer=FakeWhisperTokenizer,
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.app.runtimes.stt.onnx_whisper_runtime.load_settings",
+        lambda: SimpleNamespace(jarvis_language="es"),
+    )
+    runtime = QnnWhisperRuntime(model_path=tmp_path)
+
+    runtime._ensure_preprocessors()
+
+    assert calls == [{"language": "es", "task": "transcribe", "predict_timestamps": False}]
+
+
+def test_qnn_runtime_primes_decoder_with_full_tokenizer_prefix(monkeypatch, tmp_path):
+    model_path = tmp_path / "qnn-model"
+    model_path.mkdir()
+    (model_path / "encoder.onnx").write_text("x", encoding="utf-8")
+    (model_path / "decoder.onnx").write_text("x", encoding="utf-8")
+
+    class FakePreprocessor:
+        def __call__(self, waveform, *, sampling_rate, return_tensors):
+            return SimpleNamespace(input_features=np.zeros((1, 80, 3000), dtype=np.float32))
+
+    class FakeTokenizer:
+        prefix_tokens = [10, 11, 12]
+
+        def decode(self, token_ids, *, skip_special_tokens):
+            return "ok"
+
+    class FakeEncoder:
+        def get_providers(self):
+            return ["QNNExecutionProvider"]
+
+        def get_inputs(self):
+            return [SimpleNamespace(name="input_features")]
+
+        def get_outputs(self):
+            return []
+
+        def run(self, output_names, feed):
+            return []
+
+    class FakeDecoder:
+        def __init__(self):
+            self.input_ids: list[int] = []
+            self.position_ids: list[int] = []
+
+        def get_providers(self):
+            return ["QNNExecutionProvider"]
+
+        def get_inputs(self):
+            return [
+                SimpleNamespace(name="input_ids", shape=[1, 1], type="tensor(int32)"),
+                SimpleNamespace(name="position_ids", shape=[1], type="tensor(int32)"),
+            ]
+
+        def get_outputs(self):
+            return [SimpleNamespace(name="logits")]
+
+        def run(self, output_names, feed):
+            self.input_ids.append(int(feed["input_ids"][0][0]))
+            self.position_ids.append(int(feed["position_ids"][0]))
+            logits = np.zeros((1, 50258, 1, 1), dtype=np.float32)
+            logits[0, 50257, 0, 0] = 1.0
+            return [logits]
+
+    decoder = FakeDecoder()
+    runtime = QnnWhisperRuntime(model_path=model_path)
+    runtime._feature_extractor = FakePreprocessor()
+    runtime._tokenizer = FakeTokenizer()
+    monkeypatch.setattr(runtime, "_load_encoder_session", lambda: FakeEncoder())
+    monkeypatch.setattr(runtime, "_load_decoder_session", lambda: decoder)
+
+    assert runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000) == "ok"
+    assert decoder.input_ids == [10, 11, 12]
+    assert decoder.position_ids == [0, 1, 2]
 
 
 def test_qnn_runtime_real_transformers_preprocessor_import_boundary():

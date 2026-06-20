@@ -274,7 +274,7 @@ Run a direct llama.cpp prompt test with a known local GGUF:
 
 ```powershell
 .\llama-cli.exe `
-  -m "$jarvisRoot\models\llm\assistant-small-q4\model.gguf" `
+  -m "$jarvisRoot\models\llm\assistant-small-q4\qwen2.5-0.5b-instruct-q4_k_m.gguf" `
   -ngl 99 `
   -b 128 `
   -c 2048 `

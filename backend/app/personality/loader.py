@@ -16,6 +16,7 @@ DEFAULT_PERSONALITY = PersonalityProfile(
     brevity="concise",
     formality="semi-formal",
     system_prompt_addendum="",
+    response_language="",
     identity_summary="A local-first personal assistant with a professional JARVIS identity.",
     warmth="moderate",
     assertiveness="moderate",

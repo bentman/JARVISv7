@@ -5,8 +5,9 @@ from typing import Any
 
 import numpy as np
 
+from backend.app.core.settings import load_settings
 from backend.app.hardware.qnn_provider import create_qnn_session
-from backend.app.models.catalog import get_model_path
+from backend.app.models.catalog import get_model_entry, get_model_path
 from backend.app.runtimes.stt.base import STTBase
 
 
@@ -100,6 +101,7 @@ class QnnWhisperRuntime(STTBase):
             raise ValueError(f"QnnWhisperRuntime requires device='qnn', got '{device}'")
         super().__init__(device=device, model_path=model_path or get_model_path("stt", model_name))
         self.model_name = model_name
+        self._model_config = {} if model_path is not None else get_model_entry("stt", model_name).config
         self._encoder_session: Any | None = None
         self._decoder_session: Any | None = None
         self._feature_extractor: Any | None = None
@@ -109,8 +111,27 @@ class QnnWhisperRuntime(STTBase):
         if self._feature_extractor is None or self._tokenizer is None:
             from transformers import WhisperFeatureExtractor, WhisperTokenizer
 
+            decode_config = self._decode_config()
             self._feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-base")
-            self._tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-base")
+            self._tokenizer = WhisperTokenizer.from_pretrained(
+                "openai/whisper-base",
+                language=decode_config["language"],
+                task=decode_config["task"],
+                predict_timestamps=decode_config["predict_timestamps"],
+            )
+
+    def _decode_config(self) -> dict[str, Any]:
+        decode = self._model_config.get("decode", {})
+        if not isinstance(decode, dict):
+            decode = {}
+        language = str(decode.get("language") or load_settings().jarvis_language).strip()
+        task = str(decode.get("task") or "transcribe").strip()
+        predict_timestamps = bool(decode.get("predict_timestamps", False))
+        return {
+            "language": language,
+            "task": task,
+            "predict_timestamps": predict_timestamps,
+        }
 
     def _find_model_file(self, filename: str) -> Path:
         """Find required model file by name (handles nested directories)."""
@@ -170,7 +191,9 @@ class QnnWhisperRuntime(STTBase):
         print("[QNN_STT_DEBUG] encoder_map.keys=", list(encoder_map.keys()))
         print("[QNN_STT_DEBUG] decoder_input_names=", decoder_input_names)
 
-        token_ids: list[int] = [50258]  # <|startoftranscript|>
+        token_ids: list[int] = [int(token_id) for token_id in self._tokenizer.prefix_tokens]
+        if not token_ids:
+            raise RuntimeError("Whisper tokenizer did not provide decoder prefix tokens")
         max_new_tokens = 448
         eot_token = 50257
 
@@ -232,8 +255,10 @@ class QnnWhisperRuntime(STTBase):
         first_step_decoder_keys: list[str] | None = None
         first_step_cache_keys: list[str] | None = None
 
-        for step_idx in range(max_new_tokens):
-            last_token = np.array([[token_ids[-1]]], dtype=np.int32)
+        def _run_decoder_step(input_token_id: int, position_id: int, *, capture_debug: bool = False) -> int:
+            nonlocal first_step_cache_keys, first_step_decoder_keys
+
+            last_token = np.array([[input_token_id]], dtype=np.int32)
             decoder_feed: dict[str, np.ndarray] = {}
 
             for name, input_def in decoder_input_defs.items():
@@ -248,7 +273,7 @@ class QnnWhisperRuntime(STTBase):
                     decoder_feed[name] = np.ones(mask_shape, dtype=mask_dtype)
                     continue
                 if name == "position_ids":
-                    decoder_feed[name] = np.array([len(token_ids) - 1], dtype=np.int32)
+                    decoder_feed[name] = np.array([position_id], dtype=np.int32)
                     continue
 
                 if name in cache_state:
@@ -279,10 +304,21 @@ class QnnWhisperRuntime(STTBase):
                     raise RuntimeError(f"missing expected decoder self-cache output '{out_name}'")
                 cache_state[in_name] = np.asarray(decoder_map[out_name])
 
-            if step_idx == 0:
+            if capture_debug:
                 first_step_decoder_keys = list(decoder_map.keys())
                 first_step_cache_keys = list(cache_state.keys())
 
+            return next_token
+
+        for position_id, prefix_token_id in enumerate(token_ids[:-1]):
+            _run_decoder_step(prefix_token_id, position_id)
+
+        for step_idx in range(max_new_tokens):
+            next_token = _run_decoder_step(
+                token_ids[-1],
+                len(token_ids) - 1,
+                capture_debug=step_idx == 0,
+            )
             if next_token == eot_token:
                 break
             token_ids.append(next_token)

@@ -26,6 +26,10 @@ models:
     family: stt
     runtime: qnn_whisper
     devices: [qnn]
+    decode:
+      language: ""
+      task: transcribe
+      predict_timestamps: false
     source:
       type: url_zip
       url: https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/whisper_base/releases/v0.53.1/whisper_base-precompiled_qnn_onnx-float-qualcomm_snapdragon_x_elite.zip

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from backend.app.core.settings import load_settings
 from backend.app.personality.schema import PersonalityProfile
 
 
@@ -65,6 +66,7 @@ class PersonalityPolicy:
 
 def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str | None = None) -> PersonalityPolicy:
     overlay = _resolve_role_overlay(role_overlay_id)
+    response_language = profile.response_language.strip() or load_settings().jarvis_language.strip()
     values = {
         "tone": profile.tone,
         "brevity": profile.brevity,
@@ -83,6 +85,7 @@ def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str
 
     style_rules = (
         f"Assistant identity: {profile.identity_summary}",
+        f"Response language: {response_language}",
         f"Tone: {values['tone']}",
         f"Brevity: {values['brevity']}",
         f"Formality: {values['formality']}",

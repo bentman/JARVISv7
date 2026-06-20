@@ -5,6 +5,7 @@ tone: warm
 brevity: balanced
 formality: conversational
 system_prompt_addendum: ""
+response_language: ""
 warmth: high
 assertiveness: moderate
 humor_policy: light

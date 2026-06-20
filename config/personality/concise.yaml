@@ -5,6 +5,7 @@ tone: direct
 brevity: terse
 formality: semi-formal
 system_prompt_addendum: ""
+response_language: ""
 warmth: low
 assertiveness: high
 humor_policy: none

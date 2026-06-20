@@ -13,6 +13,7 @@ def test_personality_profile_roundtrips_dict():
         "professional",
         "concise",
         "semi-formal",
+        response_language="english",
         identity_summary="A local-first assistant.",
         warmth="moderate",
         assertiveness="moderate",
@@ -42,6 +43,7 @@ def test_load_personality_reads_minimal_legacy_yaml_with_defaults(tmp_path):
     assert profile.tone == "calm"
     assert profile.identity_summary
     assert profile.warmth == "moderate"
+    assert profile.response_language == ""
     assert profile.enabled is True
 
 
@@ -81,6 +83,7 @@ def test_list_personality_profiles_loads_all_configured_profiles():
         assert profile.brevity
         assert profile.formality
         assert isinstance(profile.system_prompt_addendum, str)
+        assert isinstance(profile.response_language, str)
         assert profile.identity_summary
         assert profile.warmth
         assert profile.assertiveness
@@ -172,6 +175,7 @@ def test_compile_personality_policy_is_deterministic():
     assert first == second
     assert first.profile_id == "default"
     assert first.identity == profile.identity_summary
+    assert any("Response language: english" == rule for rule in first.style_rules)
     assert any("Tone: professional" == rule for rule in first.style_rules)
     assert any("Voice pacing: normal" == rule for rule in first.speech_rules)
     assert "tool_permissions" in first.forbidden_overrides

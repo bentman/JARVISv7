@@ -11,6 +11,7 @@ _ALLOWED_FIELDS = {
     "brevity",
     "formality",
     "system_prompt_addendum",
+    "response_language",
     "identity_summary",
     "warmth",
     "assertiveness",
@@ -58,6 +59,7 @@ class PersonalityProfile:
     brevity: str
     formality: str
     system_prompt_addendum: str = ""
+    response_language: str = ""
     identity_summary: str = "A local-first personal assistant with a consistent JARVIS identity."
     warmth: str = "moderate"
     assertiveness: str = "moderate"
@@ -106,6 +108,7 @@ class PersonalityProfile:
             brevity=str(data["brevity"]),
             formality=str(data["formality"]),
             system_prompt_addendum=str(data.get("system_prompt_addendum", "")),
+            response_language=str(data.get("response_language", "")),
             identity_summary=str(
                 data.get("identity_summary", "A local-first personal assistant with a consistent JARVIS identity.")
             ),
