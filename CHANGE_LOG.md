@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-20 08:23
+  - Summary: Validated Slice S.8 sidecar/readiness alignment on Windows ARM64. The active managed llama.cpp readiness path reported the selected ARM64 Adreno OpenCL profile while the sidecar was healthy, then reported the sidecar as unavailable after it was stopped instead of reusing stale startup availability.
+  - Scope: validation of existing `backend/app/api/routes/readiness.py`, `backend/app/api/app.py`, `backend/app/services/local_llm_startup.py`, `backend/app/services/local_llm_sidecar.py`, desktop static readiness behavior, and `CHANGE_LOG.md`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q` PASS (`38 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_startup.py backend\tests\unit\services\test_local_llm_sidecar.py -q` PASS (`24 passed`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). Live ARM64 readiness probe PASS: before stop `ready=True`, `runtime=llama.cpp`, `profile=windows_arm64_gpu_qualcomm_adreno_opencl`, `accelerator=gpu.opencl.adreno`; after stop `ready=False`, `reason=managed llama.cpp sidecar is not running`. `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`576 passed, 1 warning`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`142 passed, 4 deselected`, report `reports\validation\20260620132259-regression.txt`). `git diff --check` PASS with no issues before this log entry.
+  - Note: No ARM64 code, runtime artifact, selector policy, desktop UI, or `SYSTEM_INVENTORY.md` capability truth changes were required.
+
 - 2026-06-20 07:22
   - Summary: Completed Slice S.8 sidecar/readiness alignment on Windows AMD64. The readiness endpoint now refreshes active llama.cpp availability before reporting LLM readiness, so stale startup traces cannot keep displaying `llama.cpp / cpu` or `local llama.cpp available` after the managed sidecar is no longer reachable; selected profile and accelerator metadata continue to surface when the sidecar is healthy.
   - Scope: `backend/app/api/routes/readiness.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`
