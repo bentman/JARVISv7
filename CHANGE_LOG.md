@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-20 07:22
+  - Summary: Completed Slice S.8 sidecar/readiness alignment on Windows AMD64. The readiness endpoint now refreshes active llama.cpp availability before reporting LLM readiness, so stale startup traces cannot keep displaying `llama.cpp / cpu` or `local llama.cpp available` after the managed sidecar is no longer reachable; selected profile and accelerator metadata continue to surface when the sidecar is healthy.
+  - Scope: `backend/app/api/routes/readiness.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: Investigation showed `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assistant-small-q4 --verify-only` selected `windows_amd64_gpu_nvidia_cuda` as `selected_state=ready`, while live `/readiness` still reported stale `windows_amd64_cpu`; no `llama-server` process or port `8080` listener was present, and `/v1/models` refused connection. `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q` PASS (`38 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_startup.py backend\tests\unit\services\test_local_llm_sidecar.py -q` PASS (`24 passed`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`575 passed, 1 skipped`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`142 passed, 4 deselected`, report `reports\validation\20260620122217-regression.txt`). `git diff --check` PASS with line-ending warnings only before this log entry.
+  - Note: No selector policy, artifact acquisition, sidecar launch command, desktop UI, provisioning, or `SYSTEM_INVENTORY.md` capability truth was changed.
+
 - 2026-06-20 07:07
   - Summary: Validated the completed Windows ARM64 Qualcomm Adreno OpenCL / QNN-Hexagon S.7 changes on Windows AMD64. The ARM64 Adreno profile remained non-applicable and skipped as build-required on AMD64, while the AMD64 CUDA llama.cpp profile remained selected and ready.
   - Scope: validation of existing `config/models/llm.yaml`, `backend/app/hardware/preflight.py`, `backend/app/hardware/readiness.py`, `backend/app/models/llm_profiles.py`, `backend/app/core/settings.py`, `backend/app/runtimes/llm/ollama_runtime.py`, related unit tests, and `CHANGE_LOG.md`

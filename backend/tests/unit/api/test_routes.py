@@ -67,13 +67,33 @@ class _FakeLLM:
 
 
 class _FakeLocalLLM(_FakeLLM):
+    model = "assistant-small-q4"
+    route = "voice_chat"
+    serve_profile_id = "windows_amd64_gpu_nvidia_cuda"
+    accelerator = "gpu.cuda"
+    base_url = "http://127.0.0.1:8080"
+    selected_reason = "selected current-host gpu.cuda serve profile windows_amd64_gpu_nvidia_cuda"
+    reason = "llama.cpp /v1/models reachable"
+
     def runtime_name(self) -> str:
         return "llama.cpp"
+
+    def is_available(self) -> bool:
+        self.reason = "llama.cpp /v1/models reachable"
+        return True
 
 
 class _FakeOllamaLLM(_FakeLLM):
     def runtime_name(self) -> str:
         return "ollama"
+
+
+class _DeadLocalLLM(_FakeLocalLLM):
+    reason = "managed llama.cpp sidecar is not running"
+
+    def is_available(self) -> bool:
+        self.reason = "managed llama.cpp sidecar is not running"
+        return False
 
 
 class _FakeSidecar:
@@ -337,11 +357,38 @@ def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
     assert llm["ready"] is True
     assert llm["model"] == "assistant-small-q4"
     assert llm["route"] == "voice_chat"
-    assert llm["serve_profile_id"] == "windows_amd64_cpu"
-    assert llm["accelerator"] == "cpu"
+    assert llm["serve_profile_id"] == "windows_amd64_gpu_nvidia_cuda"
+    assert llm["accelerator"] == "gpu.cuda"
     assert llm["base_url"] == "http://127.0.0.1:8080"
-    assert llm["selected_reason"] == "selected current-host CPU serve profile windows_amd64_cpu"
-    assert llm["degraded_reason"] is None
+    assert llm["selected_reason"] == "selected current-host gpu.cuda serve profile windows_amd64_gpu_nvidia_cuda"
+    assert llm["degraded_reason"] == "llama.cpp /v1/models reachable"
+
+
+def test_readiness_refreshes_dead_local_llm_instead_of_using_stale_trace() -> None:
+    state = _state()
+    state.llm = _DeadLocalLLM()  # type: ignore[assignment]
+    state.llm_trace = SelectionTrace(
+        runtime_name="llama.cpp",
+        reason="local llama.cpp available",
+        model_id="assistant-small-q4",
+        route="voice_chat",
+        serve_profile_id="windows_amd64_cpu",
+        accelerator="cpu",
+        base_url="http://127.0.0.1:8080",
+        selected_reason="selected current-host CPU serve profile windows_amd64_cpu",
+        degraded_reason="llama.cpp /v1/models reachable",
+    )
+
+    response = TestClient(create_app(state)).get("/readiness")
+    llm = response.json()["families"]["llm"]
+
+    assert response.status_code == 200
+    assert llm["runtime"] == "llama.cpp"
+    assert llm["ready"] is False
+    assert llm["reason"] == "managed llama.cpp sidecar is not running"
+    assert llm["serve_profile_id"] == "windows_amd64_gpu_nvidia_cuda"
+    assert llm["accelerator"] == "gpu.cuda"
+    assert llm["degraded_reason"] == "managed llama.cpp sidecar is not running"
 
 
 def test_readiness_returns_llm_fallback_degraded_reason() -> None:
@@ -362,6 +409,26 @@ def test_readiness_returns_llm_fallback_degraded_reason() -> None:
     assert llm["reason"] == "test ollama available"
     assert llm["degraded_reason"] == "Degraded-no-local-model-artifact"
     assert llm["accelerator"] is None
+
+
+def test_readiness_reports_selected_ollama_ready_when_local_readiness_is_unavailable() -> None:
+    state = _state()
+    state.readiness["llm"] = ("cpu", False, "local runtime unavailable")
+    state.llm = _FakeOllamaLLM()  # type: ignore[assignment]
+    state.llm_trace = SelectionTrace(
+        runtime_name="ollama",
+        reason="test ollama available",
+        degraded_reason="Degraded-no-sidecar-binary",
+    )
+
+    response = TestClient(create_app(state)).get("/readiness")
+    llm = response.json()["families"]["llm"]
+
+    assert response.status_code == 200
+    assert llm["runtime"] == "ollama"
+    assert llm["ready"] is True
+    assert llm["reason"] == "test ollama available"
+    assert llm["degraded_reason"] == "Degraded-no-sidecar-binary"
 
 
 def test_readiness_returns_additive_service_status(monkeypatch) -> None:

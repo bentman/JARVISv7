@@ -35,6 +35,36 @@ def _runtime_labels(state: ApiState) -> dict[str, str]:
     }
 
 
+def _llm_runtime_trace(state: ApiState) -> tuple[tuple[str, bool, str], SelectionTrace | None]:
+    trace = state.llm_trace
+    readiness = state.readiness.get("llm", ("cpu", False, "llm readiness unavailable"))
+    runtime_name = state.llm.runtime_name()
+
+    if runtime_name != "llama.cpp":
+        if trace is not None:
+            device = trace.accelerator or readiness[0]
+            return (str(device or "unknown"), trace.runtime_name != "null", trace.reason), trace
+        return readiness, trace
+
+    available = state.llm.is_available()
+    accelerator = getattr(state.llm, "accelerator", None)
+    device = accelerator or readiness[0]
+    runtime_reason = getattr(state.llm, "reason", "local llama.cpp availability unknown")
+    reason = "local llama.cpp available" if available else runtime_reason
+    refreshed = SelectionTrace(
+        runtime_name=runtime_name,
+        reason=reason,
+        model_id=getattr(state.llm, "model", None),
+        route=getattr(state.llm, "route", None),
+        serve_profile_id=getattr(state.llm, "serve_profile_id", None),
+        accelerator=accelerator,
+        base_url=getattr(state.llm, "base_url", None),
+        selected_reason=getattr(state.llm, "selected_reason", None),
+        degraded_reason=runtime_reason,
+    )
+    return (str(device or "unknown"), available, reason), refreshed
+
+
 def _family_readiness(
     name: str,
     readiness: tuple[str, bool, str],
@@ -43,7 +73,6 @@ def _family_readiness(
 ) -> FamilyReadiness:
     device, ready, reason = readiness
     if name == "llm" and trace is not None:
-        ready = trace.runtime_name != "null"
         reason = trace.reason
         device = trace.accelerator or device
     return FamilyReadiness(
@@ -66,6 +95,9 @@ def build_readiness_response(state: ApiState) -> ReadinessResponse:
     status = "ready" if not state.preflight.probe_errors else "degraded"
     services = collect_service_statuses()
     runtime_labels = _runtime_labels(state)
+    llm_readiness, llm_trace = _llm_runtime_trace(state)
+    readiness_values = dict(state.readiness)
+    readiness_values["llm"] = llm_readiness
     return ReadinessResponse(
         status=status,
         profile_id=state.profile.profile_id,
@@ -78,9 +110,9 @@ def build_readiness_response(state: ApiState) -> ReadinessResponse:
                 name,
                 value,
                 runtime_labels.get(name, "unknown"),
-                state.llm_trace if name == "llm" else None,
+                llm_trace if name == "llm" else None,
             )
-            for name, value in state.readiness.items()
+            for name, value in readiness_values.items()
         },
         preflight=PreflightSummary(
             tokens_count=len(state.preflight.tokens),
