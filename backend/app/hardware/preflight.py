@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from backend.app.core.capabilities import HardwareProfile
+from backend.app.core.paths import REPO_ROOT
 
 
 @dataclass(slots=True)
@@ -153,6 +154,41 @@ def _bootstrap_windows_dlls(
         _bootstrap_dll_root(label, root, tokens, dll_discovery_log)
 
 
+def _probe_adreno_opencl_sidecar(
+    profile: HardwareProfile,
+    tokens: list[str],
+    dll_discovery_log: list[str],
+) -> None:
+    if (
+        profile.os_name != "windows"
+        or profile.arch != "arm64"
+        or profile.gpu_vendor != "qualcomm"
+        or not profile.gpu_available
+    ):
+        return
+
+    runtime_dir = REPO_ROOT / "runtimes" / "llama.cpp" / "windows-arm64-adreno-opencl"
+    required_files = (
+        runtime_dir / "llama-server.exe",
+        runtime_dir / "OpenCL.dll",
+    )
+    if not all(path.is_file() and path.stat().st_size > 0 for path in required_files):
+        tokens.append("opencl:adreno:MISSING")
+        dll_discovery_log.append(f"OpenCL:missing:{runtime_dir}")
+        return
+
+    dll_api = _available_dll_directory_api()
+    try:
+        if dll_api is not None:
+            dll_api(str(runtime_dir))
+        dll_discovery_log.append(f"OpenCL:added:{runtime_dir}")
+    except Exception as exc:
+        dll_discovery_log.append(f"OpenCL:failed:{runtime_dir}:{exc}")
+
+    tokens.append("opencl:adreno")
+    tokens.append("dll:OpenCL")
+
+
 def _probe_imports(
     installed_extras: list[str],
     tokens: list[str],
@@ -290,6 +326,7 @@ def run_preflight(profile: HardwareProfile, installed_extras: list[str]) -> Pref
     probe_errors: dict[str, str] = {}
 
     _bootstrap_windows_dlls(profile, tokens, dll_discovery_log)
+    _probe_adreno_opencl_sidecar(profile, tokens, dll_discovery_log)
     _probe_imports(installed_extras, tokens, probe_errors)
 
     if "import:onnxruntime" in tokens:

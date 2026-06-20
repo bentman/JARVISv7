@@ -106,9 +106,11 @@ models:
             ctx_size: 4096
             threads: auto
             threads_batch: auto
-            batch_size: 1024
-            ubatch_size: 256
+            batch_size: 2048
+            ubatch_size: 512
             gpu_layers: 0
+            cache_type_k: f16
+            cache_type_v: f16
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -249,6 +251,59 @@ models:
           launch:
             ctx_size: 4096
             cache_ram_mb: 4096
+        windows_arm64_gpu_qualcomm_adreno_opencl:
+          profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
+          os: windows
+          arch: arm64
+          provisioning_extras:
+            - hw-arm64-base
+          accelerator: gpu.opencl.adreno
+          runtime_artifact:
+            source:
+              type: build-required
+              reason: no-pinned-release-asset
+              upstream:
+                backend: llama.cpp Adreno OpenCL
+                build_flag: GGML_OPENCL=ON
+                platform: Windows on Snapdragon
+                prerequisites:
+                  - Visual Studio 2022
+                  - LLVM 19
+                  - CMake
+                  - Ninja
+                  - Khronos OpenCL-Headers
+                  - Khronos OpenCL-ICD-Loader
+              candidate_runtime_findings:
+                windows_on_snapdragon: build-flow
+                gpu_backend: adreno-opencl
+                release_asset: none-confirmed
+                optimized_quantization: Q4_0
+                current_model_quantization: Q4_K_M
+            binary_path: runtimes/llama.cpp/windows-arm64-adreno-opencl/llama-server.exe
+            required_files:
+              - llama-server.exe
+            required_adjacent:
+              dll_extensions:
+                - .dll
+          binary_path: runtimes/llama.cpp/windows-arm64-adreno-opencl/llama-server.exe
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-degraded
+          close_if_unavailable: Degraded-opencl-build-required
+          launch:
+            ctx_size: 4096
+            threads: auto
+            threads_batch: auto
+            batch_size: 2048
+            ubatch_size: 512
+            gpu_layers: auto
+            cache_type_k: f16
+            cache_type_v: f16
+            cache_ram_mb: 4096
+            parallel: 1
+            cont_batching: true
+            warmup: true
         windows_arm64_npu_qualcomm_qnn:
           profile_id: windows_arm64_npu_qualcomm_qnn
           os: windows

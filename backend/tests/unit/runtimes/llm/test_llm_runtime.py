@@ -225,6 +225,12 @@ def test_llm_catalog_accelerator_profiles_are_declared_without_validation_claims
     assert profiles["windows_amd64_gpu_intel"]["validation_status"] == "declared-degraded"
     assert profiles["windows_arm64_npu_qualcomm_base"]["accelerator"] == "npu.hexagon_candidate"
     assert profiles["windows_arm64_npu_qualcomm_base"]["validation_status"] == "declared-degraded"
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["accelerator"] == "gpu.opencl.adreno"
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["validation_status"] == "declared-degraded"
+    assert (
+        profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["close_if_unavailable"]
+        == "Degraded-opencl-build-required"
+    )
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["accelerator"] == "npu.qnn"
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["validation_status"] == "declared-degraded"
     assert (
@@ -238,10 +244,21 @@ def test_ollama_runtime_is_available_true_when_reachable(monkeypatch):
         "backend.app.runtimes.llm.ollama_runtime.httpx.get",
         lambda *args, **kwargs: SimpleNamespace(raise_for_status=lambda: None),
     )
-    runtime = OllamaLLM(base_url="http://test", model="phi4-mini")
+    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", enabled=True)
 
     assert runtime.is_available() is True
     assert "reachable" in runtime.reason
+
+
+def test_ollama_runtime_is_available_false_when_disabled(monkeypatch):
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.ollama_runtime.httpx.get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("ollama should not be probed")),
+    )
+    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", enabled=False)
+
+    assert runtime.is_available() is False
+    assert runtime.reason == "ollama disabled by USE_OLLAMA"
 
 
 def test_ollama_runtime_is_available_false_when_unreachable(monkeypatch):
@@ -249,7 +266,7 @@ def test_ollama_runtime_is_available_false_when_unreachable(monkeypatch):
         raise RuntimeError("offline")
 
     monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.get", fake_get)
-    runtime = OllamaLLM(base_url="http://test", model="phi4-mini")
+    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", enabled=True)
 
     assert runtime.is_available() is False
     assert "offline" in runtime.reason
@@ -263,7 +280,13 @@ def test_ollama_runtime_generate_posts_stream_false_and_num_ctx(monkeypatch):
         return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"response": "ready"})
 
     monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
-    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", num_ctx=4096, timeout=7.0)
+    runtime = OllamaLLM(
+        base_url="http://test",
+        model="phi4-mini",
+        num_ctx=4096,
+        timeout=7.0,
+        enabled=True,
+    )
 
     assert runtime.generate("Reply ready") == "ready"
     assert calls == [
@@ -294,7 +317,7 @@ def test_ollama_runtime_generate_fails_on_empty_response(monkeypatch):
     )
 
     with pytest.raises(RuntimeError, match="empty response"):
-        OllamaLLM(base_url="http://test", model="phi4-mini").generate("hello")
+        OllamaLLM(base_url="http://test", model="phi4-mini", enabled=True).generate("hello")
 
 
 def test_cloud_runtime_is_available_false_when_policy_gated():

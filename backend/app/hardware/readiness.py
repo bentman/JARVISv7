@@ -90,8 +90,16 @@ def derive_llm_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
-    if _has_token(preflight, "import:onnxruntime"):
-        return ("cpu", False, "local runtime unavailable")
+    if (
+        profile.os_name == "windows"
+        and profile.arch == "arm64"
+        and profile.gpu_vendor == "qualcomm"
+        and profile.gpu_available
+        and _has_token(preflight, "opencl:adreno")
+    ):
+        return ("gpu.opencl.adreno", True, "opencl:adreno proven; selecting gpu.opencl.adreno")
+    if _has_token(preflight, "opencl:adreno:MISSING"):
+        return ("cpu", False, "opencl:adreno:MISSING; local runtime unavailable")
     return ("cpu", False, "local runtime unavailable")
 
 

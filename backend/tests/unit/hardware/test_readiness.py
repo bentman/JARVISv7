@@ -106,6 +106,36 @@ def test_llm_readiness_reports_plain_unavailable_reason() -> None:
     assert reason == "local runtime unavailable"
 
 
+def test_llm_readiness_selects_adreno_opencl_when_token_proven() -> None:
+    selected_device, ready, reason = derive_llm_device_readiness(
+        _preflight("opencl:adreno"),
+        _profile(
+            os_name="windows",
+            arch="arm64",
+            gpu_available=True,
+            gpu_vendor="qualcomm",
+        ),
+    )
+
+    assert (selected_device, ready) == ("gpu.opencl.adreno", True)
+    assert "opencl:adreno" in reason
+
+
+def test_llm_readiness_reports_opencl_missing_when_staged_artifacts_absent() -> None:
+    selected_device, ready, reason = derive_llm_device_readiness(
+        _preflight("opencl:adreno:MISSING"),
+        _profile(
+            os_name="windows",
+            arch="arm64",
+            gpu_available=True,
+            gpu_vendor="qualcomm",
+        ),
+    )
+
+    assert (selected_device, ready) == ("cpu", False)
+    assert "opencl:adreno:MISSING" in reason
+
+
 def test_wake_readiness_selects_cpu_when_openwakeword_imported() -> None:
     selected_device, ready, reason = derive_wake_device_readiness(
         _preflight("import:openwakeword"),

@@ -70,8 +70,23 @@ def test_current_host_llm_serve_profile_resolution_uses_real_evidence(
             and "dll:QnnHtp" in preflight_fixture.tokens
         )
         qnn_binary = REPO_ROOT / "runtimes" / "llama.cpp" / "windows-arm64-qnn" / "llama-server.exe"
+        adreno_ready = (
+            profiler_fixture.profile.gpu_available
+            and profiler_fixture.profile.gpu_vendor == "qualcomm"
+            and "opencl:adreno" in preflight_fixture.tokens
+        )
+        adreno_binary = (
+            REPO_ROOT
+            / "runtimes"
+            / "llama.cpp"
+            / "windows-arm64-adreno-opencl"
+            / "llama-server.exe"
+        )
 
-        if qnn_ready and qnn_binary.is_file() and resolution.local_model_path.is_file():
+        if adreno_ready and adreno_binary.is_file() and resolution.local_model_path.is_file():
+            assert resolution.serve_profile_id == "windows_arm64_gpu_qualcomm_adreno_opencl"
+            assert resolution.accelerator == "gpu.opencl.adreno"
+        elif qnn_ready and qnn_binary.is_file() and resolution.local_model_path.is_file():
             assert resolution.serve_profile_id == "windows_arm64_npu_qualcomm_qnn"
             assert resolution.accelerator == "npu.qnn"
         else:

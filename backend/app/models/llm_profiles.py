@@ -278,6 +278,14 @@ def _accelerator_degraded_reason(
         )
         if not qnn_ready:
             return str(close_reason or "Degraded-accelerator-unavailable")
+    elif accelerator == "gpu.opencl.adreno":
+        opencl_ready = (
+            profile.gpu_vendor == "qualcomm"
+            and profile.gpu_available
+            and "opencl:adreno" in preflight.tokens
+        )
+        if not opencl_ready:
+            return str(close_reason or "Degraded-accelerator-unavailable")
     else:
         return str(close_reason or "Degraded-accelerator-unavailable")
 

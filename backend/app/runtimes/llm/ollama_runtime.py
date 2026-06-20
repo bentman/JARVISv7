@@ -18,8 +18,10 @@ class OllamaLLM(LLMBase):
         model: str | None = None,
         num_ctx: int | None = None,
         timeout: float = 60.0,
+        enabled: bool | None = None,
     ) -> None:
         settings = load_settings()
+        self.enabled = settings.use_ollama if enabled is None else enabled
         self.base_url = (base_url or settings.ollama_base_url or DEFAULT_OLLAMA_BASE_URL).rstrip("/")
         self.model = model or settings.ollama_model or "phi4-mini"
         self.num_ctx = num_ctx if num_ctx is not None else settings.ollama_num_ctx
@@ -30,6 +32,9 @@ class OllamaLLM(LLMBase):
         return "ollama"
 
     def is_available(self) -> bool:
+        if not self.enabled:
+            self.reason = "ollama disabled by USE_OLLAMA"
+            return False
         try:
             response = httpx.get(f"{self.base_url}/api/tags", timeout=10.0)
             response.raise_for_status()

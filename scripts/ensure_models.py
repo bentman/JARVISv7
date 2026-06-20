@@ -25,7 +25,7 @@ from backend.app.hardware.provisioning import resolve_required_extras
 
 MODEL_FAMILIES = ("stt", "tts", "wake")
 ALL_FAMILIES = (*MODEL_FAMILIES, "llm")
-_PENDING_RUNTIME_SOURCE_TYPES = {"pending-pinned-release", "pending-viability"}
+_PENDING_RUNTIME_SOURCE_TYPES = {"pending-pinned-release", "pending-viability", "build-required"}
 
 
 def _load_profiler():
@@ -160,6 +160,8 @@ def _runtime_missing_reason(profile: dict[str, Any], source: dict[str, Any], mis
     if not missing:
         return None
     source_type = source.get("type")
+    if source_type == "build-required":
+        return "SKIP-build-required"
     if source_type == "pending-viability":
         return "SKIP-no-viable-binary"
     if source_type == "pending-pinned-release":
@@ -296,7 +298,12 @@ def _planned_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[s
     source = _runtime_source(profile)
     source_type = _runtime_source_type(profile)
     if source_type in _PENDING_RUNTIME_SOURCE_TYPES:
-        reason = "SKIP-no-viable-binary" if source_type == "pending-viability" else "SKIP-source-pending"
+        if source_type == "pending-viability":
+            reason = "SKIP-no-viable-binary"
+        elif source_type == "build-required":
+            reason = "SKIP-build-required"
+        else:
+            reason = "SKIP-source-pending"
         return {
             "profile_id": profile_id,
             "accelerator": str(profile.get("accelerator", "cpu")),

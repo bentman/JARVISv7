@@ -95,6 +95,54 @@ def test_preflight_dll_bootstrap_survives_windows_missing_dll_without_raising(mo
     assert any(entry.startswith("cuda:missing:") for entry in result.dll_discovery_log)
 
 
+def test_preflight_marks_adreno_opencl_when_sidecar_artifacts_are_staged(monkeypatch, tmp_path) -> None:
+    preflight._CACHE.clear()
+    runtime_dir = tmp_path / "runtimes" / "llama.cpp" / "windows-arm64-adreno-opencl"
+    runtime_dir.mkdir(parents=True)
+    (runtime_dir / "llama-server.exe").write_bytes(b"exe")
+    (runtime_dir / "OpenCL.dll").write_bytes(b"dll")
+    added_paths: list[str] = []
+
+    monkeypatch.setattr(preflight, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(preflight, "_available_dll_directory_api", lambda: added_paths.append)
+
+    result = preflight.run_preflight(
+        _make_profile(
+            os_name="windows",
+            arch="arm64",
+            gpu_available=True,
+            gpu_vendor="qualcomm",
+        ),
+        ["hw-cpu-base"],
+    )
+
+    assert "opencl:adreno" in result.tokens
+    assert "dll:OpenCL" in result.tokens
+    assert added_paths == [str(runtime_dir)]
+    assert any(entry.startswith("OpenCL:added:") for entry in result.dll_discovery_log)
+
+
+def test_preflight_marks_adreno_opencl_missing_when_sidecar_artifacts_are_absent(monkeypatch, tmp_path) -> None:
+    preflight._CACHE.clear()
+    monkeypatch.setattr(preflight, "REPO_ROOT", tmp_path)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+
+    result = preflight.run_preflight(
+        _make_profile(
+            os_name="windows",
+            arch="arm64",
+            gpu_available=True,
+            gpu_vendor="qualcomm",
+        ),
+        ["hw-cpu-base"],
+    )
+
+    assert "opencl:adreno:MISSING" in result.tokens
+    assert "opencl:adreno" not in result.tokens
+    assert any(entry.startswith("OpenCL:missing:") for entry in result.dll_discovery_log)
+
+
 def test_preflight_ep_probe_emits_ep_tokens_when_onnxruntime_available(monkeypatch) -> None:
     preflight._CACHE.clear()
 

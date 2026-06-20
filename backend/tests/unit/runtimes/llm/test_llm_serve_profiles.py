@@ -144,6 +144,39 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "binary_path": str(tmp_path / "bin" / "arm64-hexagon" / "llama-server.exe"),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                     },
+                    "windows_arm64_gpu_qualcomm_adreno_opencl": {
+                        "profile_id": "windows_arm64_gpu_qualcomm_adreno_opencl",
+                        "os": "windows",
+                        "arch": "arm64",
+                        "provisioning_extras": ["hw-arm64-base"],
+                        "accelerator": "gpu.opencl.adreno",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "build-required",
+                                "reason": "no-pinned-release-asset",
+                                "upstream": {
+                                    "backend": "llama.cpp Adreno OpenCL",
+                                    "build_flag": "GGML_OPENCL=ON",
+                                    "platform": "Windows on Snapdragon",
+                                },
+                                "candidate_runtime_findings": {
+                                    "windows_on_snapdragon": "build-flow",
+                                    "gpu_backend": "adreno-opencl",
+                                    "release_asset": "none-confirmed",
+                                    "optimized_quantization": "Q4_0",
+                                    "current_model_quantization": "Q4_K_M",
+                                },
+                            },
+                            "binary_path": str(tmp_path / "bin" / "arm64-adreno-opencl" / "llama-server.exe"),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(tmp_path / "bin" / "arm64-adreno-opencl" / "llama-server.exe"),
+                        "close_if_unavailable": "Degraded-opencl-build-required",
+                        "launch": {
+                            "ctx_size": 4096,
+                            "gpu_layers": "auto",
+                        },
+                    },
                     "windows_arm64_npu_qualcomm_qnn": {
                         "profile_id": "windows_arm64_npu_qualcomm_qnn",
                         "os": "windows",
@@ -297,6 +330,7 @@ def test_non_cuda_gpu_profiles_are_not_selected_for_unrelated_hardware(tmp_path:
 
     assert resolution.serve_profile_id == "windows_arm64_cpu"
     assert {candidate.profile_id for candidate in resolution.degraded_candidates} == {
+        "windows_arm64_gpu_qualcomm_adreno_opencl",
         "windows_arm64_npu_qualcomm_base",
         "windows_arm64_npu_qualcomm_qnn",
     }
@@ -351,6 +385,7 @@ def test_resolve_reports_arm64_qnn_as_skipped_until_viable_binary_exists(tmp_pat
 
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
         ("windows_arm64_npu_qualcomm_base", "Degraded-accelerator-unavailable"),
+        ("windows_arm64_gpu_qualcomm_adreno_opencl", "Degraded-opencl-build-required"),
         ("windows_arm64_npu_qualcomm_qnn", "Degraded-no-sidecar-binary"),
     ]
     assert resolution.serve_profile_id == "windows_arm64_cpu"
@@ -362,15 +397,58 @@ def test_qualcomm_npu_base_profile_is_separate_from_qnn_sidecar(tmp_path: Path) 
     profiles = entry.config["serve_profiles"]["hardware_profiles"]
     base_profile = profiles["windows_arm64_npu_qualcomm_base"]
     qnn_profile = profiles["windows_arm64_npu_qualcomm_qnn"]
+    adreno_profile = profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]
 
     assert base_profile["accelerator"] == "npu.hexagon_candidate"
     assert qnn_profile["accelerator"] == "npu.qnn"
+    assert adreno_profile["accelerator"] == "gpu.opencl.adreno"
     assert base_profile["runtime_artifact"]["source"]["candidate_runtime_findings"] == {
         "windows_on_snapdragon": "build-package-flow",
         "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
         "release_asset": "none-confirmed",
     }
     assert qnn_profile["runtime_artifact"]["source"]["runtime_mapping"] == "pending-hexagon-qnn-viability"
+    assert adreno_profile["runtime_artifact"]["source"]["candidate_runtime_findings"] == {
+        "windows_on_snapdragon": "build-flow",
+        "gpu_backend": "adreno-opencl",
+        "release_asset": "none-confirmed",
+        "optimized_quantization": "Q4_0",
+        "current_model_quantization": "Q4_K_M",
+    }
+
+
+def test_resolve_selects_arm64_adreno_opencl_when_runtime_evidence_exists(tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    entry.local_path.parent.mkdir(parents=True)
+    entry.local_path.write_bytes(b"gguf")
+    adreno_binary = tmp_path / "bin" / "arm64-adreno-opencl" / "llama-server.exe"
+    adreno_binary.parent.mkdir(parents=True)
+    adreno_binary.write_bytes(b"exe")
+
+    resolution = resolve_llm_serve_profile(
+        "tool_plan",
+        HardwareProfile(
+            os_name="windows",
+            arch="arm64",
+            gpu_available=True,
+            gpu_vendor="qualcomm",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+        _preflight(["opencl:adreno"]),
+        settings=_settings(),
+        flags=CapabilityFlags(qnn_available=True),
+        entry=entry,
+    )
+
+    assert resolution.serve_profile_id == "windows_arm64_gpu_qualcomm_adreno_opencl"
+    assert resolution.accelerator == "gpu.opencl.adreno"
+    assert resolution.binary_path == adreno_binary
+    assert "device" not in resolution.launch
+    assert resolution.degraded_reason is None
+    assert "windows_arm64_gpu_qualcomm_adreno_opencl" not in {
+        candidate.profile_id for candidate in resolution.degraded_candidates
+    }
 
 
 def test_resolve_selects_arm64_qnn_when_runtime_evidence_exists(tmp_path: Path) -> None:
@@ -440,6 +518,7 @@ def test_global_binary_override_does_not_make_arm64_qnn_candidate_viable(tmp_pat
     assert resolution.binary_path == cpu_binary
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
         ("windows_arm64_npu_qualcomm_base", "Degraded-accelerator-unavailable"),
+        ("windows_arm64_gpu_qualcomm_adreno_opencl", "Degraded-opencl-build-required"),
         ("windows_arm64_npu_qualcomm_qnn", "Degraded-no-sidecar-binary"),
     ]
 

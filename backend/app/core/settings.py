@@ -17,7 +17,7 @@ def _load_dotenv_if_present() -> None:
     except Exception:
         return
     if ENV_FILE.exists():
-        load_dotenv(ENV_FILE, override=False)
+        load_dotenv(ENV_FILE, override=True)
         return
     if ENV_EXAMPLE_FILE.exists():
         load_dotenv(ENV_EXAMPLE_FILE, override=False)

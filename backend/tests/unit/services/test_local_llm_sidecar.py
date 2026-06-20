@@ -185,6 +185,35 @@ def test_builds_amd64_cuda_argv_when_files_exist(tmp_path: Path) -> None:
     assert "--flash-attn" in command.argv
 
 
+def test_builds_arm64_adreno_opencl_argv_without_hardcoded_device(tmp_path: Path) -> None:
+    resolution = _resolution(
+        tmp_path,
+        profile_id="windows_arm64_gpu_qualcomm_adreno_opencl",
+        accelerator="gpu.opencl.adreno",
+        launch={
+            "ctx_size": 4096,
+            "threads": "auto",
+            "threads_batch": "auto",
+            "batch_size": 2048,
+            "ubatch_size": 512,
+            "gpu_layers": "auto",
+            "cache_type_k": "f16",
+            "cache_type_v": "f16",
+            "cache_ram_mb": 4096,
+            "parallel": 1,
+            "cont_batching": True,
+            "warmup": True,
+        },
+    )
+
+    command = build_llama_server_command(resolution)
+
+    assert command.ready is True
+    assert "--gpu-layers" in command.argv
+    assert command.argv[command.argv.index("--gpu-layers") + 1] == "auto"
+    assert "--device" not in command.argv
+
+
 def test_arm64_qnn_missing_binary_closes_as_degraded(tmp_path: Path) -> None:
     command = build_llama_server_command(
         _resolution(

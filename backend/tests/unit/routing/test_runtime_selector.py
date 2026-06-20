@@ -8,7 +8,7 @@ from backend.app.routing.runtime_selector import NullLLMRuntime, select_llm
 
 class _AvailableOllama(OllamaLLM):
     def __init__(self) -> None:
-        super().__init__(base_url="http://test", model="phi4-mini")
+        super().__init__(base_url="http://test", model="phi4-mini", enabled=True)
         self.reason = "test ollama available"
 
     def is_available(self) -> bool:
@@ -18,7 +18,7 @@ class _AvailableOllama(OllamaLLM):
 
 class _UnavailableOllama(OllamaLLM):
     def __init__(self) -> None:
-        super().__init__(base_url="http://test", model="phi4-mini")
+        super().__init__(base_url="http://test", model="phi4-mini", enabled=True)
         self.reason = "test ollama unavailable"
 
     def is_available(self) -> bool:

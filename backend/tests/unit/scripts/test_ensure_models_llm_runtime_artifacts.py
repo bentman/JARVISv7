@@ -181,6 +181,46 @@ def _entry(tmp_path: Path, *, source_type: str = "pending-pinned-release") -> en
                         ),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                     },
+                    "windows_arm64_gpu_qualcomm_adreno_opencl": {
+                        "profile_id": "windows_arm64_gpu_qualcomm_adreno_opencl",
+                        "os": "windows",
+                        "arch": "arm64",
+                        "accelerator": "gpu.opencl.adreno",
+                        "runtime_artifact": {
+                            "source": {
+                                "type": "build-required",
+                                "reason": "no-pinned-release-asset",
+                                "upstream": {
+                                    "backend": "llama.cpp Adreno OpenCL",
+                                    "build_flag": "GGML_OPENCL=ON",
+                                    "platform": "Windows on Snapdragon",
+                                },
+                                "candidate_runtime_findings": {
+                                    "windows_on_snapdragon": "build-flow",
+                                    "gpu_backend": "adreno-opencl",
+                                    "release_asset": "none-confirmed",
+                                    "optimized_quantization": "Q4_0",
+                                    "current_model_quantization": "Q4_K_M",
+                                },
+                            },
+                            "binary_path": str(
+                                tmp_path
+                                / "runtimes"
+                                / "llama.cpp"
+                                / "windows-arm64-adreno-opencl"
+                                / "llama-server.exe"
+                            ),
+                            "required_files": ["llama-server.exe"],
+                        },
+                        "binary_path": str(
+                            tmp_path
+                            / "runtimes"
+                            / "llama.cpp"
+                            / "windows-arm64-adreno-opencl"
+                            / "llama-server.exe"
+                        ),
+                        "close_if_unavailable": "Degraded-opencl-build-required",
+                    },
                     "windows_arm64_npu_qualcomm_qnn": {
                         "profile_id": "windows_arm64_npu_qualcomm_qnn",
                         "os": "windows",
@@ -230,6 +270,8 @@ def test_verify_runtime_artifacts_reports_separate_profile_states(tmp_path: Path
     assert profiles["windows_amd64_gpu_intel"]["degraded_reason"] == "SKIP-source-pending"
     assert profiles["windows_arm64_npu_qualcomm_base"]["ready"] is False
     assert profiles["windows_arm64_npu_qualcomm_base"]["degraded_reason"] == "SKIP-no-viable-binary"
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["ready"] is False
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["degraded_reason"] == "SKIP-build-required"
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["ready"] is False
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["degraded_reason"] == "SKIP-no-viable-binary"
 
@@ -398,6 +440,9 @@ def test_runtime_dry_run_reports_pending_source_as_skipped(tmp_path: Path) -> No
     assert profiles["windows_amd64_cpu"]["state"] == "skipped"
     assert profiles["windows_amd64_cpu"]["planned"] == []
     assert profiles["windows_amd64_cpu"]["degraded_reason"] == "SKIP-source-pending"
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["state"] == "skipped"
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["planned"] == []
+    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["degraded_reason"] == "SKIP-build-required"
 
 
 def test_runtime_source_metadata_rejects_missing_source_type(tmp_path: Path) -> None:
@@ -488,16 +533,28 @@ def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> N
     profiles = ensure_models._hardware_profiles(entry)
 
     base_profile = profiles["windows_arm64_npu_qualcomm_base"]
+    adreno_profile = profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]
     qnn_profile = profiles["windows_arm64_npu_qualcomm_qnn"]
     base_source = base_profile["runtime_artifact"]["source"]
+    adreno_source = adreno_profile["runtime_artifact"]["source"]
     qnn_source = qnn_profile["runtime_artifact"]["source"]
 
     assert base_profile["accelerator"] == "npu.hexagon_candidate"
+    assert adreno_profile["accelerator"] == "gpu.opencl.adreno"
     assert qnn_profile["accelerator"] == "npu.qnn"
     assert base_source["candidate_runtime_findings"] == {
         "windows_on_snapdragon": "build-package-flow",
         "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
         "release_asset": "none-confirmed",
+    }
+    assert adreno_source["type"] == "build-required"
+    assert adreno_source["upstream"]["build_flag"] == "GGML_OPENCL=ON"
+    assert adreno_source["candidate_runtime_findings"] == {
+        "windows_on_snapdragon": "build-flow",
+        "gpu_backend": "adreno-opencl",
+        "release_asset": "none-confirmed",
+        "optimized_quantization": "Q4_0",
+        "current_model_quantization": "Q4_K_M",
     }
     assert qnn_source["project_label"] == "npu.qnn"
     assert qnn_source["runtime_mapping"] == "pending-hexagon-qnn-viability"
