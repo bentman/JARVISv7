@@ -127,6 +127,33 @@ def test_verify_llm_single_file_artifact_reports_present_when_file_exists(tmp_pa
     assert result["degraded_reason"] is None
 
 
+def test_verify_entry_directory_with_dot_in_name_reports_present_files(tmp_path: Path) -> None:
+    model_root = tmp_path / "models" / "tts" / "kokoro-v1.0-onnx"
+    model_root.mkdir(parents=True)
+    (model_root / "kokoro-v1.0.onnx").write_bytes(b"onnx")
+    (model_root / "voices-v1.0.bin").write_bytes(b"voices")
+    entry = ensure_models.ModelEntry(
+        family="tts",
+        name="kokoro-v1.0-onnx",
+        config={
+            "local_path": str(model_root),
+            "source": {
+                "type": "url",
+                "files": {
+                    "kokoro-v1.0.onnx": "https://example.invalid/kokoro-v1.0.onnx",
+                    "voices-v1.0.bin": "https://example.invalid/voices-v1.0.bin",
+                },
+            },
+        },
+    )
+
+    result = ensure_models._verify_entry(entry)
+
+    assert result["ready"] is True
+    assert result["present"] == ["kokoro-v1.0.onnx", "voices-v1.0.bin"]
+    assert result["missing"] == []
+
+
 def test_verify_llm_single_file_artifact_reports_degraded_when_missing(tmp_path: Path) -> None:
     model_file = tmp_path / "models" / "llm" / "assistant-small-q4" / "model-q4.gguf"
     entry = ensure_models.ModelEntry(

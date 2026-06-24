@@ -117,10 +117,26 @@ Use this precedence order:
 3. `repo_tree.md`
 4. `SYSTEM_INVENTORY.md`
 5. `CHANGE_LOG.md`
-6. `slices.md`
 
 If a conflict is observed between files and runtime behavior, report the conflict and propose the smallest correction.
-## 7. Scripts
+
+## 7. Agent Ignore Policy
+
+All agents MUST honor any `.agentignore` files present in this repository.
+
+- `.agentignore` uses standard `.gitignore` syntax.
+- Agents MUST recursively discover `.agentignore` files from the working directory up to the project root.
+- Agents MUST combine all rules and exclude any matching files or directories from:
+  - reading
+  - indexing
+  - embedding
+  - transmission to external models/tools
+- Matching paths MUST be treated as non-existent to the agent.
+- These rules MUST NOT be overridden unless explicitly instructed by repository policy.
+
+Purpose: protect sensitive data, reduce noise, and ensure consistent behavior across agents.
+
+## 8. Scripts
 
 All scripts live in `scripts/`. They are orchestrators over `backend/app/**` and never duplicate application logic.
 
@@ -137,7 +153,7 @@ Key scripts and their roles:
 - `scripts/run_jarvis.py` — proving host (developer/diagnostic tool). **Not the durable application surface.** `desktop/` is the durable surface.
 - `scripts/validate_backend.py` — **sole validation authority**. Subcommand-based; see Section 8.
 
-## 8. Validation Requirements
+## 9. Validation Requirements
 
 General:
 
@@ -180,7 +196,7 @@ Warnings:
 
 - Treat warnings as backlog unless they break correctness, safety, or required behavior.
 
-## 9. Task Execution Workflow
+## 10. Task Execution Workflow
 
 Apply Section 2 programming principles at each step.
 
@@ -205,7 +221,7 @@ Python test expectation:
 
 Do not add follow-up work unless explicitly requested.
 
-## 10. File and Artifact Boundaries
+## 11. File and Artifact Boundaries
 
 - Keep runtime artifacts out of repository root.
 - Use existing project locations for generated data (`data/`, `cache/`, `reports/`, `models/`).
@@ -215,7 +231,7 @@ Do not add follow-up work unless explicitly requested.
 - `config/hardware/notes.md` holds human-readable operator prerequisites only; package sets live in `pyproject.toml`.
 - Model artifacts live in `models/`; never in `backend/` or `config/`.
 
-## 11. CHANGE_LOG.md Requirements
+## 12. CHANGE_LOG.md Requirements
 
 `CHANGE_LOG.md` is append-only and records completed, verified work.
 
@@ -236,7 +252,7 @@ Minimum entry content:
 - Host class(es) validated on
 - Evidence (exact command(s) run + minimal excerpt pointer or excerpt)
 
-## 12. SYSTEM_INVENTORY.md Requirements
+## 13. SYSTEM_INVENTORY.md Requirements
 
 `SYSTEM_INVENTORY.md` is the capability truth ledger.
 
@@ -255,7 +271,7 @@ Rules:
   - Notes: optional, one line max
 - Do not promote state without validation evidence.
 
-## 13. Git Safety Rules
+## 14. Git Safety Rules
 
 Never run destructive git operations without explicit approval, including:
 
@@ -267,7 +283,7 @@ Never run destructive git operations without explicit approval, including:
 
 If rollback is requested, propose the safest approach based on whether changes are committed or uncommitted.
 
-## 14. Reporting Format for Agent Responses
+## 15. Reporting Format for Agent Responses
 
 When reporting completion or progress, use:
 

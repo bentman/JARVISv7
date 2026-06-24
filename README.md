@@ -40,6 +40,14 @@ Since then, v7 has moved from "another restart with better rules" to "an actual 
 
 * * *
 
+## 🚀 Quick Start
+
+Fresh-clone setup and developer startup commands live in [docs/QuickStart.md](docs/QuickStart.md).
+
+The short version: create `backend\.venv`, run `.\backend\.venv\Scripts\python scripts\bootstrap.py`, verify with `.\backend\.venv\Scripts\python scripts\validate_backend.py profile`, then use `scripts\run_backend.py`, `scripts\run_jarvis.py`, or the `desktop/` shell depending on what you are testing.
+
+* * *
+
 ## 🧭 Project Vision ("The destination has barely changed")
 
 The core vision for JARVIS has remained surprisingly stable.

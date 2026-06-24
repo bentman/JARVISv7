@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from backend.app.api.app import ApiState, create_app
+from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
@@ -85,6 +86,8 @@ def _client() -> TestClient:
         session_manager=_SessionManager(),  # type: ignore[arg-type]
         engine=_Engine(),  # type: ignore[arg-type]
         session_service=None,  # type: ignore[arg-type]
+        wake_monitor=None,  # type: ignore[arg-type]
+        cache_manager=CacheManager(),
     )
     state.session_service = SessionService(
         session_manager=state.session_manager,  # type: ignore[arg-type]
@@ -158,6 +161,8 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
         session_manager=manager,
         engine=build_engine(manager),
         session_service=None,  # type: ignore[arg-type]
+        wake_monitor=None,  # type: ignore[arg-type]
+        cache_manager=CacheManager(),
     )
     state.session_service = SessionService(session_manager=manager, engine=state.engine, engine_factory=build_engine)
     client = TestClient(create_app(state))

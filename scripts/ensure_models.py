@@ -65,7 +65,10 @@ def _source_files(entry: ModelEntry) -> list[tuple[str, str]]:
 
 
 def _entry_targets_single_file(entry: ModelEntry) -> bool:
-    return bool(entry.local_path.suffix)
+    source = entry.source
+    file_name = source.get("file")
+    files = source.get("files")
+    return isinstance(file_name, str) and file_name.strip() and files is None and bool(entry.local_path.suffix)
 
 
 def _target_for_file(entry: ModelEntry, file_name: str) -> Path:
