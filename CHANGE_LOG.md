@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-24 07:48
+  - Summary: Completed Slice S.9 governance closeout on the current Windows AMD64 host. Existing S.0-S.8 evidence was accepted as the Slice S evidence base, current-machine validation passed, and Slice S capability truth was recorded in `SYSTEM_INVENTORY.md`.
+  - Scope: `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`
+  - Host class(es): Windows AMD64 / amd64 validated for S.9 execution.
+  - Evidence: `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`577 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`142 passed, 4 deselected`, report `reports\validation\20260624124727-regression.txt`). `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `git diff --check` PASS with no output.
+  - Note: S.9 did not add product code, tests, runtime artifacts, model artifacts, provisioning behavior, desktop behavior, or new accelerator claims. Pre-existing unrelated deletions under `reports/validation/slice_h/` were observed and left untouched.
+
 - 2026-06-20 09:22
   - Summary: Added configurable language selection across the local voice and LLM prompt path. `JARVIS_LANGUAGE` now supplies the global default, personality profiles can carry `response_language`, local Ollama and llama.cpp receive the selected language through the shared prompt policy, and QNN Whisper decode derives the full tokenizer prefix from configuration while preserving start-of-transcript prefix sequencing.
   - Scope: `.env.example`, local `.env`, `backend/app/core/settings.py`, `backend/app/personality/loader.py`, `backend/app/personality/policy.py`, `backend/app/personality/schema.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/personality/test_personality.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `config/models/stt.yaml`, `config/personality/concise.yaml`, `config/personality/default.yaml`, `config/personality/warm.yaml`, `docs/jarvis-arm-llamacpp.md`
