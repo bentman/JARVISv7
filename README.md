@@ -311,7 +311,6 @@ As a result, JARVISv7 places much greater emphasis on:
 
 v7 is not merely "v? but cleaner." It is v? with more of the original vision made concrete, more of the failure modes named directly, and fewer places for overachiever drift to hide under the floorboards.
 
-> The system is not trying to become more creative. The system is trying to become more correct.  
 > That sounds less exciting, but turns out to be far more useful.
 
 * * *

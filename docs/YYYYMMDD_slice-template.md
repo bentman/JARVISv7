@@ -1,17 +1,11 @@
 # YYYYMMDD_slice-template.md
 ## Slice {Group} — {Short Title}
 
-**Date:** YYYY-MM-DD
-**Status:** Proposed | In Progress | Verified
-**Depends on:** Prior slice(s) closed and verified, referenced by `SYSTEM_INVENTORY.md` entry date.
-
 ---
 
 ## Purpose
 
-**What this section is for.** State the slice's single objective in one or two paragraphs. Explain why this slice exists, what problem it solves, and what capability it introduces. This is the north star for the entire slice — every sub-slice and file should trace back to this purpose.
-
-Include the exact capability gap or architectural motivation that justifies this slice. Reference `ProjectVision.md` or `slices.md` where applicable. Be specific about what "done" means at the architectural level.
+**What this section is for.** State the slice's single objective in one concise paragraph. Explain why this slice exists, what problem it solves, and what capability it introduces. This is the north star for the entire slice — every sub-slice and file should trace back to this purpose. Include the exact capability gap or architectural motivation that justifies this slice. Reference `ProjectVision.md` where applicable. Be specific about what "done" means at the architectural level.
 
 ---
 
@@ -38,7 +32,7 @@ Format as a bullet list. Group by domain (e.g., "No Group X files", "No runtime 
 
 ## Pre-Implementation Gates
 
-**What this section is for.** Prerequisites that must be resolved before the slice or specific sub-slices can begin. Each gate is a verification step, not an assumption. Gates prevent implementation from proceeding on unverified foundations.
+**What this section is for.** Prerequisites that must be resolved before the slice or specific sub-slices can begin. Each gate is a verification step, not an assumption. Gates prevent implementation from proceeding on unverified foundations and should easily be resolved by inspection only verification.
 
 Format each gate as:
 - **Gate {code} — {Title}.** Description of the prerequisite, why it matters, and how to verify it. If the gate requires a code change, a dependency addition, or an external tool check, state that explicitly. Resolution evidence is required before the dependent sub-slice begins.
@@ -49,7 +43,7 @@ Gates that are resolved before implementation can be marked `[Resolved]` with a 
 
 ## New Directories and Files Created by This Slice
 
-**What this section is for.** A tree-style or list overview of every new directory and file this slice introduces. This gives reviewers a structural map before diving into sub-slice details.
+**What this section is for.** A tree-style or list overview of every new directory and file this slice introduces. This gives reviewers a structural map before diving into sub-slice details. Align with existing `repo_tree.md`.
 
 Use a monospace-block file tree:
 ```
@@ -106,7 +100,7 @@ Explicit list of files or directories that any implementation agent must not cha
 
 ### Validation
 
-A numbered sequence of CLI commands to run for validation. Each command should be a separate step. Include both compile checks, unit tests, and any live/smoke tests. Use the venv-prefixed command pattern:
+A numbered sequence of CLI commands to run for validation. Each command should be a separate step. Include both compile checks, unit tests, and any live/smoke tests. Select from the venv-prefixed command patterns as appropriate:
 ```
 backend/.venv/Scripts/python -m compileall backend/app/new_module
 backend/.venv/Scripts/python -m pytest backend/tests/unit/new_module -q
@@ -182,7 +176,7 @@ It should read as if the slice is already complete. List the capabilities now pr
 
 ## Risks / Sequencing Notes
 
-**What this section is for.** (Optional) A table or bullet list of known risks, hazards, or sequencing dependencies that could block or delay the slice. This is not speculative — each risk should have a specific mitigation or decision path.
+**What this section is for.** (Brief/Concise) A table or bullet list of known risks, hazards, or sequencing dependencies that could block or delay the slice. This is not speculative — each risk should have a specific mitigation path.
 
 Format each risk as:
 | Risk | Severity | Mitigation |
