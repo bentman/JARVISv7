@@ -8,6 +8,7 @@ export function createApiClient(invoke) {
     getSessionStatus: async () => JSON.parse(await invoke("get_session_status")),
     invokeResidentPtt: async () => JSON.parse(await invoke("invoke_resident_ptt")),
     getWakeStatus: async () => JSON.parse(await invoke("get_wake_status")),
+    getResidentVoiceStatus: async () => JSON.parse(await invoke("get_resident_voice_status")),
     startWakeMonitor: async () => JSON.parse(await invoke("start_wake_monitor")),
     stopWakeMonitor: () => invoke("stop_wake_monitor"),
     toggleWakeMonitor: async () => JSON.parse(await invoke("toggle_wake_monitor")),

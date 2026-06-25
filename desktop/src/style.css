@@ -415,6 +415,31 @@ dd {
   font-size: 0.76rem;
 }
 
+.resident-voice-status {
+  border: 1px solid var(--color-border);
+  border-left: 4px solid var(--color-degraded);
+  border-radius: var(--radius-sm);
+  padding: var(--space-2);
+  margin-top: var(--space-2);
+  background: var(--color-bg-soft);
+  font-size: 0.76rem;
+}
+
+.resident-voice-status[data-available="true"] {
+  border-left-color: var(--color-ready);
+}
+
+.resident-voice-status-field {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: var(--space-2);
+  line-height: 1.35;
+}
+
+.resident-voice-status-label {
+  color: var(--color-text-muted);
+}
+
 .wake-indicator[data-active="true"] {
   border-left-color: var(--color-ready);
 }
@@ -641,6 +666,7 @@ dd {
 }
 
 #text-input,
+#resident-mode,
 #personality-select,
 .settings-panel input,
 .appearance-panel select {
@@ -727,6 +753,7 @@ select:disabled {
   letter-spacing: 0.08em;
 }
 
+#resident-mode,
 #personality-select {
   width: 100%;
   margin-top: var(--space-1);

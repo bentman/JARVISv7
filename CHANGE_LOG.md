@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-25 12:22
+  - Summary: Completed Sub-Slice T.8 desktop resident voice mode controls and end-to-end resident proof surface. The desktop now bridges `/status/resident-voice`, polls resident diagnostics, renders mode/audio/VAD/barge-in/degraded state in the Operator panel, and exposes guarded PTT-only, wake, hands-free, and continuous mode options without adding backend mode mutation.
+  - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/components/resident-voice.js`, `desktop/src/index.html`, `desktop/src/style.css`, `desktop/tests/static.test.mjs`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `node desktop\tests\static.test.mjs` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`612 passed, 1 warning`; fingerprint `arch=arm64`, extras `[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260625172026-regression.txt`). `backend\.venv\Scripts\python scripts\validate_backend.py runtime --families turn --devices cpu` PASS/SKIP (`14 skipped, 28 deselected`) with live/operator gates `JARVISV7_LIVE_TESTS`, `JARVISV7_RESIDENT_AUDIO_LIVE`, and `JARVISV7_RESIDENT_BARGE_IN_LIVE` not set. `git diff --check` PASS with Git line-ending normalization warnings only.
+  - Note: Desktop live/operator proof was skipped because no interactive desktop live run was performed in this sub-slice. T.8 did not modify `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/`, `backend/app/agents/`, dependency metadata, or backend mode mutation behavior.
+
 - 2026-06-25 12:10
   - Summary: Completed Sub-Slice T.7 resident voice readiness and status diagnostics. Added read-only resident audio diagnostics to `/readiness` and a dedicated `/status/resident-voice` endpoint reporting mode, stream state, VAD configuration, wake state, barge-in support, and degraded reasons.
   - Scope: `backend/app/api/schemas/readiness.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/status.py`, `backend/app/api/routes/status.py`, `backend/tests/unit/api/test_routes.py`

@@ -217,6 +217,10 @@ pub fn get_wake_status(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/status/wake")
 }
 
+pub fn get_resident_voice_status(base_url: &str) -> Result<String, String> {
+    get_json(base_url, "/status/resident-voice")
+}
+
 fn post_wake_action(base_url: &str, path: &str) -> Result<String, String> {
     let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();

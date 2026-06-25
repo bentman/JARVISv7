@@ -14,6 +14,8 @@ const sessionEl = document.querySelector("#session-id");
 const turnCountEl = document.querySelector("#session-turn-count");
 const wakeIndicatorEl = document.querySelector("#wake-indicator");
 const wakeToggleEl = document.querySelector("#wake-toggle");
+const residentModeEl = document.querySelector("#resident-mode");
+const residentStatusEl = document.querySelector("#resident-voice-status");
 const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
 const personalityDetailEl = document.querySelector("#personality-detail");
@@ -39,6 +41,7 @@ const api = createApiClient(invoke);
 let activePersonalityId = "default";
 let wakePollTimer = null;
 let sessionPollTimer = null;
+let residentVoicePollTimer = null;
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -121,6 +124,8 @@ const residentVoice = createResidentVoicePresenter({
   pttButton,
   voiceStatusEl,
   voiceDetailEl,
+  residentModeEl,
+  residentStatusEl,
   turnStateEl,
   setState,
   showError,
@@ -142,6 +147,25 @@ async function refreshSessionStatus() {
   return status;
 }
 
+async function refreshResidentVoiceStatus() {
+  if (!api?.getResidentVoiceStatus) return null;
+  try {
+    const status = await api.getResidentVoiceStatus();
+    residentVoice.renderResidentModeStatus(status);
+    return status;
+  } catch (error) {
+    residentVoice.renderResidentModeStatus({
+      mode: "ptt-only",
+      available: false,
+      vad_configured: false,
+      barge_in_supported: false,
+      degraded_reasons: [`resident voice status unavailable: ${String(error)}`],
+      stream: { running: false, subscribers: 0, dropped_chunks: 0 },
+    });
+    return null;
+  }
+}
+
 function startSessionPolling() {
   if (sessionPollTimer) window.clearInterval(sessionPollTimer);
   sessionPollTimer = window.setInterval(() => {
@@ -153,6 +177,19 @@ function stopSessionPolling() {
   if (!sessionPollTimer) return;
   window.clearInterval(sessionPollTimer);
   sessionPollTimer = null;
+}
+
+function startResidentVoicePolling() {
+  if (residentVoicePollTimer) window.clearInterval(residentVoicePollTimer);
+  residentVoicePollTimer = window.setInterval(() => {
+    refreshResidentVoiceStatus().catch(() => undefined);
+  }, 1500);
+}
+
+function stopResidentVoicePolling() {
+  if (!residentVoicePollTimer) return;
+  window.clearInterval(residentVoicePollTimer);
+  residentVoicePollTimer = null;
 }
 
 async function refreshWakeStatus() {
@@ -258,9 +295,11 @@ async function startDesktop() {
     const readiness = await api.getReadiness();
     renderReadiness(readiness);
     await refreshSessionStatus();
+    await refreshResidentVoiceStatus();
     await startWakeMonitorIfAvailable();
     startWakePolling();
     startSessionPolling();
+    startResidentVoicePolling();
     await refreshPersonalityProfiles();
     appendMessage("system", "Backend started and readiness loaded.");
     sendButton.disabled = false;
@@ -283,9 +322,11 @@ async function restartBackendForSettings() {
   healthEl.textContent = "ok";
   const readiness = await api.getReadiness();
   renderReadiness(readiness);
+  await refreshResidentVoiceStatus();
   await startWakeMonitorIfAvailable();
   startWakePolling();
   startSessionPolling();
+  startResidentVoicePolling();
 }
 
 function updateSettingsRestartRequired(required, details = {}) {
@@ -385,6 +426,7 @@ if (wakeToggleEl) {
 window.addEventListener("beforeunload", () => {
   stopWakePolling();
   stopSessionPolling();
+  stopResidentVoicePolling();
   api?.stopWakeMonitor().catch(() => undefined);
   api?.stopBackend().catch(() => undefined);
 });

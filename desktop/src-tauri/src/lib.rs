@@ -1,6 +1,6 @@
 mod backend;
 
-use backend::{close_session, create_session, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_session_status as backend_session_status, get_wake_status as backend_wake_status, invoke_resident_ptt as backend_invoke_resident_ptt, select_personality as backend_select_personality, start_wake_monitor as backend_start_wake_monitor, stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn, toggle_wake_monitor as backend_toggle_wake_monitor, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
+use backend::{close_session, create_session, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_resident_voice_status as backend_resident_voice_status, get_session_status as backend_session_status, get_wake_status as backend_wake_status, invoke_resident_ptt as backend_invoke_resident_ptt, select_personality as backend_select_personality, start_wake_monitor as backend_start_wake_monitor, stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn, toggle_wake_monitor as backend_toggle_wake_monitor, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -92,6 +92,12 @@ fn invoke_resident_ptt(state: State<'_, DesktopState>) -> Result<String, String>
 fn get_wake_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_wake_status(&base_url)
+}
+
+#[tauri::command]
+fn get_resident_voice_status(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_resident_voice_status(&base_url)
 }
 
 #[tauri::command]
@@ -195,7 +201,7 @@ pub fn run() {
     let backend = BackendProcessManager::new().expect("failed to initialize backend process manager");
     tauri::Builder::default()
         .manage(DesktopState { backend: Arc::new(Mutex::new(backend)), session_id: Arc::new(Mutex::new(None)) })
-        .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config, submit_text])
+        .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config, get_resident_voice_status, submit_text])
         .setup(|app| {
             setup_tray(app)?;
             Ok(())
