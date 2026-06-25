@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-06-25 11:18
+  - Summary: Completed Sub-Slice T.1 shared resident audio stream foundation. Added a backend-owned resident audio stream abstraction with chunk metadata, bounded replay buffer, subscriber queues, start/stop/status, dropped-chunk diagnostics, and optional `voice_service` capture/chunk-source integration while preserving existing blocking capture fallback.
+  - Scope: `backend/app/services/audio_stream.py`, `backend/app/services/voice_service.py`, `backend/tests/unit/services/test_audio_stream.py`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: T.1 baseline file existence check PASS for PTT, wake, realtime session, interruption, TTS playback, readiness, session API/schema, and desktop resident voice files. `backend\.venv\Scripts\python -m compileall backend/app/services` PASS (`Compiling 'backend/app/services\audio_stream.py'`; `Compiling 'backend/app/services\voice_service.py'`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_audio_stream.py -q` PASS (`9 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_voice_service.py -q` PASS (`8 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260625161830-regression.txt`; fingerprint `arch=arm64`, extras `[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev]`).
+  - Note: T.1 did not modify wake monitor, desktop, turn engine, dependency metadata, or committed turn semantics. Unit tests use fake input sources for deterministic stream behavior; live microphone validation remains a later Slice T runtime gate.
+
 - 2026-06-24 07:48
   - Summary: Completed Slice S.9 governance closeout on the current Windows AMD64 host. Existing S.0-S.8 evidence was accepted as the Slice S evidence base, current-machine validation passed, and Slice S capability truth was recorded in `SYSTEM_INVENTORY.md`.
   - Scope: `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`

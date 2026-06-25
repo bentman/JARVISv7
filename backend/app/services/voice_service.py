@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 
 from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
+from backend.app.services.audio_stream import ResidentAudioStream
 
 
 class AudioCaptureError(RuntimeError):
@@ -27,7 +28,15 @@ class AudioIngressDiagnostics:
     reason: str
 
 
-def capture_audio(duration_s: float, sample_rate: int = 16000) -> tuple[np.ndarray, int]:
+def capture_audio(
+    duration_s: float,
+    sample_rate: int = 16000,
+    *,
+    resident_stream: ResidentAudioStream | None = None,
+) -> tuple[np.ndarray, int]:
+    if resident_stream is not None and resident_stream.status().running:
+        return _capture_audio_from_stream(duration_s, sample_rate, resident_stream)
+
     try:
         import sounddevice as sd
 
@@ -44,7 +53,21 @@ def wake_chunk_source(
     *,
     sample_rate: int = 16000,
     chunk_samples: int = WAKE_CHUNK_SAMPLES,
+    resident_stream: ResidentAudioStream | None = None,
 ) -> Iterable[np.ndarray]:
+    if resident_stream is not None and resident_stream.status().running:
+        subscriber = resident_stream.subscribe()
+        try:
+            while not stop_event.is_set():
+                try:
+                    chunk = subscriber.get(timeout=0.1)
+                except Exception:
+                    continue
+                yield np.asarray(chunk.samples).reshape(-1)
+        finally:
+            resident_stream.unsubscribe(subscriber)
+        return
+
     try:
         import sounddevice as sd
     except Exception as exc:
@@ -54,6 +77,34 @@ def wake_chunk_source(
         while not stop_event.is_set():
             data, _ = stream.read(chunk_samples)
             yield np.asarray(data, dtype=np.int16).reshape(-1)
+
+
+def _capture_audio_from_stream(
+    duration_s: float,
+    sample_rate: int,
+    resident_stream: ResidentAudioStream,
+) -> tuple[np.ndarray, int]:
+    target_samples = int(duration_s * sample_rate)
+    if target_samples <= 0:
+        return np.array([], dtype=np.float32), sample_rate
+
+    subscriber = resident_stream.subscribe()
+    chunks: list[np.ndarray] = []
+    captured = 0
+    try:
+        while captured < target_samples:
+            try:
+                chunk = subscriber.get(timeout=max(0.1, duration_s + 0.1))
+            except Exception as exc:
+                raise AudioCaptureError("resident audio stream timed out") from exc
+            samples = np.asarray(chunk.samples, dtype=np.float32).reshape(-1)
+            chunks.append(samples)
+            captured += int(samples.size)
+    finally:
+        resident_stream.unsubscribe(subscriber)
+
+    audio = np.concatenate(chunks) if chunks else np.array([], dtype=np.float32)
+    return audio[:target_samples], sample_rate
 
 
 def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
