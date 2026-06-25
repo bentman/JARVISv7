@@ -281,7 +281,12 @@ class TurnEngine:
         assert self.barge_in_detector is not None
         self.barge_in_detector.reset()
         self.playback_api.start(audio, sample_rate)
-        for chunk in self.interruption_audio_chunks or []:
+        chunks = iter(self.interruption_audio_chunks or [])
+        while self._playback_is_playing():
+            try:
+                chunk = next(chunks)
+            except StopIteration:
+                break
             if self.barge_in_detector.detect(chunk):
                 self.playback_api.stop()
                 event: dict[str, object] = {
@@ -329,6 +334,12 @@ class TurnEngine:
             retrieved_memory_refs=retrieved_memory_refs,
         )
         return result
+
+    def _playback_is_playing(self) -> bool:
+        is_playing = getattr(self.playback_api, "is_playing", None)
+        if not callable(is_playing):
+            return False
+        return bool(is_playing())
 
     def _fail(
         self,

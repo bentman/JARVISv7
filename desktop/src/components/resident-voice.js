@@ -64,16 +64,25 @@ export function createResidentVoicePresenter(options) {
   function renderResidentModeStatus(status) {
     if (!residentStatusEl) return;
     setModeControl(status);
-    const stream = status.stream || {};
+    const stream = status.stream || {
+      present: status.stream_present,
+      running: status.stream_running,
+      subscribers: status.stream_subscribers,
+      buffer_chunks: status.stream_buffer_chunks,
+      dropped_chunks: status.stream_dropped_chunks,
+      last_error: status.stream_last_error,
+    };
     const degradedReasons = Array.isArray(status.degraded_reasons) ? status.degraded_reasons : [];
     const rows = [
       ["mode", modeLabels[status.mode] || status.mode || "unknown"],
       ["available", boolText(status.available)],
+      ["stream-present", boolText(stream.present)],
       ["stream", stream.running ? "running" : "stopped"],
       ["subscribers", String(stream.subscribers ?? 0)],
       ["drops", String(stream.dropped_chunks ?? 0)],
       ["vad", boolText(status.vad_configured)],
       ["barge-in", boolText(status.barge_in_supported)],
+      ["barge-in-wired", boolText(status.barge_in_wired)],
     ];
     if (degradedReasons.length > 0) {
       rows.push(["degraded", degradedReasons.join("; ")]);

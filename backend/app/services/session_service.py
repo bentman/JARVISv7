@@ -75,6 +75,11 @@ class SessionService:
             raise RuntimeError("no active resident session")
         return self._engine
 
+    def replace_engine(self, engine: TurnEngine) -> TurnEngine:
+        engine.personality = self._personality
+        self._engine = engine
+        return self._engine
+
     def active_personality(self) -> PersonalityProfile:
         return self._personality
 

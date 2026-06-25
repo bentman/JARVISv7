@@ -159,8 +159,9 @@ async function refreshResidentVoiceStatus() {
       available: false,
       vad_configured: false,
       barge_in_supported: false,
+      barge_in_wired: false,
       degraded_reasons: [`resident voice status unavailable: ${String(error)}`],
-      stream: { running: false, subscribers: 0, dropped_chunks: 0 },
+      stream: { present: false, running: false, subscribers: 0, buffer_chunks: 0, dropped_chunks: 0, last_error: null },
     });
     return null;
   }

@@ -92,12 +92,13 @@ class FakeEnvelopeLLM(FakeLLM):
 
 
 class FakePlayback:
-    def __init__(self) -> None:
+    def __init__(self, *, playing_checks: list[bool] | None = None) -> None:
         self.started = False
         self.stopped = False
         self.play_calls = 0
         self.start_calls = 0
         self.output_device = "7: USB headset"
+        self.playing_checks = list(playing_checks or [True])
 
     def play(self, audio: np.ndarray, sample_rate: int) -> None:
         self.play_calls += 1
@@ -108,6 +109,11 @@ class FakePlayback:
 
     def stop(self) -> None:
         self.stopped = True
+
+    def is_playing(self) -> bool:
+        if len(self.playing_checks) > 1:
+            return self.playing_checks.pop(0)
+        return self.playing_checks[0]
 
     def last_output_device(self) -> str:
         return self.output_device
@@ -713,3 +719,28 @@ def test_no_interruption_path_remains_normal():
     assert result.final_state == ConversationState.IDLE
     assert result.interrupted is False
     assert result.interruption_events == []
+
+
+def test_interruption_monitor_exits_when_playback_finishes_with_live_like_source():
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0)
+    playback = FakePlayback(playing_checks=[True, True, False])
+    yielded_chunks = 0
+
+    def live_like_chunks():
+        nonlocal yielded_chunks
+        while True:
+            yielded_chunks += 1
+            yield np.zeros(8, dtype=np.float32)
+
+    result = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=live_like_chunks(),
+        playback_api=playback,
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert playback.started is True
+    assert playback.stopped is False
+    assert yielded_chunks == 2
+    assert result.final_state == ConversationState.IDLE
+    assert result.interrupted is False

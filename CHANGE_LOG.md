@@ -18,6 +18,30 @@
 
 ## Entries 
 
+- 2026-06-25 14:03
+  - Summary: Completed corrective Sub-Slice T.13 backend resident mode state. Resident voice mode is now explicit, idempotently settable through a backend endpoint, `ptt-only` stops wake monitoring, and hands-free/continuous selections are visible but degraded until their follow-up behavior is implemented.
+  - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/app/api/schemas/status.py`, `backend/app/api/routes/status.py`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_resident_voice_modes.py -q` PASS (`3 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/api/test_routes.py -q` PASS (`47 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`620 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260625190336-regression.txt`).
+
+- 2026-06-25 14:01
+  - Summary: Completed corrective Sub-Slice T.12 resident status truth and desktop contract alignment. `/status/resident-voice` now exposes a structured stream object, reports barge-in support only when the active engine is wired to resident interruption chunks, and the desktop renders the backend stream/wiring contract.
+  - Scope: `backend/app/api/schemas/status.py`, `backend/app/api/routes/status.py`, `backend/app/services/session_service.py`, `backend/tests/unit/api/test_routes.py`, `desktop/src/components/resident-voice.js`, `desktop/src/main.js`, `desktop/tests/static.test.mjs`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/api/test_routes.py -q` PASS (`44 passed`). `node desktop/tests/static.test.mjs` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`614 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260625190056-regression.txt`).
+
+- 2026-06-25 13:57
+  - Summary: Completed corrective Sub-Slice T.11 safe interruption monitor termination. The turn engine now stops polling interruption audio when playback reports completion, while preserving accepted barge-in stop/recovery behavior.
+  - Scope: `backend/app/conversation/engine.py`, `backend/tests/unit/conversation/test_engine.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/conversation/test_engine.py -q` PASS (`41 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`614 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260625185649-regression.txt`).
+
+- 2026-06-25 13:54
+  - Summary: Completed corrective Sub-Slice T.10 resident audio stream lifecycle ownership. Added explicit resident stream start/stop API control, made stopped streams report degraded/unavailable instead of active resident voice, and kept lifecycle tests deterministic with fake stream sources.
+  - Scope: `backend/app/api/routes/status.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/services/test_audio_stream.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_audio_stream.py -q` PASS (`9 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/api/test_routes.py -q` PASS (`44 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`613 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260625185428-regression.txt`).
+
 - 2026-06-25 13:40
   - Summary: Recorded a corrective Slice T planning note. Slice T.1-T.8 produced partial resident voice scaffolding, but live resident microphone, wake, barge-in, desktop/operator, status contract, lifecycle, and inventory closeout gaps remain; corrective Slice T2 sub-slices T.9-T.17 are planned to follow in `20260625_slice-t2.md`.
   - Scope: `CHANGE_LOG.md`, `20260625_slice-t2.md`

@@ -831,14 +831,101 @@ def test_resident_voice_status_reports_configured_stream_and_vad() -> None:
 
     assert response.status_code == 200
     assert payload["mode"] == "ptt+wake"
-    assert payload["available"] is True
-    assert payload["degraded_reasons"] == []
+    assert payload["available"] is False
+    assert payload["degraded_reasons"] == ["resident audio stream is stopped"]
+    assert payload["stream"] == {
+        "present": True,
+        "running": False,
+        "subscribers": 0,
+        "buffer_chunks": 0,
+        "dropped_chunks": 0,
+        "last_error": None,
+    }
     assert payload["stream_present"] is True
     assert payload["stream_running"] is False
     assert payload["vad_configured"] is True
     assert payload["ptt_supported"] is True
     assert payload["wake_supported"] is True
-    assert payload["barge_in_supported"] is True
+    assert payload["barge_in_supported"] is False
+    assert payload["barge_in_wired"] is False
+
+
+def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> None:
+    state = _state()
+
+    from backend.app.services.audio_stream import ResidentAudioStream
+    from backend.app.services.resident_voice_invocation import default_utterance_segmenter
+
+    state.resident_audio_stream = ResidentAudioStream(chunk_source_factory=_wake_source)
+    state.utterance_segmenter = default_utterance_segmenter()
+    client = TestClient(create_app(state))
+
+    started = client.post("/status/resident-voice/start")
+    assert started.status_code == 200
+    started_payload = started.json()
+    assert started_payload["available"] is True
+    assert started_payload["stream_running"] is True
+    assert started_payload["degraded_reasons"] == []
+    assert started_payload["barge_in_supported"] is True
+    assert started_payload["barge_in_wired"] is True
+    assert started_payload["stream"]["running"] is True
+    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is not None
+
+    stopped = client.post("/status/resident-voice/stop")
+    assert stopped.status_code == 200
+    stopped_payload = stopped.json()
+    assert stopped_payload["available"] is False
+    assert stopped_payload["stream_running"] is False
+    assert stopped_payload["degraded_reasons"] == ["resident audio stream is stopped"]
+    assert stopped_payload["barge_in_supported"] is False
+    assert stopped_payload["barge_in_wired"] is False
+    assert stopped_payload["stream"]["running"] is False
+    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None
+
+
+def test_resident_voice_stream_start_endpoint_rejects_missing_stream() -> None:
+    state = _state()
+    state.resident_audio_stream = None
+
+    response = TestClient(create_app(state)).post("/status/resident-voice/start")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "resident audio stream is not configured"
+
+
+def test_resident_voice_mode_endpoint_sets_visible_mode_and_stops_wake_for_ptt_only() -> None:
+    client = _client()
+    wake_started = client.post("/status/wake/start")
+    assert wake_started.status_code == 200
+    assert wake_started.json()["active"] is True
+
+    response = client.put("/status/resident-voice/mode", json={"mode": "ptt-only"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "ptt-only"
+    assert payload["wake_active"] is False
+    assert payload["wake_monitoring"] is False
+    assert client.get("/status/wake").json()["active"] is False
+
+
+def test_resident_voice_mode_endpoint_rejects_unknown_mode() -> None:
+    response = _client().put("/status/resident-voice/mode", json={"mode": "ambient"})
+
+    assert response.status_code == 400
+    assert "unsupported resident voice mode" in response.json()["detail"]
+
+
+def test_resident_voice_hands_free_mode_is_visible_but_degraded_until_follow_up_behavior_exists() -> None:
+    client = _client()
+
+    response = client.put("/status/resident-voice/mode", json={"mode": "hands-free"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "hands-free"
+    assert payload["available"] is False
+    assert "resident mode hands-free follow-up behavior is not implemented" in payload["degraded_reasons"]
 
 
 def test_resident_voice_status_reports_degraded_missing_stream_and_vad() -> None:
@@ -853,6 +940,8 @@ def test_resident_voice_status_reports_degraded_missing_stream_and_vad() -> None
     assert payload["available"] is False
     assert "resident audio stream is not configured" in payload["degraded_reasons"]
     assert "utterance segmenter is not configured" in payload["degraded_reasons"]
+    assert payload["stream"]["present"] is False
+    assert payload["stream"]["running"] is False
     assert payload["stream_present"] is False
     assert payload["vad_configured"] is False
 
@@ -869,10 +958,10 @@ def test_readiness_embeds_resident_voice_diagnostics() -> None:
     payload = response.json()
 
     assert response.status_code == 200
-    assert payload["resident_audio"]["available"] is True
+    assert payload["resident_audio"]["available"] is False
     assert payload["resident_audio"]["stream_present"] is True
     assert payload["resident_audio"]["vad_configured"] is True
-    assert payload["resident_audio"]["barge_in_supported"] is True
+    assert payload["resident_audio"]["barge_in_supported"] is False
 
 
 def test_wake_status_reflects_error_state() -> None:

@@ -17,10 +17,24 @@ class WakeStatusResponse(BaseModel):
     threshold: float | None = None
 
 
+class ResidentVoiceStreamStatus(BaseModel):
+    present: bool
+    running: bool
+    subscribers: int
+    buffer_chunks: int
+    dropped_chunks: int
+    last_error: str | None = None
+
+
+class ResidentVoiceModeRequest(BaseModel):
+    mode: str
+
+
 class ResidentVoiceStatusResponse(BaseModel):
     mode: str
     available: bool
     degraded_reasons: list[str]
+    stream: ResidentVoiceStreamStatus
     stream_present: bool
     stream_running: bool
     stream_subscribers: int
@@ -33,3 +47,4 @@ class ResidentVoiceStatusResponse(BaseModel):
     wake_active: bool
     wake_monitoring: bool
     barge_in_supported: bool
+    barge_in_wired: bool

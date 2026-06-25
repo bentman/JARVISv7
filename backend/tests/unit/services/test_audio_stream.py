@@ -83,11 +83,14 @@ def test_one_stream_owner_model_is_explicit_in_status() -> None:
     stream = ResidentAudioStream(chunk_source_factory=_blocking_source)
     first = stream.start()
     second = stream.start()
-    stream.stop()
+    stopped = stream.stop()
+    stopped_again = stream.stop()
 
     assert first.running is True
     assert second.running is True
     assert second.sequence == first.sequence
+    assert stopped.running is False
+    assert stopped_again.running is False
 
 
 def test_capture_audio_can_read_from_running_resident_stream() -> None:

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 
-from backend.app.api.app import ApiState
+from backend.app.api.app import ApiState, bind_session
 from backend.app.api.dependencies import get_api_state
-from backend.app.api.schemas.status import ResidentVoiceStatusResponse, WakeStatusResponse
+from backend.app.api.schemas.status import (
+    ResidentVoiceModeRequest,
+    ResidentVoiceStatusResponse,
+    ResidentVoiceStreamStatus,
+    WakeStatusResponse,
+)
 
 router = APIRouter()
 
@@ -37,6 +42,42 @@ def resident_voice_status(state: ApiState = Depends(get_api_state)) -> ResidentV
     return build_resident_voice_status(state)
 
 
+@router.post("/status/resident-voice/start", response_model=ResidentVoiceStatusResponse)
+def start_resident_voice_stream(state: ApiState = Depends(get_api_state)) -> ResidentVoiceStatusResponse:
+    if state.resident_audio_stream is None:
+        raise HTTPException(status_code=409, detail="resident audio stream is not configured")
+    state.resident_audio_stream.start()
+    bind_session(state, state.session_manager)
+    state.session_service.replace_engine(state.engine)
+    return build_resident_voice_status(state)
+
+
+@router.post("/status/resident-voice/stop", response_model=ResidentVoiceStatusResponse)
+def stop_resident_voice_stream(state: ApiState = Depends(get_api_state)) -> ResidentVoiceStatusResponse:
+    if state.resident_audio_stream is None:
+        raise HTTPException(status_code=409, detail="resident audio stream is not configured")
+    state.resident_audio_stream.stop()
+    bind_session(state, state.session_manager)
+    state.session_service.replace_engine(state.engine)
+    return build_resident_voice_status(state)
+
+
+@router.put("/status/resident-voice/mode", response_model=ResidentVoiceStatusResponse)
+def set_resident_voice_mode(
+    request: ResidentVoiceModeRequest,
+    state: ApiState = Depends(get_api_state),
+) -> ResidentVoiceStatusResponse:
+    if state.resident_voice is None:
+        raise HTTPException(status_code=409, detail="resident voice invocation service is unavailable")
+    try:
+        mode = state.resident_voice.set_mode(request.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if mode == "ptt-only":
+        state.wake_monitor.stop()
+    return build_resident_voice_status(state)
+
+
 def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
     stream = state.resident_audio_stream
     stream_status = stream.status() if stream is not None else None
@@ -53,10 +94,33 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         degraded_reasons.append("utterance segmenter is not configured")
 
     stream_running = bool(stream_status.running) if stream_status is not None else False
+    if stream is not None and not stream_running:
+        degraded_reasons.append("resident audio stream is stopped")
+    mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
+    if mode in {"hands-free", "continuous"}:
+        degraded_reasons.append(f"resident mode {mode} follow-up behavior is not implemented")
+    barge_in_wired = bool(
+        stream_running
+        and vad_configured
+        and getattr(state.engine, "barge_in_detector", None) is not None
+        and getattr(state.engine, "interruption_audio_chunks", None) is not None
+    )
     return ResidentVoiceStatusResponse(
-        mode="ptt+wake",
-        available=state.resident_voice is not None and stream is not None and vad_configured and not degraded_reasons,
+        mode=mode,
+        available=state.resident_voice is not None
+        and stream is not None
+        and stream_running
+        and vad_configured
+        and not degraded_reasons,
         degraded_reasons=degraded_reasons,
+        stream=ResidentVoiceStreamStatus(
+            present=stream is not None,
+            running=stream_running,
+            subscribers=stream_status.subscribers if stream_status is not None else 0,
+            buffer_chunks=stream_status.buffer_chunks if stream_status is not None else 0,
+            dropped_chunks=stream_status.dropped_chunks if stream_status is not None else 0,
+            last_error=stream_status.last_error if stream_status is not None else None,
+        ),
         stream_present=stream is not None,
         stream_running=stream_running,
         stream_subscribers=stream_status.subscribers if stream_status is not None else 0,
@@ -68,7 +132,8 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         wake_supported=state.wake_monitor is not None,
         wake_active=wake.active,
         wake_monitoring=wake.monitoring,
-        barge_in_supported=stream is not None and vad_configured,
+        barge_in_supported=barge_in_wired,
+        barge_in_wired=barge_in_wired,
     )
 
 

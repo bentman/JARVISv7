@@ -37,6 +37,9 @@ assert.ok(index.includes("hands-free"), "desktop must include hands-free residen
 assert.ok(index.includes("continuous"), "desktop must include continuous resident mode");
 assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
 assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
+assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
+assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");
+assert.ok(desktopSource.includes("stream_present"), "desktop must keep flat resident stream fallback fields");
 assert.ok(desktopSource.includes("degraded_reasons"), "desktop must render resident degraded reasons");
 assert.ok(backend.includes("/personality/list"), "backend bridge must call /personality/list");
 assert.ok(backend.includes("/personality/select"), "backend bridge must call /personality/select");

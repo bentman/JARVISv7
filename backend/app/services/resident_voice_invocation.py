@@ -22,6 +22,7 @@ EngineProvider = Callable[[], TurnEngine]
 BeforeInvocation = Callable[[], object]
 AfterInvocation = Callable[[object], object]
 NO_SPEECH_PTT_REASON = "No speech detected during PTT"
+RESIDENT_VOICE_MODES = frozenset({"ptt-only", "ptt+wake", "hands-free", "continuous"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,6 +55,7 @@ class ResidentVoiceInvocationService:
         self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
         self._last_realtime_events: tuple[RealtimeEvent, ...] = ()
+        self._mode = "ptt+wake"
 
     def set_invocation_hooks(self, *, before_invocation: BeforeInvocation, after_invocation: AfterInvocation) -> None:
         self._before_invocation = before_invocation
@@ -75,6 +77,16 @@ class ResidentVoiceInvocationService:
 
     def status(self) -> SessionStatus:
         return self._session_service.status()
+
+    def mode(self) -> str:
+        return self._mode
+
+    def set_mode(self, mode: str) -> str:
+        normalized = mode.strip().lower()
+        if normalized not in RESIDENT_VOICE_MODES:
+            raise ValueError(f"unsupported resident voice mode: {mode}")
+        self._mode = normalized
+        return self._mode
 
     def last_realtime_events(self) -> tuple[RealtimeEvent, ...]:
         return self._last_realtime_events
