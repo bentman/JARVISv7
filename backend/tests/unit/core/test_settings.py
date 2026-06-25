@@ -103,7 +103,7 @@ def _reload_settings(monkeypatch, tmp_path, env_text: str | None, example_text: 
     return settings_module
 
 
-def test_settings_prefer_env_file_over_shell_env_when_env_file_exists(monkeypatch, tmp_path):
+def test_settings_prefer_shell_env_over_env_file_when_env_file_exists(monkeypatch, tmp_path):
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
@@ -118,11 +118,11 @@ def test_settings_prefer_env_file_over_shell_env_when_env_file_exists(monkeypatc
 
     settings = settings_module.load_settings()
 
-    assert settings.jarvis_language == "fr"
-    assert settings.ollama_base_url == "http://env-file:11434"
-    assert settings.ollama_model == "env-file-model"
-    assert settings.ollama_num_ctx == 2048
-    assert settings.live_tests is False
+    assert settings.jarvis_language == "pl"
+    assert settings.ollama_base_url == "http://shell:11434"
+    assert settings.ollama_model == "shell-model"
+    assert settings.ollama_num_ctx == 8192
+    assert settings.live_tests is True
 
 
 def test_settings_load_env_over_env_example_when_shell_env_absent(monkeypatch, tmp_path):

@@ -146,6 +146,26 @@ def test_wake_monitor_consumes_shared_stream_and_vad_delimits_command(tmp_path: 
     assert stream.status().running is False
 
 
+def test_wake_monitor_does_not_start_competing_fallback_when_resident_stream_is_stopped(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(),
+        chunk_source=lambda stop_event: (_ for _ in ()).throw(AssertionError("fallback source should not run")),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    status = monitor.start()
+
+    assert status.available is False
+    assert status.active is False
+    assert status.monitoring is False
+    assert status.reason == "resident audio stream is stopped; start resident voice stream before wake monitoring"
+
+
 def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Path) -> None:
     service = _service(tmp_path)
     invocations: list[tuple[str, np.ndarray | None, int | None]] = []

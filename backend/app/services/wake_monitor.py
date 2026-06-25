@@ -74,6 +74,10 @@ class WakeMonitorService:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return self._session_service.wake_status()
+            if self._resident_stream is not None and not self._resident_stream.status().running:
+                return self._session_service.record_wake_unavailable(
+                    "resident audio stream is stopped; start resident voice stream before wake monitoring"
+                )
             try:
                 runtime = self._runtime_factory()
                 available = runtime.is_available()

@@ -11,7 +11,7 @@ from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import ResidentAudioStream
-from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
+from backend.app.services.resident_voice_invocation import RESIDENT_STREAM_STOPPED_PTT_REASON, ResidentVoiceInvocationService
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.unit.services.test_session_service import _service
 
@@ -156,7 +156,7 @@ def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_pat
     assert status.invocation_source == "ptt"
 
 
-def test_ptt_falls_back_to_blocking_capture_when_stream_is_unavailable(tmp_path: Path) -> None:
+def test_ptt_only_mode_falls_back_to_blocking_capture_when_stream_is_stopped(tmp_path: Path) -> None:
     calls: list[tuple[np.ndarray, int]] = []
     service = _service(tmp_path)
     stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
@@ -167,12 +167,33 @@ def test_ptt_falls_back_to_blocking_capture_when_stream_is_unavailable(tmp_path:
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
     )
+    resident.set_mode("ptt-only")
 
     resident.ptt()
 
     _wait_for(lambda: service.status().last_transcript == "resident transcript")
     assert len(calls) == 1
     assert np.array_equal(calls[0][0], np.ones(8, dtype=np.float32))
+
+
+def test_wake_capable_mode_fails_visibly_when_required_stream_is_stopped(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    resident.ptt()
+
+    _wait_for(lambda: service.status().state == "FAILED")
+    assert calls == []
+    assert service.status().failure_reason == RESIDENT_STREAM_STOPPED_PTT_REASON
+    assert service.status().invocation_source == "ptt"
 
 
 def test_invocation_suspends_and_resumes_wake_monitor_hooks(tmp_path: Path) -> None:

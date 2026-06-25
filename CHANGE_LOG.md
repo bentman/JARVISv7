@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-25 14:45
+  - Summary: Completed corrective Sub-Slice T.14 active PTT and wake shared-stream behavior. PTT and wake now use the shared resident stream in resident modes, stopped-stream fallback is explicit/degraded instead of silent, and operator live proof confirmed resident PTT, resident stream capture, and wake command capture through the shared stream.
+  - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_wake_monitor.py`, `backend/tests/runtime/voice/test_resident_audio_activation_live.py`, `backend/tests/runtime/voice/test_resident_audio_live.py`, `backend/tests/runtime/turn/test_resident_barge_in_live.py`, `backend/app/core/settings.py`, `backend/tests/unit/core/test_settings.py`, `20260625_slice-t2.md`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_wake_monitor.py -q` PASS (`25 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/core/test_settings.py -q` PASS (`13 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`622 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). Operator live validation: `$env:JARVISV7_LIVE_TESTS = "1"; backend\.venv\Scripts\python -m pytest backend/tests/runtime/voice/test_resident_audio_activation_live.py backend/tests/runtime/voice/test_resident_audio_live.py -q` PASS (`3 passed in 30.14s`) with visible operator prompts for PTT, resident stream, and wake shared-stream validation.
+
 - 2026-06-25 14:03
   - Summary: Completed corrective Sub-Slice T.13 backend resident mode state. Resident voice mode is now explicit, idempotently settable through a backend endpoint, `ptt-only` stops wake monitoring, and hands-free/continuous selections are visible but degraded until their follow-up behavior is implemented.
   - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/app/api/schemas/status.py`, `backend/app/api/routes/status.py`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/api/test_routes.py`

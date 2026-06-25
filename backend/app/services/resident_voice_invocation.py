@@ -22,6 +22,7 @@ EngineProvider = Callable[[], TurnEngine]
 BeforeInvocation = Callable[[], object]
 AfterInvocation = Callable[[object], object]
 NO_SPEECH_PTT_REASON = "No speech detected during PTT"
+RESIDENT_STREAM_STOPPED_PTT_REASON = "resident audio stream is stopped; start resident voice stream before PTT"
 RESIDENT_VOICE_MODES = frozenset({"ptt-only", "ptt+wake", "hands-free", "continuous"})
 
 
@@ -120,6 +121,10 @@ class ResidentVoiceInvocationService:
         try:
             if self._before_invocation is not None:
                 hook_state = self._before_invocation()
+            if self._requires_running_resident_stream(request):
+                self._session_service.begin_voice_invocation(request.source)
+                self._session_service.fail_voice_invocation(RESIDENT_STREAM_STOPPED_PTT_REASON)
+                return
             request = self._resolve_ptt_audio(request)
             if request.source == "wake" and request.audio is not None and request.audio.size == 0:
                 self._session_service.begin_voice_invocation(request.source)
@@ -158,6 +163,15 @@ class ResidentVoiceInvocationService:
         if request.source != "ptt" or request.audio is not None:
             return request
         return self._capture_streamed_request(request)
+
+    def _requires_running_resident_stream(self, request: ResidentInvocationRequest) -> bool:
+        if request.source != "ptt" or request.audio is not None:
+            return False
+        if self._mode == "ptt-only":
+            return False
+        if self._resident_stream is None or self._utterance_segmenter is None:
+            return False
+        return not self._resident_stream.status().running
 
     def _capture_streamed_request(self, request: ResidentInvocationRequest) -> ResidentInvocationRequest:
         if self._resident_stream is None or self._utterance_segmenter is None:
