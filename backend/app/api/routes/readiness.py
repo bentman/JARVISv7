@@ -6,8 +6,15 @@ from fastapi import APIRouter, Depends
 
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state
-from backend.app.api.schemas.readiness import FamilyReadiness, PreflightSummary, ReadinessResponse, ServiceReadiness
+from backend.app.api.schemas.readiness import (
+    FamilyReadiness,
+    PreflightSummary,
+    ReadinessResponse,
+    ResidentAudioReadiness,
+    ServiceReadiness,
+)
 from backend.app.api.service_status import collect_service_statuses
+from backend.app.api.routes.status import build_resident_voice_status
 from backend.app.routing.runtime_selector import SelectionTrace
 
 router = APIRouter()
@@ -122,9 +129,24 @@ def build_readiness_response(state: ApiState) -> ReadinessResponse:
             name: ServiceReadiness(reachable=value.reachable, reason=value.reason)
             for name, value in services.items()
         },
+        resident_audio=_resident_audio_readiness(state),
     )
 
 
 @router.get("/readiness", response_model=ReadinessResponse)
 def readiness(state: ApiState = Depends(get_api_state)) -> ReadinessResponse:
     return build_readiness_response(state)
+
+
+def _resident_audio_readiness(state: ApiState) -> ResidentAudioReadiness:
+    status = build_resident_voice_status(state)
+    return ResidentAudioReadiness(
+        mode=status.mode,
+        available=status.available,
+        degraded_reasons=status.degraded_reasons,
+        stream_present=status.stream_present,
+        stream_running=status.stream_running,
+        vad_configured=status.vad_configured,
+        wake_monitoring=status.wake_monitoring,
+        barge_in_supported=status.barge_in_supported,
+    )

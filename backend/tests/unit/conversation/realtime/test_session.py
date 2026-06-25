@@ -165,3 +165,33 @@ def test_realtime_capture_failure_records_failed_status_and_event(tmp_path: Path
     assert service.status().state == "FAILED"
     assert service.status().failure_reason == "microphone unavailable"
     assert session.ledger.event_types()[-1] == RealtimeEventType.SESSION_FAILED
+
+
+def test_realtime_interrupted_turn_records_recovery_boundary(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    engine = _FakeEngine(
+        TurnResult(
+            turn_id="turn-interrupted",
+            session_id="session-realtime",
+            transcript="hello",
+            response_text="response",
+            final_state=ConversationState.IDLE,
+            interrupted=True,
+            interruption_events=[{"type": "barge_in", "recovery_state": "RECOVERING"}],
+        )
+    )
+    session = RealtimeConversationSession(
+        session_service=service,
+        engine_provider=lambda: engine,  # type: ignore[return-value]
+    )
+
+    result = session.run_voice_invocation(
+        source="ptt",
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    assert result.interrupted is True
+    event_types = session.ledger.event_types()
+    assert RealtimeEventType.USER_INTERRUPTION_DETECTED in event_types
+    assert RealtimeEventType.ASSISTANT_SPEECH_STOP_REQUESTED in event_types
+    assert RealtimeEventType.TURN_RECOVERING in event_types

@@ -327,6 +327,7 @@ def test_barge_in_detector_uses_rms_threshold_and_guard_time():
     detector = BargeInDetector(
         energy_threshold=0.02,
         guard_time_s=0.5,
+        min_speech_s=0.0,
         time_source=time_source,
     )
 
@@ -339,6 +340,48 @@ def test_barge_in_detector_uses_rms_threshold_and_guard_time():
 
     now = 100.6
     assert detector.detect(np.ones(160, dtype=np.float32)) is True
+
+
+def test_barge_in_detector_requires_minimum_speech_duration_with_vad() -> None:
+    class AlwaysSpeechVAD:
+        def detect(self, samples: np.ndarray, sample_rate: int):
+            _ = samples, sample_rate
+            return SimpleNamespace(speech=True)
+
+    detector = BargeInDetector(
+        guard_time_s=0.0,
+        min_speech_s=0.02,
+        sample_rate=1000,
+        vad=AlwaysSpeechVAD(),  # type: ignore[arg-type]
+        time_source=lambda: 1.0,
+    )
+    detector.reset()
+
+    assert detector.detect(np.ones(10, dtype=np.float32)) is False
+    assert detector.detect(np.ones(10, dtype=np.float32)) is True
+
+
+def test_barge_in_detector_resets_speech_accumulator_on_non_speech() -> None:
+    class SequencedVAD:
+        def __init__(self) -> None:
+            self.decisions = [True, False, True, True]
+
+        def detect(self, samples: np.ndarray, sample_rate: int):
+            _ = samples, sample_rate
+            return SimpleNamespace(speech=self.decisions.pop(0))
+
+    detector = BargeInDetector(
+        guard_time_s=0.0,
+        min_speech_s=0.02,
+        sample_rate=1000,
+        vad=SequencedVAD(),  # type: ignore[arg-type]
+        time_source=lambda: 1.0,
+    )
+
+    assert detector.detect(np.ones(10, dtype=np.float32)) is False
+    assert detector.detect(np.ones(10, dtype=np.float32)) is False
+    assert detector.detect(np.ones(10, dtype=np.float32)) is False
+    assert detector.detect(np.ones(10, dtype=np.float32)) is True
 
 
 def test_secondary_onnx_asr_runtime_boundary_is_unavailable():

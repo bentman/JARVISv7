@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+import threading
 
 import numpy as np
 
+from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.session_service import SessionService
 from backend.app.services.wake_monitor import WakeMonitorService
+from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.unit.services.test_session_service import _FakeWakeRuntime, _service
 
 
@@ -17,6 +21,24 @@ def _wait_for(predicate, timeout_s: float = 1.0) -> None:
             return
         time.sleep(0.01)
     raise AssertionError("condition was not reached")
+
+
+def _blocking_source(stop_event: threading.Event):
+    while not stop_event.is_set():
+        time.sleep(0.01)
+        if False:
+            yield np.array([], dtype=np.float32)
+
+
+def _segmenter() -> UtteranceSegmenter:
+    return UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=16000,
+        pre_roll_s=0.00025,
+        min_speech_s=0.0005,
+        silence_end_s=0.0005,
+        no_speech_timeout_s=0.0005,
+    )
 
 
 def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
@@ -82,6 +104,75 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
     assert audio is not None
     assert audio.dtype == np.float32
     assert audio.size >= 8
+
+
+def test_wake_monitor_consumes_shared_stream_and_vad_delimits_command(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    invocations: list[tuple[str, np.ndarray | None, int | None]] = []
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+
+    def invoke(source_name: str, audio: np.ndarray | None = None, sample_rate: int | None = None) -> None:
+        invocations.append((source_name, audio, sample_rate))
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True]),
+        chunk_source=lambda stop_event: (_ for _ in ()).throw(AssertionError("shared stream should be used")),
+        invocation_callback=invoke,
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    monitor.start()
+    _wait_for(lambda: stream.status().subscribers == 1)
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.1, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+
+    _wait_for(lambda: len(invocations) == 1)
+    monitor.stop()
+    stream.stop()
+
+    source_name, audio, sample_rate = invocations[0]
+    assert source_name == "wake"
+    assert sample_rate == 16000
+    assert audio is not None
+    assert audio.dtype == np.float32
+    assert audio.size >= 20
+    assert stream.status().running is False
+
+
+def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    invocations: list[tuple[str, np.ndarray | None, int | None]] = []
+
+    def source(stop_event):
+        yield np.ones(4, dtype=np.int16)
+        yield np.zeros(4, dtype=np.int16)
+        yield np.zeros(4, dtype=np.int16)
+        while not stop_event.is_set():
+            time.sleep(0.01)
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[True]),
+        chunk_source=source,
+        invocation_callback=lambda source_name, audio, sample_rate: invocations.append((source_name, audio, sample_rate)),
+        utterance_segmenter=_segmenter(),
+    )
+
+    monitor.start()
+    _wait_for(lambda: len(invocations) == 1)
+    monitor.stop()
+
+    assert invocations[0][0] == "wake"
+    assert invocations[0][1] is not None
+    assert invocations[0][1].size == 0
+    assert invocations[0][2] == 16000
 
 
 def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:
@@ -173,4 +264,32 @@ def test_wake_monitor_can_pause_for_resident_voice_and_resume(tmp_path: Path) ->
     resumed = monitor.resume_after_voice_invocation(should_resume)
     assert resumed.active is True
     assert resumed.monitoring is True
+
+
+def test_wake_pause_resume_does_not_stop_shared_resident_stream(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(),
+        resident_stream=stream,
+    )
+
+    monitor.start()
+    _wait_for(lambda: stream.status().subscribers == 1)
+    should_resume = monitor.pause_for_voice_invocation()
+    paused = service.wake_status()
+
+    assert should_resume is True
+    assert paused.monitoring is False
+    assert stream.status().running is True
+    assert stream.status().subscribers == 0
+
+    resumed = monitor.resume_after_voice_invocation(should_resume)
+    _wait_for(lambda: stream.status().subscribers == 1)
+    monitor.stop()
+    stream.stop()
+
+    assert resumed.active is True
 

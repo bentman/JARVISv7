@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import queue
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 import numpy as np
@@ -10,14 +10,18 @@ import numpy as np
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.realtime.events import RealtimeEvent
 from backend.app.conversation.realtime.session import RealtimeConversationSession
+from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services import voice_service
+from backend.app.services.audio_stream import AudioChunk, ResidentAudioStream
 from backend.app.services.session_service import SessionService, SessionStatus
+from backend.app.services.utterance_segmenter import UtteranceSegmenter
 
 
 AudioCapture = Callable[[], tuple[np.ndarray, int]]
 EngineProvider = Callable[[], TurnEngine]
 BeforeInvocation = Callable[[], object]
 AfterInvocation = Callable[[object], object]
+NO_SPEECH_PTT_REASON = "No speech detected during PTT"
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,12 +38,16 @@ class ResidentVoiceInvocationService:
         session_service: SessionService,
         engine_provider: EngineProvider,
         audio_capture: AudioCapture | None = None,
+        resident_stream: ResidentAudioStream | None = None,
+        utterance_segmenter: UtteranceSegmenter | None = None,
         before_invocation: BeforeInvocation | None = None,
         after_invocation: AfterInvocation | None = None,
     ) -> None:
         self._session_service = session_service
         self._engine_provider = engine_provider
         self._audio_capture = audio_capture or (lambda: voice_service.capture_audio(duration_s=3.0))
+        self._resident_stream = resident_stream
+        self._utterance_segmenter = utterance_segmenter
         self._before_invocation = before_invocation
         self._after_invocation = after_invocation
         self._queue: queue.Queue[ResidentInvocationRequest] = queue.Queue()
@@ -100,6 +108,15 @@ class ResidentVoiceInvocationService:
         try:
             if self._before_invocation is not None:
                 hook_state = self._before_invocation()
+            request = self._resolve_ptt_audio(request)
+            if request.source == "wake" and request.audio is not None and request.audio.size == 0:
+                self._session_service.begin_voice_invocation(request.source)
+                self._session_service.fail_voice_invocation("No speech detected after wake")
+                return
+            if request.source == "ptt" and request.audio is not None and request.audio.size == 0:
+                self._session_service.begin_voice_invocation(request.source)
+                self._session_service.fail_voice_invocation(NO_SPEECH_PTT_REASON)
+                return
             realtime_session = RealtimeConversationSession(
                 session_service=self._session_service,
                 engine_provider=self._engine_provider,
@@ -110,6 +127,8 @@ class ResidentVoiceInvocationService:
                 sample_rate=request.sample_rate,
                 audio_capture=self._audio_capture,
             )
+            if result.interrupted and request.source != "barge_in":
+                self._enqueue_barge_in_follow_up()
             if result.failure_reason:
                 return
         except Exception as exc:
@@ -122,3 +141,55 @@ class ResidentVoiceInvocationService:
                     self._after_invocation(hook_state)
                 except Exception:
                     pass
+
+    def _resolve_ptt_audio(self, request: ResidentInvocationRequest) -> ResidentInvocationRequest:
+        if request.source != "ptt" or request.audio is not None:
+            return request
+        return self._capture_streamed_request(request)
+
+    def _capture_streamed_request(self, request: ResidentInvocationRequest) -> ResidentInvocationRequest:
+        if self._resident_stream is None or self._utterance_segmenter is None:
+            return request
+        if not self._resident_stream.status().running:
+            return request
+
+        subscriber = self._resident_stream.subscribe()
+        try:
+            segment = self._utterance_segmenter.capture(_subscriber_chunks(subscriber))
+        finally:
+            self._resident_stream.unsubscribe(subscriber)
+
+        if not segment.speech_started or segment.audio.size == 0:
+            return ResidentInvocationRequest(source=request.source, audio=np.array([], dtype=np.float32), sample_rate=segment.sample_rate)
+        return ResidentInvocationRequest(source=request.source, audio=segment.audio, sample_rate=segment.sample_rate)
+
+    def _enqueue_barge_in_follow_up(self) -> None:
+        request = self._capture_streamed_request(ResidentInvocationRequest(source="barge_in"))
+        if request.audio is None or request.audio.size == 0 or request.sample_rate is None:
+            return
+        self.enqueue("barge_in", request.audio, request.sample_rate)
+
+
+def _subscriber_chunks(subscriber: queue.Queue[AudioChunk]) -> Iterable[AudioChunk]:
+    while True:
+        yield subscriber.get(timeout=0.1)
+
+
+def default_utterance_segmenter() -> UtteranceSegmenter:
+    return UtteranceSegmenter(vad=EnergyVADRuntime())
+
+
+def resident_interruption_chunks(resident_stream: ResidentAudioStream | None) -> Iterable[np.ndarray] | None:
+    if resident_stream is None or not resident_stream.status().running:
+        return None
+    return _resident_interruption_chunks(resident_stream)
+
+
+def _resident_interruption_chunks(resident_stream: ResidentAudioStream) -> Iterable[np.ndarray]:
+    subscriber = resident_stream.subscribe()
+    try:
+        while resident_stream.status().running:
+            chunk = subscriber.get(timeout=0.1)
+            yield np.asarray(chunk.samples, dtype=np.float32).reshape(-1)
+    finally:
+        resident_stream.unsubscribe(subscriber)

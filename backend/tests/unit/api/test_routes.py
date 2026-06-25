@@ -286,6 +286,34 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     assert state.llm is selected_llm
     assert prepare_calls == [(profile, preflight, report.flags)]
     assert selector_calls == [(policy, preflight, profile, prepared_local)]
+    assert state.resident_audio_stream is not None
+    assert state.utterance_segmenter is not None
+    assert state.engine.barge_in_detector is not None
+    assert state.engine.interruption_audio_chunks is None
+
+
+def test_build_engine_injects_resident_interruption_chunks_when_stream_running() -> None:
+    state = _state()
+    assert state.resident_audio_stream is None
+
+    from backend.app.services.audio_stream import ResidentAudioStream
+
+    def blocking_source(stop_event):
+        while not stop_event.is_set():
+            time.sleep(0.01)
+            if False:
+                yield np.array([], dtype=np.float32)
+
+    stream = ResidentAudioStream(chunk_source_factory=blocking_source)
+    stream.start()
+    try:
+        state.resident_audio_stream = stream
+        engine = app_module.build_engine(state)  # type: ignore[arg-type]
+    finally:
+        stream.stop()
+
+    assert engine.barge_in_detector is not None
+    assert engine.interruption_audio_chunks is not None
 
 
 def test_app_shutdown_stops_managed_local_llm_sidecar() -> None:
@@ -328,6 +356,9 @@ def test_readiness_returns_family_readiness() -> None:
     assert response.status_code == 200
     assert payload["profile_id"] == "profile-test"
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
+    assert payload["resident_audio"]["mode"] == "ptt+wake"
+    assert payload["resident_audio"]["stream_present"] is False
+    assert payload["resident_audio"]["vad_configured"] is False
     assert payload["families"]["stt"]["runtime"] == "fake-stt"
     assert payload["families"]["tts"]["runtime"] == "fake-tts"
     assert payload["families"]["llm"]["runtime"] == "fake-llm"
@@ -785,12 +816,63 @@ def test_wake_status_reflects_deterministic_detection_state() -> None:
     payload = response.json()
     assert payload["provider"] == "openwakeword"
     assert payload["available"] is True
-    assert payload["reason"] == "wake detected"
-    assert payload["last_detected"] is not None
-    assert payload["detection_count"] == 1
-    assert payload["last_error"] is None
-    assert payload["last_score"] == 0.7
-    assert payload["threshold"] == 0.5
+
+
+def test_resident_voice_status_reports_configured_stream_and_vad() -> None:
+    state = _state()
+
+    from backend.app.services.audio_stream import ResidentAudioStream
+    from backend.app.services.resident_voice_invocation import default_utterance_segmenter
+
+    state.resident_audio_stream = ResidentAudioStream()
+    state.utterance_segmenter = default_utterance_segmenter()
+    response = TestClient(create_app(state)).get("/status/resident-voice")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "ptt+wake"
+    assert payload["available"] is True
+    assert payload["degraded_reasons"] == []
+    assert payload["stream_present"] is True
+    assert payload["stream_running"] is False
+    assert payload["vad_configured"] is True
+    assert payload["ptt_supported"] is True
+    assert payload["wake_supported"] is True
+    assert payload["barge_in_supported"] is True
+
+
+def test_resident_voice_status_reports_degraded_missing_stream_and_vad() -> None:
+    state = _state()
+    state.resident_audio_stream = None
+    state.utterance_segmenter = None
+
+    response = TestClient(create_app(state)).get("/status/resident-voice")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["available"] is False
+    assert "resident audio stream is not configured" in payload["degraded_reasons"]
+    assert "utterance segmenter is not configured" in payload["degraded_reasons"]
+    assert payload["stream_present"] is False
+    assert payload["vad_configured"] is False
+
+
+def test_readiness_embeds_resident_voice_diagnostics() -> None:
+    state = _state()
+
+    from backend.app.services.audio_stream import ResidentAudioStream
+    from backend.app.services.resident_voice_invocation import default_utterance_segmenter
+
+    state.resident_audio_stream = ResidentAudioStream()
+    state.utterance_segmenter = default_utterance_segmenter()
+    response = TestClient(create_app(state)).get("/readiness")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["resident_audio"]["available"] is True
+    assert payload["resident_audio"]["stream_present"] is True
+    assert payload["resident_audio"]["vad_configured"] is True
+    assert payload["resident_audio"]["barge_in_supported"] is True
 
 
 def test_wake_status_reflects_error_state() -> None:

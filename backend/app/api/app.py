@@ -26,15 +26,23 @@ from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.base import STTBase
+from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.routing.runtime_selector import SelectionTrace, select_llm
+from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.session_service import SessionService
-from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
+from backend.app.services.audio_stream import ResidentAudioStream
+from backend.app.services.resident_voice_invocation import (
+    ResidentVoiceInvocationService,
+    default_utterance_segmenter,
+    resident_interruption_chunks,
+)
+from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.app.services.wake_monitor import WakeMonitorService
 
 
@@ -58,6 +66,8 @@ class ApiState:
     session_service: SessionService
     wake_monitor: WakeMonitorService
     cache_manager: CacheManager
+    resident_audio_stream: ResidentAudioStream | None = None
+    utterance_segmenter: UtteranceSegmenter | None = None
     resident_voice: ResidentVoiceInvocationService | None = None
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
@@ -90,6 +100,8 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         personality=state.personality,
         session_manager=manager,
         cache_manager=state.cache_manager,
+        barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2),
+        interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
     )
 
 
@@ -128,6 +140,8 @@ def build_startup_state() -> ApiState:
         resident_voice=None,  # type: ignore[arg-type]
         wake_monitor=None,  # type: ignore[arg-type]
         cache_manager=cache_manager,
+        resident_audio_stream=ResidentAudioStream(),
+        utterance_segmenter=default_utterance_segmenter(),
         llm_trace=llm_trace,
         local_llm_sidecar=local_llm.sidecar,
     )
@@ -140,11 +154,15 @@ def build_startup_state() -> ApiState:
     state.resident_voice = ResidentVoiceInvocationService(
         session_service=state.session_service,
         engine_provider=lambda: state.session_service.engine(),
+        resident_stream=state.resident_audio_stream,
+        utterance_segmenter=state.utterance_segmenter,
     )
     state.wake_monitor = WakeMonitorService(
         session_service=state.session_service,
         runtime_factory=lambda: select_wake_runtime(state.preflight, state.profile),
         invocation_callback=state.resident_voice.enqueue,
+        resident_stream=state.resident_audio_stream,
+        utterance_segmenter=state.utterance_segmenter,
     )
     state.resident_voice.set_invocation_hooks(
         before_invocation=state.wake_monitor.pause_for_voice_invocation,

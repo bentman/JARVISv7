@@ -2,13 +2,17 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+import threading
 
 import numpy as np
 
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
+from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
+from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.unit.services.test_session_service import _service
 
 
@@ -37,6 +41,24 @@ def _wait_for(predicate, timeout_s: float = 1.0) -> None:
             return
         time.sleep(0.01)
     raise AssertionError("condition was not reached")
+
+
+def _blocking_source(stop_event: threading.Event):
+    while not stop_event.is_set():
+        time.sleep(0.01)
+        if False:
+            yield np.array([], dtype=np.float32)
+
+
+def _segmenter() -> UtteranceSegmenter:
+    return UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=16000,
+        pre_roll_s=0.00025,
+        min_speech_s=0.0005,
+        silence_end_s=0.0005,
+        no_speech_timeout_s=0.0005,
+    )
 
 
 def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: Path) -> None:
@@ -76,6 +98,81 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
         RealtimeEventType.TURN_COMPLETED,
         RealtimeEventType.SESSION_IDLE,
     ]
+
+
+def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    resident.ptt()
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+    stream.stop()
+
+    assert len(calls) == 1
+    assert calls[0][1] == 16000
+    assert calls[0][0].shape == (20,)
+    assert np.array_equal(calls[0][0][:4], np.zeros(4, dtype=np.float32))
+    assert service.status().invocation_source == "ptt"
+
+
+def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    resident.ptt()
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+
+    _wait_for(lambda: service.status().state == "FAILED")
+    stream.stop()
+    status = service.status()
+
+    assert calls == []
+    assert status.failure_reason == "No speech detected during PTT"
+    assert status.invocation_source == "ptt"
+
+
+def test_ptt_falls_back_to_blocking_capture_when_stream_is_unavailable(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    resident.ptt()
+
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+    assert len(calls) == 1
+    assert np.array_equal(calls[0][0], np.ones(8, dtype=np.float32))
 
 
 def test_invocation_suspends_and_resumes_wake_monitor_hooks(tmp_path: Path) -> None:
@@ -139,6 +236,71 @@ def test_wake_and_ptt_enqueue_same_invocation_service(tmp_path: Path) -> None:
     _wait_for(lambda: service.status().invocation_source == "wake")
     assert sources == ["ptt", "wake"]
     assert service.status().last_transcript == "resident transcript"
+
+
+def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    interrupted = TurnResult(
+        turn_id="turn-interrupted",
+        session_id="session-resident",
+        transcript="first",
+        response_text="interrupted response",
+        final_state=ConversationState.IDLE,
+        interrupted=True,
+        interruption_events=[{"type": "barge_in", "recovery_state": "RECOVERING"}],
+    )
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls, interrupted if len(calls) == 0 else None),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
+    _wait_for(lambda: len(calls) == 1)
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+
+    _wait_for(lambda: service.status().invocation_source == "barge_in")
+    stream.stop()
+
+    assert len(calls) == 2
+    assert calls[1][0].shape == (20,)
+    assert calls[1][1] == 16000
+    assert service.status().last_transcript == "resident transcript"
+
+
+def test_interrupted_barge_in_does_not_recursively_queue_follow_up(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    interrupted = TurnResult(
+        turn_id="turn-interrupted",
+        session_id="session-resident",
+        transcript="barge",
+        response_text="interrupted response",
+        final_state=ConversationState.IDLE,
+        interrupted=True,
+        interruption_events=[{"type": "barge_in", "recovery_state": "RECOVERING"}],
+    )
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    resident.enqueue("barge_in")
+
+    _wait_for(lambda: service.status().invocation_source == "barge_in")
+    time.sleep(0.05)
+
+    assert len(calls) == 1
 
 
 def test_wake_invocation_uses_provided_audio_without_new_capture(tmp_path: Path) -> None:
@@ -210,6 +372,24 @@ def test_wake_empty_transcript_reports_no_speech_detected(tmp_path: Path) -> Non
 
     _wait_for(lambda: service.status().state == "FAILED")
     status = service.status()
+    assert status.failure_reason == "No speech detected after wake"
+    assert status.invocation_source == "wake"
+
+
+def test_wake_empty_audio_reports_no_speech_without_fallback_capture(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("empty wake audio should not recapture")),
+    )
+
+    resident.enqueue("wake", np.array([], dtype=np.float32), 16000)
+
+    _wait_for(lambda: service.status().state == "FAILED")
+    status = service.status()
+    assert calls == []
     assert status.failure_reason == "No speech detected after wake"
     assert status.invocation_source == "wake"
 

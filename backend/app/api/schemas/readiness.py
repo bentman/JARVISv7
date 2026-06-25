@@ -29,6 +29,17 @@ class ServiceReadiness(BaseModel):
     reason: str
 
 
+class ResidentAudioReadiness(BaseModel):
+    mode: str
+    available: bool
+    degraded_reasons: list[str]
+    stream_present: bool
+    stream_running: bool
+    vad_configured: bool
+    wake_monitoring: bool
+    barge_in_supported: bool
+
+
 class ReadinessResponse(BaseModel):
     status: str
     profile_id: str
@@ -39,3 +50,4 @@ class ReadinessResponse(BaseModel):
     families: dict[str, FamilyReadiness]
     preflight: PreflightSummary
     services: dict[str, ServiceReadiness]
+    resident_audio: ResidentAudioReadiness

@@ -629,7 +629,7 @@ def test_engine_retrieval_failure_does_not_fail_turn(tmp_path: Path) -> None:
 
 def test_barge_in_detector_ignores_guard_time_input():
     now = 0.0
-    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.5, time_source=lambda: now)
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.5, min_speech_s=0.0, time_source=lambda: now)
     detector.reset()
 
     assert detector.detect(np.ones(8, dtype=np.float32)) is False
@@ -641,7 +641,7 @@ def test_barge_in_detector_fires_after_guard_time_for_above_threshold_rms():
     def time_source() -> float:
         return now
 
-    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.5, time_source=time_source)
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.5, min_speech_s=0.0, time_source=time_source)
     detector.reset()
     now = 0.6
 
@@ -651,7 +651,7 @@ def test_barge_in_detector_fires_after_guard_time_for_above_threshold_rms():
 
 
 def test_interruption_stops_playback_and_transitions_to_idle():
-    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0)
     playback = FakePlayback()
     result = _engine(
         tts=FakeTTS(available=True),
@@ -667,7 +667,7 @@ def test_interruption_stops_playback_and_transitions_to_idle():
 
 
 def test_interruption_event_recorded_in_turn_result():
-    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0)
     result = _engine(
         tts=FakeTTS(available=True),
         barge_in_detector=detector,
@@ -683,7 +683,7 @@ def test_interruption_event_recorded_in_turn_result():
 
 def test_interrupted_turn_artifact_contains_interruption_event(tmp_path):
     manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
-    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0)
 
     result = _engine(
         tts=FakeTTS(available=True),
@@ -698,7 +698,7 @@ def test_interrupted_turn_artifact_contains_interruption_event(tmp_path):
 
 
 def test_no_interruption_path_remains_normal():
-    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, time_source=lambda: 1.0)
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0)
     playback = FakePlayback()
 
     result = _engine(
