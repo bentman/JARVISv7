@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-25 13:40
+  - Summary: Recorded a corrective Slice T planning note. Slice T.1-T.8 produced partial resident voice scaffolding, but live resident microphone, wake, barge-in, desktop/operator, status contract, lifecycle, and inventory closeout gaps remain; corrective Slice T2 sub-slices T.9-T.17 are planned to follow in `20260625_slice-t2.md`.
+  - Scope: `CHANGE_LOG.md`, `20260625_slice-t2.md`
+  - Host class(es): Windows workspace documentation validation only; no backend/runtime host validation was performed for this note.
+  - Evidence: `Select-String -Path 20260625_slice-t2.md -Pattern ...` PASS (confirmed T.9-T.17 headings and closeout criteria). `git diff --check -- 20260625_slice-t2.md` PASS. `git status --short` showed `?? 20260625_slice-t2.md` and `?? architect_slice-t9-t16.md` before this entry.
+
 - 2026-06-25 12:22
   - Summary: Completed Sub-Slice T.8 desktop resident voice mode controls and end-to-end resident proof surface. The desktop now bridges `/status/resident-voice`, polls resident diagnostics, renders mode/audio/VAD/barge-in/degraded state in the Operator panel, and exposes guarded PTT-only, wake, hands-free, and continuous mode options without adding backend mode mutation.
   - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/components/resident-voice.js`, `desktop/src/index.html`, `desktop/src/style.css`, `desktop/tests/static.test.mjs`
