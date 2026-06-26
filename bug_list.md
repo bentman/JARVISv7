@@ -1,5 +1,34 @@
 # Bug List
 
+## 2026-06-26 - T17 live tests emit sounddevice NumPy 2.5 deprecation warnings
+
+Status: Open
+
+Observed in `C:/Users/bentl/OneDrive/Desktop/T17-LiveTestResults.txt` after the ARM64 T17 operator live run was accepted as PASS with warnings.
+
+Warning census:
+
+- Resident audio activation/live voice command: `3 passed, 376 warnings in 32.29s`.
+- Barge-in live command: `1 passed, 242 warnings in 11.13s`.
+- Hands-free live command: `1 passed, 270 warnings in 16.91s`.
+- Desktop resident voice live command: `1 passed in 35.69s` with no pytest warning summary in the captured output.
+- Total captured pytest deprecation warnings: 888, all attributed to `backend\.venv\Lib\site-packages\sounddevice.py:2794`.
+- Non-pytest warning text also appeared before each live command: `[transformers] PyTorch was not found. Models won't be available and only tokenizers, configuration and file/data utilities can be used.`
+
+Probable root cause:
+
+- The repeated pytest warnings are third-party `sounddevice` warnings triggered by live microphone reads under installed `numpy=2.5.0` and `sounddevice=0.5.5`.
+- The warning text says `sounddevice.py` assigns `data.shape = -1, channels`, which NumPy 2.5 deprecates. Repo code already reshapes captured arrays with `np.asarray(...).reshape(-1)` after reads; the warning is emitted before repo-owned reshaping.
+- The warnings correlate with live microphone paths using `sounddevice.InputStream.read()` through `ResidentAudioStream` and wake/voice capture paths, not with deterministic unit/static tests.
+- The Transformers/PyTorch text is likely environment/readiness noise from tokenizer/config-only imports on the ARM64 QNN profile, not a failing condition for these accepted live tests.
+
+Possible solution:
+
+- Prefer an upstream dependency fix: upgrade to a `sounddevice` release that is compatible with NumPy 2.5 shape-assignment deprecations once available, through `pyproject.toml` plus `scripts/provision.py` only.
+- If no compatible release exists, evaluate a temporary NumPy upper bound below 2.5 for affected host extras, but only after checking ARM64/QNN package compatibility and revalidating voice/runtime paths.
+- Avoid blanket warning suppression as the first fix. If suppression is needed temporarily, scope it narrowly to the known `sounddevice.py` NumPy shape deprecation in operator live tests so new audio warnings remain visible.
+- Treat the Transformers/PyTorch line separately: confirm whether QNN/STT runtime imports require only tokenizer/config utilities, then either leave as benign readiness noise or route the import through an existing readiness/degraded-status surface.
+
 ## 2026-06-20 - PTT STT capture window and QNN Whisper transcript reliability
 
 Status: Open
