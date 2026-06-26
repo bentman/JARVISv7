@@ -109,7 +109,7 @@ backend/.venv/Scripts/python scripts/validate_backend.py regression
 backend/.venv/Scripts/python scripts/validate_backend.py runtime --families <family> --devices cpu
 ```
 
-Add a NOTE if validation depends on a provisioned venv or external service, so the implementer knows to defer change-logging if the prerequisite is not yet met.
+Add a NOTE if validation depends on a provisioned venv or external service, so the implementer knows to skip change-logging if the prerequisite is not yet met.
 
 ### Acceptance
 
@@ -159,7 +159,7 @@ Each criterion should be:
 Standard rules to include or adapt:
 - `CHANGE_LOG.md`: one entry per sub-slice after validation is confirmed.
 - `SYSTEM_INVENTORY.md`: one entry at slice closeout (or per sub-slice if the slice is large). State: `Verified`.
-- Inventory notes should document any SKIP states, known limitations, deferred capabilities, and explicit exclusions of out-of-scope groups.
+- Inventory notes should document any SKIP states, known limitations, skipped capabilities, and explicit exclusions of out-of-scope groups.
 - Use append-only corrections if prior records need qualification; never rewrite history.
 
 ---

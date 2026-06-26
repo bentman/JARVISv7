@@ -182,12 +182,20 @@ def stop_managed_local_llm(state: ApiState | None) -> None:
     state.local_llm_sidecar = None
 
 
+def stop_resident_audio_stream(state: ApiState | None) -> None:
+    if state is None or state.resident_audio_stream is None:
+        return
+    state.resident_audio_stream.stop()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        stop_managed_local_llm(getattr(app.state, "jarvis_state", None))
+        state = getattr(app.state, "jarvis_state", None)
+        stop_resident_audio_stream(state)
+        stop_managed_local_llm(state)
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:

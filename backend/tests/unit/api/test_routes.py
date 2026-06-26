@@ -328,6 +328,20 @@ def test_app_shutdown_stops_managed_local_llm_sidecar() -> None:
     assert state.local_llm_sidecar is None
 
 
+def test_app_shutdown_stops_resident_audio_stream() -> None:
+    state = _state()
+    from backend.app.services.audio_stream import ResidentAudioStream
+
+    state.resident_audio_stream = ResidentAudioStream(chunk_source_factory=_wake_source)
+
+    with TestClient(create_app(state)) as client:
+        response = client.post("/status/resident-voice/start")
+        assert response.status_code == 200
+        assert state.resident_audio_stream.status().running is True
+
+    assert state.resident_audio_stream.status().running is False
+
+
 def test_app_shutdown_tolerates_missing_managed_local_llm_sidecar() -> None:
     state = _state()
     state.local_llm_sidecar = None

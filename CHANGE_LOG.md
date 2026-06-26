@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-26 10:51
+  - Summary: Added backend shutdown cleanup for the resident audio stream. FastAPI lifespan now releases the desktop-started shared microphone stream before managed local LLM sidecar cleanup.
+  - Scope: `backend/app/api/app.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q` PASS (`49 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`632 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `git diff --check -- backend\app\api\app.py backend\tests\unit\api\test_routes.py` PASS with line-ending warnings only.
+
 - 2026-06-26 10:03
   - Summary: Revalidated corrective Sub-Slices T.14-T.17 focused non-operator tests. Resident shared-stream invocation, wake monitor, realtime conversation, resident mode, utterance segmenter, and desktop static contract tests all passed without running standard unit/regression validation.
   - Scope: `CHANGE_LOG.md` validation entry only; validated existing T.14-T.17 focused surfaces in `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_wake_monitor.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/services/test_utterance_segmenter.py`, and `desktop/tests/static.test.mjs`.
@@ -231,14 +237,14 @@
   - Note: CUDA profile live validation is AMD64-only. Non-CUDA GPU, ARM64 QNN/Hexagon, desktop behavior beyond static tests, provisioning behavior, model artifacts, and `SYSTEM_INVENTORY.md` capability truth were unchanged.
 
 - 2026-06-19 07:14
-  - Summary: Completed Slice S.5 NPU non-QNN profile framework on Windows AMD64. Qualcomm NPU base and QNN profile metadata now record deferred Snapdragon/Hexagon viability findings separately, and focused tests prove ARM64 CPU fallback remains selected when NPU/QNN sidecar artifacts are unavailable.
+  - Summary: Completed Slice S.5 NPU non-QNN profile framework on Windows AMD64. Qualcomm NPU base and QNN profile metadata now record postponed Snapdragon/Hexagon viability findings separately, and focused tests prove ARM64 CPU fallback remains selected when NPU/QNN sidecar artifacts are unavailable.
   - Scope: `config/models/llm.yaml`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `CHANGE_LOG.md`
   - Host class(es): Windows AMD64 / amd64 validated.
   - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\runtime\hardware\test_llm_serve_profile_resolution.py -q` PASS (`1 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`11 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_llm_runtime_artifacts.py -q` PASS (`15 passed`). `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with `windows_arm64_npu_qualcomm_base` and `windows_arm64_npu_qualcomm_qnn` reported as `state=skipped`, `degraded_reason=SKIP-no-viable-binary`. `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`564 passed, 1 skipped`; fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`). `git diff --check` PASS with line-ending warnings only.
   - Note: No Qualcomm NPU/QNN/Hexagon runtime artifact was acquired or live-validated. CUDA, desktop, sidecar, provisioning behavior, runtime binaries, model artifacts, and `SYSTEM_INVENTORY.md` capability truth were unchanged.
 
 - 2026-06-19 07:05
-  - Summary: Completed Slice S.4 GPU non-CUDA profile framework on Windows AMD64. AMD and Intel GPU LLM profiles now record deferred candidate artifact families while remaining declared-degraded, and focused tests prove missing non-CUDA GPU binaries do not block CPU fallback or select unrelated hardware profiles.
+  - Summary: Completed Slice S.4 GPU non-CUDA profile framework on Windows AMD64. AMD and Intel GPU LLM profiles now record skipped candidate artifact families while remaining declared-degraded, and focused tests prove missing non-CUDA GPU binaries do not block CPU fallback or select unrelated hardware profiles.
   - Scope: `config/models/llm.yaml`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `CHANGE_LOG.md`
   - Host class(es): Windows AMD64 / amd64 validated.
   - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`10 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_ensure_models_llm_runtime_artifacts.py -q` PASS (`14 passed`). `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with `windows_amd64_gpu_amd` and `windows_amd64_gpu_intel` reported as `state=skipped`, `degraded_reason=SKIP-source-pending`, and current host selected `windows_amd64_cpu`. `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`562 passed, 1 skipped`; fingerprint `arch=amd64 python=3.12.10 extras=[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev] readiness=ready`). `git diff --check` PASS with line-ending warnings only.

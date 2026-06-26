@@ -127,7 +127,7 @@ hw-gpu-nvidia-cuda = [
   "onnxruntime-gpu>=1.17",
 ]
 
-# AMD GPU (DirectML on Windows; ROCm on Linux deferred to H.3).
+# AMD GPU (DirectML on Windows; ROCm on Linux skipped intentionally).
 # Resolver applies on AMD hosts.
 hw-gpu-amd = [
   "onnxruntime-directml>=1.17; sys_platform=='win32'",
