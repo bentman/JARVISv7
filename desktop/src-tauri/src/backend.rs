@@ -221,6 +221,38 @@ pub fn get_resident_voice_status(base_url: &str) -> Result<String, String> {
     get_json(base_url, "/status/resident-voice")
 }
 
+pub fn start_resident_voice_stream(base_url: &str) -> Result<String, String> {
+    post_resident_voice_action(base_url, "/status/resident-voice/start")
+}
+
+pub fn stop_resident_voice_stream(base_url: &str) -> Result<String, String> {
+    post_resident_voice_action(base_url, "/status/resident-voice/stop")
+}
+
+pub fn set_resident_voice_mode(base_url: &str, mode: &str) -> Result<String, String> {
+    let response = Client::new()
+        .put(format!("{base_url}/status/resident-voice/mode"))
+        .json(&json!({"mode": mode}))
+        .send()
+        .map_err(|err| format!("PUT /status/resident-voice/mode failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("PUT /status/resident-voice/mode body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("PUT /status/resident-voice/mode returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
+fn post_resident_voice_action(base_url: &str, path: &str) -> Result<String, String> {
+    let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("POST {path} body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("POST {path} returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
 fn post_wake_action(base_url: &str, path: &str) -> Result<String, String> {
     let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();

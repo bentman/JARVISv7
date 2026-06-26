@@ -42,10 +42,10 @@ export function createResidentVoicePresenter(options) {
     if (!residentModeEl) return;
     const mode = status.mode || "ptt+wake";
     const options = [
-      ["ptt-only", mode === "ptt-only" || mode === "ptt+wake"],
-      ["ptt+wake", mode === "ptt+wake"],
-      ["hands-free", mode === "hands-free"],
-      ["continuous", mode === "continuous"],
+      ["ptt-only", true],
+      ["ptt+wake", true],
+      ["hands-free", true],
+      ["continuous", true],
     ];
     residentModeEl.innerHTML = "";
     for (const [value, available] of options) {
@@ -57,8 +57,8 @@ export function createResidentVoicePresenter(options) {
       residentModeEl.appendChild(option);
     }
     residentModeEl.value = modeLabels[mode] ? mode : "ptt+wake";
-    residentModeEl.disabled = true;
-    residentModeEl.title = "Backend mode changes are not exposed by this build.";
+    residentModeEl.disabled = !status.ptt_supported;
+    residentModeEl.title = status.ptt_supported ? "Resident voice mode" : "Resident voice mode is unavailable.";
   }
 
   function renderResidentModeStatus(status) {
@@ -83,6 +83,9 @@ export function createResidentVoicePresenter(options) {
       ["vad", boolText(status.vad_configured)],
       ["barge-in", boolText(status.barge_in_supported)],
       ["barge-in-wired", boolText(status.barge_in_wired)],
+      ["follow-up-listening", boolText(status.follow_up_listening)],
+      ["follow-up-source", status.follow_up_source || ""],
+      ["continuous-active", boolText(status.continuous_active)],
     ];
     if (degradedReasons.length > 0) {
       rows.push(["degraded", degradedReasons.join("; ")]);
@@ -136,7 +139,7 @@ export function createResidentVoicePresenter(options) {
     const state = status.state || "IDLE";
     setStateLabel(state, turnStateEl);
     const source = status.invocation_source || "";
-    const isResidentVoice = source === "ptt" || source === "wake" || source === "barge_in";
+    const isResidentVoice = source === "ptt" || source === "wake" || source === "barge_in" || source === "hands_free" || source === "continuous";
     if (!isResidentVoice) return;
 
     if (state === "LISTENING") {

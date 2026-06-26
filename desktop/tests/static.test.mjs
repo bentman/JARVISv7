@@ -26,8 +26,12 @@ assert.ok(backend.includes("/status/wake"), "backend bridge must call /status/wa
 assert.ok(backend.includes("/status/resident-voice"), "backend bridge must call /status/resident-voice");
 assert.ok(lib.includes("get_wake_status"), "Tauri command must expose get_wake_status");
 assert.ok(lib.includes("get_resident_voice_status"), "Tauri command must expose get_resident_voice_status");
+assert.ok(lib.includes("start_resident_voice_stream"), "Tauri command must expose start_resident_voice_stream");
+assert.ok(lib.includes("set_resident_voice_mode"), "Tauri command must expose set_resident_voice_mode");
 assert.ok(apiClient.includes('invoke("get_wake_status")'), "desktop API client must invoke get_wake_status");
 assert.ok(apiClient.includes('invoke("get_resident_voice_status")'), "desktop API client must invoke get_resident_voice_status");
+assert.ok(apiClient.includes('invoke("start_resident_voice_stream")'), "desktop API client must invoke start_resident_voice_stream");
+assert.ok(apiClient.includes('invoke("set_resident_voice_mode"'), "desktop API client must invoke set_resident_voice_mode");
 assert.ok(desktopSource.includes("PTT-only fallback"), "desktop must display PTT-only fallback state");
 assert.ok(index.includes("wake-indicator"), "desktop must display wake status");
 assert.ok(index.includes("wake-toggle"), "desktop must expose wake toggle");
@@ -38,6 +42,10 @@ assert.ok(index.includes("continuous"), "desktop must include continuous residen
 assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
 assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
 assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
+assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
+assert.ok(desktopSource.includes("continuous-active"), "desktop must render resident continuous active status");
+assert.ok(main.includes("ensureResidentVoiceStream"), "desktop must start resident stream before resident wake/mode proof");
+assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resident mode mutation");
 assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");
 assert.ok(desktopSource.includes("stream_present"), "desktop must keep flat resident stream fallback fields");
 assert.ok(desktopSource.includes("degraded_reasons"), "desktop must render resident degraded reasons");

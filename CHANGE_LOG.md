@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-26 07:09
+  - Summary: Completed corrective Sub-Slice T.17 AMD64 desktop live proof. Desktop resident voice now starts the shared stream, applies resident mode changes through the backend, completes PTT into hands-free follow-up, and returns wake monitoring to listening after the live session.
+  - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/components/resident-voice.js`, `desktop/tests/static.test.mjs`, `backend/app/runtimes/tts/playback.py`, `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/runtime/desktop/test_resident_voice_desktop_live.py`
+  - Host class(es): Windows AMD64 / amd64 validated only.
+  - Evidence: `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`631 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). Operator live validation: `$env:JARVISV7_LIVE_TESTS = "1"; backend\.venv\Scripts\python -m pytest -s -q backend/tests/runtime/desktop/test_resident_voice_desktop_live.py` PASS (`1 passed in 25.88s`). Session `43b1e5f0025f47bebe93ca433aca2b6b` confirmed `/session/status` `state=IDLE`, `turn_count=2`, `invocation_source=hands_free`, transcript `What is the capital of Mexico?`, response `The capital of Mexico is Mexico City.`, and `/status/wake` `monitoring=true`.
+
 - 2026-06-25 19:34
   - Summary: Completed corrective Sub-Slice T.16 hands-free and continuous mode behavior. Hands-free now captures one bounded post-response follow-up from the resident stream, continuous mode reports explicit active state and continues bounded follow-up windows until silence, and resident voice status exposes follow-up listening truth.
   - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/turn/test_resident_hands_free_live.py`

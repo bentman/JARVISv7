@@ -167,6 +167,32 @@ async function refreshResidentVoiceStatus() {
   }
 }
 
+async function ensureResidentVoiceStream() {
+  if (!api?.startResidentVoiceStream) return refreshResidentVoiceStatus();
+  const current = await refreshResidentVoiceStatus();
+  if (current?.stream?.running || current?.stream_running) return current;
+  const started = await api.startResidentVoiceStream();
+  residentVoice.renderResidentModeStatus(started);
+  return started;
+}
+
+async function setResidentVoiceMode(mode) {
+  if (!api?.setResidentVoiceMode) return null;
+  clearError();
+  if (mode !== "ptt-only") {
+    await ensureResidentVoiceStream();
+  }
+  const status = await api.setResidentVoiceMode(mode);
+  residentVoice.renderResidentModeStatus(status);
+  if (mode === "ptt+wake") {
+    await startWakeMonitorIfAvailable();
+  } else {
+    await refreshWakeStatus();
+  }
+  await refreshSessionStatus();
+  return status;
+}
+
 function startSessionPolling() {
   if (sessionPollTimer) window.clearInterval(sessionPollTimer);
   sessionPollTimer = window.setInterval(() => {
@@ -296,7 +322,7 @@ async function startDesktop() {
     const readiness = await api.getReadiness();
     renderReadiness(readiness);
     await refreshSessionStatus();
-    await refreshResidentVoiceStatus();
+    await ensureResidentVoiceStream();
     await startWakeMonitorIfAvailable();
     startWakePolling();
     startSessionPolling();
@@ -323,7 +349,7 @@ async function restartBackendForSettings() {
   healthEl.textContent = "ok";
   const readiness = await api.getReadiness();
   renderReadiness(readiness);
-  await refreshResidentVoiceStatus();
+  await ensureResidentVoiceStream();
   await startWakeMonitorIfAvailable();
   startWakePolling();
   startSessionPolling();
@@ -397,6 +423,15 @@ pttButton.addEventListener("click", (event) => {
 personalitySelectEl.addEventListener("change", (event) => {
   selectPersonality(event.target.value).catch((error) => showError(String(error)));
 });
+
+if (residentModeEl) {
+  residentModeEl.addEventListener("change", (event) => {
+    setResidentVoiceMode(event.target.value).catch((error) => {
+      showError(String(error));
+      refreshResidentVoiceStatus().catch(() => undefined);
+    });
+  });
+}
 
 settingsTriggerEl.addEventListener("click", () => {
   if (settingsPanelEl.hidden) {

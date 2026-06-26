@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import threading
 
 import numpy as np
 
@@ -35,7 +36,7 @@ def start(audio: np.ndarray, sample_rate: int) -> None:
 def play(audio: np.ndarray, sample_rate: int) -> None:
     sounddevice = _load_sounddevice()
     start(audio, sample_rate)
-    sounddevice.wait()
+    _bounded_wait(sounddevice, audio, sample_rate)
 
 
 def stop() -> None:
@@ -45,7 +46,16 @@ def stop() -> None:
 
 def is_playing() -> bool:
     sounddevice = _load_sounddevice()
-    return bool(getattr(sounddevice, "get_stream", lambda: None)())
+    stream = getattr(sounddevice, "get_stream", lambda: None)()
+    if stream is None:
+        return False
+    active = getattr(stream, "active", None)
+    if active is not None:
+        return bool(active)
+    stopped = getattr(stream, "stopped", None)
+    if stopped is not None:
+        return not bool(stopped)
+    return True
 
 
 def last_output_device() -> str | None:
@@ -64,3 +74,37 @@ def describe_output_device(sounddevice: Any | None = None) -> str:
         return f"{output_index}: {name}" if name else str(output_index)
     except Exception as exc:
         return f"sounddevice output device unknown: {exc}"
+
+
+def _bounded_wait(sounddevice: Any, audio: np.ndarray, sample_rate: int) -> None:
+    wait = getattr(sounddevice, "wait", None)
+    if not callable(wait):
+        return
+    done = threading.Event()
+    error: list[BaseException] = []
+
+    def run_wait() -> None:
+        try:
+            wait()
+        except BaseException as exc:
+            error.append(exc)
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=run_wait, name="jarvis-tts-playback-wait", daemon=True)
+    thread.start()
+    timeout_s = _playback_timeout_s(audio, sample_rate)
+    if not done.wait(timeout_s):
+        stop_fn = getattr(sounddevice, "stop", None)
+        if callable(stop_fn):
+            stop_fn()
+        return
+    if error:
+        raise error[0]
+
+
+def _playback_timeout_s(audio: np.ndarray, sample_rate: int) -> float:
+    samples = int(np.asarray(audio).reshape(-1).size)
+    rate = max(1, int(sample_rate))
+    duration_s = samples / float(rate)
+    return max(0.5, duration_s + 0.5)

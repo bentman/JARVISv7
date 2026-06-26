@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+import time
 
 import numpy as np
 import pytest
@@ -148,6 +149,34 @@ def test_playback_helpers_fail_only_when_called_if_sounddevice_unavailable(monke
     playback._sounddevice_error = None
 
 
+def test_is_playing_uses_sounddevice_stream_active_state(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    stream = SimpleNamespace(active=False)
+    playback._sounddevice = SimpleNamespace(get_stream=lambda: stream)
+    playback._sounddevice_error = None
+
+    assert playback.is_playing() is False
+
+    stream.active = True
+
+    assert playback.is_playing() is True
+
+
+def test_is_playing_uses_sounddevice_stream_stopped_state_when_active_missing(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    stream = SimpleNamespace(stopped=True)
+    playback._sounddevice = SimpleNamespace(get_stream=lambda: stream)
+    playback._sounddevice_error = None
+
+    assert playback.is_playing() is False
+
+    stream.stopped = False
+
+    assert playback.is_playing() is True
+
+
 def test_playback_records_default_output_device(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
@@ -169,6 +198,55 @@ def test_playback_records_default_output_device(monkeypatch):
 
     assert playback.last_output_device() == "7: output-7"
     assert calls == [((4,), 24000)]
+
+
+def test_playback_wait_is_bounded_when_sounddevice_wait_blocks(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    class Default:
+        device = [2, 7]
+
+    calls: list[str] = []
+
+    def blocking_wait():
+        time.sleep(5.0)
+
+    fake_sounddevice = SimpleNamespace(
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+        play=lambda audio, samplerate: calls.append("play"),
+        wait=blocking_wait,
+        stop=lambda: calls.append("stop"),
+    )
+    playback._sounddevice = fake_sounddevice
+    playback._sounddevice_error = None
+    playback._last_output_device = None
+
+    started = time.monotonic()
+    playback.play(np.zeros(4, dtype=np.float32), 24000)
+
+    assert time.monotonic() - started < 2.0
+    assert calls == ["play", "stop"]
+
+
+def test_playback_wait_error_is_propagated(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    class Default:
+        device = [2, 7]
+
+    fake_sounddevice = SimpleNamespace(
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+        play=lambda audio, samplerate: None,
+        wait=lambda: (_ for _ in ()).throw(RuntimeError("playback wait failed")),
+    )
+    playback._sounddevice = fake_sounddevice
+    playback._sounddevice_error = None
+    playback._last_output_device = None
+
+    with pytest.raises(RuntimeError, match="playback wait failed"):
+        playback.play(np.zeros(4, dtype=np.float32), 24000)
 
 
 def test_describe_output_device_falls_back_when_default_is_unavailable():
