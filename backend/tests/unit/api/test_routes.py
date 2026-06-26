@@ -916,7 +916,7 @@ def test_resident_voice_mode_endpoint_rejects_unknown_mode() -> None:
     assert "unsupported resident voice mode" in response.json()["detail"]
 
 
-def test_resident_voice_hands_free_mode_is_visible_but_degraded_until_follow_up_behavior_exists() -> None:
+def test_resident_voice_hands_free_mode_is_visible_without_unimplemented_degradation() -> None:
     client = _client()
 
     response = client.put("/status/resident-voice/mode", json={"mode": "hands-free"})
@@ -924,8 +924,24 @@ def test_resident_voice_hands_free_mode_is_visible_but_degraded_until_follow_up_
 
     assert response.status_code == 200
     assert payload["mode"] == "hands-free"
-    assert payload["available"] is False
-    assert "resident mode hands-free follow-up behavior is not implemented" in payload["degraded_reasons"]
+    assert "resident mode hands-free follow-up behavior is not implemented" not in payload["degraded_reasons"]
+    assert payload["follow_up_listening"] is False
+    assert payload["follow_up_source"] is None
+    assert payload["continuous_active"] is False
+
+
+def test_resident_voice_continuous_mode_reports_active_state() -> None:
+    client = _client()
+
+    response = client.put("/status/resident-voice/mode", json={"mode": "continuous"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "continuous"
+    assert payload["continuous_active"] is True
+    assert payload["follow_up_listening"] is False
+    assert payload["follow_up_source"] is None
+    assert "resident mode continuous follow-up behavior is not implemented" not in payload["degraded_reasons"]
 
 
 def test_resident_voice_status_reports_degraded_missing_stream_and_vad() -> None:

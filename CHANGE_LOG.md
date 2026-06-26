@@ -18,6 +18,18 @@
 
 ## Entries 
 
+- 2026-06-25 19:34
+  - Summary: Completed corrective Sub-Slice T.16 hands-free and continuous mode behavior. Hands-free now captures one bounded post-response follow-up from the resident stream, continuous mode reports explicit active state and continues bounded follow-up windows until silence, and resident voice status exposes follow-up listening truth.
+  - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/turn/test_resident_hands_free_live.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_resident_voice_modes.py -q` PASS (`6 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_resident_voice_invocation.py -q` PASS (`16 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/api/test_routes.py -q` PASS (`48 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`627 passed, 1 skipped`; fingerprint `arch=amd64`, extras `[hw-cpu-base,hw-x64-base,hw-gpu-nvidia-cuda,dev]`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`143 passed, 4 deselected`, report `reports\validation\20260626003113-regression.txt`). Operator live validation: `$env:JARVISV7_LIVE_TESTS = "1"; backend\.venv\Scripts\python -m pytest -s -q backend/tests/runtime/turn/test_resident_hands_free_live.py` PASS (`1 passed in 9.40s`).
+
+- 2026-06-25 19:18
+  - Summary: Completed corrective Sub-Slice T.15 live barge-in follow-up proof. Resident interruption chunk polling now tolerates short empty subscriber reads, and the operator live gate confirmed audible playback interruption followed by a queued `source="barge_in"` follow-up.
+  - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/runtime/turn/test_resident_barge_in_live.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend/tests/unit/services/test_resident_voice_invocation.py -q` PASS (`16 passed`). `backend\.venv\Scripts\python -m pytest backend/tests/unit/conversation/test_engine.py -q` PASS (`41 passed`). Operator live validation: `$env:JARVISV7_LIVE_TESTS = "1"; backend\.venv\Scripts\python -m pytest -s -q backend/tests/runtime/turn/test_resident_barge_in_live.py` PASS (`1 passed in 8.43s`) after audible tone barge-in and follow-up prompts.
+
 - 2026-06-25 14:45
   - Summary: Completed corrective Sub-Slice T.14 active PTT and wake shared-stream behavior. PTT and wake now use the shared resident stream in resident modes, stopped-stream fallback is explicit/degraded instead of silent, and operator live proof confirmed resident PTT, resident stream capture, and wake command capture through the shared stream.
   - Scope: `backend/app/services/resident_voice_invocation.py`, `backend/app/services/wake_monitor.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_wake_monitor.py`, `backend/tests/runtime/voice/test_resident_audio_activation_live.py`, `backend/tests/runtime/voice/test_resident_audio_live.py`, `backend/tests/runtime/turn/test_resident_barge_in_live.py`, `backend/app/core/settings.py`, `backend/tests/unit/core/test_settings.py`, `20260625_slice-t2.md`

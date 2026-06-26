@@ -11,7 +11,11 @@ from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import ResidentAudioStream
-from backend.app.services.resident_voice_invocation import RESIDENT_STREAM_STOPPED_PTT_REASON, ResidentVoiceInvocationService
+from backend.app.services.resident_voice_invocation import (
+    RESIDENT_STREAM_STOPPED_PTT_REASON,
+    ResidentVoiceInvocationService,
+    resident_interruption_chunks,
+)
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.unit.services.test_session_service import _service
 
@@ -296,6 +300,38 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
     assert calls[1][0].shape == (20,)
     assert calls[1][1] == 16000
     assert service.status().last_transcript == "resident transcript"
+
+
+def test_resident_interruption_chunks_tolerates_short_empty_reads() -> None:
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    _wait_for(lambda: stream.status().running)
+    chunks = resident_interruption_chunks(stream)
+    assert chunks is not None
+    iterator = iter(chunks)
+    received: list[np.ndarray] = []
+    errors: list[BaseException] = []
+
+    def read_chunk() -> None:
+        try:
+            received.append(next(iterator))
+        except BaseException as exc:
+            errors.append(exc)
+
+    reader = threading.Thread(target=read_chunk)
+    reader.start()
+    try:
+        time.sleep(0.2)
+        assert reader.is_alive()
+        stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+        reader.join(timeout=1.0)
+    finally:
+        stream.stop()
+
+    assert not reader.is_alive()
+    assert errors == []
+    assert len(received) == 1
+    assert np.array_equal(received[0], np.full(4, 0.2, dtype=np.float32))
 
 
 def test_interrupted_barge_in_does_not_recursively_queue_follow_up(tmp_path: Path) -> None:

@@ -48,3 +48,6 @@ class ResidentVoiceStatusResponse(BaseModel):
     wake_monitoring: bool
     barge_in_supported: bool
     barge_in_wired: bool
+    follow_up_listening: bool = False
+    follow_up_source: str | None = None
+    continuous_active: bool = False

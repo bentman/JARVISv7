@@ -24,6 +24,7 @@ AfterInvocation = Callable[[object], object]
 NO_SPEECH_PTT_REASON = "No speech detected during PTT"
 RESIDENT_STREAM_STOPPED_PTT_REASON = "resident audio stream is stopped; start resident voice stream before PTT"
 RESIDENT_VOICE_MODES = frozenset({"ptt-only", "ptt+wake", "hands-free", "continuous"})
+RESIDENT_FOLLOW_UP_SOURCES = frozenset({"hands_free", "barge_in"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +32,13 @@ class ResidentInvocationRequest:
     source: str
     audio: np.ndarray | None = None
     sample_rate: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ResidentFollowUpStatus:
+    listening: bool
+    source: str | None
+    continuous_active: bool
 
 
 class ResidentVoiceInvocationService:
@@ -57,6 +65,9 @@ class ResidentVoiceInvocationService:
         self._worker: threading.Thread | None = None
         self._last_realtime_events: tuple[RealtimeEvent, ...] = ()
         self._mode = "ptt+wake"
+        self._follow_up_listening = False
+        self._follow_up_source: str | None = None
+        self._continuous_active = False
 
     def set_invocation_hooks(self, *, before_invocation: BeforeInvocation, after_invocation: AfterInvocation) -> None:
         self._before_invocation = before_invocation
@@ -87,10 +98,18 @@ class ResidentVoiceInvocationService:
         if normalized not in RESIDENT_VOICE_MODES:
             raise ValueError(f"unsupported resident voice mode: {mode}")
         self._mode = normalized
+        self._continuous_active = normalized == "continuous"
         return self._mode
 
     def last_realtime_events(self) -> tuple[RealtimeEvent, ...]:
         return self._last_realtime_events
+
+    def follow_up_status(self) -> ResidentFollowUpStatus:
+        return ResidentFollowUpStatus(
+            listening=self._follow_up_listening,
+            source=self._follow_up_source,
+            continuous_active=self._continuous_active,
+        )
 
     def _ensure_worker(self) -> None:
         with self._lock:
@@ -148,6 +167,7 @@ class ResidentVoiceInvocationService:
                 self._enqueue_barge_in_follow_up()
             if result.failure_reason:
                 return
+            self._enqueue_mode_follow_up(request)
         except Exception as exc:
             self._session_service.fail_voice_invocation(str(exc))
         finally:
@@ -195,6 +215,27 @@ class ResidentVoiceInvocationService:
             return
         self.enqueue("barge_in", request.audio, request.sample_rate)
 
+    def _enqueue_mode_follow_up(self, completed_request: ResidentInvocationRequest) -> None:
+        if completed_request.source in RESIDENT_FOLLOW_UP_SOURCES:
+            return
+        if self._mode == "hands-free":
+            self._capture_and_enqueue_follow_up("hands_free")
+            return
+        if self._mode == "continuous":
+            self._capture_and_enqueue_follow_up("continuous")
+
+    def _capture_and_enqueue_follow_up(self, source: str) -> None:
+        self._follow_up_listening = True
+        self._follow_up_source = source
+        try:
+            request = self._capture_streamed_request(ResidentInvocationRequest(source=source))
+        finally:
+            self._follow_up_listening = False
+            self._follow_up_source = None
+        if request.audio is None or request.audio.size == 0 or request.sample_rate is None:
+            return
+        self.enqueue(source, request.audio, request.sample_rate)
+
 
 def _subscriber_chunks(subscriber: queue.Queue[AudioChunk]) -> Iterable[AudioChunk]:
     while True:
@@ -215,7 +256,10 @@ def _resident_interruption_chunks(resident_stream: ResidentAudioStream) -> Itera
     subscriber = resident_stream.subscribe()
     try:
         while resident_stream.status().running:
-            chunk = subscriber.get(timeout=0.1)
+            try:
+                chunk = subscriber.get(timeout=0.1)
+            except queue.Empty:
+                continue
             yield np.asarray(chunk.samples, dtype=np.float32).reshape(-1)
     finally:
         resident_stream.unsubscribe(subscriber)

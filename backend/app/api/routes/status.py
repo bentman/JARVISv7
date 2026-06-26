@@ -97,8 +97,7 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
     if stream is not None and not stream_running:
         degraded_reasons.append("resident audio stream is stopped")
     mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
-    if mode in {"hands-free", "continuous"}:
-        degraded_reasons.append(f"resident mode {mode} follow-up behavior is not implemented")
+    follow_up = state.resident_voice.follow_up_status() if state.resident_voice is not None else None
     barge_in_wired = bool(
         stream_running
         and vad_configured
@@ -134,6 +133,9 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         wake_monitoring=wake.monitoring,
         barge_in_supported=barge_in_wired,
         barge_in_wired=barge_in_wired,
+        follow_up_listening=follow_up.listening if follow_up is not None else False,
+        follow_up_source=follow_up.source if follow_up is not None else None,
+        continuous_active=follow_up.continuous_active if follow_up is not None else False,
     )
 
 
