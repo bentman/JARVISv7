@@ -2,10 +2,23 @@ from __future__ import annotations
 
 import importlib
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 
 import onnxruntime
+
+
+@dataclass(frozen=True)
+class QnnProviderActivationResult:
+    provider_registered: bool
+    provider_library_path: Path | None = None
+    dll_directory_path: Path | None = None
+    error: str | None = None
+
+
+_DLL_DIRECTORY_HANDLES: list[object] = []
+_ACTIVATION_RESULT: QnnProviderActivationResult | None = None
 
 
 def _candidate_qnn_htp_paths() -> list[Path]:
@@ -14,6 +27,9 @@ def _candidate_qnn_htp_paths() -> list[Path]:
     for module in (onnxruntime, _optional_onnxruntime_qnn_module()):
         if module is None:
             continue
+        htp_path = _qnn_htp_path_from_helper(module)
+        if htp_path is not None:
+            candidates.append(htp_path)
         module_file = getattr(module, "__file__", None)
         if module_file:
             module_root = Path(module_file).resolve().parent
@@ -35,6 +51,108 @@ def _optional_onnxruntime_qnn_module() -> ModuleType | None:
         return importlib.import_module("onnxruntime_qnn")
     except Exception:
         return None
+
+
+def _qnn_package_root(module: ModuleType) -> Path | None:
+    lib_dir = getattr(module, "LIB_DIR_FULL_PATH", None)
+    if lib_dir:
+        return Path(lib_dir).resolve()
+    module_file = getattr(module, "__file__", None)
+    if module_file:
+        return Path(module_file).resolve().parent
+    return None
+
+
+def _qnn_provider_library_path(module: ModuleType) -> Path | None:
+    get_library_path = getattr(module, "get_library_path", None)
+    if callable(get_library_path):
+        candidate = Path(get_library_path()).resolve()
+        if candidate.is_file():
+            return candidate
+
+    root = _qnn_package_root(module)
+    if root is None:
+        return None
+    candidate = root / "onnxruntime_providers_qnn.dll"
+    return candidate if candidate.is_file() else None
+
+
+def _qnn_htp_path_from_helper(module: ModuleType) -> Path | None:
+    get_qnn_htp_path = getattr(module, "get_qnn_htp_path", None)
+    if not callable(get_qnn_htp_path):
+        return None
+    candidate = Path(get_qnn_htp_path()).resolve()
+    return candidate if candidate.is_file() else None
+
+
+def _available_providers() -> list[str]:
+    return list(onnxruntime.get_available_providers())
+
+
+def activate_qnn_execution_provider() -> QnnProviderActivationResult:
+    global _ACTIVATION_RESULT
+
+    if "QNNExecutionProvider" in _available_providers():
+        _ACTIVATION_RESULT = QnnProviderActivationResult(provider_registered=True)
+        return _ACTIVATION_RESULT
+
+    qnn_module = _optional_onnxruntime_qnn_module()
+    if qnn_module is None:
+        return QnnProviderActivationResult(
+            provider_registered=False,
+            error="onnxruntime_qnn import failed",
+        )
+
+    provider_library_path = _qnn_provider_library_path(qnn_module)
+    if provider_library_path is None:
+        return QnnProviderActivationResult(
+            provider_registered=False,
+            error="onnxruntime_qnn provider library not found",
+        )
+
+    dll_directory_path = _qnn_package_root(qnn_module)
+    if dll_directory_path is not None:
+        dll_api = getattr(os, "add_dll_directory", None)
+        if dll_api is not None:
+            try:
+                _DLL_DIRECTORY_HANDLES.append(dll_api(str(dll_directory_path)))
+            except Exception as exc:
+                return QnnProviderActivationResult(
+                    provider_registered=False,
+                    provider_library_path=provider_library_path,
+                    dll_directory_path=dll_directory_path,
+                    error=f"add_dll_directory failed: {exc}",
+                )
+
+    register_provider = getattr(onnxruntime, "register_execution_provider_library", None)
+    if not callable(register_provider):
+        return QnnProviderActivationResult(
+            provider_registered=False,
+            provider_library_path=provider_library_path,
+            dll_directory_path=dll_directory_path,
+            error="onnxruntime register_execution_provider_library unavailable",
+        )
+
+    try:
+        register_provider("QNNExecutionProvider", str(provider_library_path))
+    except Exception as exc:
+        return QnnProviderActivationResult(
+            provider_registered=False,
+            provider_library_path=provider_library_path,
+            dll_directory_path=dll_directory_path,
+            error=f"QNNExecutionProvider registration failed: {exc}",
+        )
+
+    provider_registered = "QNNExecutionProvider" in _available_providers()
+    result = QnnProviderActivationResult(
+        provider_registered=provider_registered,
+        provider_library_path=provider_library_path,
+        dll_directory_path=dll_directory_path,
+        error=None if provider_registered else "QNNExecutionProvider not exposed after registration",
+    )
+    if provider_registered:
+        _ACTIVATION_RESULT = result
+    return result
 
 
 def resolve_qnn_htp_backend_path() -> Path:
@@ -69,6 +187,9 @@ def create_qnn_session(
         RuntimeError: if QNN session creation fails.
     """
     model_path = Path(model_path)
+    activation = activate_qnn_execution_provider()
+    if not activation.provider_registered:
+        raise RuntimeError(f"QNNExecutionProvider activation failed: {activation.error}")
     provider_options = get_qnn_provider_options()
 
     try:

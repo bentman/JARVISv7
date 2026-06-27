@@ -205,6 +205,11 @@ def test_qnn_preflight_probes_transformers_import(monkeypatch) -> None:
     monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
     monkeypatch.setattr(
+        preflight,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
+    monkeypatch.setattr(
         preflight.importlib.metadata,
         "version",
         lambda name: "2.0" if name == "onnxruntime-qnn" else "0.0",
@@ -249,6 +254,11 @@ def test_qnn_preflight_discovers_htp_dll_from_qnn_package(
 
     monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
     monkeypatch.setattr(
         preflight.importlib.metadata,
         "version",
@@ -295,6 +305,11 @@ def test_qnn_preflight_marks_qnn_ep_missing_when_provider_absent(monkeypatch, tm
     monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
     monkeypatch.setattr(
+        preflight,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
+    monkeypatch.setattr(
         preflight.importlib.metadata,
         "version",
         lambda name: "2.3.0" if name == "onnxruntime-qnn" else "0.0",
@@ -321,6 +336,11 @@ def test_qnn_preflight_surfaces_missing_transformers(monkeypatch) -> None:
     monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
     monkeypatch.setattr(
+        preflight,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
+    monkeypatch.setattr(
         preflight.importlib.metadata,
         "version",
         lambda name: "2.0" if name == "onnxruntime-qnn" else "0.0",
@@ -333,3 +353,40 @@ def test_qnn_preflight_surfaces_missing_transformers(monkeypatch) -> None:
 
     assert "import:transformers:MISSING" in result.tokens
     assert "transformers" in result.probe_errors
+
+
+def test_qnn_preflight_activates_provider_before_provider_probe(monkeypatch) -> None:
+    preflight._CACHE.clear()
+    providers = ["CPUExecutionProvider"]
+
+    def fake_import(name: str):
+        if name == "onnxruntime":
+            return SimpleNamespace(
+                __file__="C:/site-packages/onnxruntime/__init__.py",
+                get_available_providers=lambda: list(providers),
+            )
+        if name == "transformers":
+            return SimpleNamespace(__name__=name)
+        if name == "onnxruntime_qnn":
+            return SimpleNamespace(__file__="C:/site-packages/onnxruntime_qnn/__init__.py")
+        return SimpleNamespace(__name__=name)
+
+    def fake_activate(profile, extras, tokens, errors, log):
+        providers.append("QNNExecutionProvider")
+        tokens.append("qnn:provider_library_registered")
+        log.append("QNNProvider:library:C:/site-packages/onnxruntime_qnn/onnxruntime_providers_qnn.dll")
+
+    monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(preflight, "_activate_qnn_execution_provider_if_applicable", fake_activate)
+    monkeypatch.setattr(preflight.importlib.metadata, "version", lambda name: "2.3.0")
+    monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter(()))
+
+    result = preflight.run_preflight(
+        _make_profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
+        ["hw-npu-qualcomm-qnn"],
+    )
+
+    assert "qnn:provider_library_registered" in result.tokens
+    assert "ep:QNNExecutionProvider" in result.tokens
+    assert "ep:QNNExecutionProvider:MISSING" not in result.tokens

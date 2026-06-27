@@ -23,6 +23,11 @@ def test_qnn_dll_token_present_when_path_configured(monkeypatch) -> None:
     monkeypatch.setattr(Path, "exists", lambda self: self in existing_paths)
     monkeypatch.setattr(preflight_module, "_available_dll_directory_api", lambda: None)
     monkeypatch.setattr(preflight_module, "_candidate_dll_roots", lambda profile: [("QnnHtp", qnn_root)])
+    monkeypatch.setattr(
+        preflight_module,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
     monkeypatch.setattr(preflight_module.importlib, "import_module", lambda name: SimpleNamespace(__name__=name))
     monkeypatch.setattr(preflight_module.importlib.metadata, "version", lambda name: "2.0.0")
 
@@ -37,6 +42,11 @@ def test_qnn_dll_token_present_when_path_configured(monkeypatch) -> None:
 def test_qnn_ep_token_present_when_ep_available(monkeypatch, tmp_path) -> None:
     preflight_module._CACHE.clear()
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight_module,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
     qnn_root = tmp_path / "onnxruntime_qnn"
     qnn_root.mkdir()
     qnn_file = qnn_root / "__init__.py"
@@ -71,6 +81,11 @@ def test_qnn_ep_token_present_when_ep_available(monkeypatch, tmp_path) -> None:
 def test_qnn_ep_token_missing_when_ep_absent(monkeypatch, tmp_path) -> None:
     preflight_module._CACHE.clear()
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight_module,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
     qnn_root = tmp_path / "onnxruntime_qnn"
     qnn_root.mkdir()
     qnn_file = qnn_root / "__init__.py"

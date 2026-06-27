@@ -76,7 +76,7 @@ def test_qnn_expected_requirement_names_include_transformers() -> None:
     assert "transformers" in requirement_names
 
 
-def test_qnn_expected_requirement_specs_pin_ort_family() -> None:
+def test_qnn_expected_requirement_specs_include_paired_ort_family() -> None:
     profile = HardwareProfile(arch="arm64", npu_available=True, npu_vendor="qualcomm")
 
     requirement_specs = resolve_required_requirement_specs(profile)

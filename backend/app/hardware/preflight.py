@@ -224,6 +224,33 @@ def _probe_execution_providers(tokens: list[str], probe_errors: dict[str, str]) 
             tokens.append(token)
 
 
+def _activate_qnn_execution_provider_if_applicable(
+    profile: HardwareProfile,
+    installed_extras: list[str],
+    tokens: list[str],
+    probe_errors: dict[str, str],
+    dll_discovery_log: list[str],
+) -> None:
+    if profile.npu_vendor != "qualcomm" or not _has_extra(installed_extras, "hw-npu-qualcomm-qnn"):
+        return
+
+    try:
+        from backend.app.hardware.qnn_provider import activate_qnn_execution_provider
+    except Exception as exc:
+        probe_errors["onnxruntime.qnn.provider_activation"] = str(exc)
+        return
+
+    result = activate_qnn_execution_provider()
+    if result.dll_directory_path is not None:
+        dll_discovery_log.append(f"QNNProvider:added:{result.dll_directory_path}")
+    if result.provider_library_path is not None:
+        dll_discovery_log.append(f"QNNProvider:library:{result.provider_library_path}")
+    if result.provider_registered:
+        tokens.append("qnn:provider_library_registered")
+    elif result.error:
+        probe_errors["onnxruntime.qnn.provider_activation"] = result.error
+
+
 def _probe_distribution(
     distribution_name: str,
     tokens: list[str],
@@ -349,6 +376,13 @@ def run_preflight(profile: HardwareProfile, installed_extras: list[str]) -> Pref
     _probe_imports(installed_extras, tokens, probe_errors)
 
     if "import:onnxruntime" in tokens:
+        _activate_qnn_execution_provider_if_applicable(
+            profile,
+            installed_extras,
+            tokens,
+            probe_errors,
+            dll_discovery_log,
+        )
         _probe_execution_providers(tokens, probe_errors)
 
     _probe_qnn_capability(profile, installed_extras, tokens, probe_errors, dll_discovery_log)

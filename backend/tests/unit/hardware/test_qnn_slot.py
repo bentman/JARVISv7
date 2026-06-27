@@ -71,6 +71,11 @@ def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) ->
     htp_path = qnn_root / "QnnHtp.dll"
 
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight_module,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
 
     def fake_import(name: str):
         if name == "onnxruntime":
@@ -102,6 +107,11 @@ def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) ->
 def test_preflight_emits_qnn_ep_missing_token_when_ep_not_registered(monkeypatch) -> None:
     preflight_module._CACHE.clear()
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    monkeypatch.setattr(
+        preflight_module,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
 
     def fake_import(name: str):
         if name == "onnxruntime":
@@ -142,6 +152,11 @@ def test_preflight_emits_qnn_dll_token_when_qnnhtp_is_discoverable(monkeypatch) 
     )
 
     monkeypatch.setattr(preflight_module, "_available_dll_directory_api", lambda: None)
+    monkeypatch.setattr(
+        preflight_module,
+        "_activate_qnn_execution_provider_if_applicable",
+        lambda profile, extras, tokens, errors, log: None,
+    )
     monkeypatch.setattr(
         preflight_module,
         "_candidate_dll_roots",
