@@ -219,41 +219,6 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
         and profile.gpu_vendor == "nvidia"
         and profile.cuda_available
     )
-    arm64_qnn_profile = (
-        profile.arch == "arm64"
-        and profile.npu_available
-        and profile.npu_vendor == "qualcomm"
-    )
-
-    if not cuda_profile and not arm64_qnn_profile:
-        return 0
-
-    if arm64_qnn_profile:
-        uninstall_cpu_ort = [
-            sys.executable,
-            "-m",
-            "pip",
-            "uninstall",
-            "-y",
-            "onnxruntime",
-        ]
-        uninstall_rc = _run_pip_install(uninstall_cpu_ort)
-        if uninstall_rc != 0:
-            return uninstall_rc
-
-        reinstall_qnn_ort = [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--force-reinstall",
-            "--no-deps",
-            "onnxruntime-qnn==1.24.3",
-        ]
-        reinstall_rc = _run_pip_install(reinstall_qnn_ort)
-        if reinstall_rc != 0:
-            return reinstall_rc
-
     if not cuda_profile:
         return 0
 
@@ -278,14 +243,6 @@ def _run_verify(profile: HardwareProfile, extras: list[str], include_porcupine: 
     installed_versions = _installed_distribution_versions()
     installed_requirements = set(installed_versions)
     missing = sorted(expected_requirements - installed_requirements)
-    arm64_qnn_profile = (
-        profile.arch == "arm64"
-        and profile.npu_available
-        and profile.npu_vendor == "qualcomm"
-    )
-    conflicts: list[str] = []
-    if arm64_qnn_profile and {"onnxruntime", "onnxruntime_qnn"} <= installed_requirements:
-        conflicts.append("onnxruntime cannot be installed alongside onnxruntime-qnn on ARM64 QNN hosts")
     version_mismatches = sorted(
         (
             name,
@@ -304,11 +261,9 @@ def _run_verify(profile: HardwareProfile, extras: list[str], include_porcupine: 
         print(f"missing={missing}")
     if version_mismatches:
         print(f"version_mismatches={version_mismatches}")
-    if conflicts:
-        print(f"conflicts={conflicts}")
     if unexpected:
         print(f"present={unexpected}")
-    return 0 if not missing and not version_mismatches and not conflicts else 1
+    return 0 if not missing and not version_mismatches else 1
 
 
 def main(argv: list[str] | None = None) -> int:

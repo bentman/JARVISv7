@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib
 import os
 from pathlib import Path
+from types import ModuleType
 
 import onnxruntime
 
@@ -9,10 +11,13 @@ import onnxruntime
 def _candidate_qnn_htp_paths() -> list[Path]:
     candidates: list[Path] = []
 
-    module_file = getattr(onnxruntime, "__file__", None)
-    if module_file:
-        module_root = Path(module_file).resolve().parent
-        candidates.extend(path for path in module_root.rglob("QnnHtp.dll") if path.is_file())
+    for module in (onnxruntime, _optional_onnxruntime_qnn_module()):
+        if module is None:
+            continue
+        module_file = getattr(module, "__file__", None)
+        if module_file:
+            module_root = Path(module_file).resolve().parent
+            candidates.extend(path for path in module_root.rglob("QnnHtp.dll") if path.is_file())
 
     qairt_sdk_path = os.getenv("QAIRT_SDK_PATH")
     if qairt_sdk_path:
@@ -23,6 +28,13 @@ def _candidate_qnn_htp_paths() -> list[Path]:
                 candidates.append(candidate)
 
     return candidates
+
+
+def _optional_onnxruntime_qnn_module() -> ModuleType | None:
+    try:
+        return importlib.import_module("onnxruntime_qnn")
+    except Exception:
+        return None
 
 
 def resolve_qnn_htp_backend_path() -> Path:

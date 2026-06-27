@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-27 11:52
+  - Summary: Updated Windows ARM64 Qualcomm QNN provisioning for the upstream split package model. QNN provisioning now installs paired `onnxruntime` and `onnxruntime-qnn` requirements through the normal editable install path, and preflight/provider discovery finds packaged `QnnHtp.dll` under `onnxruntime_qnn` while preserving a distinct missing-provider token when ONNX Runtime does not expose `QNNExecutionProvider`.
+  - Scope: `pyproject.toml`, `scripts/provision.py`, `backend/app/hardware/provisioning.py`, `backend/app/hardware/preflight.py`, `backend/app/hardware/qnn_provider.py`, `backend/tests/unit/hardware/test_provisioning.py`, `backend/tests/unit/scripts/test_provision_script.py`, `backend/tests/unit/hardware/test_preflight.py`, `backend/tests/unit/hardware/test_qnn_provider.py`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python scripts\provision.py dry-run` PASS, command shape `python.exe -m pip install -e .[hw-cpu-base,hw-arm64-base,hw-npu-qualcomm-qnn,dev]`. `backend\.venv\Scripts\python scripts\provision.py verify` PASS with `present=[..., 'onnxruntime', 'onnxruntime_qnn', ...]`. `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS with `qnn:backend_path:...\backend\.venv\Lib\site-packages\onnxruntime_qnn\QnnHtp.dll`, `dll:QnnHtp`, and `ep:QNNExecutionProvider:MISSING`. Focused pytest PASS (`47 passed`). Standard validation PASS: `backend\.venv\Scripts\python scripts\validate_backend.py unit` (`634 passed, 1 warning`) and `backend\.venv\Scripts\python scripts\validate_backend.py regression` (`144 passed, 4 deselected`, report `reports\validation\20260627115211-regression.txt`).
+
 - 2026-06-26 10:51
   - Summary: Added backend shutdown cleanup for the resident audio stream. FastAPI lifespan now releases the desktop-started shared microphone stream before managed local LLM sidecar cleanup.
   - Scope: `backend/app/api/app.py`, `backend/tests/unit/api/test_routes.py`

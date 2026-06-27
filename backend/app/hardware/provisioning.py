@@ -19,7 +19,8 @@ _EXTRA_REQUIREMENT_SPECS: dict[str, tuple[str, ...]] = {
     "hw-gpu-amd": ("onnxruntime-directml",),
     "hw-gpu-intel": ("onnxruntime-directml",),
     "hw-npu-qualcomm-qnn": (
-        "onnxruntime-qnn==1.24.3",
+        "onnxruntime>=1.24.4",
+        "onnxruntime-qnn>=2.3.0",
         "onnx>=1.16",
         "transformers>=4.40",
     ),

@@ -64,24 +64,28 @@ def test_resolver_returns_qnn_extra_for_qualcomm_host() -> None:
 
 def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) -> None:
     preflight_module._CACHE.clear()
-    module_root = Path("C:/qnn-ort/onnxruntime")
-    module_file = module_root / "__init__.py"
-    htp_path = module_root / "capi" / "QnnHtp.dll"
+    ort_root = Path("C:/site-packages/onnxruntime")
+    qnn_root = Path("C:/site-packages/onnxruntime_qnn")
+    ort_file = ort_root / "__init__.py"
+    qnn_file = qnn_root / "__init__.py"
+    htp_path = qnn_root / "QnnHtp.dll"
 
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
-    monkeypatch.setattr(
-        preflight_module.importlib,
-        "import_module",
-        lambda name: SimpleNamespace(
-            __file__=str(module_file),
-            get_available_providers=lambda: ["QNNExecutionProvider"],
-        )
-        if name == "onnxruntime"
-        else SimpleNamespace(__name__=name),
-    )
+
+    def fake_import(name: str):
+        if name == "onnxruntime":
+            return SimpleNamespace(
+                __file__=str(ort_file),
+                get_available_providers=lambda: ["QNNExecutionProvider"],
+            )
+        if name == "onnxruntime_qnn":
+            return SimpleNamespace(__file__=str(qnn_file))
+        return SimpleNamespace(__name__=name)
+
+    monkeypatch.setattr(preflight_module.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight_module.importlib.metadata, "version", lambda name: "2.0.0")
     monkeypatch.setattr(Path, "is_file", lambda self: self == htp_path)
-    monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter([htp_path]) if self == module_root else iter(()))
+    monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter([htp_path]) if self == qnn_root else iter(()))
 
     result = preflight_module.run_preflight(
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
@@ -92,7 +96,7 @@ def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) ->
     assert "ep:QNNExecutionProvider" in result.tokens
     assert "qnn:htp_path" in result.tokens
     assert "dll:QnnHtp" in result.tokens
-    assert any(token.startswith("qnn:backend_path:") for token in result.tokens)
+    assert f"qnn:backend_path:{htp_path}" in result.tokens
 
 
 def test_preflight_emits_qnn_ep_missing_token_when_ep_not_registered(monkeypatch) -> None:
@@ -102,9 +106,11 @@ def test_preflight_emits_qnn_ep_missing_token_when_ep_not_registered(monkeypatch
     def fake_import(name: str):
         if name == "onnxruntime":
             return SimpleNamespace(
-                __file__="C:/qnn-ort/onnxruntime/__init__.py",
+                __file__="C:/site-packages/onnxruntime/__init__.py",
                 get_available_providers=lambda: ["CPUExecutionProvider"],
             )
+        if name == "onnxruntime_qnn":
+            return SimpleNamespace(__file__="C:/site-packages/onnxruntime_qnn/__init__.py")
         return SimpleNamespace(__name__=name)
 
     monkeypatch.setattr(preflight_module.importlib, "import_module", fake_import)

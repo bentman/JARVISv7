@@ -246,19 +246,38 @@ def _probe_distribution(
 
 
 def _discover_packaged_qnn_htp_path(probe_errors: dict[str, str]) -> Path | None:
+    candidate_roots: list[Path] = []
     try:
         onnxruntime = importlib.import_module("onnxruntime")
     except Exception as exc:
         probe_errors["onnxruntime.qnn.htp_discovery"] = str(exc)
+    else:
+        module_file = getattr(onnxruntime, "__file__", None)
+        if module_file:
+            candidate_roots.append(Path(module_file).resolve().parent)
+
+    try:
+        onnxruntime_qnn = importlib.import_module("onnxruntime_qnn")
+    except Exception as exc:
+        probe_errors["onnxruntime.qnn.package_discovery"] = str(exc)
+    else:
+        module_file = getattr(onnxruntime_qnn, "__file__", None)
+        if module_file:
+            candidate_roots.append(Path(module_file).resolve().parent)
+
+    if not candidate_roots:
+        probe_errors["onnxruntime.qnn.htp_discovery"] = "onnxruntime package roots unavailable"
         return None
 
-    module_file = getattr(onnxruntime, "__file__", None)
-    if not module_file:
-        probe_errors["onnxruntime.qnn.htp_discovery"] = "onnxruntime module file unavailable"
-        return None
-
-    module_root = Path(module_file).resolve().parent
-    return next((path for path in module_root.rglob("QnnHtp.dll") if path.is_file()), None)
+    return next(
+        (
+            path
+            for module_root in candidate_roots
+            for path in module_root.rglob("QnnHtp.dll")
+            if path.is_file()
+        ),
+        None,
+    )
 
 
 def _mark_qnn_htp_discovery(

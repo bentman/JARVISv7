@@ -34,9 +34,15 @@ def test_qnn_dll_token_present_when_path_configured(monkeypatch) -> None:
     assert "dll:QnnHtp" in result.tokens
 
 
-def test_qnn_ep_token_present_when_ep_available(monkeypatch) -> None:
+def test_qnn_ep_token_present_when_ep_available(monkeypatch, tmp_path) -> None:
     preflight_module._CACHE.clear()
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    qnn_root = tmp_path / "onnxruntime_qnn"
+    qnn_root.mkdir()
+    qnn_file = qnn_root / "__init__.py"
+    htp_path = qnn_root / "QnnHtp.dll"
+    qnn_file.write_text("", encoding="utf-8")
+    htp_path.write_text("", encoding="utf-8")
 
     def fake_import(name: str):
         if name == "onnxruntime":
@@ -47,11 +53,7 @@ def test_qnn_ep_token_present_when_ep_available(monkeypatch) -> None:
                 get_ep_devices=lambda: [SimpleNamespace(ep_name="QNNExecutionProvider")],
             )
         if name == "onnxruntime_qnn":
-            return SimpleNamespace(
-                __name__=name,
-                get_library_path=lambda: "C:/qnn/onnxruntime_providers_qnn.dll",
-                get_qnn_htp_path=lambda: "C:/qnn/QnnHtp.dll",
-            )
+            return SimpleNamespace(__file__=str(qnn_file))
         return SimpleNamespace(__name__=name)
 
     monkeypatch.setattr(preflight_module.importlib, "import_module", fake_import)
@@ -66,9 +68,15 @@ def test_qnn_ep_token_present_when_ep_available(monkeypatch) -> None:
     assert "ep:QNNExecutionProvider" in result.tokens
 
 
-def test_qnn_ep_token_missing_when_ep_absent(monkeypatch) -> None:
+def test_qnn_ep_token_missing_when_ep_absent(monkeypatch, tmp_path) -> None:
     preflight_module._CACHE.clear()
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+    qnn_root = tmp_path / "onnxruntime_qnn"
+    qnn_root.mkdir()
+    qnn_file = qnn_root / "__init__.py"
+    htp_path = qnn_root / "QnnHtp.dll"
+    qnn_file.write_text("", encoding="utf-8")
+    htp_path.write_text("", encoding="utf-8")
 
     def fake_import(name: str):
         if name == "onnxruntime":
@@ -79,11 +87,7 @@ def test_qnn_ep_token_missing_when_ep_absent(monkeypatch) -> None:
                 get_ep_devices=lambda: [SimpleNamespace(ep_name="CPUExecutionProvider")],
             )
         if name == "onnxruntime_qnn":
-            return SimpleNamespace(
-                __name__=name,
-                get_library_path=lambda: "C:/qnn/onnxruntime_providers_qnn.dll",
-                get_qnn_htp_path=lambda: "C:/qnn/QnnHtp.dll",
-            )
+            return SimpleNamespace(__file__=str(qnn_file))
         return SimpleNamespace(__name__=name)
 
     monkeypatch.setattr(preflight_module.importlib, "import_module", fake_import)

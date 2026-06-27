@@ -64,7 +64,7 @@ def test_install_composes_correct_pip_command_from_resolver(monkeypatch, capsys)
     assert "pip install -e" in output
 
 
-def test_arm64_qnn_install_reinstalls_pinned_qnn_family(monkeypatch) -> None:
+def test_arm64_qnn_install_uses_only_editable_install(monkeypatch) -> None:
     commands: list[list[str]] = []
     profile = _arm64_qnn_profile()
 
@@ -77,10 +77,11 @@ def test_arm64_qnn_install_reinstalls_pinned_qnn_family(monkeypatch) -> None:
     )
 
     assert exit_code == 0
-    assert ["uninstall", "-y", "onnxruntime"] == commands[1][3:]
-    assert "--no-deps" in commands[2]
-    assert commands[2][-1:] == ["onnxruntime-qnn==1.24.3"]
-    assert "onnxruntime==1.24.3" not in commands[2]
+    assert commands == [
+        provision._build_pip_install_command(
+            ["hw-cpu-base", "hw-arm64-base", "hw-npu-qualcomm-qnn", "dev"]
+        )
+    ]
 
 
 def test_lock_emits_requirements_txt_with_generated_marker_comment(
@@ -123,23 +124,23 @@ def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) ->
 
 
 def test_verify_reports_version_drift_for_exact_pins(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_arm64_qnn_profile()))
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("amd64")))
     monkeypatch.setattr(
         provision,
         "_expected_distribution_names",
-        lambda profile, include_porcupine: {"onnxruntime_qnn"},
+        lambda profile, include_porcupine: {"example_exact"},
     )
     monkeypatch.setattr(
         provision,
         "_expected_exact_distribution_versions",
         lambda profile, include_porcupine: {
-            "onnxruntime_qnn": "1.24.3",
+            "example_exact": "1.0.0",
         },
     )
     monkeypatch.setattr(
         provision,
         "_installed_distribution_versions",
-        lambda: {"onnxruntime_qnn": "2.1.1"},
+        lambda: {"example_exact": "2.0.0"},
     )
 
     exit_code = provision.main(["verify"])
@@ -147,33 +148,33 @@ def test_verify_reports_version_drift_for_exact_pins(monkeypatch, capsys) -> Non
 
     assert exit_code == 1
     assert "version_mismatches" in output
-    assert "onnxruntime_qnn" in output
+    assert "example_exact" in output
 
 
-def test_verify_rejects_base_onnxruntime_with_arm64_qnn(monkeypatch, capsys) -> None:
+def test_verify_accepts_paired_onnxruntime_with_arm64_qnn(monkeypatch, capsys) -> None:
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_arm64_qnn_profile()))
     monkeypatch.setattr(
         provision,
         "_expected_distribution_names",
-        lambda profile, include_porcupine: {"onnxruntime_qnn"},
+        lambda profile, include_porcupine: {"onnxruntime", "onnxruntime_qnn"},
     )
     monkeypatch.setattr(
         provision,
         "_expected_exact_distribution_versions",
-        lambda profile, include_porcupine: {"onnxruntime_qnn": "1.24.3"},
+        lambda profile, include_porcupine: {},
     )
     monkeypatch.setattr(
         provision,
         "_installed_distribution_versions",
-        lambda: {"onnxruntime": "1.24.3", "onnxruntime_qnn": "1.24.3"},
+        lambda: {"onnxruntime": "1.24.4", "onnxruntime_qnn": "2.3.0"},
     )
 
     exit_code = provision.main(["verify"])
     output = capsys.readouterr().out
 
-    assert exit_code == 1
-    assert "conflicts" in output
-    assert "onnxruntime cannot be installed alongside onnxruntime-qnn" in output
+    assert exit_code == 0
+    assert "conflicts" not in output
+    assert "present=['onnxruntime', 'onnxruntime_qnn']" in output
 
 
 def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) -> None:
