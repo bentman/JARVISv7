@@ -46,7 +46,7 @@ param(
     [string] $exportRoot = "E:\WORK\jarvis-dev\whisper-qnn",
     [string] $pythonExe = "py",
     [string] $deviceName = "Snapdragon X Elite CRD",
-    [string] $modelName = "whisper-base-en-qaihub-precompiled-qnn-onnx-snapdragon-x",
+    [string] $modelName = "whisper-qualcomm-qnn",
     [switch] $InspectOnly,
     [switch] $RunWorkbenchExport,
     [switch] $DownloadCompletedArtifacts,
@@ -90,6 +90,7 @@ $downloadMonitorPath = Join-Path $outputDir "download-monitor.txt"
 $workbenchIdsPath = Join-Path $outputDir "workbench-ids.json"
 $docsTemp = Join-Path $jarvisRoot "docs\temp"
 $zipPath = Join-Path $docsTemp "jarvis-$modelName-$timestamp.zip"
+$jarvisModelPath = "models/stt/$modelName"
 $exportCommand = @(
     $venvPy,
     "-m", "qai_hub_models.models.whisper_base.export",
@@ -526,6 +527,7 @@ try {
     Write-Host "Qualcomm venv: $venvDir"
     Write-Host "Output dir: $outputDir"
     Write-Host "Zip path: $zipPath"
+    Write-Host "JARVIS model path after ARM64 staging: $jarvisModelPath"
     Write-Host "InspectOnly: $InspectOnly"
     Write-Host "RunWorkbenchExport: $RunWorkbenchExport"
     Write-Host "DownloadCompletedArtifacts: $DownloadCompletedArtifacts"
@@ -609,6 +611,14 @@ try {
     Invoke-Step "Write export manifest" {
         $manifest = [ordered]@{
             model_name                            = $modelName
+            jarvis_model_name                     = $modelName
+            jarvis_model_path                     = $jarvisModelPath
+            recommended_stage_layout              = @(
+                "$jarvisModelPath/encoder/model.onnx",
+                "$jarvisModelPath/encoder/model.bin",
+                "$jarvisModelPath/decoder/model.onnx",
+                "$jarvisModelPath/decoder/model.bin"
+            )
             timestamp                             = $timestamp
             created_utc                           = (Get-Date).ToUniversalTime().ToString("o")
             jarvis_root                           = $jarvisRoot

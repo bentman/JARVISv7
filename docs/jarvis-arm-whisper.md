@@ -5,7 +5,7 @@ This sheet is for AMD64-host fixture generation for later JARVISv7 Windows ARM64
 The only intended JARVIS artifact is a zip package stored at:
 
 ```text
-docs\temp\jarvis-whisper-base-en-qaihub-precompiled-qnn-onnx-snapdragon-x-YYYYMMDDHHMMSS.zip
+docs\temp\jarvis-whisper-qualcomm-qnn-YYYYMMDDHHMMSS.zip
 ```
 
 The zip contains local output under the external export workspace, including `manifest.json`, `pip-freeze.txt`, and any downloaded Qualcomm Workbench export files when export is explicitly enabled.
@@ -24,6 +24,20 @@ $exportRoot\.venv-qualcomm
 ```
 
 It does not use `backend\.venv`, does not use `requirements.txt`, does not change ARM64 provisioning, and does not stage files into `models\stt`.
+
+The intended ARM64 side-by-side model identity is:
+
+```text
+whisper-qualcomm-qnn
+```
+
+The intended ARM64 staging folder is:
+
+```text
+models\stt\whisper-qualcomm-qnn
+```
+
+This is separate from the existing `whisper-base-en-qnn-snapdragon-x-elite` entry.
 
 ## Safety Model
 
@@ -135,7 +149,7 @@ Keep Qualcomm export work outside the repo. This helper defaults to:
 $jarvisRoot = "E:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7"
 $exportRoot = "E:\WORK\jarvis-dev\whisper-qnn"
 $venvDir = "$exportRoot\.venv-qualcomm"
-$outputDir = "$exportRoot\output"
+$outputDir = "$exportRoot\output\whisper-qualcomm-qnn-<timestamp>"
 ```
 
 The helper writes only the final zip into the repo:
@@ -228,7 +242,7 @@ $exportRoot\.venv-qualcomm\Scripts\python.exe -m qai_hub_models.models.whisper_b
   --components encoder decoder `
   --skip-profiling `
   --skip-inferencing `
-  --output-dir "$exportRoot\output\whisper-base-en-qaihub-precompiled-qnn-onnx-snapdragon-x-<timestamp>\export"
+  --output-dir "$exportRoot\output\whisper-qualcomm-qnn-<timestamp>\export"
 ```
 
 During the Workbench export process, the helper writes:
@@ -259,6 +273,9 @@ download process is running.
 `manifest.json` includes:
 
 - timestamp
+- JARVIS model name
+- JARVIS model path
+- recommended ARM64 staging layout
 - output directory
 - export directory
 - zip path
@@ -287,8 +304,10 @@ export\
 For confirmed Workbench export runs, `export\` should also contain Qualcomm-produced artifacts. Before using the archive in JARVIS runtime selection, inspect whether `export\` contains the ONNX files expected by `QnnWhisperRuntime`:
 
 ```text
-encoder.onnx
-decoder.onnx
+encoder\...\model.onnx
+encoder\...\model.bin
+decoder\...\model.onnx
+decoder\...\model.bin
 ```
 
 If Qualcomm's `whisper_base` export produces a different structure, record the produced layout before changing runtime/catalog code.
@@ -304,17 +323,28 @@ export\decoder\extracted\job_jpvejvwrg_optimized_onnx\model.onnx
 export\decoder\extracted\job_jpvejvwrg_optimized_onnx\model.bin
 ```
 
+The intended ARM64 staged model layout is:
+
+```text
+models\stt\whisper-qualcomm-qnn\encoder\model.onnx
+models\stt\whisper-qualcomm-qnn\encoder\model.bin
+models\stt\whisper-qualcomm-qnn\decoder\model.onnx
+models\stt\whisper-qualcomm-qnn\decoder\model.bin
+```
+
+Keep `whisper-base-en-qnn-snapdragon-x-elite` side-by-side and unchanged unless a separate approved slice changes it.
+
 ## ARM64 Runtime Validation After Staging
 
 After a future model-acquisition step stages the package through repo-approved paths, validate from repo root on ARM64:
 
 ```powershell
 backend\.venv\Scripts\python scripts\validate_backend.py profile
-backend\.venv\Scripts\python scripts\ensure_models.py --family stt --verify-only
+backend\.venv\Scripts\python scripts\ensure_models.py --family stt --model whisper-qualcomm-qnn --verify-only
 $env:JARVISV7_LIVE_TESTS = "1"
 backend\.venv\Scripts\python -m pytest backend\tests\runtime\hardware\test_qnn_gate_live.py -q
 $env:JARVISV7_LIVE_TESTS = "1"
-backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_stt_live.py -q -k qnn
+backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_stt_live.py -q -k "qnn and whisper_qualcomm_qnn"
 backend\.venv\Scripts\python scripts\validate_backend.py unit
 backend\.venv\Scripts\python scripts\validate_backend.py regression
 ```
@@ -333,4 +363,4 @@ Required live evidence:
 - Completed artifact download skipped: pass `-DownloadCompletedArtifacts` with `-workbenchIdsInputPath` or explicit job/model IDs.
 - AI Hub auth failure: set `QAI_HUB_API_TOKEN` or configure `qai-hub.exe` in `$exportRoot\.venv-qualcomm`.
 - Device name rejected: start with Qualcomm's `"Snapdragon X Elite CRD"` device name.
-- Export produces no `encoder.onnx` / `decoder.onnx`: do not force runtime selection. Record the produced layout and update the next slice accordingly.
+- Export produces no encoder/decoder `model.onnx` plus `model.bin`: do not force runtime selection. Record the produced layout and update the next slice accordingly.
