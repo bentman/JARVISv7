@@ -6,7 +6,7 @@ import onnxruntime
 import pytest
 
 from backend.app.hardware.qnn_provider import create_qnn_session, get_qnn_provider_options
-from backend.app.models.catalog import get_model_entry
+from backend.app.models.catalog import ModelEntry, get_model_entry
 from backend.tests.conftest import SKIP_UNLESS_ARM64, SKIP_UNLESS_LIVE, SKIP_UNLESS_QNN
 
 
@@ -15,6 +15,20 @@ def _find_required_model_file(root: Path, filename: str) -> Path:
     if not candidates:
         raise FileNotFoundError(f"missing required model file '{filename}' under {root}")
     return candidates[0]
+
+
+def _qnn_model_paths(entry: ModelEntry) -> list[Path]:
+    model_files = entry.config.get("model_files", {})
+    if isinstance(model_files, dict) and model_files:
+        return [
+            entry.local_path / str(model_files["encoder"]),
+            entry.local_path / str(model_files["decoder"]),
+        ]
+
+    return [
+        _find_required_model_file(entry.local_path, "encoder.onnx"),
+        _find_required_model_file(entry.local_path, "decoder.onnx"),
+    ]
 
 
 def _summarize_onnx_model(path: Path) -> dict[str, object]:
@@ -141,14 +155,16 @@ def test_qnn_ep_registers_in_onnxruntime() -> None:
 @pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
 @pytest.mark.skipif(SKIP_UNLESS_QNN, reason="requires QNN execution provider readiness")
 def test_qnn_whisper_catalog_artifact_loads_with_qnn_primary() -> None:
-    entry = get_model_entry("stt", "whisper-base-en-qnn-snapdragon-x-elite")
-    encoder_path = _find_required_model_file(entry.local_path, "encoder.onnx")
-    decoder_path = _find_required_model_file(entry.local_path, "decoder.onnx")
+    model_names = [
+        "whisper-base-en-qnn-snapdragon-x-elite",
+        "whisper-qualcomm-qnn",
+    ]
+    for model_name in model_names:
+        entry = get_model_entry("stt", model_name)
+        for model_path in _qnn_model_paths(entry):
+            session, _ = create_qnn_session(model_path, disable_cpu_fallback=True)
 
-    for model_path in (encoder_path, decoder_path):
-        session, _ = create_qnn_session(model_path, disable_cpu_fallback=True)
-
-        assert session.get_providers()[0] == "QNNExecutionProvider"
+            assert session.get_providers()[0] == "QNNExecutionProvider"
 
 
 

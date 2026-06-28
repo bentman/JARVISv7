@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-28 18:06
+  - Summary: Completed Slice U4 side-by-side Windows ARM64 Qualcomm QNN Whisper integration. QNN session creation now uses ONNX Runtime EP-device initialization for packaged QNN EPContext models, `whisper-qualcomm-qnn` is staged and selected for readiness-proven QNN STT, and live QNN transcript proof passed.
+  - Scope: `backend/app/hardware/qnn_provider.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/stt/stt_runtime.py`, `config/models/stt.yaml`, `models/stt/whisper-qualcomm-qnn/`, `backend/tests/unit/hardware/test_qnn_provider.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/runtime/voice/test_stt_live.py`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python scripts\provision.py verify` PASS with QNN extras and `onnxruntime`/`onnxruntime_qnn` present. `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS with `qnn:provider_library_registered`, `ep:QNNExecutionProvider`, and `dll:QnnHtp`. `backend\.venv\Scripts\python scripts\ensure_models.py --family stt --model whisper-qualcomm-qnn --verify-only` PASS with `ready=true` and staged encoder/decoder ONNX/bin files plus `provenance/manifest.json`. `JARVISV7_LIVE_TESTS=1 backend\.venv\Scripts\python -m pytest backend\tests\runtime\hardware\test_qnn_gate_live.py -q` PASS (`3 passed`). `JARVISV7_LIVE_TESTS=1 backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_stt_live.py -q -k "qnn and whisper_qualcomm_qnn"` PASS (`1 passed, 3 deselected`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`642 passed, 1 warning`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`150 passed, 5 deselected`, report `reports\validation\20260628224831-regression.txt`).
+
 - 2026-06-27 12:43
   - Summary: Added Windows ARM64 QNN provider activation through the packaged `onnxruntime_qnn` provider library. Preflight now registers `QNNExecutionProvider` before provider probing, and QNN session creation activates the provider before creating sessions.
   - Scope: `backend/app/hardware/qnn_provider.py`, `backend/app/hardware/preflight.py`, `backend/tests/unit/hardware/test_qnn_provider.py`, `backend/tests/unit/hardware/test_preflight.py`, `backend/tests/unit/hardware/test_qnn_slot.py`, `backend/tests/unit/hardware/test_qnn_prerequisite.py`, `backend/tests/unit/hardware/test_provisioning.py`
