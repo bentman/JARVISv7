@@ -30,7 +30,7 @@ param(
 Set-StrictMode -Version 3.0
 $ErrorActionPreference = "Stop"
 
-# Wraps a native command and throws on non-zero exit code.
+# Run a native command and fail fast on non-zero exit.
 function Invoke-Native {
     param(
         [Parameter(Mandatory = $true)]
@@ -45,7 +45,7 @@ function Invoke-Native {
     }
 }
 
-# Wraps a step with a description and WhatIf support.
+# Run a named step through PowerShell ShouldProcess / -WhatIf.
 function Invoke-Step {
     param(
         [Parameter(Mandatory = $true)]
@@ -65,7 +65,7 @@ function Invoke-Step {
     }
 }
 
-# Sources the Visual Studio ARM64 environment via vcvarsall.bat.
+# Import Visual Studio's ARM64 compiler environment into this process.
 function Import-VSArm64Environment {
     $vcvarsAll = "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvarsall.bat"
     if (-not (Test-Path $vcvarsAll)) {
@@ -101,7 +101,7 @@ function Import-VSArm64Environment {
     Write-Host "clang-cl: $clangCl"
 }
 
-# Clones a Git repo if absent; otherwise fast-forward pulls.
+# Clone a dependency repo once, then update by fast-forward only.
 function Update-Or-Clone {
     param(
         [Parameter(Mandatory = $true)]
@@ -125,7 +125,7 @@ function Update-Or-Clone {
     }
 }
 
-# Guard: fail early if JARVIS root is unreachable.
+# Validate roots before deriving build paths.
 if (-not (Test-Path $jarvisRoot)) {
     throw "JARVIS root does not exist: $jarvisRoot"
 }
@@ -141,7 +141,7 @@ if ([string]::IsNullOrWhiteSpace($transcriptPath)) {
     $transcriptPath = Join-Path $jarvisDevRoot "$(Get-Date -Format yyyyMMddHHmmss)_jarvis-arm-llamacpp-transcript.txt"
 }
 
-# Build and staging paths for OpenCL deps, llama.cpp source, and final artifacts.
+# Derived build and staging paths.
 $openCLHeadersRoot = Join-Path $jarvisDevRoot "OpenCL-Headers"
 $openCLLoaderRoot = Join-Path $jarvisDevRoot "OpenCL-ICD-Loader"
 $openCLPrefix = Join-Path $jarvisDevRoot "opencl"
@@ -155,12 +155,12 @@ try {
     Write-Host "Developer workspace root: $jarvisDevRoot"
     Write-Host "Transcript path: $transcriptPath"
 
-    # Phase 1: cross-compilation toolchain
+    # Phase 1: cross-compilation toolchain.
     Invoke-Step "Import Visual Studio ARM64 developer environment" {
         Import-VSArm64Environment
     }
 
-    # Phase 2: OpenCL headers
+    # Phase 2: OpenCL headers.
     Invoke-Step "Clone or update OpenCL-Headers" {
         Update-Or-Clone "https://github.com/KhronosGroup/OpenCL-Headers" $openCLHeadersRoot
     }
@@ -180,7 +180,7 @@ try {
         Invoke-Native "cmake" @("--build", $buildDir, "--target", "install")
     }
 
-    # Phase 3: OpenCL ICD Loader (produces OpenCL.dll)
+    # Phase 3: OpenCL ICD loader, which produces OpenCL.dll.
     Invoke-Step "Clone or update OpenCL-ICD-Loader" {
         Update-Or-Clone "https://github.com/KhronosGroup/OpenCL-ICD-Loader" $openCLLoaderRoot
     }
@@ -199,12 +199,12 @@ try {
         Invoke-Native "cmake" @("--build", $buildDir, "--target", "install")
     }
 
-    # Phase 4: llama.cpp source
+    # Phase 4: llama.cpp source.
     Invoke-Step "Clone or update llama.cpp" {
         Update-Or-Clone "https://github.com/ggml-org/llama.cpp" $llamaRoot
     }
 
-    # Phase 5: configure llama.cpp with OpenCL for ARM64; back up stale build dir first
+    # Phase 5: configure llama.cpp with OpenCL for ARM64.
     Invoke-Step "Configure llama.cpp ARM64 Adreno OpenCL build" {
         if (Test-Path $llamaBuildDir) {
             $backupBuildDir = "$llamaBuildDir.failed-$(Get-Date -Format yyyyMMddHHmmss)"
@@ -226,19 +226,18 @@ try {
         )
     }
 
-    # Phase 6: compile
+    # Phase 6: compile.
     Invoke-Step "Build llama.cpp ARM64 Adreno OpenCL" {
         Invoke-Native "cmake" @("--build", $llamaBuildDir)
     }
 
-    # Phase 7: create JARVIS runtime staging directory
+    # Phase 7: create JARVIS runtime staging directory.
     Invoke-Step "Create JARVIS runtime staging directory" {
         New-Item -ItemType Directory -Force -Path $jarvisRuntimeDir | Out-Null
         Write-Host "Runtime staging directory: $jarvisRuntimeDir"
     }
 
-    # Phase 8: deploy artifacts into JARVIS runtime tree
-
+    # Phase 8: deploy artifacts into the JARVIS runtime tree.
     Invoke-Step "Copy llama.cpp runtime artifacts into JARVIS" {
         $llamaBinDir = Join-Path $llamaBuildDir "bin"
         $serverSource = Join-Path $llamaBinDir "llama-server.exe"
@@ -263,8 +262,7 @@ try {
     Write-Host "Build helper completed. Runtime artifacts staged in:"
     Write-Host "  $jarvisRuntimeDir"
 }
-    # Ensure transcript is always closed, even on failure.
-
 finally {
+    # Ensure transcript is always closed, even on failure.
     Stop-Transcript
 }
