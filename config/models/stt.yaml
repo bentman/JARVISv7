@@ -37,3 +37,22 @@ models:
         - encoder.onnx
         - decoder.onnx
     local_path: models/stt/whisper-base-en-qnn-snapdragon-x-elite
+  whisper-qualcomm-qnn:
+    family: stt
+    runtime: qnn_whisper
+    devices: [qnn]
+    decode:
+      language: ""
+      task: transcribe
+      predict_timestamps: false
+    model_files:
+      encoder: encoder/model.onnx
+      decoder: decoder/model.onnx
+    source:
+      type: url_zip
+      handoff_package: docs/temp/jarvis-whisper-qnn-aihub-20260628110114.zip
+      required_files_anywhere:
+        - model.onnx
+        - model.bin
+        - manifest.json
+    local_path: models/stt/whisper-qualcomm-qnn

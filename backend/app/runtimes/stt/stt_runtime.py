@@ -28,5 +28,5 @@ def select_stt_runtime(preflight: PreflightResult, profile: HardwareProfile) -> 
     if not ready:
         return DegradedSTTRuntime(reason=reason, device=device)
     if device == "qnn":
-        return QnnWhisperRuntime(device="qnn", model_name="whisper-base-en-qnn-snapdragon-x-elite")
+        return QnnWhisperRuntime(device="qnn", model_name="whisper-qualcomm-qnn")
     return OnnxWhisperRuntime(device=device)

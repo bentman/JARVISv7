@@ -78,3 +78,20 @@ def test_stt_qnn_live_transcript_correct():
     transcript = runtime.transcribe(audio, sample_rate=16000)
 
     assert "hello world" in _normalize_transcript(transcript)
+
+
+@pytest.mark.live
+@pytest.mark.stt
+@pytest.mark.qnn
+@pytest.mark.arm64
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
+@pytest.mark.skipif(SKIP_UNLESS_QNN, reason="requires QNN execution provider readiness")
+def test_stt_qnn_whisper_qualcomm_qnn_live_transcript_correct():
+    runtime = QnnWhisperRuntime(device="qnn", model_name="whisper-qualcomm-qnn")
+
+    assert runtime.is_available()
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+    transcript = runtime.transcribe(audio, sample_rate=16000)
+
+    assert "hello world" in _normalize_transcript(transcript)

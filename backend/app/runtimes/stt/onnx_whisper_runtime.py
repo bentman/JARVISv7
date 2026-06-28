@@ -140,27 +140,41 @@ class QnnWhisperRuntime(STTBase):
             raise FileNotFoundError(f"missing required model file '{filename}' under {self.model_path}")
         return candidates[0]
 
+    def _configured_model_file(self, role: str, fallback_filename: str) -> Path:
+        model_files = self._model_config.get("model_files", {})
+        if isinstance(model_files, dict):
+            relative_path = model_files.get(role)
+            if isinstance(relative_path, str) and relative_path.strip():
+                candidate = self.model_path / relative_path
+                if not candidate.is_file():
+                    raise FileNotFoundError(
+                        f"missing configured {role} model file '{relative_path}' under {self.model_path}"
+                    )
+                return candidate
+        return self._find_model_file(fallback_filename)
+
     def _load_encoder_session(self) -> Any:
         """Load encoder session with QNN provider."""
         if self._encoder_session is None:
-            encoder_path = self._find_model_file("encoder.onnx")
+            encoder_path = self._configured_model_file("encoder", "encoder.onnx")
             self._encoder_session, _ = create_qnn_session(encoder_path, disable_cpu_fallback=True)
         return self._encoder_session
 
     def _load_decoder_session(self) -> Any:
         """Load decoder session with QNN provider."""
         if self._decoder_session is None:
-            decoder_path = self._find_model_file("decoder.onnx")
+            decoder_path = self._configured_model_file("decoder", "decoder.onnx")
             self._decoder_session, _ = create_qnn_session(decoder_path, disable_cpu_fallback=True)
         return self._decoder_session
 
     def is_available(self) -> bool:
         """Check if all required model files are present."""
-        required = (
-            "encoder.onnx",
-            "decoder.onnx",
-        )
-        return all(any(path.is_file() for path in self.model_path.rglob(filename)) for filename in required)
+        try:
+            self._configured_model_file("encoder", "encoder.onnx")
+            self._configured_model_file("decoder", "decoder.onnx")
+        except FileNotFoundError:
+            return False
+        return True
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if not self.is_available():

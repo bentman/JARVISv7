@@ -71,7 +71,7 @@ def test_selector_returns_qnn_runtime_when_qnn_tokens_proven():
 
     assert isinstance(runtime, QnnWhisperRuntime)
     assert runtime.device == "qnn"
-    assert runtime.model_name == "whisper-base-en-qnn-snapdragon-x-elite"
+    assert runtime.model_name == "whisper-qualcomm-qnn"
 
 
 def test_selector_returns_degraded_runtime_when_device_not_ready():
@@ -96,6 +96,44 @@ def test_qnn_runtime_is_available_when_model_files_present_recursively(tmp_path)
     runtime = QnnWhisperRuntime(model_path=model_path)
 
     assert runtime.is_available()
+
+
+def test_qnn_runtime_is_available_with_configured_side_by_side_model_files(tmp_path):
+    model_path = tmp_path / "qnn-model"
+    encoder_dir = model_path / "encoder"
+    decoder_dir = model_path / "decoder"
+    encoder_dir.mkdir(parents=True)
+    decoder_dir.mkdir(parents=True)
+    (encoder_dir / "model.onnx").write_text("x", encoding="utf-8")
+    (decoder_dir / "model.onnx").write_text("x", encoding="utf-8")
+
+    runtime = QnnWhisperRuntime(model_path=model_path)
+    runtime._model_config = {
+        "model_files": {
+            "encoder": "encoder/model.onnx",
+            "decoder": "decoder/model.onnx",
+        }
+    }
+
+    assert runtime.is_available()
+    assert runtime._configured_model_file("encoder", "encoder.onnx") == encoder_dir / "model.onnx"
+    assert runtime._configured_model_file("decoder", "decoder.onnx") == decoder_dir / "model.onnx"
+
+
+def test_qnn_runtime_is_not_available_when_configured_model_file_is_absent(tmp_path):
+    model_path = tmp_path / "qnn-model"
+    (model_path / "encoder").mkdir(parents=True)
+    (model_path / "encoder" / "model.onnx").write_text("x", encoding="utf-8")
+
+    runtime = QnnWhisperRuntime(model_path=model_path)
+    runtime._model_config = {
+        "model_files": {
+            "encoder": "encoder/model.onnx",
+            "decoder": "decoder/model.onnx",
+        }
+    }
+
+    assert not runtime.is_available()
 
 
 def test_qnn_runtime_is_not_available_when_model_files_absent(tmp_path):

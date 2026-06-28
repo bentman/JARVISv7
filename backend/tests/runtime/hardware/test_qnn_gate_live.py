@@ -132,4 +132,23 @@ def test_qnn_ep_registers_in_onnxruntime() -> None:
     assert "QNNExecutionProvider" in providers
 
 
+@pytest.mark.live
+@pytest.mark.arm64
+@pytest.mark.qnn
+@pytest.mark.stt
+@pytest.mark.requires_qairt
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")
+@pytest.mark.skipif(SKIP_UNLESS_QNN, reason="requires QNN execution provider readiness")
+def test_qnn_whisper_catalog_artifact_loads_with_qnn_primary() -> None:
+    entry = get_model_entry("stt", "whisper-base-en-qnn-snapdragon-x-elite")
+    encoder_path = _find_required_model_file(entry.local_path, "encoder.onnx")
+    decoder_path = _find_required_model_file(entry.local_path, "decoder.onnx")
+
+    for model_path in (encoder_path, decoder_path):
+        session, _ = create_qnn_session(model_path, disable_cpu_fallback=True)
+
+        assert session.get_providers()[0] == "QNNExecutionProvider"
+
+
 

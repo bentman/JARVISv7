@@ -169,6 +169,20 @@ def get_qnn_provider_options() -> dict[str, str] | None:
     return {"backend_path": str(resolve_qnn_htp_backend_path())}
 
 
+def _qnn_ep_devices() -> list[object]:
+    get_ep_devices = getattr(onnxruntime, "get_ep_devices", None)
+    if not callable(get_ep_devices):
+        return []
+    try:
+        return [
+            device
+            for device in get_ep_devices()
+            if getattr(device, "ep_name", None) == "QNNExecutionProvider"
+        ]
+    except Exception:
+        return []
+
+
 def create_qnn_session(
     model_path: str | Path,
     disable_cpu_fallback: bool = True,
@@ -181,7 +195,7 @@ def create_qnn_session(
 
     Returns:
         Tuple of (InferenceSession, initialization_method_string).
-        Method string is "provider_list_with_backend_path".
+        Method string describes the successful initialization path.
 
     Raises:
         RuntimeError: if QNN session creation fails.
@@ -191,6 +205,18 @@ def create_qnn_session(
     if not activation.provider_registered:
         raise RuntimeError(f"QNNExecutionProvider activation failed: {activation.error}")
     provider_options = get_qnn_provider_options()
+    failures: list[str] = []
+
+    for ep_device in _qnn_ep_devices():
+        try:
+            so = onnxruntime.SessionOptions()
+            if disable_cpu_fallback:
+                so.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
+            so.add_provider_for_devices([ep_device], provider_options or {})
+            session = onnxruntime.InferenceSession(str(model_path), sess_options=so)
+            return session, "ep_device_with_backend_path"
+        except Exception as exc:
+            failures.append(f"ep_device_with_backend_path failure={exc!r}")
 
     try:
         so = onnxruntime.SessionOptions()
@@ -204,9 +230,23 @@ def create_qnn_session(
         )
         return session, "provider_list_with_backend_path"
     except Exception as exc:
+        failure_reason = _classify_qnn_session_failure(exc)
+        failures.append(f"provider_list_with_backend_path failure={exc!r}")
         raise RuntimeError(
             "QNN session creation failed for "
             f"model='{model_path}'; "
             f"provider_options={provider_options!r}; "
-            f"provider_list_with_backend_path failure={exc!r}"
+            f"reason={failure_reason}; "
+            f"{'; '.join(failures)}"
         ) from exc
+
+
+def _classify_qnn_session_failure(exc: Exception) -> str:
+    message = str(exc)
+    if (
+        "assigned to the default CPU EP" in message
+        or "com.microsoft.EPContext" in message
+        and "CPUExecutionProvider" in message
+    ):
+        return "qnn-epcontext-not-claimed"
+    return "qnn-session-create-failed"
