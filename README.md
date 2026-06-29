@@ -175,12 +175,12 @@ JARVISv7 was explicitly shaped by the requirement that hardware support must not
 **Local LLM Server for `llama.cpp` Models:**
 * CPU fallback local LLM is using `llama-server.exe` - each AMD64 and ARM64 have their own binary set
 * AMD-GPU-CUDA accelerated `llama-server.exe` is achieved using a separate CUDA optimized binary
-* ARM-GPU `llama-server.exe` is accelerated by adreno-opencl (see [jarvis-arm-llamacpp.md](docs\jarvis-arm-llamacpp.md) for details)
+* ARM-GPU `llama-server.exe` is accelerated by adreno-opencl (see [jarvis-arm-llamacpp.md](docs/jarvis-arm-llamacpp.md) for details)
 
 **Voice Models for STT/TTS:**
 * CPU fallback is Onnx based (STT-Whisper and TTS-Koroko)
 * AMD-GPU-CUDA accelerated voice is already supported in Onnx - that's not saying we can't do better
-* ARM-GPU-QNN has been quite a beast, but if you are adventurous, read [jarvis-arm-whisper.md](docs\jarvis-arm-whisper.md)
+* ARM-GPU-QNN has been quite a beast, but if you are adventurous, read [jarvis-arm-whisper.md](docs/jarvis-arm-whisper.md)
 
 It is also not the same thing as saying every accelerator target is done. AMD64-CUDA and ARM64-QNN acceleration remain  "work-in-progress". Other accelerator targets (ROCm, Metal, CoreML, DirectML, etc) have not been proven. Which is exactly how this project is supposed to talk now:
 
