@@ -3,7 +3,6 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
-
 class FamilyReadiness(BaseModel):
     family: str
     runtime: str
@@ -27,6 +26,7 @@ class PreflightSummary(BaseModel):
 class ServiceReadiness(BaseModel):
     reachable: bool
     reason: str
+    endpoint: str | None = None
 
 
 class ResidentAudioReadiness(BaseModel):
