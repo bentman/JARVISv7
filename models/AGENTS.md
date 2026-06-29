@@ -1,0 +1,62 @@
+# models/AGENTS.md
+
+Applies to `models/**`. The root contract still applies.
+
+## Model artifact boundary
+
+`models/` holds local model artifacts. It is not a source-code location and not a configuration authority.
+
+Catalog/config metadata lives under `config/models/`. Runtime code consumes catalog metadata; it must not infer model identity from ad hoc filesystem guesses when a catalog entry exists.
+
+Do not commit large model artifacts unless explicitly requested. Most model files are local acquisition/staging outputs and should remain ignored.
+
+## Acquisition and verification
+
+Use `scripts/ensure_models.py` for configured model acquisition and verification.
+
+Common checks:
+
+- `backend/.venv/Scripts/python scripts/ensure_models.py --verify-only`
+- `backend/.venv/Scripts/python scripts/ensure_models.py --family stt --model <name> --verify-only`
+- `backend/.venv/Scripts/python scripts/ensure_models.py --family llm --model <name> --verify-only`
+
+Do not manually download, rename, or reshuffle model files unless the task explicitly calls for staging a known artifact.
+
+## Layout expectations
+
+Respect existing family folders:
+
+- `models/stt/`
+- `models/tts/`
+- `models/wake/`
+- `models/llm/`
+
+When adding or staging a model, keep names aligned with the catalog model id. Do not replace an existing model in place when the approved work calls for side-by-side staging.
+
+For Qualcomm QNN Whisper artifacts, preserve encoder/decoder separation and provenance:
+
+- `encoder/model.onnx`
+- `encoder/model.bin`
+- `decoder/model.onnx`
+- `decoder/model.bin`
+- `provenance/` when available
+
+The ONNX files may be small EPContext wrappers. Do not assume size alone means invalid.
+
+## Provenance
+
+When a local artifact is staged manually, record enough provenance to reproduce or audit it:
+
+- source package or repo
+- model id or artifact id when applicable
+- date/time of acquisition
+- host class used for validation
+- verification command and outcome
+
+Do not commit tokens, account-specific metadata, absolute private paths, or downloaded credentials.
+
+## Validation
+
+Model readiness is not runtime proof. Pair model verification with runtime/profile validation when claiming a model works.
+
+Report missing artifacts as degraded/missing state. Do not patch runtime code to hide missing model files.
