@@ -365,7 +365,7 @@ Built on the accumulated successes, mistakes, redesigns, overcorrections, and oc
   The version that proved the vision could work and exposed what still needed to be fixed.
 
 * **JARVISv7 (Just Another Restart, Validated Iteratively System)**[README.md]  
-  The version currently proving that "under construction" and "making progress" can, occasionally, be the same thing.
+  The version proving that "under construction" and "making progress" can, occasionally, be the same thing.
 
 * * *
 
