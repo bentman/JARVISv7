@@ -11,6 +11,9 @@ runtimes\llama.cpp\windows-arm64-adreno-opencl\OpenCL.dll
 
 The repo should consume that sidecar only after it exists locally with any required adjacent DLLs.
 
+## Recommended Helper Script
+[jarvis-arm-llamacpp.ps1](jarvis-arm-llamacpp.ps1)
+
 ## Target Machine
 
 - Windows on ARM64.
@@ -119,7 +122,7 @@ If `clang-cl` is not found in a plain shell, launch a VS developer shell or run:
 
 The helper script below imports that environment into the current PowerShell process before configuring CMake.
 
-## Recommended Helper Script
+## Using Helper Script
 
 From the repo root, run the checked-in operator helper:
 
