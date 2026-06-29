@@ -54,7 +54,7 @@ The core vision for JARVIS has remained surprisingly stable.
 
 * A local-first, voice-first assistant capable of maintaining conversational continuity, executing useful tasks, adapting to available hardware, and operating within a structured, observable runtime.
 
-That vision existed long before v7. What changed was understanding how difficult it would be to achieve without letting the architecture wander into the woods wearing a little hat. The goal is still not to create a chatbot. The goal is not to create an autonomous agent that disappears into a black box.
+That vision existed long before v7. What changed was understanding how difficult it would be to achieve without letting the architecture wander into the woods wearing just a little hat. The goal is still not to create a chatbot. The goal is not to create an autonomous agent that disappears into a black box.
 
 > The goal is to build a system that can interact naturally while remaining understandable, controllable, and measurable.
 
