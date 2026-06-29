@@ -12,7 +12,7 @@
 * Still not sentient.
 * Still not flying the suit.
 * Still not allowed to call vibes a validation strategy.
-* Now with enough verified pieces that the remaining problems have nowhere polite to hide.
+* Now with enough runtime evidence that remaining problems have nowhere polite to hide.
 
 JARVISv7 is an attempt to build a **local-first, voice-first personal assistant** capable of real conversational interaction on hardware people actually own.
 
@@ -92,6 +92,7 @@ Significant progress has been made toward this goal throughout JARVISv7.
 * Realtime conversation boundaries exist.
 * Interruption and response coordination helpers exist.
 * ARM64 voice validation is no longer purely theoretical, which is refreshing.
+* Hardware-specific voice readiness is normalized instead of guessed at enthusiastically.
 
 Several portions of the intended interaction model have now been validated in practice. There are still gaps. There are still rough edges. There are still moments where the system reminds everyone involved that speech recognition, conversation management, interruption handling, realtime coordination, and low-latency reasoning are all separate problems pretending to be one. The overall direction, however, remains unchanged.
 
@@ -126,7 +127,7 @@ Examples include:
 
 That is not a small list. It is, however, still not permission to declare victory and go buy sunglasses.😎
 
-Not everything works everywhere. Not everything works perfectly. But increasingly, some things work (or have documented reasons why they do not).
+Not everything works everywhere. Not everything works perfectly. But increasingly, things either work, degrade visibly, or have documented reasons why they do not.
 
 > That may not sound exciting — but really, it is.
 
@@ -169,13 +170,19 @@ The active pain list still includes:
 
 ## 🏃‍♂️‍➡️ Runtime Reality ("x64, ARM64, and the tiny furnace of truth")
 
-JARVISv7 was explicitly shaped by the requirement that hardware support must not be retrofitted later while everyone pretends that was the plan. The project now has verified foundations across Windows x64 and Windows ARM64 for major parts of the stack. That includes profiling, provisioning, readiness, runtime validation, desktop host behavior, voice runtime matrices, and regression coverage across both host classes.
+JARVISv7 was explicitly shaped by the requirement that hardware support must not be retrofitted later while everyone pretends that was the plan. The project now has verified foundations across Windows x64 and Windows ARM64 for major parts of the stack. That includes profiling, provisioning, readiness, runtime validation, desktop host behavior, voice runtime matrices, and regression coverage across both host classes. That is real progress in the right direction.
 
-The local LLM story has also advanced significantly. Managed local `llama.cpp` support now exists through catalog/profile/sidecar/runtime/selector wiring, with Ollama remaining as a fallback path. CPU local `llama.cpp` has been live-proven on both AMD64 and ARM64 (we also have AMD64-CUDA and ARM64-QNN, sorta).
+**Local LLM Server for `llama.cpp` Models:**
+* CPU fallback local LLM is using `llama-server.exe` - each AMD64 and ARM64 have their own binary set
+* AMD-GPU-CUDA accelerated `llama-server.exe` is achieved using a separate CUDA optimized binary
+* ARM-GPU `llama-server.exe` is accelerated by adreno-opencl (see [jarvis-arm-llamacpp.md](docs\jarvis-arm-llamacpp.md) for details)
 
-That is (again) real progress in the right direction.
+**Voice Models for STT/TTS:**
+* CPU fallback is Onnx based (STT-Whisper and TTS-Koroko)
+* AMD-GPU-CUDA accelerated voice is already supported in Onnx - that's not saying we can't do better
+* ARM-GPU-QNN has been quite a beast, but if you are adventurous, read [jarvis-arm-whisper.md](docs\jarvis-arm-whisper.md)
 
-It is also not the same thing as saying every accelerator target is done. AMD64 CUDA and ARM64 QNN acceleration for the local LLM path remain as "work-in-progress" where viable sidecar artifacts and live accelerator completion have barely been proven. Which is exactly how this project is supposed to talk now:
+It is also not the same thing as saying every accelerator target is done. AMD64-CUDA and ARM64-QNN acceleration remain  "work-in-progress". Other accelerator targets (ROCm, Metal, CoreML, DirectML, etc) have not been proven. Which is exactly how this project is supposed to talk now:
 
 > prove it (more than once) or stop claiming it (if not).
 
@@ -289,7 +296,7 @@ The remaining work is mostly:
 
 ## 🔁 What Changed From v6 ("Less drift. More discipline. More evidence.")
 
-v6 demonstrated that the vision was achievable. It also demonstrated that capable systems can drift surprisingly far without strong controls. One of the most important lessons learned was that governance is not documentation. Governance is architecture. The repository now includes documented governance, validation harnesses, inventories, acceptance criteria, operational workflows, implementation boundaries, and capability tracking.
+v6 demonstrated that the vision was achievable. It also demonstrated that capable systems can drift surprisingly far without strong controls. One of the most important lessons learned was that governance is not documentation. Governance is architecture. The repository now includes documented governance, validation harnesses, inventories, acceptance criteria, operational workflows, implementation boundaries, capability tracking, cross-host runtime evidence, and enough live voice validation to make vague excuses less comfortable.
 
 As a result, JARVISv7 places much greater emphasis on:
 
@@ -319,8 +326,10 @@ Contributions are welcome, particularly those that:
 * improve memory and retrieval systems
 * reduce complexity and improve reliability
 * improve platform support (did we mention donations, yet?)
-* improve hardware/runtime coverage (ok, we're pretty sure we have mentioned "donations")
 * improve agent boundaries without turning them into autonomous gremlins
+* improve architecture parity without pretending one machine represents the species
+* improve hardware/runtime coverage (ok, we're pretty sure we have mentioned "donations")
+* improve live runtime validation instead of just making tests feel emotionally supportive
 * advance RAG, MCP, skills, agents, and local/cloud escalation without pretending they are already finished
 
 **BONUS POINTS:** solving real problems without introducing three new ones.  
@@ -371,6 +380,10 @@ Built on the accumulated successes, mistakes, redesigns, overcorrections, and oc
 
 ## 🧩 Bottom Line
 
-JARVISv7 is not attempting to reinvent the vision. It is attempting to realize it. The destination has changed very little. The amount of work required to reach it has become uncomfortably clear. That is not failure. That is understanding. For the first time in a while, construction appears to be outpacing reinvention. Which is probably the strongest progress indicator yet.
+JARVISv7 is not attempting to reinvent the vision. It is attempting to realize it. The destination has changed very little. The amount of work required to reach it has become uncomfortably clear. That is not failure. That is understanding. 
+
+Recent work has moved more of the ProjectVision from “this should exist” to “this exists with evidence, caveats, and a TODO list that keeps making eye contact.” That is the right kind of progress.
+
+For the first time in a while, construction appears to be outpacing reinvention. Which is probably the strongest progress indicator yet.
 
 > "Sometimes you gotta run before you can walk." — Tony Stark
