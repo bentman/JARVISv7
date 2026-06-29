@@ -23,10 +23,7 @@ Runtime sidecar path convention:
 
 - `runtimes/<runtime-family>/<host-profile>/`
 
-Examples of naming shape only:
-
-- `runtimes/llama.cpp/windows-amd64-cpu/`
-- `runtimes/llama.cpp/windows-arm64-cpu/`
+The `<runtime-family>` and `<host-profile>` values must come from the catalog/profile design, not from an ad hoc artifact name.
 
 A sidecar folder should contain only required runtime files plus approved provenance when useful.
 
