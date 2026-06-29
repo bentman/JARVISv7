@@ -1,5 +1,5 @@
 import { createApiClient } from "./api-client.js";
-import { applyStored, initAppearanceControls } from "./components/appearance-controls.js";
+import { applyStored } from "./components/appearance-controls.js";
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
 import { createResidentVoicePresenter } from "./components/resident-voice.js";
@@ -25,7 +25,6 @@ const settingsPanelEl = document.querySelector("#settings-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
-const appearanceControlsEl = document.querySelector("#appearance-controls");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
 const turnStateEl = document.querySelector("#turn-state");
@@ -106,8 +105,6 @@ function updatePersonalityDisplay(profile) {
     ["Brevity", profile.brevity],
     ["Formality", profile.formality],
   ];
-  const heading = document.createElement("strong");
-  heading.textContent = profile.display_name || "JARVIS";
   const rows = metadataFields.map(([label, value]) => {
     const row = document.createElement("div");
     const labelEl = document.createElement("span");
@@ -117,7 +114,7 @@ function updatePersonalityDisplay(profile) {
     row.append(labelEl, valueEl);
     return row;
   });
-  personalityDetailEl.replaceChildren(heading, ...rows);
+  personalityDetailEl.replaceChildren(...rows);
 }
 
 const residentVoice = createResidentVoicePresenter({
@@ -470,7 +467,6 @@ window.addEventListener("beforeunload", () => {
 async function startApp() {
   applyStored();
   await startDesktop();
-  initAppearanceControls(appearanceControlsEl);
 }
 
 startApp();
