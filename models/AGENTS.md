@@ -35,11 +35,11 @@ When adding or staging a model, keep names aligned with the catalog model id. Do
 
 For Qualcomm QNN Whisper artifacts, preserve encoder/decoder separation and provenance:
 
-- `encoder/model.onnx`
-- `encoder/model.bin`
-- `decoder/model.onnx`
-- `decoder/model.bin`
-- `provenance/` when available
+- `models/stt/encoder/model.onnx`
+- `models/stt/encoder/model.bin`
+- `models/stt/decoder/model.onnx`
+- `models/stt/decoder/model.bin`
+- `models/stt/provenance/` when available
 
 The ONNX files may be small EPContext wrappers. Do not assume size alone means invalid.
 

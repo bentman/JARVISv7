@@ -102,7 +102,7 @@ Honor `.agentignore` as a repository contract for files agents should not read, 
 
 Do not commit generated artifacts unless the task explicitly requires it. Ensure `.gitignore` covers any new generated output. Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
 
-## 7. CHANGE_LOG and inventory
+## 7. CHANGE_LOG and SYSTEM_INVENTORY
 
 `CHANGE_LOG.md` is append-only. Add entries only after validation evidence exists. Never rewrite old entries; append a corrective entry when needed.
 
