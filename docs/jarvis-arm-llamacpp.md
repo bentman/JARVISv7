@@ -12,7 +12,7 @@ runtimes\llama.cpp\windows-arm64-adreno-opencl\OpenCL.dll
 The repo should consume that sidecar only after it exists locally with any required adjacent DLLs.
 
 ## Recommended Helper Script
-[jarvis-arm-llamacpp.ps1](jarvis-arm-llamacpp.ps1)
+Run from `docs` location [jarvis-arm-llamacpp.ps1](jarvis-arm-llamacpp.ps1)
 
 ## Target Machine
 

@@ -10,6 +10,9 @@ docs\temp\jarvis-whisper-qualcomm-qnn-YYYYMMDDHHMMSS.zip
 
 The zip contains local output under the external export workspace, including `manifest.json`, `pip-freeze.txt`, and any downloaded Qualcomm Workbench export files when export is explicitly enabled.
 
+## Recommended Helper Script
+Run from `docs` location [jarvis-arm-whisper.ps1](jarvis-arm-whisper.ps1)
+
 ## Target Machine
 
 - Windows AMD64 fixture host for export/package creation.
