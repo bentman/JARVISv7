@@ -1,3 +1,5 @@
+import { createAppearanceControls } from "./appearance-controls.js";
+
 let activeContainer = null;
 let loadedFields = [];
 let fieldControls = new Map();
@@ -112,6 +114,7 @@ function renderPanel(containerEl, fields) {
   fieldControls = new Map();
 
   const heading = document.createElement("h2");
+  const appearance = createAppearanceControls();
   heading.textContent = "Settings";
   dirtyEl = document.createElement("p");
   dirtyEl.hidden = true;
@@ -142,7 +145,7 @@ function renderPanel(containerEl, fields) {
   form.appendChild(actions);
   form.addEventListener("submit", saveSettings);
 
-  containerEl.replaceChildren(heading, dirtyEl, restartState, form, statusEl);
+  containerEl.replaceChildren(heading, appearance, dirtyEl, restartState, form, statusEl);
   updateDirtyState();
 }
 
