@@ -126,7 +126,7 @@ def build_readiness_response(state: ApiState) -> ReadinessResponse:
             probe_error_count=len(state.preflight.probe_errors),
         ),
         services={
-            name: ServiceReadiness(reachable=value.reachable, reason=value.reason)
+            name: ServiceReadiness(reachable=value.reachable, reason=value.reason, endpoint=value.endpoint)
             for name, value in services.items()
         },
         resident_audio=_resident_audio_readiness(state),
