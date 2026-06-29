@@ -1,3 +1,10 @@
+function statusKind(value) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (["true", "yes", "running", "enabled", "ready", "reachable"].includes(normalized)) return "positive";
+  if (["false", "no", "stopped", "disabled", "unavailable", "failed"].includes(normalized)) return "negative";
+  return "neutral";
+}
+
 function appendField(containerEl, label, value) {
   const row = document.createElement("div");
   row.className = "wake-indicator-field";
@@ -7,7 +14,8 @@ function appendField(containerEl, label, value) {
   labelEl.textContent = label;
 
   const valueEl = document.createElement("span");
-  valueEl.className = "wake-indicator-value";
+  valueEl.className = "wake-indicator-value status-value";
+  valueEl.dataset.status = statusKind(value);
   valueEl.textContent = value;
 
   row.append(labelEl, valueEl);
