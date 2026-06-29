@@ -15,9 +15,11 @@ _READINESS_TIMEOUT_S = 0.5
 class ServiceStatus:
     reachable: bool
     reason: str
+    endpoint: str | None = None
 
 
 def _probe_redis(settings: Settings) -> ServiceStatus:
+    endpoint = f"{settings.redis_host}:{settings.redis_port}"
     try:
         client = redis.Redis(
             host=settings.redis_host,
@@ -28,24 +30,24 @@ def _probe_redis(settings: Settings) -> ServiceStatus:
             decode_responses=True,
         )
         client.ping()
-        return ServiceStatus(reachable=True, reason="reachable")
+        return ServiceStatus(reachable=True, reason="reachable", endpoint=endpoint)
     except Exception as exc:
-        return ServiceStatus(reachable=False, reason=f"unreachable: {type(exc).__name__}")
+        return ServiceStatus(reachable=False, reason=f"unreachable: {type(exc).__name__}", endpoint=endpoint)
 
 
 def _probe_searxng(settings: Settings) -> ServiceStatus:
     base_url = settings.searxng_base_url.rstrip("/")
     if not settings.use_searxng or not base_url:
-        return ServiceStatus(reachable=False, reason="not configured")
+        return ServiceStatus(reachable=False, reason="not configured", endpoint=base_url or None)
     try:
         health_response = httpx.get(
             f"{base_url}/healthz",
             timeout=_READINESS_TIMEOUT_S,
         )
     except Exception as exc:
-        return ServiceStatus(reachable=False, reason=f"unreachable: {type(exc).__name__}")
+        return ServiceStatus(reachable=False, reason=f"unreachable: {type(exc).__name__}", endpoint=base_url)
     if health_response.status_code >= 400:
-        return ServiceStatus(reachable=False, reason=f"unreachable: healthz HTTP {health_response.status_code}")
+        return ServiceStatus(reachable=False, reason=f"unreachable: healthz HTTP {health_response.status_code}", endpoint=base_url)
 
     try:
         response = httpx.get(
@@ -54,21 +56,21 @@ def _probe_searxng(settings: Settings) -> ServiceStatus:
             timeout=_READINESS_TIMEOUT_S,
         )
     except httpx.TimeoutException as exc:
-        return ServiceStatus(reachable=False, reason=f"container reachable; json probe timeout: {type(exc).__name__}")
+        return ServiceStatus(reachable=False, reason=f"container reachable; json probe timeout: {type(exc).__name__}", endpoint=base_url)
     except Exception as exc:
-        return ServiceStatus(reachable=False, reason=f"container reachable; json probe failed: {type(exc).__name__}")
+        return ServiceStatus(reachable=False, reason=f"container reachable; json probe failed: {type(exc).__name__}", endpoint=base_url)
 
     try:
         payload = response.json()
     except ValueError:
-        return ServiceStatus(reachable=False, reason="container reachable; json unavailable: invalid JSON")
+        return ServiceStatus(reachable=False, reason="container reachable; json unavailable: invalid JSON", endpoint=base_url)
     if response.status_code >= 400:
         if isinstance(payload, dict) and payload.get("error") == "No query":
-            return ServiceStatus(reachable=True, reason="container reachable; json usable")
-        return ServiceStatus(reachable=False, reason=f"container reachable; json unavailable: HTTP {response.status_code}")
+            return ServiceStatus(reachable=True, reason="container reachable; json usable", endpoint=base_url)
+        return ServiceStatus(reachable=False, reason=f"container reachable; json unavailable: HTTP {response.status_code}", endpoint=base_url)
     if not isinstance(payload, dict):
-        return ServiceStatus(reachable=False, reason="container reachable; json unavailable: invalid payload")
-    return ServiceStatus(reachable=True, reason="container reachable; json usable")
+        return ServiceStatus(reachable=False, reason="container reachable; json unavailable: invalid payload", endpoint=base_url)
+    return ServiceStatus(reachable=True, reason="container reachable; json usable", endpoint=base_url)
 
 
 def collect_service_statuses(settings: Settings | None = None) -> dict[str, ServiceStatus]:
