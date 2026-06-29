@@ -44,6 +44,7 @@ Default behavior:
 - Do not expand scope beyond the explicit request.
 - Do not create new repo artifacts unless requested.
 - Do not introduce parallel architectures, shadow workflows, or alternate setup paths.
+- Do not create custom helper scripts/docs as a workaround for missing design.
 - Prefer existing patterns and minimal diffs.
 - Keep responses concise and evidence-focused.
 
@@ -96,11 +97,20 @@ Key validator commands:
 
 Exit codes: `0` pass, `1` fail, `2` skipped-not-failed, `3` environment-unsatisfied.
 
-## 6. File and ignore boundaries
+## 6. File, artifact, and ignore boundaries
 
 Honor `.agentignore` as a repository contract for files agents should not read, index, embed, or transmit. Treat matching paths as unavailable unless explicit task instructions and repository policy permit otherwise.
 
 Do not commit generated artifacts unless the task explicitly requires it. Ensure `.gitignore` covers any new generated output. Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
+
+Artifact/helper docs are maintenance surfaces for approved designs, not design authority. Use existing helpers as documented; do not invent a new helper workflow when config/catalog/runtime design should own the behavior.
+
+Naming conventions for approved helper artifacts:
+
+- docs: `docs/<area>-<purpose>.md`
+- PowerShell helper: `docs/<area>-<purpose>.ps1`
+- temporary handoff package: `docs/temp/<name>-YYYYMMDDHHMMSS.zip`
+- provenance: `provenance/manifest.json`
 
 ## 7. CHANGE_LOG and SYSTEM_INVENTORY
 
@@ -133,8 +143,8 @@ Scoped operating files:
 Operational docs:
 
 - `docs/QuickStart.md` — setup and normal commands
-- `docs/jarvis-arm-llamacpp.md` — ARM64 Adreno OpenCL sidecar helper
-- `docs/jarvis-arm-whisper.md` — ARM64 Qualcomm QNN Whisper helper
+
+Do not treat archived docs, completed slice notes, or helper notes as permission to bypass current source/config/catalog design.
 
 ## 10. Reporting format
 
