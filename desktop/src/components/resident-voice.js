@@ -38,6 +38,13 @@ export function createResidentVoicePresenter(options) {
     return value ? "true" : "false";
   }
 
+  function valueKind(value) {
+    const normalized = String(value ?? "").trim().toLowerCase();
+    if (["true", "running", "enabled", "ready", "reachable", "wake"].includes(normalized)) return "positive";
+    if (["false", "stopped", "disabled", "unavailable"].includes(normalized)) return "negative";
+    return "neutral";
+  }
+
   function setModeControl(status) {
     if (!residentModeEl) return;
     const mode = status.mode || "ptt+wake";
@@ -98,6 +105,8 @@ export function createResidentVoicePresenter(options) {
         const valueEl = document.createElement("span");
         labelEl.className = "resident-voice-status-label";
         labelEl.textContent = label;
+        valueEl.className = "resident-voice-status-value status-value";
+        valueEl.dataset.status = valueKind(value);
         valueEl.textContent = value;
         row.append(labelEl, valueEl);
         return row;
