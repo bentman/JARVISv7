@@ -1,103 +1,53 @@
-# AGENTS.md: Agent Operating Contract for JARVISv7
+# AGENTS.md: Repository Operating Contract for JARVISv7
 
-This file is the authoritative operating contract for all AI and human agents working in this repository. It is loaded before every session. Keep it current; stale rules actively mislead.
+This is the repo-wide operating contract for AI and human agents. It is intentionally compact. Follow the nearest `AGENTS.md` for files in a subtree; explicit user/developer instructions override repository instructions. If instructions conflict, report the conflict and use the narrowest safe path.
 
-## 1. Highest Priority Rule: Python Environment Isolation
+## 1. Precedence and truth sources
 
-- All Python commands must use `backend/.venv`.
-- Never use global Python packages for this project.
-- Never install Python dependencies globally.
-- All Python commands run from the **repo root** (where `pyproject.toml` lives). The virtual environment lives at `backend/.venv/` but the package metadata is at the repo root.
+Use this order for repository truth:
 
-Dependency source of truth:
+1. Explicit user/developer instruction for the current task
+2. Nearest scoped `AGENTS.md`
+3. This root `AGENTS.md`
+4. `ProjectVision.md`
+5. `repo_tree.md`
+6. `SYSTEM_INVENTORY.md`
+7. `CHANGE_LOG.md`
 
-- `pyproject.toml` (at repo root) is the single source of truth for all Python dependencies and extras.
-- `backend/requirements.txt` is a **generated lockfile** of the base extra, emitted by `scripts/provision.py lock` for CI consumers. Never edit it by hand.
-- Hardware-family packages are declared as extras in `pyproject.toml` under `[project.optional-dependencies]`. They are resolved and installed by the provisioning script, never by hand.
-- If a new package is required for an approved code change, declare it in the proposal. Add it to the correct extra in `pyproject.toml` (base `[project].dependencies` for universal packages, or a named hardware extra for hardware-family packages) and re-provision before implementing code that depends on it.
-- Default version operator is `>=`. Use `==` only with a strong, documented reason.
-- No runtime-specific ML package belongs in base dependencies. ML packages enter through hardware extras only.
+Do not infer completion from intent docs. `SYSTEM_INVENTORY.md` records observable capability state. `CHANGE_LOG.md` records completed work after validation evidence exists.
 
-Provisioning authority:
+## 2. Environment contract
 
-- `scripts/provision.py` is the **only** entry point for installing Python dependencies. It reads the current hardware profile, resolves the correct extras, and composes the `pip install -e '.[...]'` invocation against the repo-root `pyproject.toml`.
-- To provision a new host: `backend/.venv/Scripts/python scripts/provision.py install`
-- To verify without installing: `backend/.venv/Scripts/python scripts/provision.py verify`
-- To regenerate the lockfile: `backend/.venv/Scripts/python scripts/provision.py lock`
-- To see why each extra was chosen: `backend/.venv/Scripts/python scripts/provision.py explain`
-- Never run `pip install` or `pip install -r ...` directly; always go through the provisioning script.
+Run from the repo root unless a scoped file says otherwise.
 
-Required command pattern (Windows PowerShell, run from repo root):
+Python:
 
-- `backend/.venv/Scripts/python <command>`
+- Use `backend/.venv/Scripts/python` for all repo Python commands.
+- Never install Python packages globally.
+- `pyproject.toml` is the dependency source of truth.
+- `backend/requirements.txt` is generated; never edit it by hand.
+- Use `scripts/provision.py` for dependency install/verify/lock/explain.
+- Prefer `scripts/bootstrap.py` for new-host setup.
 
-First-time setup (run from repo root; executed in order by `scripts/bootstrap.py`):
+Desktop:
 
-1. Create the virtual environment: `python -m venv backend/.venv`
-2. Upgrade pip inside the venv: `backend/.venv/Scripts/python -m pip install --upgrade pip`
-3. Install via the provisioning script (reads repo-root `pyproject.toml`, resolves extras from current host profile):
-   `backend/.venv/Scripts/python scripts/provision.py install`
+- Use `npm --prefix desktop ...` for desktop commands.
+- Do not install Tauri or desktop dependencies globally for this repo.
 
-Prefer `scripts/bootstrap.py` for new-host setup; it enforces the full sequence (profile → provision → ensure models → preflight → readiness) with checkpoints.
+Generated/runtime data belongs in existing locations only: `data/`, `cache/`, `reports/`, `models/`, or `runtimes/`. Do not invent new storage roots without approval.
 
-If `backend/.venv` is broken or inconsistent, stop and report minimal repair steps before continuing.
+## 3. Scope control
 
-## 2. Core Operating Constraints
+Default behavior:
 
-- Do not guess. If something cannot be verified from repository evidence, state what was checked and stop.
-- Do not claim completion without reproducible evidence.
+- Do not guess. Verify from repository evidence or state what was checked and stop.
 - Do not expand scope beyond the explicit request.
-- Do not create new repo artifacts unless explicitly requested.
-- Do not introduce parallel architectures, shadow systems, or alternate workflows.
-- Prefer existing repository patterns and minimal diffs.
-- Keep output concise and evidence-focused.
+- Do not create new repo artifacts unless requested.
+- Do not introduce parallel architectures, shadow workflows, or alternate setup paths.
+- Prefer existing patterns and minimal diffs.
+- Keep responses concise and evidence-focused.
 
-Programming principles (non-negotiable):
-
-- Reinforce existing patterns: before adding new structure, reuse existing repository patterns for file placement, naming, command flow, and validation approach. If no pattern exists, propose the smallest consistent extension.
-- Test-Configure-Install: for dependency or runtime setup, test if present, configure if exists, install if missing. For updates, always reconfigure and re-validate.
-- KISS: keep implementations simple, direct, and easy to follow.
-- Idempotency: commands and changes must be safe to re-run without unintended side effects.
-- DRY: reuse shared logic and existing utilities; avoid duplicating logic.
-- YAGNI: add only what is required for the current approved scope.
-- Separation of concerns: each module or change addresses one responsibility.
-- Deterministic operations: prioritize efficient, repeatable, and deterministic command sequences and outcomes.
-
-## 3. Hardware Architecture Awareness
-
-JARVISv7 supports multiple host classes (Windows x64, Windows ARM64 at minimum). All work must respect this:
-
-- **No runtime file may contain host-detection logic.** `backend/app/hardware/profiler.py` is the sole source of hardware facts. `backend/app/hardware/provisioning.py` is the sole source of extras resolution.
-- **No DLL or backend-path bootstrap outside `backend/app/hardware/preflight.py`.** No runtime file calls `os.add_dll_directory` or equivalent.
-- **Every voice-family runtime accepts `device` as a constructor parameter.** Adding a new device value is a branch inside an existing runtime, never a new file.
-- When proposing changes, state which host classes are affected and which are unaffected.
-- When reporting validation, state which host class the evidence was collected on.
-
-## 4. Deterministic Execution Rules
-
-- Execution must be deterministic and approval-gated.
-- Use explicit, reproducible command sequences.
-- Prefer non-interactive command flags and explicit paths to keep runs reproducible.
-- Use smallest viable validation first, then broaden only when required.
-- If repeated attempts do not change failure mode, stop and report.
-- Do not silently iterate after failed validation.
-- Run commands one at a time; do not chain steps with `&&`, `;`, `;;`, or one-liners.
-- Compound syntax is allowed only inside one required command, e.g. `cmd /c "<vcvarsall> && set"`.
-- Keep command boundaries clear so failures and evidence map to one command.
-
-## 5. Approval-Gated Change Control
-
-Before editing, provide a short proposal and wait for explicit approval when work touches any of the following:
-
-- Multiple files
-- Core backend systems (hardware, conversation, cognition, routing, services, agents)
-- Tests or validation harnesses
-- Scripts (provisioning, bootstrap, validation, proving host)
-- Desktop shell (`desktop/`)
-- Docker/compose surfaces
-- Dependency changes (`pyproject.toml` extras)
-- Environment repair steps
-- `pyproject.toml` metadata or tooling config
+Before editing, provide a short proposal and wait for approval when touching multiple files, core backend systems, scripts, validation harnesses, desktop, Docker/compose, dependencies, environment repair, or repo tooling config.
 
 Proposal format:
 
@@ -106,174 +56,61 @@ Proposal format:
 - Commands to run
 - Expected evidence
 
-Then stop until approved.
-
-## 6. Authoritative Truth Sources
-
-Use this precedence order:
-
-1. `AGENTS.md` (this file)
-2. `ProjectVision.md`
-3. `repo_tree.md`
-4. `SYSTEM_INVENTORY.md`
-5. `CHANGE_LOG.md`
-
-If a conflict is observed between files and runtime behavior, report the conflict and propose the smallest correction.
-
-## 7. Agent Ignore Policy
-
-All agents MUST honor any `.agentignore` files present in this repository.
-
-- `.agentignore` uses standard `.gitignore` syntax.
-- Agents MUST recursively discover `.agentignore` files from the working directory up to the project root.
-- Agents MUST combine all rules and exclude any matching files or directories from:
-  - reading
-  - indexing
-  - embedding
-  - transmission to external models/tools
-- Matching paths MUST be treated as non-existent to the agent.
-- These rules MUST NOT be overridden unless explicitly instructed by repository policy.
-
-Purpose: protect sensitive data, reduce noise, and ensure consistent behavior across agents.
-
-## 8. Scripts
-
-All scripts live in `scripts/`. They are orchestrators over `backend/app/**` and never duplicate application logic.
-
-Shared CLI convention — every script in `scripts/`:
-- Accepts `--verbose`, `--dry-run`, `--trace-to <dir>`.
-- Emits a **host-fingerprint line** as its first stdout: arch, Python version, active extras, readiness summary.
-
-Key scripts and their roles:
-
-- `scripts/bootstrap.py` — end-to-end new-host setup: profile → provision → ensure models → preflight → readiness summary. Enforces checkpoints in order; first failure halts with a clear reason.
-- `scripts/provision.py` — **sole provisioning authority**. Subcommands: `install`, `verify`, `lock`, `dry-run`, `explain`.
-- `scripts/ensure_models.py` — model catalog acquisition / verification.
-- `scripts/run_backend.py` — start backend API only (no desktop shell).
-- `scripts/run_jarvis.py` — proving host (developer/diagnostic tool). **Not the durable application surface.** `desktop/` is the durable surface.
-- `scripts/validate_backend.py` — **sole validation authority**. Subcommand-based; see Section 8.
-
-## 9. Validation Requirements
-
-General:
-
-- Validation must test observable behavior.
-- Include exact command(s) and outcome (`PASS`, `FAIL`, `SKIPPED`, or equivalent).
-- Include a minimal output excerpt needed to prove the claim.
-- State which host class the validation was run on.
-- Validation evidence should confirm repeatability for deterministic operations.
-
-Backend validation via `scripts/validate_backend.py`:
-
-- Subcommands:
-  - `profile` — run profiler + preflight; print capability report.
-  - `unit` — unit suite.
-  - `integration` — integration suite.
-  - `runtime [--families stt,tts,llm,wake] [--devices cpu,cuda,directml,qnn]` — live runtime suite, marker-filtered.
-  - `regression` — minimum green-on-current-host set that every slice closeout must pass.
-  - `matrix` — acceleration matrix (Group B gate).
-  - `all` — unit + integration + regression.
-  - `ci` — suppresses `live` markers; missing hardware = skipped-ok.
-- Exit codes: `0` pass, `1` fail, `2` skipped-not-failed, `3` environment-unsatisfied.
-- Always use the validator for slice closeout evidence; raw pytest is acceptable for developer inner loops but is not evidence for governance docs.
-
-Test architecture:
-
-- Tests are **marker-gated, not directory-split by arch**. Pytest markers: `x64`, `arm64`, `cuda`, `directml`, `qnn`, `live`, `slow`, `requires_ollama`, `requires_redis`, `requires_searxng`, `requires_docker`, `stt`, `tts`, `llm`, `wake`, `turn`, `desktop`, `agents`.
-- `backend/tests/conftest.py` exposes `skip_unless_*` helpers that read from the profiler + preflight.
-- Directory structure reflects test purpose and functional domain, not host class:
-  - `backend/tests/unit/` — fast, no hardware, no network.
-  - `backend/tests/integration/` — multi-module, no live hardware.
-  - `backend/tests/runtime/` — live hardware (marker-gated).
-- Coverage expectation: backend `*.py` files should have pytest coverage; minimum import/structure, preferably behavior.
-
-Frontend / Desktop:
-
-- Use existing project-defined commands and runtime surfaces.
-- Do not invent alternate tooling paths.
-
-Warnings:
-
-- Treat warnings as backlog unless they break correctness, safety, or required behavior.
-
-## 10. Task Execution Workflow
-
-Apply Section 2 programming principles at each step.
+## 4. Work pattern
 
 For each task:
 
-1. Discover: identify smallest relevant file set and validation path.
-2. Confirm scope, constraints, and affected host classes.
-3. Propose when required by Section 5.
-4. Implement only approved changes.
-5. Validate with explicit commands via Section 8 pattern.
-6. Report exact outcomes with minimal proof including host class.
-7. Stop when objective is complete.
+1. Discover the smallest relevant file set.
+2. Read any scoped `AGENTS.md` that applies.
+3. Confirm scope and affected host classes.
+4. Propose when required.
+5. Implement only approved changes.
+6. Validate observable behavior.
+7. Report exact outcomes and stop.
 
-Python test expectation:
+Use simple, deterministic steps. For validation and repair, run commands one at a time unless one compound command is required by the toolchain.
 
-- Add or maintain a standard `pytest` test for almost every backend `*.py` module.
-- Place tests under `backend/tests/unit/`, `backend/tests/integration/`, or `backend/tests/runtime/` as appropriate.
-- Apply appropriate arch/device markers per test.
-- For scoped tasks, required tests apply to changed/affected modules; broad backfill is separate scope unless explicitly requested.
-- Minimum bar: import/structure validation.
-- Preferred bar: behavior/function validation.
+## 5. Validation evidence
 
-Do not add follow-up work unless explicitly requested.
+Do not claim verification without command evidence.
 
-## 11. File and Artifact Boundaries
+Required report fields for validation claims:
 
-- Keep runtime artifacts out of repository root.
-- Use existing project locations for generated data (`data/`, `cache/`, `reports/`, `models/`).
-- Do not introduce new storage locations without explicit approval.
-- Ensure `.gitignore` rules cover generated artifacts when changes require it.
-- `backend/requirements.txt` is generated, not hand-edited.
-- `config/hardware/notes.md` holds human-readable operator prerequisites only; package sets live in `pyproject.toml`.
-- Model artifacts live in `models/`; never in `backend/` or `config/`.
+- exact command
+- outcome (`PASS`, `FAIL`, `SKIPPED`, or equivalent)
+- host class (`windows-amd64`, `windows-arm64`, etc.)
+- minimal output excerpt or report path
 
-## 12. CHANGE_LOG.md Requirements
+Use `scripts/validate_backend.py` for backend closeout evidence. Raw `pytest` is acceptable for inner-loop development but is not governance closeout evidence unless explicitly requested.
 
-`CHANGE_LOG.md` is append-only and records completed, verified work.
+Key validator commands:
 
-Rules:
+- `profile`
+- `unit`
+- `integration`
+- `runtime --families ... --devices ...`
+- `regression`
+- `matrix`
+- `all`
+- `ci`
 
-- Never rewrite or delete prior entries.
-- Maintain entries in descending chronological order (newest first).
-- Add new entries directly under `## Entries`.
-- Log only after validation evidence exists.
-- Use factual, past-tense statements.
-- If prior record is inaccurate, append a corrective entry; do not edit history.
+Exit codes: `0` pass, `1` fail, `2` skipped-not-failed, `3` environment-unsatisfied.
 
-Minimum entry content:
+## 6. File and ignore boundaries
 
-- Timestamp
-- Short summary of what changed
-- Scope (files/areas)
-- Host class(es) validated on
-- Evidence (exact command(s) run + minimal excerpt pointer or excerpt)
+Honor `.agentignore` as a repository contract for files agents should not read, index, embed, or transmit. Treat matching paths as unavailable unless explicit task instructions and repository policy permit otherwise.
 
-## 13. SYSTEM_INVENTORY.md Requirements
+Do not commit generated artifacts unless the task explicitly requires it. Ensure `.gitignore` covers any new generated output. Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
 
-`SYSTEM_INVENTORY.md` is the capability truth ledger.
+## 7. CHANGE_LOG and inventory
 
-Rules:
+`CHANGE_LOG.md` is append-only. Add entries only after validation evidence exists. Never rewrite old entries; append a corrective entry when needed.
 
-- Record only observable repository artifacts (files, directories, executable code, configuration, scripts, explicit UI text).
-- Do not include intent, plans, or inferred behavior.
-- One component entry equals one observed capability/feature.
-- New capabilities must be added at the top under `## Inventory` and above `## Observed Initial Inventory`.
-- Corrections and clarifications must be added only below `## Appendix`.
-- Required entry fields:
-  - Capability: brief descriptive component name with date/time
-  - State: `Planned`, `Implemented`, `Verified`, `Not Implemented`
-  - Location: relative file path(s)
-  - Validation: method and/or relative script path(s); include host class
-  - Notes: optional, one line max
-- Do not promote state without validation evidence.
+`SYSTEM_INVENTORY.md` is the capability truth ledger. Record only observable artifacts and verified/implemented states. Do not promote capability state without evidence. Corrections belong under its appendix unless the file's own instructions say otherwise.
 
-## 14. Git Safety Rules
+## 8. Git safety
 
-Never run destructive git operations without explicit approval, including:
+Never run destructive Git operations without explicit approval, including:
 
 - `git restore`
 - `git reset`
@@ -281,9 +118,25 @@ Never run destructive git operations without explicit approval, including:
 - `git rebase`
 - history rewrites
 
-If rollback is requested, propose the safest approach based on whether changes are committed or uncommitted.
+If rollback is requested, propose the safest path based on whether the target changes are committed or uncommitted.
 
-## 15. Reporting Format for Agent Responses
+## 9. Where to look
+
+Scoped operating files:
+
+- `backend/AGENTS.md` — backend app, tests, runtime selection, hardware rules
+- `desktop/AGENTS.md` — Tauri desktop shell rules
+- `models/AGENTS.md` — local model artifact rules
+- `runtimes/AGENTS.md` — local runtime sidecar rules
+- `scripts/AGENTS.md` — repository script conventions
+
+Operational docs:
+
+- `docs/QuickStart.md` — setup and normal commands
+- `docs/jarvis-arm-llamacpp.md` — ARM64 Adreno OpenCL sidecar helper
+- `docs/jarvis-arm-whisper.md` — ARM64 Qualcomm QNN Whisper helper
+
+## 10. Reporting format
 
 When reporting completion or progress, use:
 
@@ -291,7 +144,5 @@ When reporting completion or progress, use:
 - Host class validated on
 - Files inspected and changed
 - Commands executed and outcomes
-- Minimal evidence excerpt
-- Stop (unless next action is explicitly requested)
-
-Do not state or imply verification without corresponding command evidence.
+- Minimal evidence excerpt or report path
+- Stop unless a next action was explicitly requested
