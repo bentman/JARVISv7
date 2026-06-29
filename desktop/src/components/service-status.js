@@ -1,14 +1,18 @@
 const SERVICE_LABELS = {
-  redis: "Redis",
-  searxng: "SearXNG",
+  redis: "Redis Cache",
+  searxng: "SearXNG Search",
 };
 
 function serviceLabel(name) {
   return SERVICE_LABELS[name] || name;
 }
 
-function statusText(status) {
+function statusKind(status) {
   return status?.reachable ? "reachable" : "unavailable";
+}
+
+function statusText(status) {
+  return statusKind(status);
 }
 
 function searxngDetail(status) {
@@ -30,23 +34,33 @@ function serviceDetail(name, status) {
 
 function renderLine(name, status) {
   const row = document.createElement("div");
+  const title = document.createElement("div");
+  const dot = document.createElement("span");
   const label = document.createElement("strong");
+  const detailLine = document.createElement("div");
   const state = document.createElement("span");
   const divider = document.createElement("span");
   const detail = document.createElement("span");
+  const kind = statusKind(status);
 
   row.className = "service-status-row";
+  title.className = "service-status-title";
+  dot.className = "service-status-dot";
+  dot.dataset.status = kind;
+  detailLine.className = "service-status-detail-line";
   state.className = "service-status-state";
-  state.dataset.status = status?.reachable ? "reachable" : "unavailable";
+  state.dataset.status = kind;
   divider.className = "service-status-divider";
   detail.className = "service-status-detail";
 
-  label.textContent = `${serviceLabel(name)}: `;
+  label.textContent = `${serviceLabel(name)}:`;
   state.textContent = statusText(status);
   divider.textContent = " • ";
   detail.textContent = serviceDetail(name, status);
 
-  row.append(label, state, divider, detail);
+  title.append(dot, label);
+  detailLine.append(state, divider, detail);
+  row.append(title, detailLine);
   return row;
 }
 
