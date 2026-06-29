@@ -1,167 +1,100 @@
-# Export Whisper Fixture for Windows ARM64 Qualcomm QNN
+# JARVIS ARM Whisper QNN Artifact Helper
 
-This sheet is for AMD64-host fixture generation for later JARVISv7 Windows ARM64 QNN validation. It does not modify runtime/provider code and does not stage files into `models\stt`.
+This document explains how to use `docs\jarvis-arm-whisper.ps1` to prepare or inspect a Qualcomm QNN Whisper artifact package for JARVISv7.
 
-The only intended JARVIS artifact is a zip package stored at:
+The normal workflow has two hosts:
 
-```text
-docs\temp\jarvis-whisper-qualcomm-qnn-YYYYMMDDHHMMSS.zip
-```
+- **AMD64 Windows host:** creates, inspects, exports, or downloads a portable artifact package.
+- **ARM64 Snapdragon host:** stages the package into JARVIS and proves QNN execution.
 
-The zip contains local output under the external export workspace, including `manifest.json`, `pip-freeze.txt`, and any downloaded Qualcomm Workbench export files when export is explicitly enabled.
+The helper is intentionally conservative. It does not modify runtime/provider code, and it does not stage files into `models\stt` from the AMD64 host.
 
-## Recommended Helper Script
-Run from `docs` location [jarvis-arm-whisper.ps1](jarvis-arm-whisper.ps1)
+## Output
 
-## Target Machine
-
-- Windows AMD64 fixture host for export/package creation.
-- Python launcher `py` available for creating the external export venv.
-- Qualcomm AI Hub / Workbench account only when running Workbench export.
-- JARVISv7 cloned locally.
-
-The helper uses an external Qualcomm venv:
+The only intended repo-side handoff artifact from the AMD64 helper is a zip under:
 
 ```text
-$exportRoot\.venv-qualcomm
+docs\temp\
 ```
 
-It does not use `backend\.venv`, does not use `requirements.txt`, does not change ARM64 provisioning, and does not stage files into `models\stt`.
-
-The intended ARM64 side-by-side model identity is:
+The final ARM64 model identity is:
 
 ```text
 whisper-qualcomm-qnn
 ```
 
-The intended ARM64 staging folder is:
+The final ARM64 staging folder is:
 
 ```text
 models\stt\whisper-qualcomm-qnn
 ```
 
-This is separate from the existing `whisper-base-en-qnn-snapdragon-x-elite` entry.
+This side-by-side model is separate from the older `whisper-base-en-qnn-snapdragon-x-elite` entry.
 
-## Safety Model
+## Requirements
 
-Default behavior is safe: the helper creates a local package and manifest but does not call Qualcomm Workbench export and does not download remote artifacts.
+For AMD64 package generation or download:
 
-Workbench export is gated by both:
+- Windows AMD64 host.
+- Local JARVISv7 clone.
+- Python launcher `py`.
+- Internet access.
+- Qualcomm AI Hub / Workbench account when contacting Workbench.
+- Qualcomm AI Hub API token when exporting or downloading Workbench artifacts.
 
-```powershell
--RunWorkbenchExport
-```
+For ARM64 runtime validation:
 
-and a typed confirmation:
+- Windows ARM64 Snapdragon host.
+- Repo ARM64 environment: `backend\.venv`.
+- QNN provider readiness with `QNNExecutionProvider` and `QnnHtp.dll` available.
+- The prepared zip copied or present under `docs\temp`.
 
-```text
-RUN-WORKBENCH-EXPORT
-```
+## Qualcomm account setup
 
-Without both, the script never calls:
+A Qualcomm account is required for Workbench export and completed-artifact download. It is not required for `-InspectOnly` or local dry-run checks.
 
-```powershell
-qai_hub_models.models.whisper_base.export
-```
-
-Use `-InspectOnly` to write an inspection manifest/zip without creating the venv, installing packages, configuring AI Hub, or running Workbench export.
-
-Use `-RunWorkbenchExport` to submit the encoder/decoder compile jobs through Qualcomm Workbench. The helper captures job/model IDs from Workbench output into `workbench-ids.json` when they are visible in command output.
-
-Use `-DownloadCompletedArtifacts` to download completed Workbench encoder/decoder artifacts without creating new remote jobs. IDs must come from `workbench-ids.json` or explicit parameters.
-
-## Qualcomm AI Hub / Workbench Basis
-
-Qualcomm documents AI Hub / Workbench setup and model export workflows at:
+Use Qualcomm's account and API-token flow:
 
 ```text
 https://aihub.qualcomm.com/get-started
-https://workbench.aihub.qualcomm.com/docs/
 ```
 
-Local implementation evidence from the installed `qai_hub_models 0.56.0` package:
+The important pieces are:
 
-```powershell
-pip install "qai_hub_models[whisper-base]"
-python -m qai_hub_models.models.whisper_base.export --help
-```
-
-The installed exporter exposes:
-
-```text
---target-runtime precompiled_qnn_onnx
---components encoder decoder
---device "Snapdragon X Elite CRD"
-```
-
-The helper follows Qualcomm's configured-client model: write
-`%USERPROFILE%\.qai_hub\client.ini` from `QAI_HUB_API_TOKEN`, use the `qai_hub`
-Python client, retrieve completed jobs/models, call `target.download(...)`, extract
-downloaded zips, and package the local output.
-
-## Qualcomm API Environment
-
-Set the API token in the process environment before any command that contacts Workbench:
+1. Create or sign into a Qualcomm ID.
+2. Open AI Hub / Workbench account settings.
+3. Copy your AI Hub API token.
+4. Set it in the PowerShell session before running any Workbench command.
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
 ```
 
-The helper writes this to:
+The helper writes the local AI Hub client config for the current Windows user when an API token is present. Do not commit tokens or generated config files.
 
-```text
-%USERPROFILE%\.qai_hub\client.ini
-```
+## Safety model
 
-with:
+The default behavior is safe. The helper can create a local package and manifest without submitting remote Qualcomm work.
 
-```text
-api_url = https://workbench.aihub.qualcomm.com
-web_url = https://workbench.aihub.qualcomm.com
-client_mode = cli
-```
-
-The helper also sets these for Python child processes:
-
-```text
-PYTHONUTF8=1
-PYTHONIOENCODING=utf-8
-```
-
-Those avoid Windows console encoding failures when Workbench status output includes Unicode characters.
-
-## Dependency Alignment
-
-The script embeds the current JARVISv7 ARM64 QNN runtime package set from `pyproject.toml` and adds the Qualcomm export package:
-
-```text
-onnxruntime>=1.24.4; platform_machine=='ARM64' and sys_platform=='win32'
-onnxruntime-qnn>=2.3.0; platform_machine=='ARM64' and sys_platform=='win32'
-onnx>=1.16; platform_machine=='ARM64' and sys_platform=='win32'
-transformers>=4.40; platform_machine=='ARM64' and sys_platform=='win32'
-qai_hub_models[whisper-base]
-```
-
-On AMD64, the ARM64-only runtime requirements are marker-skipped. Do not pin older ONNX Runtime versions, do not use `--no-deps`, and do not uninstall/reinstall the repo ARM64 QNN stack.
-
-## Workspace Layout
-
-Keep Qualcomm export work outside the repo. This helper defaults to:
+Workbench export is intentionally gated. It only runs when both are true:
 
 ```powershell
-$jarvisRoot = "E:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7"
-$exportRoot = "E:\WORK\jarvis-dev\whisper-qnn"
-$venvDir = "$exportRoot\.venv-qualcomm"
-$outputDir = "$exportRoot\output\whisper-qualcomm-qnn-<timestamp>"
+-RunWorkbenchExport
 ```
 
-The helper writes only the final zip into the repo:
+and the operator types:
 
 ```text
-$jarvisRoot\docs\temp\
+RUN-WORKBENCH-EXPORT
 ```
 
-## Recommended Safe Commands
+A Workbench export creates remote Qualcomm jobs and model records. This is expected behavior. Use it only when a new export is needed.
+
+Completed-artifact download does not create new remote jobs. It downloads already-created Workbench models by captured IDs or explicit job/model IDs.
+
+## Common commands
+
+Run from the JARVIS repo root.
 
 Inspect only:
 
@@ -181,122 +114,45 @@ Default local package run, with no Workbench export:
 .\docs\jarvis-arm-whisper.ps1
 ```
 
-Workbench export run:
+Create a new Workbench export:
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
 .\docs\jarvis-arm-whisper.ps1 -RunWorkbenchExport
 ```
 
-The script will still require the operator to type:
-
-```text
-RUN-WORKBENCH-EXPORT
-```
-
-before creating remote Qualcomm jobs/models.
-
-This submits compile/export work to Qualcomm Workbench with:
-
-```text
---target-runtime precompiled_qnn_onnx
---components encoder decoder
---skip-profiling
---skip-inferencing
-```
-
-The helper records discovered IDs in:
-
-```text
-workbench-ids.json
-```
-
 Download already-completed artifacts from a captured ID file:
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
-.\docs\jarvis-arm-whisper.ps1 `
-  -DownloadCompletedArtifacts `
-  -workbenchIdsInputPath "E:\WORK\jarvis-dev\whisper-qnn\output\<run>\workbench-ids.json"
+.\docs\jarvis-arm-whisper.ps1 -DownloadCompletedArtifacts -workbenchIdsInputPath "<PATH_TO_WORKBENCH_IDS_JSON>"
 ```
 
 Download already-completed artifacts from explicit IDs:
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
-.\docs\jarvis-arm-whisper.ps1 `
-  -DownloadCompletedArtifacts `
-  -encoderJobId "<ENCODER_JOB_ID>" `
-  -encoderModelId "<ENCODER_MODEL_ID>" `
-  -decoderJobId "<DECODER_JOB_ID>" `
-  -decoderModelId "<DECODER_MODEL_ID>"
+.\docs\jarvis-arm-whisper.ps1 -DownloadCompletedArtifacts -encoderModelId "<ENCODER_MODEL_ID>" -decoderModelId "<DECODER_MODEL_ID>"
 ```
 
-If a job ID is not available but the model ID is known, leave that job ID blank and pass the model ID. The downloader tries job target-model download first, then falls back to model download.
+If a job ID is known, it may also be supplied. Model IDs are usually less error-prone when downloading final optimized artifacts.
 
-## Export Command Shape
+## What the helper creates
 
-When `-RunWorkbenchExport` is confirmed, the helper runs:
-
-```powershell
-$exportRoot\.venv-qualcomm\Scripts\python.exe -m qai_hub_models.models.whisper_base.export `
-  --target-runtime precompiled_qnn_onnx `
-  --device "Snapdragon X Elite CRD" `
-  --components encoder decoder `
-  --skip-profiling `
-  --skip-inferencing `
-  --output-dir "$exportRoot\output\whisper-qualcomm-qnn-<timestamp>\export"
-```
-
-During the Workbench export process, the helper writes:
+The helper keeps Qualcomm work outside the repo by default:
 
 ```text
-workbench-export.stdout.txt
-workbench-export.stderr.txt
-workbench-ids.json
-download-monitor.txt
+<exportRoot>\.venv-qualcomm
+<exportRoot>\output\...
 ```
 
-The download monitor records the export directory file count and byte total while the Workbench export process is running.
-
-During completed-artifact download, the helper writes:
+The repo receives only the final zip package:
 
 ```text
-workbench-download.stdout.txt
-workbench-download.stderr.txt
-download-monitor.txt
-download-completed-artifacts.py
+docs\temp\jarvis-whisper-qualcomm-qnn-YYYYMMDDHHMMSS.zip
 ```
 
-The download monitor records the export directory file count and byte total while the
-download process is running.
-
-## Manifest
-
-`manifest.json` includes:
-
-- timestamp
-- JARVIS model name
-- JARVIS model path
-- recommended ARM64 staging layout
-- output directory
-- export directory
-- zip path
-- exact command
-- `inspect_only`
-- `workbench_export_requested`
-- `completed_artifact_download_requested`
-- encoder/decoder job and model IDs
-- `workbench_ids_path`
-- `workbench_ids_input_path`
-- captured Workbench job/model IDs, when discoverable from command output
-- stdout/stderr paths
-- download stdout/stderr paths
-- download monitor path
-
-## Expected Zip Contents
-
-For inspect/default local package runs:
+A package normally includes:
 
 ```text
 manifest.json
@@ -304,7 +160,7 @@ pip-freeze.txt
 export\
 ```
 
-For confirmed Workbench export runs, `export\` should also contain Qualcomm-produced artifacts. Before using the archive in JARVIS runtime selection, inspect whether `export\` contains the ONNX files expected by `QnnWhisperRuntime`:
+A completed-artifact download should include encoder and decoder QNN artifacts somewhere under `export\`:
 
 ```text
 encoder\...\model.onnx
@@ -313,33 +169,29 @@ decoder\...\model.onnx
 decoder\...\model.bin
 ```
 
-If Qualcomm's `whisper_base` export produces a different structure, record the produced layout before changing runtime/catalog code.
+The `.onnx` files are small ONNX Runtime EPContext wrappers. The compiled QNN model payload is in the paired `.bin` files.
 
-For completed-artifact downloads, the known-good package shape is:
+## ARM64 staging layout
 
-```text
-export\encoder\encoder_target.onnx.zip
-export\encoder\extracted\job_jgooj3vkg_optimized_onnx\model.onnx
-export\encoder\extracted\job_jgooj3vkg_optimized_onnx\model.bin
-export\decoder\decoder_target.onnx.zip
-export\decoder\extracted\job_jpvejvwrg_optimized_onnx\model.onnx
-export\decoder\extracted\job_jpvejvwrg_optimized_onnx\model.bin
-```
-
-The intended ARM64 staged model layout is:
+On the ARM64 Snapdragon host, stage the selected encoder and decoder artifacts into the side-by-side model folder:
 
 ```text
 models\stt\whisper-qualcomm-qnn\encoder\model.onnx
 models\stt\whisper-qualcomm-qnn\encoder\model.bin
 models\stt\whisper-qualcomm-qnn\decoder\model.onnx
 models\stt\whisper-qualcomm-qnn\decoder\model.bin
+models\stt\whisper-qualcomm-qnn\provenance\manifest.json
 ```
 
-Keep `whisper-base-en-qnn-snapdragon-x-elite` side-by-side and unchanged unless a separate approved slice changes it.
+Keep the older QNN model folder unchanged unless a separate approved slice changes it:
 
-## ARM64 Runtime Validation After Staging
+```text
+models\stt\whisper-base-en-qnn-snapdragon-x-elite
+```
 
-After a future model-acquisition step stages the package through repo-approved paths, validate from repo root on ARM64:
+## ARM64 validation
+
+Run validation from the repo root on the ARM64 host.
 
 ```powershell
 backend\.venv\Scripts\python scripts\validate_backend.py profile
@@ -352,18 +204,65 @@ backend\.venv\Scripts\python scripts\validate_backend.py unit
 backend\.venv\Scripts\python scripts\validate_backend.py regression
 ```
 
-Required live evidence:
+Required evidence:
 
-- `profile` includes `ep:QNNExecutionProvider`.
-- QNN hardware gate passes.
-- QNN STT live transcript passes.
-- CPU fallback remains disabled for QNN proof.
+- `profile` reports `ep:QNNExecutionProvider`.
+- `profile` reports `dll:QnnHtp`.
+- `ensure_models` reports `whisper-qualcomm-qnn` ready.
+- Encoder and decoder sessions load with QNN primary and CPU fallback disabled.
+- Live QNN STT transcript test passes.
 - Unit and regression validation pass.
+
+## Workbench cleanup
+
+If an export is interrupted, Workbench may still contain jobs and model records. This is normal.
+
+Use the Workbench UI to inspect the timestamp cluster for the aborted run. Cancel active jobs first. Delete only records that clearly belong to the aborted run and are not needed for a packaged artifact.
+
+Typical generated records include:
+
+```text
+job_*_optimized_onnx
+job_*.onnx
+job_*.bin
+job_*.dlc
+hf_whisper_encoder.pt
+hf_whisper_decoder.pt
+```
+
+Do not delete shared or older records unless they are clearly from the run being cleaned up.
 
 ## Troubleshooting
 
-- Workbench export skipped: pass `-RunWorkbenchExport` and type `RUN-WORKBENCH-EXPORT`.
-- Completed artifact download skipped: pass `-DownloadCompletedArtifacts` with `-workbenchIdsInputPath` or explicit job/model IDs.
-- AI Hub auth failure: set `QAI_HUB_API_TOKEN` or configure `qai-hub.exe` in `$exportRoot\.venv-qualcomm`.
-- Device name rejected: start with Qualcomm's `"Snapdragon X Elite CRD"` device name.
-- Export produces no encoder/decoder `model.onnx` plus `model.bin`: do not force runtime selection. Record the produced layout and update the next slice accordingly.
+- Missing API token: set `QAI_HUB_API_TOKEN` before Workbench export or download.
+- Workbench export skipped: pass `-RunWorkbenchExport` and type the confirmation phrase.
+- Completed download skipped: pass `-DownloadCompletedArtifacts` with either an ID file or explicit IDs.
+- Wrong job ID: retry with the target model ID from the Workbench Models page.
+- Missing encoder/decoder ONNX and BIN files: stop and inspect the package layout before changing runtime code.
+- ARM64 QNN session fails: do not accept CPU fallback. Capture the exact failure and confirm `QNNExecutionProvider` and `QnnHtp.dll` are present.
+
+## References
+
+Qualcomm AI Hub account setup and API token flow:
+
+```text
+https://aihub.qualcomm.com/get-started
+```
+
+Qualcomm AI Hub / Workbench documentation:
+
+```text
+https://workbench.aihub.qualcomm.com/docs/
+```
+
+Qualcomm `CompileJob` API reference:
+
+```text
+https://workbench.aihub.qualcomm.com/docs/hub/generated/qai_hub.CompileJob.html
+```
+
+Qualcomm `Model` API reference:
+
+```text
+https://workbench.aihub.qualcomm.com/docs/hub/generated/qai_hub.Model.html
+```
