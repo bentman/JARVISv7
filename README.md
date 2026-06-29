@@ -162,9 +162,9 @@ The active pain list still includes:
 * hardware acceleration gaps
 * platform consistency (did we mention donations?)
 
-> The still system remains incomplete.  
+> The system still remains incomplete.  
 > The difference is that incompleteness is increasingly measurable.  
-> Which is uncontrolably rude, but still, indeed useful.
+> Which is uncontrollably rude, but still, indeed useful.
 
 * * *
 
