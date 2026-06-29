@@ -100,20 +100,27 @@ export function applyStored() {
   applyPrefs(loadPrefs());
 }
 
-export function initAppearanceControls(containerEl) {
+export function createAppearanceControls() {
   const prefs = loadPrefs();
-  const heading = document.createElement("h2");
+  const section = document.createElement("section");
+  const heading = document.createElement("h3");
   const update = (key, value) => {
     const nextPrefs = { ...loadPrefs(), [key]: value };
     savePrefs(nextPrefs);
     applyPrefs(nextPrefs);
   };
 
+  section.className = "appearance-panel settings-subsection";
   heading.textContent = "Appearance";
-  containerEl.replaceChildren(
+  section.append(
     heading,
     control("Font", prefs.fontSize, [["default", "Default"], ["larger", "Larger"]], (value) => update("fontSize", value)),
     control("Density", prefs.density, [["default", "Default"], ["compact", "Compact"]], (value) => update("density", value)),
     control("Accent", prefs.accent, [["default", "Default"], ["neutral", "Neutral"]], (value) => update("accent", value)),
   );
+  return section;
+}
+
+export function initAppearanceControls(containerEl) {
+  containerEl.replaceChildren(createAppearanceControls());
 }
