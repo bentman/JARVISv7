@@ -154,7 +154,8 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "PTT-only fallback" in main_js
     assert 'id="wake-indicator"' in index_html
     assert 'id="wake-toggle"' in index_html
-    assert index_html.index('class="panel-section wake-monitor-panel"') < index_html.index("<h2>Personality</h2>")
+    assert index_html.index('class="panel operator-panel"') < index_html.index('class="panel-section wake-monitor-panel"')
+    assert index_html.index('class="panel status-panel"') < index_html.index("<h2>Personality</h2>") < index_html.index('class="panel conversation-panel"')
     assert "wake-detail" not in index_html
     assert "export function renderWakeStatus" in wake_indicator
     for field in ["provider", "available", "active", "monitoring", "detection_count", "last_detected", "last_score", "threshold", "reason"]:
@@ -203,7 +204,7 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert 'aria-label="Settings"' in index_html
     assert 'title="Settings"' in index_html
     assert 'class="icon-button"' in index_html
-    assert "&#9881;" in index_html
+    assert '<span aria-hidden="true">⚙</span>' in index_html
     assert 'id="settings-panel"' in index_html
     assert "./components/settings-panel.js" in main_js
     assert "openSettings(settingsPanelEl" in main_js
@@ -283,7 +284,7 @@ def test_k3_service_status_readiness_sidebar_contract() -> None:
     assert "renderServiceStatus(readiness.services, serviceStatusEl)" in main_js
     assert "export function renderServiceStatus" in service_status
     assert "Service status unavailable." in service_status
-    for token in ["redis", "searxng", "reachable", "unreachable", "reason"]:
+    for token in ["redis", "searxng", "reachable", "unavailable", "reason"]:
         assert token in service_status
     assert "innerHTML" not in service_status
     combined = index_html + main_js + service_status
@@ -295,14 +296,19 @@ def test_k4_appearance_controls_runtime_token_contract() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
     appearance_controls = _read("desktop/src/components/appearance-controls.js")
+    settings_panel = _read("desktop/src/components/settings-panel.js")
 
-    assert 'id="appearance-controls"' in index_html
+    assert 'id="appearance-controls"' not in index_html
     assert "./components/appearance-controls.js" in main_js
     assert "applyStored" in main_js
-    assert "initAppearanceControls" in main_js
+    assert "initAppearanceControls" not in main_js
     assert "applyStored();\n  await startDesktop();" in main_js
-    assert "initAppearanceControls(appearanceControlsEl)" in main_js
+    assert "./appearance-controls.js" in settings_panel
+    assert "createAppearanceControls" in settings_panel
+    assert "const appearance = createAppearanceControls();" in settings_panel
+    assert "containerEl.replaceChildren(heading, appearance, dirtyEl, restartState, form, statusEl)" in settings_panel
     assert "export function initAppearanceControls" in appearance_controls
+    assert "export function createAppearanceControls" in appearance_controls
     assert "export function applyStored" in appearance_controls
     assert "jarvisv7_appearance" in appearance_controls
     assert "window.localStorage" in appearance_controls
@@ -323,15 +329,16 @@ def test_k4b_operator_controls_are_separated_from_runtime_sidebar() -> None:
     conversation_start = index_html.index('class="panel conversation-panel"')
     operator_start = index_html.index('class="panel operator-panel"')
     backend_heading = index_html.index("<h2>Backend</h2>")
+    personality_heading = index_html.index("<h2>Personality</h2>")
     personality_current = index_html.index('id="personality-current"')
     personality_select = index_html.index('id="personality-select"')
     personality_detail = index_html.index('id="personality-detail"')
     settings_trigger = index_html.index('id="settings-trigger"')
     restart_indicator = index_html.index('id="settings-restart-required"')
     settings_panel = index_html.index('id="settings-panel"')
-    appearance_controls = index_html.index('id="appearance-controls"')
     readiness_panel = index_html.index('id="readiness-panel"')
     degraded_conditions = index_html.index('id="degraded-conditions"')
+    services_heading = index_html.index("<h2>Services</h2>")
     service_status = index_html.index('id="service-status"')
     wake_indicator = index_html.index('id="wake-indicator"')
     wake_toggle = index_html.index('id="wake-toggle"')
@@ -342,28 +349,24 @@ def test_k4b_operator_controls_are_separated_from_runtime_sidebar() -> None:
     assert 'aria-label="Operator controls"' in index_html
     assert 'id="settings-trigger"' in index_html
     assert 'id="settings-panel"' in index_html
-    assert 'id="appearance-controls"' in index_html
+    assert 'id="appearance-controls"' not in index_html
     assert status_start < conversation_start < operator_start
     assert status_start < backend_heading < conversation_start
     assert status_start < readiness_panel < conversation_start
     assert status_start < degraded_conditions < conversation_start
+    assert status_start < services_heading < service_status < conversation_start
+    assert status_start < personality_heading < personality_current < personality_select < personality_detail < conversation_start
     assert "Checking wake status" not in index_html
     for operator_control in [
-        personality_select,
-        personality_detail,
         settings_trigger,
         restart_indicator,
         settings_panel,
-        service_status,
-        appearance_controls,
         wake_indicator,
         wake_toggle,
     ]:
         assert operator_start < operator_control
         assert not status_start < operator_control < conversation_start
-    assert operator_start < personality_current
-    assert not status_start < personality_current < conversation_start
-    assert operator_start < appearance_controls < settings_trigger < settings_panel
+    assert operator_start < settings_trigger < settings_panel
 
 
 def test_k4b_layout_css_defines_three_region_scrollable_shell() -> None:
@@ -568,7 +571,8 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     assert 'wakeToggleEl.addEventListener("click"' in main_js
     assert 'id="wake-toggle"' in index_html
     assert 'id="wake-indicator"' in index_html
-    assert index_html.index('class="panel-section wake-monitor-panel"') < index_html.index("<h2>Personality</h2>")
+    assert index_html.index('class="panel operator-panel"') < index_html.index('class="panel-section wake-monitor-panel"')
+    assert index_html.index('class="panel status-panel"') < index_html.index("<h2>Personality</h2>") < index_html.index('class="panel conversation-panel"')
     assert "dataset.active" in wake_indicator
     assert "detection_count" in wake_indicator
     assert "last_detected" in wake_indicator
