@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-29 13:09
+  - Summary: Refined the desktop operator/status layout and static contract after visual validation. Services and Personality now live in the left status panel, Appearance is embedded inside Settings, service rows use compact two-line status copy with colored bullets, Wake/Resident Voice boolean values are color-coded, and desktop typography was tightened without changing runtime behavior.
+  - Scope: `backend/app/api/service_status.py`, `backend/app/api/schemas/readiness.py`, `backend/app/api/routes/readiness.py`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/components/appearance-controls.js`, `desktop/src/components/service-status.js`, `desktop/src/components/settings-panel.js`, `desktop/src/components/wake-indicator.js`, `desktop/src/components/resident-voice.js`, `desktop/src/style.css`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: User visual validation accepted the running desktop app. `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed in 0.16s`). `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+  
 - 2026-06-28 18:06
   - Summary: Completed Slice U4 side-by-side Windows ARM64 Qualcomm QNN Whisper integration. QNN session creation now uses ONNX Runtime EP-device initialization for packaged QNN EPContext models, `whisper-qualcomm-qnn` is staged and selected for readiness-proven QNN STT, and live QNN transcript proof passed.
   - Scope: `backend/app/hardware/qnn_provider.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/stt/stt_runtime.py`, `config/models/stt.yaml`, `models/stt/whisper-qualcomm-qnn/`, `backend/tests/unit/hardware/test_qnn_provider.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/runtime/voice/test_stt_live.py`
