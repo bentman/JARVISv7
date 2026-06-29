@@ -30,7 +30,7 @@ JARVISv7 exists because v6 taught two important lessons:
 * Several worked just well enough to expose entirely different problems.  
 * Which, in hindsight, is indeed progress.  
 
-Since then, v7 has moved from "another restart with better rules" to "an actual construction site with permits, inspections, and a suspicious number of extension cords."
+Since then, v7 has moved from "another restart with better rules" to "an actual construction site with permits, inspections, and a suspicious number of extension cords" - oh and still very hard to manage.
 
 > A project that has finally become disciplined enough to discover how much work remains.
 
