@@ -1,0 +1,389 @@
+# J.A.R.V.I.S v7
+
+![Not Magic](https://img.shields.io/badge/Not-Magic-purple) 
+![Evidence Required](https://img.shields.io/badge/Evidence-Required-orange) 
+![Status: Building](https://img.shields.io/badge/Status-Building-green) 
+![License: MIT](https://img.shields.io/badge/License-MIT-blue)
+
+* * *
+
+## 📚 **J**ust **A**nother **R**estart, **V**alidated **I**teratively **S**ystem — Mark7
+
+* Still not sentient.
+* Still not flying the suit.
+* Still not allowed to call vibes a validation strategy.
+* Now with enough runtime evidence that remaining problems have nowhere polite to hide.
+
+JARVISv7 is an attempt to build a **local-first, voice-first personal assistant** capable of real conversational interaction on hardware people actually own.
+
+* Not someday.
+* Not after moving everything to the cloud.
+* Not after acquiring a budget, a board, or a marketing department.
+* On the machine sitting in front of you.
+
+JARVISv7 exists because v6 taught two important lessons:
+
+> The vision was mostly right.  
+> The implementation was occasionally creative.  
+
+* Some architectural decisions worked exactly as intended - some did not.  
+* Several worked just well enough to expose entirely different problems.  
+* Which, in hindsight, is indeed progress.  
+
+Since then, v7 has moved from "another restart with better rules" to "an actual construction site with permits, inspections, and a suspicious number of extension cords" - oh and still very hard to manage.
+
+> A project that has finally become disciplined enough to discover how much work remains.
+
+* * *
+
+![JARVISv7](docs/JARVISv7.png)
+
+* * *
+
+## 🚀 Quick Start
+
+Fresh-clone setup and developer startup commands live in [docs/QuickStart.md](docs/QuickStart.md) (and "use-at-own-risk": [docs/QuickStart.ps1](docs/QuickStart.ps1)).
+
+The short version: create `backend\.venv`, run `.\backend\.venv\Scripts\python scripts\bootstrap.py`, verify with `.\backend\.venv\Scripts\python scripts\validate_backend.py profile`, then use `scripts\run_backend.py`, `scripts\run_jarvis.py`, or the `desktop/` shell depending on what you are testing.
+
+* * *
+
+## 🧭 Project Vision ("The destination has barely changed")
+
+The core vision for JARVIS has remained surprisingly stable.
+
+* A local-first, voice-first assistant capable of maintaining conversational continuity, executing useful tasks, adapting to available hardware, and operating within a structured, observable runtime.
+
+That vision existed long before v7. What changed was understanding how difficult it would be to achieve without letting the architecture wander into the woods wearing just a little hat. The goal is still not to create a chatbot. The goal is not to create an autonomous agent that disappears into a black box.
+
+> The goal is to build a system that can interact naturally while remaining understandable, controllable, and measurable.
+
+### Core Invariants
+
+* **Local-First Execution** — User-owned hardware remains the primary target.
+* **Voice-First Interaction** — Speech is the intended interface, not an afterthought.
+* **Desktop-First Presence** — The assistant should feel like a local runtime, not a website with a microphone button.
+* **Hardware-Aware Startup** — Profiling, provisioning, and readiness come before runtime guessing.
+* **Cross-Platform From the Start** — Windows x64 and Windows ARM64 are first-class targets (no apologies - donate hardware if you want more).
+* **Deterministic Control** — Explicit system behavior remains preferable to emergent chaos.
+* **Externalized Cognition** — Memory, plans, artifacts, context, and traces live outside the model.
+* **Personality as Policy** — Tone and behavior are configured, bounded, and inspectable.
+* **Traceability** — Actions should be explainable after they occur.
+* **Visible Failure States** — Empty output and silent collapse are not user experiences. They are crime scenes.
+* **Validation Before Celebration** — Capability claims require evidence.
+* **Incremental Progress** — Architecture advances one verified slice at a time.
+
+> [ProjectVision.md](ProjectVision.md) contains the destination.  
+> [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.
+
+* * *
+
+## 🎙️ Voice-First Reality Check
+
+Voice remains the primary objective. *Not text*. *Not chat*. *Not prompt engineering*. **Voice**.
+
+Significant progress has been made toward this goal throughout JARVISv7.
+
+* Voice runtime families exist.
+* Speech interaction paths exist.
+* Wake and push-to-talk paths exist.
+* Desktop interaction surfacing exists.
+* Multi-turn/session foundations exist.
+* Realtime conversation boundaries exist.
+* Interruption and response coordination helpers exist.
+* ARM64 voice validation is no longer purely theoretical, which is refreshing.
+* Hardware-specific voice readiness is normalized instead of guessed at enthusiastically.
+
+Several portions of the intended interaction model have now been validated in practice. There are still gaps. There are still rough edges. There are still moments where the system reminds everyone involved that speech recognition, conversation management, interruption handling, realtime coordination, and low-latency reasoning are all separate problems pretending to be one. The overall direction, however, remains unchanged.
+
+> The goal is still conversation that feels natural without pretending the underlying engineering is simple.
+
+* * *
+
+## 📈 Progress So Far ("Turns out, quite a bit of this actually works")
+
+One of the more surprising developments in JARVISv7 is that significant portions of the original vision have survived contact with reality. The project now contains verified implementations, validated workflows, documented inventories, governance controls, and evidence-backed capabilities that simply did not exist in earlier versions. Several major architectural goals have moved from **"interesting idea"** to **"demonstrated capability"**.
+
+Examples include:
+
+* Voice interaction pipelines (API layered backend - Python)
+* Desktop runtime integration (Rust/Tauri/JavaScript)
+* Hardware-aware execution paths (need more hardware - donations?)
+* Persistent memory architecture (partial)
+* Structured agent lifecycle management (almost)
+* Multi-turn interaction foundations (needs work to be "conversational")
+* Canonical turn/session engine shared across text and voice paths
+* Local Redis/SearXNG service substrate
+* Deterministic tool execution foundation
+* Voice acceleration matrix and live turn gates
+* Operator controls, settings UX, readiness panels, and degraded-state visibility
+* Personality policy envelope with structured, bounded presentation controls
+* Realtime conversation session boundary
+* Conversation continuity and session memory boundary
+* Truthful agent boundary with local ledger records
+* Dry-run agent roles and read-only trace diagnostics
+* Spec-first agent catalog and Agent Creator boundary
+* Managed local llama.cpp LLM runtime with Ollama fallback
+
+That is not a small list. It is, however, still not permission to declare victory and go buy sunglasses.😎
+
+Not everything works everywhere. Not everything works perfectly. But increasingly, things either work, degrade visibly, or have documented reasons why they do not.
+
+> That may not sound exciting — but really, it is.
+
+* * *
+
+## 🏗️ Current Reality ("The problems are more boring now")
+
+Earlier versions spent considerable effort figuring out what JARVIS should become. The project is no longer primarily constrained by identity crises - it is constrained by actual engineering constraints. JARVISv7 now spends considerably more effort figuring out why something that should work does not. This is a substantial improvement.
+
+Current development focuses heavily on (almost in order):
+
+* realtime conversation coordination
+* desktop/operator experience
+* cross-platform runtime consistency
+* memory storage and retrieval
+* agent framework expansion
+* active learning loops for self-improvement
+* policy-gated cloud escalation
+
+These are significantly less dramatic problems - Unfortunately, they are also real ones.
+
+The active pain list still includes:
+
+* voice interaction quality
+* conversational flow
+* latency
+* reliability
+* validation coverage
+* unfinished agent integration
+* incomplete memory depth
+* architecture parity
+* hardware acceleration gaps
+* platform consistency (did we mention donations?)
+
+> The system still remains incomplete.  
+> The difference is that incompleteness is increasingly measurable.  
+> Which is uncontrollably rude, but still, indeed useful.
+
+* * *
+
+## 🏃‍♂️‍➡️ Runtime Reality ("x64, ARM64, and the tiny furnace of truth")
+
+JARVISv7 was explicitly shaped by the requirement that hardware support must not be retrofitted later while everyone pretends that was the plan. The project now has verified foundations across Windows x64 and Windows ARM64 for major parts of the stack. That includes profiling, provisioning, readiness, runtime validation, desktop host behavior, voice runtime matrices, and regression coverage across both host classes. That is real progress in the right direction.
+
+**Local LLM Server for `llama.cpp` Models:**
+* CPU fallback local LLM is using `llama-server.exe` - each AMD64 and ARM64 have their own binary set
+* AMD-GPU-CUDA accelerated `llama-server.exe` is achieved using a separate CUDA optimized binary
+* ARM-GPU `llama-server.exe` is accelerated by adreno-opencl (see [jarvis-arm-llamacpp.md](docs/jarvis-arm-llamacpp.md) for details)
+
+**Voice Models for STT/TTS:**
+* CPU fallback is Onnx based (STT-Whisper and TTS-Koroko)
+* AMD-GPU-CUDA accelerated voice is already supported in Onnx - that's not saying we can't do better
+* ARM-GPU-QNN has been quite a beast, but if you are adventurous, read [jarvis-arm-whisper.md](docs/jarvis-arm-whisper.md)
+
+It is also not the same thing as saying every accelerator target is done. AMD64-CUDA and ARM64-QNN acceleration remain  "work-in-progress". Other accelerator targets (ROCm, Metal, CoreML, DirectML, etc) have not been proven. Which is exactly how this project is supposed to talk now:
+
+> prove it (more than once) or stop claiming it (if not).
+
+* * *
+
+## 💾 Memory ("It remembers things now, but let's not get emotional")
+
+Memory is no longer just a concept duct taped to the side of the conversation engine. JARVISv7 now has a disk-backed episodic memory foundation with retrieval, write policy, cached recall, prompt assembly integration, and provenance tracking. Session continuity has also become more explicit. The system can group related turns, create bounded continuity packets, preserve timeline artifacts, and carry session-aware context into prompt assembly.
+
+That is a meaningful step toward the ProjectVision target of conversational continuity.
+
+It is not the final memory system.
+
+* Semantic/vector memory is not yet implemented.
+* Autonomous memory decisions are not being claimed.
+* Redis is retrieval acceleration, not the source of truth.
+* The durable memory authority remains disk-backed episodic entries.
+
+In normal human terms:
+
+> It can remember more than before. It does not yet have a soul. Please stop checking.
+
+* * *
+
+## ⚖️ Governance ("Assistants have rules -  as it is apparently necessary")
+
+One of the original reasons v7 exists was agentic coding assistant drift. Not the charming kind of drift. The kind where a system receives a scoped request and returns with an architecture, a migration plan, three abstractions, and a faint smell of ozone. v7 responds to that lesson by treating governance as architecture, not paperwork.
+
+The repository now includes:
+
+* policies (imagine that)
+* a truthful agent boundary
+* local ledger records
+* dry-run planner/executor/critic/curator/learner helpers
+* read-only trace diagnostics
+* spec-first agent catalog
+* deterministic spec-only Agent Creator boundary
+* disabled-by-default agent specs for future expansion
+* status truth that avoids pretending inactive things are secretly powerful
+
+This is significant progress.
+
+It is also intentionally bounded.
+
+* No hidden/background execution is claimed.
+* No autonomous agent runtime behavior is claimed.
+* No model/tool-calling agent behavior is claimed.
+* No training, deployment, semantic/vector memory, or desktop agent behavior is claimed by these entries.
+
+That restraint is not a lack of ambition - It is actually, the entire point.
+
+> The system is not trying to become more creative.  
+> The system is trying to become more correct.
+
+* * *
+
+## 🛠️ Tooling and Services ("Yes, it can. Hopefully, not whatever it wants.")
+
+JARVISv7 now has a deterministic tool execution foundation. That matters because useful assistants eventually need to act in the world, and acting in the world without boundaries is how you get a very confident mess.
+
+The current tool model is explicit, constrained but not (at all) complete.
+
+* Tool invocation uses deterministic dispatch.
+* Filesystem access is read-only (yes) and sandboxed (maybe).
+* Tool-call metadata is carried through API and presentation surfaces.
+* Internet search is routed through the existing provider boundaries and local service substrate.
+
+This is not model-side function-calling chaos. This is not "the LLM found a tool and decided to vibe". The tool system exists. It is attempting to be bounded, but it is still early.
+
+> It is also much safer than letting a language model free-climb your filesystem with a flashlight and a dream.
+
+* * *
+
+## 🧬 Personality and Presentation ("Snark, but governed")
+
+Personality is now treated as a structured subsystem rather than just prompt seasoning. JARVISv7 includes validated personality profiles, policy adapters, prompt envelope integration, provenance-aware rendering, and bounded text/voice presentation cleanup. That supports the ProjectVision requirement that personality be externalized, configurable, inspectable, and compatible with deterministic orchestration. In practice, that means the assistant can develop a more consistent voice without being allowed to treat personality as a license to improvise facts, override policy, or become a theater kid with root access.
+
+> The personality system is not magic. It is structure. Which is increasingly the whole brand intent.
+
+* * *
+
+## ⚠️ Remaining Gaps ("The hard parts turned out to be hard")
+
+The remaining challenges are no longer:
+
+* What should JARVIS be?
+* Should it be voice-first?
+* Should it be local-first?
+* Should validation matter?
+* Should agent drift be controlled?
+* Should hardware differences be handled at the architecture level?
+
+Those questions are largely settled.
+
+The remaining work is mostly:
+
+* refining interaction quality
+* strengthening realtime voice behavior
+* improving architecture parity
+* improving reliability
+* reducing latency
+* expanding memory beyond episodic keyword/recency retrieval
+* integrating agents without creating a tiny bureaucracy of chaos
+* proving remaining assumptions in live runtime evidence
+* finishing the thing instead of discovering a new reason to restart it
+
+> In other words: The roadmap increasingly consists of engineering problems rather than philosophical ones.  
+> Which is encouraging... and inconvenient.  
+
+* * *
+
+## 🔁 What Changed From v6 ("Less drift. More discipline. More evidence.")
+
+v6 demonstrated that the vision was achievable. It also demonstrated that capable systems can drift surprisingly far without strong controls. One of the most important lessons learned was that governance is not documentation. Governance is architecture. The repository now includes documented governance, validation harnesses, inventories, acceptance criteria, operational workflows, implementation boundaries, capability tracking, cross-host runtime evidence, and enough live voice validation to make vague excuses less comfortable.
+
+As a result, JARVISv7 places much greater emphasis on:
+
+* validated execution
+* acceptance criteria
+* inventory management
+* evidence collection
+* implementation boundaries
+* instruction fidelity
+* operational discipline
+* explicit degradation
+* truthful capability reporting
+
+v7 is not merely "v? but cleaner." It is v? with more of the original vision made concrete, more of the failure modes named directly, and fewer places for overachiever drift to hide under the floorboards.
+
+> That sounds less exciting, but turns out to be far more useful.
+
+* * *
+
+## 🤝 Contributions Welcome
+
+JARVIS has reached the stage where progress comes less from generating new ideas and more from executing existing ones consistently.
+
+Contributions are welcome, particularly those that:
+
+* improve voice interaction
+* improve memory and retrieval systems
+* reduce complexity and improve reliability
+* improve platform support (did we mention donations, yet?)
+* improve agent boundaries without turning them into autonomous gremlins
+* improve architecture parity without pretending one machine represents the species
+* improve hardware/runtime coverage (ok, we're pretty sure we have mentioned "donations")
+* improve live runtime validation instead of just making tests feel emotionally supportive
+* advance RAG, MCP, skills, agents, and local/cloud escalation without pretending they are already finished
+
+**BONUS POINTS:** solving real problems without introducing three new ones.  
+**DOUBLE BONUS POINTS:** documenting what actually happened instead of what would have been nice if it happened.
+
+> The rules are stricter now. [AGENTS.md](AGENTS.md) is no longer a suggestion.
+
+* * *
+
+## 📜 License
+
+Distributed under the MIT License.  
+
+Use it. Modify it. Improve it. Break it. Don't complain about it.  
+
+Just remember that experimental software occasionally behaves experimentally.  
+
+> See [LICENSE](LICENSE) for "yada-yada" details.
+
+* * *
+
+## 🧱 Acknowledgments
+
+Built on the accumulated successes, mistakes, redesigns, overcorrections, and occasional moments of accidental competence from:
+
+* [**JARVISv1 (Just A Rough Very Incomplete Start)**](https://github.com/bentman/JARVISv1)  
+  The beginning — many milestones, alpha nonetheless.
+
+* [**JARVISv2 (Just Almost Real Viable Intelligent System)**](https://github.com/bentman/JARVISv2)  
+  The first version that hinted this might actually be possible.
+
+* [**JARVISv3 (Just A Reliable Variant In Service)**](https://github.com/bentman/JARVISv3)  
+  The version that introduced stability.
+
+* [**JARVISv4 (Just A Reimagined Version In Stabilization)**](https://github.com/bentman/JARVISv4)  
+  The version that introduced discipline.
+
+* [**JARVISv5 (Just A Runnable, Verified Iterative System)**](https://github.com/bentman/JARVISv5)  
+  The first version that behaved like a system — without voice.
+
+* [**JARVISv6 (Just Another Restart, Voice Included System)**](https://github.com/bentman/JARVISv6)  
+  The version that proved the vision could work and exposed what still needed to be fixed.
+
+* [**JARVISv7 (Just Another Restart, Validated Iteratively System)**](README.md) << this one >>  
+  The version proving that "under construction" and "making progress" can, occasionally, be the same thing.
+
+* * *
+
+## 🧩 Bottom Line
+
+JARVISv7 is not attempting to reinvent the vision. It is attempting to realize it. The destination has changed very little. The amount of work required to reach it has become uncomfortably clear. That is not failure. That is understanding. 
+
+Recent work has moved more of the ProjectVision from “this should exist” to “this exists with evidence, caveats, and a TODO list that keeps making eye contact.” That is the right kind of progress.
+
+For the first time in a while, construction appears to be outpacing reinvention. Which is probably the strongest progress indicator yet.
+
+> "Sometimes you gotta run before you can walk." — Tony Stark
