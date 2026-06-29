@@ -22,7 +22,7 @@ Common checks:
 
 Do not manually download, rename, or reshuffle model files unless the task explicitly calls for staging a known artifact.
 
-## Layout expectations
+## Layout and naming
 
 Respect existing family folders:
 
@@ -31,17 +31,20 @@ Respect existing family folders:
 - `models/wake/`
 - `models/llm/`
 
-When adding or staging a model, keep names aligned with the catalog model id. Do not replace an existing model in place when the approved work calls for side-by-side staging.
+Model folder names must match the catalog model id unless an approved migration says otherwise:
 
-For Qualcomm QNN Whisper artifacts, preserve encoder/decoder separation and provenance:
+- `models/<family>/<model-id>/`
 
-- `models/stt/encoder/model.onnx`
-- `models/stt/encoder/model.bin`
-- `models/stt/decoder/model.onnx`
-- `models/stt/decoder/model.bin`
-- `models/stt/provenance/` when available
+Use side-by-side staging for new model variants. Do not replace an existing model in place when the approved work calls for a new catalog identity.
 
-The ONNX files may be small EPContext wrappers. Do not assume size alone means invalid.
+For multi-part models, keep stable component names from the catalog or source manifest. Acceptable generic component folders include:
+
+- `encoder/`
+- `decoder/`
+- `tokenizer/`
+- `provenance/`
+
+Do not create model-specific naming schemes inside `models/` unless the catalog/config design requires them.
 
 ## Provenance
 
@@ -52,6 +55,8 @@ When a local artifact is staged manually, record enough provenance to reproduce 
 - date/time of acquisition
 - host class used for validation
 - verification command and outcome
+
+Use `provenance/manifest.json` when provenance is stored beside a model.
 
 Do not commit tokens, account-specific metadata, absolute private paths, or downloaded credentials.
 
