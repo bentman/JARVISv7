@@ -364,7 +364,7 @@ Built on the accumulated successes, mistakes, redesigns, overcorrections, and oc
 * [**JARVISv6 (Just Another Restart, Voice Included System)**](https://github.com/bentman/JARVISv6)  
   The version that proved the vision could work and exposed what still needed to be fixed.
 
-* **JARVISv7 (Just Another Restart, Validated Iteratively System)**[README.md]  
+* [**JARVISv7 (Just Another Restart, Validated Iteratively System)**](README.md)  
   The version proving that "under construction" and "making progress" can, occasionally, be the same thing.
 
 * * *
