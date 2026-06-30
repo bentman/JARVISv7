@@ -122,6 +122,8 @@ Common local settings:
 ```text
 USE_LOCAL_MODEL=false
 LOCAL_MODEL_FETCH=false
+LLM_MODEL_POLICY=auto
+LLM_MODEL_ID=
 LLAMA_CPP_MANAGED=false
 USE_OLLAMA=true
 OLLAMA_BASE_URL=http://localhost:11434
@@ -129,6 +131,8 @@ OLLAMA_MODEL=phi4-mini
 ```
 
 Leave defaults alone for first setup unless you already know which runtime path you are validating.
+
+Local LLM setup is policy-aware. By default, `scripts\ensure_models.py --family llm` verifies or acquires the selected policy model and current-host applicable llama.cpp runtime profiles. Use `--all-llm` only when you intentionally want full LLM catalog validation.
 
 ## Optional local services
 
@@ -252,6 +256,7 @@ Useful hardware/model checks:
 ```powershell
 .\backend\.venv\Scripts\python scripts\provision.py explain
 .\backend\.venv\Scripts\python scripts\provision.py dry-run
+.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
 .\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assistant-small-q4 --verify-only
 ```
 

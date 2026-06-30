@@ -1,5 +1,47 @@
 default_model: assistant-small-q4
 
+llm_selection:
+  default_policy: auto
+  operator_env:
+    policy: LLM_MODEL_POLICY
+    model_override: LLM_MODEL_ID
+  roles:
+    portable:
+      model: assistant-small-q4
+      status: dev-alias
+    balanced:
+      model: assistant-small-q4
+      status: dev-alias
+    quality:
+      model: assistant-small-q4
+      status: dev-alias
+    vision_preview:
+      model: assistant-small-q4
+      status: placeholder-no-vision-runtime
+    diagnostic:
+      model: assistant-small-q4
+      status: active
+  policies:
+    auto:
+      windows_amd64_cpu: portable
+      windows_arm64_cpu: portable
+      windows_amd64_gpu_nvidia_cuda: balanced
+      windows_amd64_gpu_amd: portable
+      windows_amd64_gpu_intel: portable
+      windows_arm64_gpu_qualcomm_adreno_opencl: portable
+      windows_arm64_npu_qualcomm_base: portable
+      windows_arm64_npu_qualcomm_qnn: portable
+    portable:
+      "*": portable
+    balanced:
+      "*": balanced
+    quality:
+      "*": quality
+    vision_preview:
+      "*": vision_preview
+    diagnostic:
+      "*": diagnostic
+
 ollama:
   base_url: ${OLLAMA_BASE_URL}
   model: ${OLLAMA_MODEL}

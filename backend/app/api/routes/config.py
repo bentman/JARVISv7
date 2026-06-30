@@ -26,6 +26,9 @@ class OperatorFieldSpec:
     secret: bool = False
     editable: bool = True
     restart_required: bool = True
+    options: tuple[str, ...] | None = None
+    section: str | None = None
+    advanced: bool = False
 
 
 OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
@@ -35,13 +38,20 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec("OLLAMA_NUM_CTX", "Ollama context window."),
     OperatorFieldSpec("USE_LOCAL_MODEL", "Enable local model runtime selection."),
     OperatorFieldSpec("LOCAL_MODEL_FETCH", "Allow local model fetch behavior."),
-    OperatorFieldSpec("LLAMA_CPP_MODEL_PATH", "Local llama.cpp model path."),
+    OperatorFieldSpec(
+        "LLM_MODEL_POLICY",
+        "Model policy.",
+        options=("auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"),
+        section="Model",
+    ),
+    OperatorFieldSpec("LLM_MODEL_ID", "Model id override.", section="Model", advanced=True),
+    OperatorFieldSpec("LLAMA_CPP_MODEL_PATH", "Local llama.cpp model path.", section="Model", advanced=True),
     OperatorFieldSpec("LLAMA_CPP_BASE_URL", "Managed llama.cpp endpoint URL."),
     OperatorFieldSpec("LLAMA_CPP_HOST", "Managed llama.cpp bind host."),
     OperatorFieldSpec("LLAMA_CPP_PORT", "Managed llama.cpp bind port."),
-    OperatorFieldSpec("LLAMA_CPP_BINARY_PATH", "Managed llama.cpp server binary override."),
+    OperatorFieldSpec("LLAMA_CPP_BINARY_PATH", "Managed llama.cpp server binary override.", section="Model", advanced=True),
     OperatorFieldSpec("LLAMA_CPP_MANAGED", "Enable managed llama.cpp sidecar launch."),
-    OperatorFieldSpec("LLAMA_CPP_MODEL_NAME", "Managed llama.cpp logical model name."),
+    OperatorFieldSpec("LLAMA_CPP_MODEL_NAME", "Managed llama.cpp logical model name.", section="Model", advanced=True),
     OperatorFieldSpec("LLAMA_CPP_TIMEOUT_SECONDS", "Managed llama.cpp HTTP timeout in seconds."),
     OperatorFieldSpec("USE_SEARXNG", "Enable SearXNG search escalation."),
     OperatorFieldSpec("SEARXNG_BASE_URL", "SearXNG endpoint URL."),
@@ -88,6 +98,9 @@ def _render_field(spec: OperatorFieldSpec, values: dict[str, str]) -> OperatorCo
         secret=spec.secret,
         restart_required=spec.restart_required,
         description=spec.description,
+        options=list(spec.options) if spec.options else None,
+        section=spec.section,
+        advanced=spec.advanced,
     )
 
 

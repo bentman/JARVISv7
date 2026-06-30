@@ -68,6 +68,9 @@ def _llm_runtime_trace(state: ApiState) -> tuple[tuple[str, bool, str], Selectio
         base_url=getattr(state.llm, "base_url", None),
         selected_reason=getattr(state.llm, "selected_reason", None),
         degraded_reason=runtime_reason,
+        model_policy=getattr(state.llm, "model_policy", None),
+        model_role=getattr(state.llm, "model_role", None),
+        model_selection_reason=getattr(state.llm, "model_selection_reason", None),
     )
     return (str(device or "unknown"), available, reason), refreshed
 
@@ -95,6 +98,9 @@ def _family_readiness(
         base_url=trace.base_url if name == "llm" and trace is not None else None,
         selected_reason=trace.selected_reason if name == "llm" and trace is not None else None,
         degraded_reason=trace.degraded_reason if name == "llm" and trace is not None else None,
+        model_policy=trace.model_policy if name == "llm" and trace is not None else None,
+        model_role=trace.model_role if name == "llm" and trace is not None else None,
+        model_selection_reason=trace.model_selection_reason if name == "llm" and trace is not None else None,
     )
 
 

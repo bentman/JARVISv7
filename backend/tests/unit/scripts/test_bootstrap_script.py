@@ -64,7 +64,7 @@ def test_bootstrap_halts_on_profiler_failure(monkeypatch, capsys) -> None:
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert "[CHECKPOINT 1/5] profile → FAIL" in output
+    assert "[CHECKPOINT 1/5] profile -> FAIL" in output
     assert "boom" in output
 
 
@@ -84,7 +84,7 @@ def test_bootstrap_halts_on_provision_failure_with_checkpoint_reason(monkeypatch
     output = capsys.readouterr().out
 
     assert exit_code == 1
-    assert "[CHECKPOINT 2/5] provision → FAIL" in output
+    assert "[CHECKPOINT 2/5] provision -> FAIL" in output
 
 
 def test_bootstrap_checkpoint_numbering_is_stable(monkeypatch, capsys) -> None:

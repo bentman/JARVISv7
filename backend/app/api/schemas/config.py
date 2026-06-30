@@ -11,6 +11,9 @@ class OperatorConfigField(BaseModel):
     secret: bool
     restart_required: bool
     description: str
+    options: list[str] | None = None
+    section: str | None = None
+    advanced: bool = False
 
 
 class OperatorConfigResponse(BaseModel):

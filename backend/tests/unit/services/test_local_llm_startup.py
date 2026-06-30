@@ -59,6 +59,20 @@ def test_prepare_managed_local_llm_reports_profile_degraded_reason(
         "resolve_llm_serve_profile",
         lambda *args, **kwargs: degraded_resolution,
     )
+    monkeypatch.setattr(
+        local_llm_startup,
+        "select_llm_model",
+        lambda *args, **kwargs: type(
+            "Selection",
+            (),
+            {
+                "model_id": "assistant-small-q4",
+                "policy": "auto",
+                "role": "portable",
+                "reason": "policy auto selected assistant-small-q4",
+            },
+        )(),
+    )
 
     result = prepare_managed_local_llm(
         HardwareProfile(os_name="windows", arch="amd64"),
@@ -143,6 +157,20 @@ def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runt
             **{**kwargs, "entry": entry},
         ),
     )
+    monkeypatch.setattr(
+        local_llm_startup,
+        "select_llm_model",
+        lambda *args, **kwargs: type(
+            "Selection",
+            (),
+            {
+                "model_id": "assistant-small-q4",
+                "policy": "auto",
+                "role": "portable",
+                "reason": "policy auto selected assistant-small-q4",
+            },
+        )(),
+    )
 
     result = prepare_managed_local_llm(
         HardwareProfile(os_name="windows", arch="amd64"),
@@ -156,3 +184,5 @@ def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runt
     assert sidecars[0].started is True
     assert result.runtime.model == "assistant-small-q4"
     assert result.runtime.serve_profile_id == "windows_amd64_cpu"
+    assert result.runtime.model_policy == "auto"
+    assert result.runtime.model_role == "portable"

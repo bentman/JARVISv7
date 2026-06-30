@@ -587,3 +587,55 @@ def test_explicit_llm_cli_allows_runtime_fetch_even_when_automatic_fetch_disable
 
     assert allowed is True
     assert reason == "explicit-cli"
+
+
+def test_verify_family_llm_defaults_to_selected_model(monkeypatch, tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    model_file = entry.local_path
+    model_file.parent.mkdir(parents=True)
+    model_file.write_bytes(b"gguf")
+    selected: list[tuple[str, str | None]] = []
+
+    monkeypatch.setattr(ensure_models, "get_model_entry", lambda family, model_name=None: entry)
+    monkeypatch.setattr(
+        ensure_models,
+        "select_llm_model",
+        lambda route, profile, policy=None: selected.append((route, policy)) or type(
+            "Selection",
+            (),
+            {"model_id": "assistant-small-q4", "policy": policy or "auto"},
+        )(),
+    )
+
+    code, result = ensure_models._verify_family(
+        "llm",
+        None,
+        hardware_profile=HardwareProfile(os_name="windows", arch="amd64"),
+        extras=["dev"],
+        llm_policy="balanced",
+    )
+
+    assert code == 0
+    assert selected == [("voice_chat", "balanced")]
+    assert result["selection"] == {"policy": "balanced", "model": "assistant-small-q4"}
+    assert [model["model"] for model in result["models"]] == ["assistant-small-q4"]
+
+
+def test_verify_family_all_llm_keeps_full_catalog(monkeypatch, tmp_path: Path) -> None:
+    entry = _entry(tmp_path)
+    model_file = entry.local_path
+    model_file.parent.mkdir(parents=True)
+    model_file.write_bytes(b"gguf")
+    monkeypatch.setattr(ensure_models, "list_models", lambda family: {entry.name: entry.config})
+
+    code, result = ensure_models._verify_family(
+        "llm",
+        None,
+        hardware_profile=HardwareProfile(os_name="windows", arch="amd64"),
+        extras=["dev"],
+        all_llm=True,
+    )
+
+    assert code == 0
+    assert "selection" not in result
+    assert [model["model"] for model in result["models"]] == ["assistant-small-q4"]

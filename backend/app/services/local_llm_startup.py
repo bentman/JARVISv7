@@ -9,6 +9,7 @@ import httpx
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.models.llm_selection import select_llm_model
 from backend.app.models.llm_profiles import LLMServeProfileResolution, resolve_llm_serve_profile
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
@@ -41,12 +42,31 @@ def prepare_managed_local_llm(
             degraded_reason="local model disabled",
         )
 
+    model_selection = select_llm_model(route, profile, settings=resolved_settings)
     resolution = resolve_llm_serve_profile(
         route,
         profile,
         preflight,
         settings=resolved_settings,
         flags=flags,
+        model_name=model_selection.model_id,
+    )
+    resolution = LLMServeProfileResolution(
+        model_id=resolution.model_id,
+        route=resolution.route,
+        serve_profile_id=resolution.serve_profile_id,
+        local_model_path=resolution.local_model_path,
+        binary_path=resolution.binary_path,
+        base_url=resolution.base_url,
+        accelerator=resolution.accelerator,
+        launch=resolution.launch,
+        generation_defaults=resolution.generation_defaults,
+        selected_reason=resolution.selected_reason,
+        model_policy=model_selection.policy,
+        model_role=model_selection.role,
+        model_selection_reason=model_selection.reason,
+        degraded_reasons=resolution.degraded_reasons,
+        degraded_candidates=resolution.degraded_candidates,
     )
     if resolution.degraded_reason:
         return ManagedLocalLLMStartup(
@@ -87,6 +107,9 @@ def prepare_managed_local_llm(
         serve_profile_id=resolution.serve_profile_id,
         accelerator=resolution.accelerator,
         selected_reason=resolution.selected_reason,
+        model_policy=resolution.model_policy,
+        model_role=resolution.model_role,
+        model_selection_reason=resolution.model_selection_reason,
     )
     return ManagedLocalLLMStartup(
         runtime=runtime,

@@ -72,7 +72,7 @@ function appendText(parent, text, tagName = "span") {
 function renderField(field) {
   const row = document.createElement("div");
   const label = document.createElement("label");
-  const input = document.createElement("input");
+  const input = Array.isArray(field.options) && field.options.length > 0 ? document.createElement("select") : document.createElement("input");
   const meta = document.createElement("div");
 
   label.textContent = fieldLabel(field);
@@ -83,6 +83,14 @@ function renderField(field) {
     input.type = "password";
     input.value = "";
     input.placeholder = field.has_value ? "Enter replacement" : "Unset";
+  } else if (input.tagName === "SELECT") {
+    for (const optionValue of field.options) {
+      const option = document.createElement("option");
+      option.value = optionValue;
+      option.textContent = optionValue;
+      input.appendChild(option);
+    }
+    input.value = field.value || field.options[0] || "";
   } else if (isBooleanField(field)) {
     input.type = "checkbox";
     input.checked = String(field.value).toLowerCase() === "true";
@@ -97,10 +105,48 @@ function renderField(field) {
 
   appendText(meta, field.key);
   appendText(meta, field.secret ? (field.has_value ? " · value stored" : " · not set") : ` · ${field.value || "—"}`);
+  if (field.advanced) appendText(meta, " · advanced");
   if (field.restart_required) appendText(meta, " · restart required");
 
   row.append(label, input, meta);
   return row;
+}
+
+function fieldSectionTitle(field) {
+  return field.section || "Operator";
+}
+
+function groupedFields(fields) {
+  const groups = [];
+  for (const field of fields) {
+    const title = fieldSectionTitle(field);
+    let group = groups.find((candidate) => candidate.title === title);
+    if (!group) {
+      group = { title, primary: [], advanced: [] };
+      groups.push(group);
+    }
+    if (field.advanced) group.advanced.push(field);
+    else group.primary.push(field);
+  }
+  return groups;
+}
+
+function renderFieldGroup(group) {
+  const section = document.createElement("section");
+  const heading = document.createElement("h3");
+  section.className = "settings-subsection";
+  heading.textContent = group.title;
+  section.appendChild(heading);
+  for (const field of group.primary) section.appendChild(renderField(field));
+  if (group.advanced.length > 0) {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = "Advanced";
+    details.appendChild(summary);
+    for (const field of group.advanced) details.appendChild(renderField(field));
+    section.appendChild(details);
+  }
+  return section;
 }
 
 function renderMissingEnv(containerEl) {
@@ -126,7 +172,7 @@ function renderPanel(containerEl, fields) {
   const restartButton = document.createElement("button");
   statusEl = document.createElement("p");
 
-  for (const field of fields) form.appendChild(renderField(field));
+  for (const group of groupedFields(fields)) form.appendChild(renderFieldGroup(group));
 
   saveButton.type = "submit";
   saveButton.textContent = "Save";

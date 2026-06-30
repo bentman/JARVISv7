@@ -21,6 +21,7 @@ from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.settings import load_settings
 from backend.app.models.catalog import ModelEntry, get_model_entry, list_models
+from backend.app.models.llm_selection import select_llm_model
 from backend.app.hardware.provisioning import resolve_required_extras
 
 MODEL_FAMILIES = ("stt", "tts", "wake")
@@ -43,11 +44,18 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--verify-only", action="store_true")
     parser.add_argument("--family", choices=ALL_FAMILIES)
     parser.add_argument("--model")
+    parser.add_argument("--llm-policy")
+    parser.add_argument("--all-llm", action="store_true")
     return parser.parse_args(argv)
 
 
 def _explicit_cli(args: argparse.Namespace) -> bool:
-    return bool(args.family or args.model)
+    return bool(
+        getattr(args, "family", None)
+        or getattr(args, "model", None)
+        or getattr(args, "llm_policy", None)
+        or getattr(args, "all_llm", False)
+    )
 
 
 def _source_files(entry: ModelEntry) -> list[tuple[str, str]]:
@@ -278,12 +286,28 @@ def _runtime_current_host_summary(
     }
 
 
+def _current_host_runtime_profiles(
+    profiles: dict[str, dict[str, Any]],
+    hardware_profile: HardwareProfile | None,
+    extras: list[str] | None,
+) -> dict[str, dict[str, Any]]:
+    if hardware_profile is None:
+        return profiles
+    return {
+        profile_id: profile
+        for profile_id, profile in profiles.items()
+        if _runtime_profile_matches_host(profile_id, profile, hardware_profile, extras)
+    }
+
+
 def _verify_runtime_artifacts(
     entry: ModelEntry,
     hardware_profile: HardwareProfile | None = None,
     extras: list[str] | None = None,
+    current_host_only: bool = False,
 ) -> dict[str, Any]:
-    profiles = _hardware_profiles(entry)
+    all_profiles = _hardware_profiles(entry)
+    profiles = _current_host_runtime_profiles(all_profiles, hardware_profile, extras) if current_host_only else all_profiles
     results = [_verify_runtime_profile(profile_id, profile) for profile_id, profile in profiles.items()]
     payload = {
         "model": entry.name,
@@ -418,8 +442,10 @@ def _ensure_runtime_artifacts(
     dry_run: bool,
     hardware_profile: HardwareProfile | None = None,
     extras: list[str] | None = None,
+    current_host_only: bool = False,
 ) -> dict[str, Any]:
-    profiles = _hardware_profiles(entry)
+    all_profiles = _hardware_profiles(entry)
+    profiles = _current_host_runtime_profiles(all_profiles, hardware_profile, extras) if current_host_only else all_profiles
     results = [
         _ensure_runtime_profile(profile_id, profile, dry_run=dry_run)
         for profile_id, profile in profiles.items()
@@ -548,23 +574,41 @@ def _verify_family(
     model_name: str | None = None,
     hardware_profile: HardwareProfile | None = None,
     extras: list[str] | None = None,
+    llm_policy: str | None = None,
+    all_llm: bool = False,
 ) -> tuple[int, dict[str, Any]]:
+    selected_default = False
     if model_name:
         entries = [get_model_entry(family, model_name)]
+        selected_policy: str | None = None
+    elif family == "llm" and not all_llm and hardware_profile is not None:
+        selection = select_llm_model("voice_chat", hardware_profile, policy=llm_policy)
+        entries = [get_model_entry(family, selection.model_id)]
+        selected_policy = selection.policy
+        selected_default = True
     else:
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
+        selected_policy = None
 
     results = [_verify_entry(entry) for entry in entries]
     runtime_results = [
-        _verify_runtime_artifacts(entry, hardware_profile=hardware_profile, extras=extras)
+        _verify_runtime_artifacts(
+            entry,
+            hardware_profile=hardware_profile,
+            extras=extras,
+            current_host_only=selected_default,
+        )
         for entry in entries
     ] if family == "llm" else []
-    return (0 if all(result["ready"] for result in results) else 1), {
+    payload = {
         "family": family,
         "models": results,
         "runtime_artifacts": runtime_results,
         "ready": all(result["ready"] for result in results),
     }
+    if family == "llm" and selected_policy is not None:
+        payload["selection"] = {"policy": selected_policy, "model": entries[0].name}
+    return (0 if all(result["ready"] for result in results) else 1), payload
 
 
 def _download_huggingface(entry: ModelEntry, dry_run: bool) -> list[str]:
@@ -686,11 +730,21 @@ def _ensure_family(
     runtime_fetch_reason: str = "explicit-cli",
     hardware_profile: HardwareProfile | None = None,
     extras: list[str] | None = None,
+    llm_policy: str | None = None,
+    all_llm: bool = False,
 ) -> tuple[int, dict[str, Any]]:
+    selected_default = False
     if model_name:
         entries = [get_model_entry(family, model_name)]
+        selected_policy: str | None = None
+    elif family == "llm" and not all_llm and hardware_profile is not None:
+        selection = select_llm_model("voice_chat", hardware_profile, policy=llm_policy)
+        entries = [get_model_entry(family, selection.model_id)]
+        selected_policy = selection.policy
+        selected_default = True
     else:
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
+        selected_policy = None
 
     results = [_ensure_entry(entry, dry_run) for entry in entries]
     runtime_results: list[dict[str, Any]] = []
@@ -702,6 +756,7 @@ def _ensure_family(
                     dry_run=dry_run,
                     hardware_profile=hardware_profile,
                     extras=extras,
+                    current_host_only=selected_default,
                 )
                 for entry in entries
             ]
@@ -716,12 +771,15 @@ def _ensure_family(
                 }
                 for entry in entries
             ]
-    return (0 if all(result["ready"] for result in results) else 1), {
+    payload = {
         "family": family,
         "models": results,
         "runtime_artifacts": runtime_results,
         "ready": all(result["ready"] for result in results),
     }
+    if family == "llm" and selected_policy is not None:
+        payload["selection"] = {"policy": selected_policy, "model": entries[0].name}
+    return (0 if all(result["ready"] for result in results) else 1), payload
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -738,7 +796,14 @@ def main(argv: list[str] | None = None) -> int:
     results: list[dict[str, Any]] = []
     for family in families:
         if args.verify_only:
-            code, result = _verify_family(family, args.model, hardware_profile=report.profile, extras=extras)
+            code, result = _verify_family(
+                family,
+                args.model,
+                hardware_profile=report.profile,
+                extras=extras,
+                llm_policy=args.llm_policy,
+                all_llm=args.all_llm,
+            )
         else:
             code, result = _ensure_family(
                 family,
@@ -748,6 +813,8 @@ def main(argv: list[str] | None = None) -> int:
                 runtime_fetch_reason=runtime_fetch_reason,
                 hardware_profile=report.profile,
                 extras=extras,
+                llm_policy=args.llm_policy,
+                all_llm=args.all_llm,
             )
         exit_code = max(exit_code, code)
         results.append(result)

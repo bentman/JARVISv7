@@ -29,6 +29,9 @@ class LlamaCppLLM(LLMBase):
         serve_profile_id: str | None = None,
         accelerator: str | None = None,
         selected_reason: str | None = None,
+        model_policy: str | None = None,
+        model_role: str | None = None,
+        model_selection_reason: str | None = None,
     ) -> None:
         settings = load_settings()
         self._explicit_base_url = base_url is not None
@@ -42,6 +45,9 @@ class LlamaCppLLM(LLMBase):
         self.serve_profile_id = serve_profile_id
         self.accelerator = accelerator
         self.selected_reason = selected_reason
+        self.model_policy = model_policy
+        self.model_role = model_role
+        self.model_selection_reason = model_selection_reason
         self.reason = "not probed"
 
     def is_available(self) -> bool:

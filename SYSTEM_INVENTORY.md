@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice V local LLM model selection policy - 2026-06-30 08:52
+  - State: Verified
+  - Location: `config/models/llm.yaml`, `backend/app/models/llm_selection.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/routing/runtime_selector.py`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `scripts/ensure_models.py`, `desktop/src/components/settings-panel.js`, `backend/tests/unit/models/test_llm_selection.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `CHANGE_LOG.md`
+  - Validation: Windows AMD64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-30 08:52`: selector/startup/API/script focused tests PASS (`79 passed`), combined selector/startup/API/LLM/desktop contract tests PASS (`125 passed`), selected LLM verify-only PASS, all-LLM verify-only PASS, bootstrap dry-run PASS, profile PASS, unit PASS (`656 passed, 1 skipped`), regression PASS (`152 passed, 5 deselected`, report `reports\validation\20260630135212-regression.txt`), and desktop npm static PASS.
+  - Notes: All Slice V roles intentionally select existing `assistant-small-q4`. This verifies policy/model selection mechanics, selected-model setup scoping, readiness observability, and curated Operator policy UI; no Qwen/Gemma/vision model availability or new runtime architecture is claimed.
+
 - Capability: Slice U side-by-side Qualcomm QNN STT runtime - 2026-06-28 23:19
   - State: Verified
   - Location: `backend/app/hardware/qnn_provider.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/stt/stt_runtime.py`, `config/models/stt.yaml`, `backend/tests/unit/hardware/test_qnn_provider.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/runtime/voice/test_stt_live.py`, `CHANGE_LOG.md`

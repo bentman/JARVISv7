@@ -72,6 +72,9 @@ class _FakeLocalLLM(_FakeLLM):
     accelerator = "gpu.cuda"
     base_url = "http://127.0.0.1:8080"
     selected_reason = "selected current-host gpu.cuda serve profile windows_amd64_gpu_nvidia_cuda"
+    model_policy = "auto"
+    model_role = "balanced"
+    model_selection_reason = "policy auto mapped windows_amd64_gpu_nvidia_cuda to role balanced"
     reason = "llama.cpp /v1/models reachable"
 
     def runtime_name(self) -> str:
@@ -391,6 +394,9 @@ def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
         accelerator="cpu",
         base_url="http://127.0.0.1:8080",
         selected_reason="selected current-host CPU serve profile windows_amd64_cpu",
+        model_policy="auto",
+        model_role="portable",
+        model_selection_reason="policy auto mapped windows_amd64_cpu to role portable",
     )
 
     response = TestClient(create_app(state)).get("/readiness")
@@ -406,6 +412,9 @@ def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
     assert llm["base_url"] == "http://127.0.0.1:8080"
     assert llm["selected_reason"] == "selected current-host gpu.cuda serve profile windows_amd64_gpu_nvidia_cuda"
     assert llm["degraded_reason"] == "llama.cpp /v1/models reachable"
+    assert llm["model_policy"] == "auto"
+    assert llm["model_role"] == "balanced"
+    assert "role balanced" in llm["model_selection_reason"]
 
 
 def test_readiness_refreshes_dead_local_llm_instead_of_using_stale_trace() -> None:
@@ -1055,6 +1064,9 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["USE_OLLAMA"]["editable"] is True
     assert fields["USE_OLLAMA"]["restart_required"] is True
     assert fields["USE_OLLAMA"]["description"]
+    assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]
+    assert fields["LLM_MODEL_POLICY"]["section"] == "Model"
+    assert fields["LLM_MODEL_ID"]["advanced"] is True
     assert fields["TAVILY_API_KEY"]["secret"] is True
     assert fields["TAVILY_API_KEY"]["has_value"] is True
     assert fields["TAVILY_API_KEY"]["value"] == "***"

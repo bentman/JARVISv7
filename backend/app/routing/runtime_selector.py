@@ -28,6 +28,9 @@ class SelectionTrace:
     base_url: str | None = None
     selected_reason: str | None = None
     degraded_reason: str | None = None
+    model_policy: str | None = None
+    model_role: str | None = None
+    model_selection_reason: str | None = None
 
 
 class NullLLMRuntime(LLMBase):
@@ -102,6 +105,9 @@ def _local_trace(local: LlamaCppLLM, reason: str) -> SelectionTrace:
         base_url=getattr(local, "base_url", None),
         selected_reason=getattr(local, "selected_reason", None),
         degraded_reason=getattr(local, "reason", None),
+        model_policy=getattr(local, "model_policy", None),
+        model_role=getattr(local, "model_role", None),
+        model_selection_reason=getattr(local, "model_selection_reason", None),
     )
 
 

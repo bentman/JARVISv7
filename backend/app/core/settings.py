@@ -60,6 +60,8 @@ class Settings:
     model_path: Path = field(default_factory=lambda: Path(os.getenv("MODEL_PATH", str(MODELS_DIR))))
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", False))
     local_model_fetch: bool = field(default_factory=lambda: _env_bool("LOCAL_MODEL_FETCH", False))
+    llm_model_policy: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL_POLICY"))
+    llm_model_id: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL_ID"))
     llama_cpp_model_path: str | None = field(
         default_factory=lambda: os.getenv("LLAMA_CPP_MODEL_PATH")
     )

@@ -30,6 +30,9 @@ class LLMServeProfileResolution:
     launch: dict[str, Any]
     generation_defaults: dict[str, Any]
     selected_reason: str
+    model_policy: str | None = None
+    model_role: str | None = None
+    model_selection_reason: str | None = None
     degraded_reasons: list[str] = field(default_factory=list)
     degraded_candidates: list[ServeProfileCandidate] = field(default_factory=list)
 

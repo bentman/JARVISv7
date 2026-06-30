@@ -234,6 +234,12 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert "status.as_u16() == 409" in backend_rs
     for field in ["restart_required", "secret", "has_value", "editable", "description"]:
         assert field in settings_panel
+    for field in ["field.options", "field.section", "field.advanced"]:
+        assert field in settings_panel
+    assert 'document.createElement("select")' in settings_panel
+    assert "renderFieldGroup" in settings_panel
+    assert "groupedFields" in settings_panel
+    assert "Advanced" in settings_panel
     for copy in ["Unsaved changes", "restart required", "written", "rejected", ".env is required"]:
         assert copy in settings_panel
     assert "payload.fields" in settings_panel

@@ -52,7 +52,7 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
 
 def _checkpoint(index: int, total: int, name: str, ok: bool, reason: str) -> None:
     state = "PASS" if ok else "FAIL"
-    print(f"[CHECKPOINT {index}/{total}] {name} → {state} ({reason})")
+    print(f"[CHECKPOINT {index}/{total}] {name} -> {state} ({reason})")
 
 
 def _run_command(command: list[str], dry_run: bool) -> tuple[int, str]:
