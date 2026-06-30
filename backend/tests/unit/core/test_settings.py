@@ -9,6 +9,7 @@ ENV_NAMES = (
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
+    "TOOL_FILESYSTEM_SANDBOX_PATH",
     "USE_LOCAL_MODEL",
     "LLM_MODEL_POLICY",
     "LLM_MODEL_ID",
@@ -68,17 +69,30 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "REDIS_HOST",
     "REDIS_PORT",
     "PICOVOICE_ACCESS_KEY",
+    "DATA_PATH",
+    "TOOL_FILESYSTEM_SANDBOX_PATH",
+    "CONFIG_PATH",
+    "MODEL_PATH",
+    "STT_MODELS",
+    "TTS_MODELS",
+    "WAKE_MODEL",
 }
 
 ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
     "JARVISV7_OLLAMA_URL",
 }
 
-ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
+ENV_EXAMPLE_PATH_NAMES: set[str] = {
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
     "TOOL_FILESYSTEM_SANDBOX_PATH",
+    "STT_MODELS",
+    "TTS_MODELS",
+    "WAKE_MODEL",
+}
+
+ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "LOCAL_MODEL_FETCH",
     "LLAMA_CPP_MODEL_PATH",
     "LLAMA_CPP_BASE_URL",
@@ -91,9 +105,6 @@ ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "OLLAMA_BASE_URL",
     "OLLAMA_NUM_CTX",
     "JARVISV7_LIVE_TESTS",
-    "TTS_MODELS",
-    "STT_MODELS",
-    "WAKE_MODEL",
     "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD",
     "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS",
     "RESIDENT_VOICE_SILENCE_END_SECONDS",
@@ -248,10 +259,10 @@ def test_llama_cpp_sidecar_settings_use_defaults_when_env_absent(monkeypatch, tm
     assert settings.llama_cpp_binary_path is None
     assert settings.llama_cpp_managed is False
     assert settings.llama_cpp_managed_explicit is False
-    assert settings.effective_llama_cpp_managed is False
+    assert settings.effective_llama_cpp_managed is True
     assert settings.local_model_fetch is False
     assert settings.local_model_fetch_explicit is False
-    assert settings.effective_local_model_fetch is False
+    assert settings.effective_local_model_fetch is True
     assert settings.llama_cpp_model_name is None
     assert settings.llama_cpp_timeout_seconds == 30.0
 
@@ -351,7 +362,7 @@ def test_search_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
 
     settings = settings_module.load_settings()
 
-    assert settings.use_searxng is True
+    assert settings.use_searxng is False
     assert settings.searxng_port == 8888
     assert settings.searxng_base_url == "http://127.0.0.1:8888"
     assert settings.use_ddgs is True
@@ -381,6 +392,45 @@ def test_search_bool_settings_parse_common_truthy_falsey_values(monkeypatch, tmp
     assert settings.use_searxng is True
     assert settings.use_ddgs is False
     assert settings.use_tavily is True
+
+
+def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, None, None)
+
+    settings = settings_module.load_settings()
+
+    assert settings.use_local_model is True
+    assert settings.llm_model_policy == "auto"
+    assert settings.use_ollama is False
+    assert settings.ollama_base_url == "http://127.0.0.1:11434"
+    assert settings.ollama_model == "phi4-mini"
+    assert settings.ollama_num_ctx == 8192
+    assert settings.use_searxng is False
+    assert settings.model_path == settings_module.MODELS_DIR
+    assert settings.tool_filesystem_sandbox_path == Path("data/tool_sandbox")
+    assert settings.config_path == settings_module.CONFIG_DIR
+    assert settings.stt_models == "models/stt"
+    assert settings.tts_models == "models/tts"
+    assert settings.wake_model == "models/wake"
+    assert settings.picovoice_access_key is None
+
+
+def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "USE_LOCAL_MODEL=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nUSE_SEARXNG=\nCONFIG_PATH=\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.use_local_model is True
+    assert settings.llm_model_policy == "auto"
+    assert settings.ollama_model == "phi4-mini"
+    assert settings.ollama_num_ctx == 8192
+    assert settings.use_searxng is False
+    assert settings.config_path == settings_module.CONFIG_DIR
 
 
 def test_resident_voice_segmenter_settings_read_from_env(monkeypatch, tmp_path):
@@ -431,10 +481,14 @@ def test_env_example_covers_current_settings_env_variables():
     assert advertised_aliases == []
     advertised_advanced = sorted(ENV_EXAMPLE_ADVANCED_NAMES & set(values))
     assert advertised_advanced == []
+    assert "LLM_MODELS" not in values
     assert values["JARVIS_LANGUAGE"] == "english"
     assert values["LLM_MODEL_POLICY"] == "auto"
     assert values["LLM_MODEL_ID"] == ""
-    assert values["OLLAMA_MODEL"]
+    assert values["OLLAMA_MODEL"] == "phi4-mini"
+    assert values["TOOL_FILESYSTEM_SANDBOX_PATH"] == "data/tool_sandbox/"
+    assert values["CONFIG_PATH"] == "config/"
+    assert "CONFIG_PATH" not in values["TOOL_FILESYSTEM_SANDBOX_PATH"]
     assert values["SEARXNG_PORT"] == "8888"
     assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_OLLAMA"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
@@ -449,6 +503,9 @@ def test_setting_env_classification_keeps_primary_starter_small():
     classification = settings_module.SETTING_ENV_CLASSIFICATION
 
     for name in ENV_EXAMPLE_REQUIRED_NAMES:
+        if name in ENV_EXAMPLE_PATH_NAMES:
+            assert classification[name] == "advanced"
+            continue
         if name == "LLM_MODEL_ID":
             assert classification[name] == "advanced"
             continue

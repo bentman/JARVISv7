@@ -1064,27 +1064,43 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["USE_OLLAMA"]["editable"] is True
     assert fields["USE_OLLAMA"]["restart_required"] is True
     assert fields["USE_OLLAMA"]["description"]
-    assert fields["USE_LOCAL_MODEL"]["section"] == "Model"
+    assert fields["APP_NAME"]["section"] == "App Defaults"
+    assert fields["JARVIS_LANGUAGE"]["section"] == "App Defaults"
+    assert fields["USE_LOCAL_MODEL"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["USE_LOCAL_MODEL"]["advanced"] is False
-    assert fields["LOCAL_MODEL_FETCH"]["section"] == "Model"
+    assert fields["LOCAL_MODEL_FETCH"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["LOCAL_MODEL_FETCH"]["advanced"] is True
     assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]
-    assert fields["LLM_MODEL_POLICY"]["section"] == "Model"
+    assert fields["LLM_MODEL_POLICY"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["LLM_MODEL_ID"]["advanced"] is True
-    assert fields["USE_SEARXNG"]["section"] == "Search"
-    assert fields["SEARXNG_PORT"]["section"] == "Services"
+    assert fields["USE_OLLAMA"]["section"] == "Use Local Ollama intent"
+    assert fields["OLLAMA_MODEL"]["section"] == "Use Local Ollama intent"
+    assert fields["OLLAMA_BASE_URL"]["section"] == "Use Local Ollama intent"
+    assert fields["OLLAMA_BASE_URL"]["advanced"] is True
+    assert fields["USE_SEARXNG"]["section"] == "Optional Services"
+    assert fields["SEARXNG_PORT"]["section"] == "Optional Services"
     assert fields["SEARXNG_PORT"]["advanced"] is False
-    assert fields["SEARXNG_BASE_URL"]["section"] == "Services"
+    assert fields["SEARXNG_BASE_URL"]["section"] == "Optional Services"
     assert fields["SEARXNG_BASE_URL"]["advanced"] is True
     assert fields["TAVILY_API_KEY"]["secret"] is True
-    assert fields["TAVILY_API_KEY"]["section"] == "Search"
+    assert fields["TAVILY_API_KEY"]["section"] == "Optional Services"
     assert fields["TAVILY_API_KEY"]["advanced"] is True
     assert fields["TAVILY_API_KEY"]["has_value"] is True
     assert fields["TAVILY_API_KEY"]["value"] == "***"
-    assert fields["REDIS_HOST"]["section"] == "Services"
+    assert fields["REDIS_HOST"]["section"] == "Optional Services"
     assert fields["REDIS_HOST"]["advanced"] is False
-    assert fields["REDIS_PORT"]["section"] == "Services"
+    assert fields["REDIS_PORT"]["section"] == "Optional Services"
     assert fields["REDIS_PORT"]["advanced"] is False
+    assert fields["DATA_PATH"]["section"] == "App Paths"
+    assert fields["TOOL_FILESYSTEM_SANDBOX_PATH"]["section"] == "App Paths"
+    assert fields["CONFIG_PATH"]["section"] == "App Paths"
+    assert fields["MODEL_PATH"]["section"] == "App Paths"
+    assert fields["STT_MODELS"]["section"] == "App Paths"
+    assert fields["STT_MODELS"]["advanced"] is True
+    assert fields["WAKE_MODEL"]["section"] == "Optional Wake"
+    assert fields["WAKE_MODEL"]["advanced"] is True
+    assert fields["PICOVOICE_ACCESS_KEY"]["section"] == "Optional Wake"
+    assert fields["PICOVOICE_ACCESS_KEY"]["secret"] is True
     assert "secret-token" not in str(payload)
     assert "UNRELATED" not in fields
 
@@ -1175,3 +1191,5 @@ def test_operator_config_exposes_llama_cpp_sidecar_controls(tmp_path: Path, monk
         assert key in fields
         assert fields[key]["editable"] is True
         assert fields[key]["restart_required"] is True
+        assert fields[key]["section"] == "Local LLM intent (llama.cpp)"
+        assert fields[key]["advanced"] is True

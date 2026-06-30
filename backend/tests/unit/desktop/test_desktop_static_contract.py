@@ -237,9 +237,13 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     for field in ["field.options", "field.section", "field.advanced"]:
         assert field in settings_panel
     assert 'document.createElement("select")' in settings_panel
+    assert "fieldSectionTitle(field)" in settings_panel
+    assert 'return field.section || "Operator";' in settings_panel
     assert "renderFieldGroup" in settings_panel
     assert "groupedFields" in settings_panel
     assert "Advanced" in settings_panel
+    for backend_section in ["Local LLM intent (llama.cpp)", "Use Local Ollama intent", "Optional Services"]:
+        assert backend_section not in settings_panel
     for copy in ["Unsaved changes", "restart required", "written", "rejected", ".env is required"]:
         assert copy in settings_panel
     assert "payload.fields" in settings_panel
