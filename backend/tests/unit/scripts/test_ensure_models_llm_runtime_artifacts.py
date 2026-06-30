@@ -561,11 +561,25 @@ def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> N
     assert qnn_source["candidate_runtime_findings"] == base_source["candidate_runtime_findings"]
 
 
-def test_automatic_runtime_fetch_policy_honors_local_fetch_disabled(monkeypatch) -> None:
+def test_automatic_runtime_fetch_policy_derives_from_local_model_intent(monkeypatch) -> None:
     monkeypatch.setattr(
         ensure_models,
         "load_settings",
         lambda: Settings(use_local_model=True, local_model_fetch=False),
+    )
+    args = argparse.Namespace(family=None, model=None)
+
+    allowed, reason = ensure_models._runtime_fetch_allowed(args)
+
+    assert allowed is True
+    assert reason == "automatic-local-fetch-enabled"
+
+
+def test_automatic_runtime_fetch_policy_honors_explicit_local_fetch_disabled(monkeypatch) -> None:
+    monkeypatch.setattr(
+        ensure_models,
+        "load_settings",
+        lambda: Settings(use_local_model=True, local_model_fetch_explicit=True, local_model_fetch=False),
     )
     args = argparse.Namespace(family=None, model=None)
 

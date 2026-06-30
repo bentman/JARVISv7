@@ -76,7 +76,7 @@ def prepare_managed_local_llm(
         )
 
     sidecar: LocalLLMSidecarService | None = None
-    if resolved_settings.llama_cpp_managed:
+    if resolved_settings.effective_llama_cpp_managed:
         sidecar = LocalLLMSidecarService()
         status = sidecar.start(resolution)
         if not status.running:
@@ -102,7 +102,7 @@ def prepare_managed_local_llm(
         model=resolution.model_id,
         generation_defaults=resolution.generation_defaults,
         sidecar_status=sidecar.status if sidecar is not None else None,
-        managed=resolved_settings.llama_cpp_managed,
+        managed=resolved_settings.effective_llama_cpp_managed,
         route=resolution.route,
         serve_profile_id=resolution.serve_profile_id,
         accelerator=resolution.accelerator,

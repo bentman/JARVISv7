@@ -467,7 +467,7 @@ def _runtime_fetch_allowed(args: argparse.Namespace) -> tuple[bool, str]:
     settings = load_settings()
     if not settings.use_local_model:
         return False, "local model disabled"
-    if not settings.local_model_fetch:
+    if not settings.effective_local_model_fetch:
         return False, "LOCAL_MODEL_FETCH disabled"
     return True, "automatic-local-fetch-enabled"
 

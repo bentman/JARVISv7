@@ -10,6 +10,8 @@ ENV_NAMES = (
     "DATA_PATH",
     "MODEL_PATH",
     "USE_LOCAL_MODEL",
+    "LLM_MODEL_POLICY",
+    "LLM_MODEL_ID",
     "LOCAL_MODEL_FETCH",
     "LLAMA_CPP_MODEL_PATH",
     "LLAMA_CPP_BASE_URL",
@@ -43,6 +45,7 @@ ENV_NAMES = (
     "REDIS_MAX_CONNECTIONS",
     "REDIS_SOCKET_TIMEOUT",
     "USE_SEARXNG",
+    "SEARXNG_PORT",
     "SEARXNG_BASE_URL",
     "USE_DDGS",
     "USE_TAVILY",
@@ -52,10 +55,30 @@ ENV_NAMES = (
 ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "APP_NAME",
     "JARVIS_LANGUAGE",
+    "USE_LOCAL_MODEL",
+    "LLM_MODEL_POLICY",
+    "LLM_MODEL_ID",
+    "USE_OLLAMA",
+    "OLLAMA_MODEL",
+    "USE_SEARXNG",
+    "SEARXNG_PORT",
+    "USE_DDGS",
+    "USE_TAVILY",
+    "TAVILY_API_KEY",
+    "REDIS_HOST",
+    "REDIS_PORT",
+    "PICOVOICE_ACCESS_KEY",
+}
+
+ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
+    "JARVISV7_OLLAMA_URL",
+}
+
+ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
-    "USE_LOCAL_MODEL",
+    "TOOL_FILESYSTEM_SANDBOX_PATH",
     "LOCAL_MODEL_FETCH",
     "LLAMA_CPP_MODEL_PATH",
     "LLAMA_CPP_BASE_URL",
@@ -65,9 +88,7 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "LLAMA_CPP_MANAGED",
     "LLAMA_CPP_MODEL_NAME",
     "LLAMA_CPP_TIMEOUT_SECONDS",
-    "USE_OLLAMA",
     "OLLAMA_BASE_URL",
-    "OLLAMA_MODEL",
     "OLLAMA_NUM_CTX",
     "JARVISV7_LIVE_TESTS",
     "TTS_MODELS",
@@ -80,22 +101,11 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "RESIDENT_VOICE_PRE_ROLL_SECONDS",
     "RESIDENT_VOICE_MIN_SPEECH_SECONDS",
     "QAIRT_SDK_PATH",
-    "PICOVOICE_ACCESS_KEY",
     "PVPORCUPINE_MODEL_PATH",
-    "REDIS_HOST",
-    "REDIS_PORT",
     "REDIS_DB",
     "REDIS_MAX_CONNECTIONS",
     "REDIS_SOCKET_TIMEOUT",
-    "USE_SEARXNG",
     "SEARXNG_BASE_URL",
-    "USE_DDGS",
-    "USE_TAVILY",
-    "TAVILY_API_KEY",
-}
-
-ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
-    "JARVISV7_OLLAMA_URL",
 }
 
 
@@ -237,8 +247,56 @@ def test_llama_cpp_sidecar_settings_use_defaults_when_env_absent(monkeypatch, tm
     assert settings.llama_cpp_port == 8080
     assert settings.llama_cpp_binary_path is None
     assert settings.llama_cpp_managed is False
+    assert settings.llama_cpp_managed_explicit is False
+    assert settings.effective_llama_cpp_managed is False
+    assert settings.local_model_fetch is False
+    assert settings.local_model_fetch_explicit is False
+    assert settings.effective_local_model_fetch is False
     assert settings.llama_cpp_model_name is None
     assert settings.llama_cpp_timeout_seconds == 30.0
+
+
+def test_local_model_intent_derives_fetch_and_managed_sidecar_when_overrides_absent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, "USE_LOCAL_MODEL=true\n", None)
+
+    settings = settings_module.load_settings()
+
+    assert settings.use_local_model is True
+    assert settings.local_model_fetch is False
+    assert settings.local_model_fetch_explicit is False
+    assert settings.effective_local_model_fetch is True
+    assert settings.llama_cpp_managed is False
+    assert settings.llama_cpp_managed_explicit is False
+    assert settings.effective_llama_cpp_managed is True
+
+
+def test_explicit_local_model_fetch_and_sidecar_overrides_win_over_local_model_intent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "USE_LOCAL_MODEL=true\nLOCAL_MODEL_FETCH=false\nLLAMA_CPP_MANAGED=false\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.local_model_fetch_explicit is True
+    assert settings.effective_local_model_fetch is False
+    assert settings.llama_cpp_managed_explicit is True
+    assert settings.effective_llama_cpp_managed is False
+
+
+def test_llama_cpp_base_url_derives_from_host_and_port_when_base_url_absent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "LLAMA_CPP_HOST=127.0.0.2\nLLAMA_CPP_PORT=18080\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.llama_cpp_base_url == "http://127.0.0.2:18080"
 
 
 def test_redis_settings_read_from_env(monkeypatch, tmp_path):
@@ -274,13 +332,14 @@ def test_search_settings_read_from_env(monkeypatch, tmp_path):
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "USE_SEARXNG=false\nSEARXNG_BASE_URL=http://searxng:9999\nUSE_DDGS=no\nUSE_TAVILY=1\nTAVILY_API_KEY=test-key\n",
+        "USE_SEARXNG=false\nSEARXNG_PORT=9999\nSEARXNG_BASE_URL=http://searxng:9999\nUSE_DDGS=no\nUSE_TAVILY=1\nTAVILY_API_KEY=test-key\n",
         None,
     )
 
     settings = settings_module.load_settings()
 
     assert settings.use_searxng is False
+    assert settings.searxng_port == 9999
     assert settings.searxng_base_url == "http://searxng:9999"
     assert settings.use_ddgs is False
     assert settings.use_tavily is True
@@ -293,10 +352,20 @@ def test_search_settings_use_defaults_when_env_absent(monkeypatch, tmp_path):
     settings = settings_module.load_settings()
 
     assert settings.use_searxng is True
+    assert settings.searxng_port == 8888
     assert settings.searxng_base_url == "http://127.0.0.1:8888"
     assert settings.use_ddgs is True
     assert settings.use_tavily is False
     assert settings.tavily_api_key == ""
+
+
+def test_search_base_url_derives_from_searxng_port_when_base_url_absent(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, "SEARXNG_PORT=9999\n", None)
+
+    settings = settings_module.load_settings()
+
+    assert settings.searxng_port == 9999
+    assert settings.searxng_base_url == "http://127.0.0.1:9999"
 
 
 def test_search_bool_settings_parse_common_truthy_falsey_values(monkeypatch, tmp_path):
@@ -360,20 +429,31 @@ def test_env_example_covers_current_settings_env_variables():
     assert missing == []
     advertised_aliases = sorted(ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES & set(values))
     assert advertised_aliases == []
-    assert values["OLLAMA_BASE_URL"]
+    advertised_advanced = sorted(ENV_EXAMPLE_ADVANCED_NAMES & set(values))
+    assert advertised_advanced == []
     assert values["JARVIS_LANGUAGE"] == "english"
+    assert values["LLM_MODEL_POLICY"] == "auto"
+    assert values["LLM_MODEL_ID"] == ""
     assert values["OLLAMA_MODEL"]
-    assert values["OLLAMA_NUM_CTX"]
-    assert values["LLAMA_CPP_BASE_URL"] == "http://127.0.0.1:8080"
-    assert values["LLAMA_CPP_HOST"] == "127.0.0.1"
-    assert values["LLAMA_CPP_PORT"] == "8080"
-    assert values["LLAMA_CPP_MODEL_NAME"] == "assistant-small-q4"
-    assert values["LLAMA_CPP_TIMEOUT_SECONDS"] == "30"
-    assert values["RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS"] == "5.0"
-    assert values["RESIDENT_VOICE_SILENCE_END_SECONDS"] == "0.5"
-    assert values["RESIDENT_VOICE_SPEECH_RMS_THRESHOLD"] == "0.02"
-    assert values["SEARXNG_BASE_URL"] == "http://127.0.0.1:8888"
-    assert values["JARVISV7_LIVE_TESTS"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
-    assert values["LOCAL_MODEL_FETCH"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
-    assert values["LLAMA_CPP_MANAGED"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+    assert values["SEARXNG_PORT"] == "8888"
+    assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+    assert values["USE_OLLAMA"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+    assert values["USE_SEARXNG"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+    assert values["USE_DDGS"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
+    assert values["USE_TAVILY"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["PICOVOICE_ACCESS_KEY"] in {"", "<placeholder>", "<secret>"}
+
+
+def test_setting_env_classification_keeps_primary_starter_small():
+    settings_module = importlib.import_module("backend.app.core.settings")
+    classification = settings_module.SETTING_ENV_CLASSIFICATION
+
+    for name in ENV_EXAMPLE_REQUIRED_NAMES:
+        if name == "LLM_MODEL_ID":
+            assert classification[name] == "advanced"
+            continue
+        assert classification[name] in {"primary", "services", "secret"}
+    for name in ENV_EXAMPLE_ADVANCED_NAMES:
+        assert classification[name] in {"advanced", "derived", "test-only"}
+    for name in ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES:
+        assert classification[name] == "compatibility"

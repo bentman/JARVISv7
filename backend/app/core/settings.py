@@ -9,6 +9,56 @@ from backend.app.core.paths import CONFIG_DIR, DATA_DIR, MODELS_DIR, REPO_ROOT
 ENV_FILE = REPO_ROOT / ".env"
 ENV_EXAMPLE_FILE = REPO_ROOT / ".env.example"
 
+SETTING_ENV_CLASSIFICATION: dict[str, str] = {
+    "APP_NAME": "primary",
+    "JARVIS_LANGUAGE": "primary",
+    "CONFIG_PATH": "advanced",
+    "DATA_PATH": "advanced",
+    "MODEL_PATH": "advanced",
+    "TOOL_FILESYSTEM_SANDBOX_PATH": "advanced",
+    "USE_LOCAL_MODEL": "primary",
+    "LLM_MODEL_POLICY": "primary",
+    "LLM_MODEL_ID": "advanced",
+    "LOCAL_MODEL_FETCH": "derived",
+    "LLAMA_CPP_MANAGED": "derived",
+    "LLAMA_CPP_MODEL_PATH": "advanced",
+    "LLAMA_CPP_BASE_URL": "advanced",
+    "LLAMA_CPP_HOST": "advanced",
+    "LLAMA_CPP_PORT": "advanced",
+    "LLAMA_CPP_BINARY_PATH": "advanced",
+    "LLAMA_CPP_MODEL_NAME": "advanced",
+    "LLAMA_CPP_TIMEOUT_SECONDS": "advanced",
+    "USE_OLLAMA": "primary",
+    "OLLAMA_BASE_URL": "advanced",
+    "JARVISV7_OLLAMA_URL": "compatibility",
+    "OLLAMA_MODEL": "primary",
+    "OLLAMA_NUM_CTX": "advanced",
+    "JARVISV7_LIVE_TESTS": "test-only",
+    "TTS_MODELS": "advanced",
+    "STT_MODELS": "advanced",
+    "WAKE_MODEL": "advanced",
+    "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD": "advanced",
+    "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS": "advanced",
+    "RESIDENT_VOICE_SILENCE_END_SECONDS": "advanced",
+    "RESIDENT_VOICE_MAX_DURATION_SECONDS": "advanced",
+    "RESIDENT_VOICE_PRE_ROLL_SECONDS": "advanced",
+    "RESIDENT_VOICE_MIN_SPEECH_SECONDS": "advanced",
+    "QAIRT_SDK_PATH": "advanced",
+    "PICOVOICE_ACCESS_KEY": "secret",
+    "PVPORCUPINE_MODEL_PATH": "advanced",
+    "REDIS_HOST": "services",
+    "REDIS_PORT": "services",
+    "REDIS_DB": "advanced",
+    "REDIS_MAX_CONNECTIONS": "advanced",
+    "REDIS_SOCKET_TIMEOUT": "advanced",
+    "USE_SEARXNG": "primary",
+    "SEARXNG_PORT": "services",
+    "SEARXNG_BASE_URL": "derived",
+    "USE_DDGS": "primary",
+    "USE_TAVILY": "primary",
+    "TAVILY_API_KEY": "secret",
+}
+
 
 def _load_dotenv_if_present() -> None:
     try:
@@ -46,6 +96,15 @@ def _env_float(name: str) -> float | None:
     return float(value)
 
 
+def _env_present(name: str) -> bool:
+    value = os.getenv(name)
+    return value is not None and value.strip() != ""
+
+
+def _endpoint_url_from_host_port(host: str, port: int) -> str:
+    return f"http://{host}:{port}"
+
+
 @dataclass(slots=True)
 class Settings:
     app_name: str = field(default_factory=lambda: os.getenv("APP_NAME", "JARVISv7"))
@@ -59,6 +118,7 @@ class Settings:
     )
     model_path: Path = field(default_factory=lambda: Path(os.getenv("MODEL_PATH", str(MODELS_DIR))))
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", False))
+    local_model_fetch_explicit: bool = field(default_factory=lambda: _env_present("LOCAL_MODEL_FETCH"))
     local_model_fetch: bool = field(default_factory=lambda: _env_bool("LOCAL_MODEL_FETCH", False))
     llm_model_policy: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL_POLICY"))
     llm_model_id: str | None = field(default_factory=lambda: os.getenv("LLM_MODEL_ID"))
@@ -66,13 +126,15 @@ class Settings:
         default_factory=lambda: os.getenv("LLAMA_CPP_MODEL_PATH")
     )
     llama_cpp_base_url: str = field(
-        default_factory=lambda: os.getenv("LLAMA_CPP_BASE_URL", "http://127.0.0.1:8080")
+        default_factory=lambda: os.getenv("LLAMA_CPP_BASE_URL")
+        or _endpoint_url_from_host_port(os.getenv("LLAMA_CPP_HOST", "127.0.0.1"), _env_int("LLAMA_CPP_PORT") or 8080)
     )
     llama_cpp_host: str = field(default_factory=lambda: os.getenv("LLAMA_CPP_HOST", "127.0.0.1"))
     llama_cpp_port: int = field(default_factory=lambda: _env_int("LLAMA_CPP_PORT") or 8080)
     llama_cpp_binary_path: str | None = field(
         default_factory=lambda: os.getenv("LLAMA_CPP_BINARY_PATH")
     )
+    llama_cpp_managed_explicit: bool = field(default_factory=lambda: _env_present("LLAMA_CPP_MANAGED"))
     llama_cpp_managed: bool = field(default_factory=lambda: _env_bool("LLAMA_CPP_MANAGED", False))
     llama_cpp_model_name: str | None = field(default_factory=lambda: os.getenv("LLAMA_CPP_MODEL_NAME"))
     llama_cpp_timeout_seconds: float = field(
@@ -125,12 +187,26 @@ class Settings:
         default_factory=lambda: _env_float("REDIS_SOCKET_TIMEOUT") or 2.0
     )
     use_searxng: bool = field(default_factory=lambda: _env_bool("USE_SEARXNG", True))
+    searxng_port: int = field(default_factory=lambda: _env_int("SEARXNG_PORT") or 8888)
     searxng_base_url: str = field(
-        default_factory=lambda: os.getenv("SEARXNG_BASE_URL", "http://127.0.0.1:8888")
+        default_factory=lambda: os.getenv("SEARXNG_BASE_URL")
+        or _endpoint_url_from_host_port("127.0.0.1", _env_int("SEARXNG_PORT") or 8888)
     )
     use_ddgs: bool = field(default_factory=lambda: _env_bool("USE_DDGS", True))
     use_tavily: bool = field(default_factory=lambda: _env_bool("USE_TAVILY", False))
     tavily_api_key: str = field(default_factory=lambda: os.getenv("TAVILY_API_KEY", ""))
+
+    @property
+    def effective_local_model_fetch(self) -> bool:
+        if self.local_model_fetch_explicit:
+            return self.local_model_fetch
+        return self.use_local_model
+
+    @property
+    def effective_llama_cpp_managed(self) -> bool:
+        if self.llama_cpp_managed_explicit:
+            return self.llama_cpp_managed
+        return self.use_local_model
 
 
 def load_settings() -> Settings:

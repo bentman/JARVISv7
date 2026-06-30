@@ -30,10 +30,10 @@ services:
     container_name: jarvisv7-searxng
     restart: unless-stopped
     ports:
-      - "127.0.0.1:${SEARXNG_PORT:-8080}:8080"
+      - "127.0.0.1:${SEARXNG_PORT:-8888}:8080"
     environment:
       - SEARXNG_SETTINGS_PATH=/etc/searxng/settings.yml
-      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:8080/}
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-http://localhost:8888/}
       - SEARXNG_PORT=8080
       - SEARXNG_BIND_ADDRESS=0.0.0.0
       - SEARXNG_SECRET=${SEARXNG_SECRET:-jarvisv7-local-dev-secret}

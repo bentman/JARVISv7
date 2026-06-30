@@ -121,22 +121,24 @@ Common local settings:
 
 ```text
 USE_LOCAL_MODEL=false
-LOCAL_MODEL_FETCH=false
 LLM_MODEL_POLICY=auto
 LLM_MODEL_ID=
-LLAMA_CPP_MANAGED=false
 USE_OLLAMA=true
-OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=phi4-mini
+USE_SEARXNG=false
+SEARXNG_PORT=8888
+USE_DDGS=true
 ```
 
 Leave defaults alone for first setup unless you already know which runtime path you are validating.
 
-Local LLM setup is policy-aware. By default, `scripts\ensure_models.py --family llm` verifies or acquires the selected policy model and current-host applicable llama.cpp runtime profiles. Use `--all-llm` only when you intentionally want full LLM catalog validation.
+Local LLM setup is policy-aware. By default, `scripts\ensure_models.py --family llm` verifies or acquires the selected policy model and current-host applicable llama.cpp runtime profiles. `USE_LOCAL_MODEL=true` enables the derived local fetch and managed llama.cpp behavior unless advanced overrides such as `LOCAL_MODEL_FETCH=false` or `LLAMA_CPP_MANAGED=false` are set. llama.cpp defaults to port `8080`. Use `--all-llm` only when you intentionally want full LLM catalog validation.
 
 ## Optional local services
 
 Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
+
+SearXNG defaults to host port `8888` and maps to container port `8080`.
 
 Start services:
 

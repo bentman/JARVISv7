@@ -1064,12 +1064,27 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["USE_OLLAMA"]["editable"] is True
     assert fields["USE_OLLAMA"]["restart_required"] is True
     assert fields["USE_OLLAMA"]["description"]
+    assert fields["USE_LOCAL_MODEL"]["section"] == "Model"
+    assert fields["USE_LOCAL_MODEL"]["advanced"] is False
+    assert fields["LOCAL_MODEL_FETCH"]["section"] == "Model"
+    assert fields["LOCAL_MODEL_FETCH"]["advanced"] is True
     assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]
     assert fields["LLM_MODEL_POLICY"]["section"] == "Model"
     assert fields["LLM_MODEL_ID"]["advanced"] is True
+    assert fields["USE_SEARXNG"]["section"] == "Search"
+    assert fields["SEARXNG_PORT"]["section"] == "Services"
+    assert fields["SEARXNG_PORT"]["advanced"] is False
+    assert fields["SEARXNG_BASE_URL"]["section"] == "Services"
+    assert fields["SEARXNG_BASE_URL"]["advanced"] is True
     assert fields["TAVILY_API_KEY"]["secret"] is True
+    assert fields["TAVILY_API_KEY"]["section"] == "Search"
+    assert fields["TAVILY_API_KEY"]["advanced"] is True
     assert fields["TAVILY_API_KEY"]["has_value"] is True
     assert fields["TAVILY_API_KEY"]["value"] == "***"
+    assert fields["REDIS_HOST"]["section"] == "Services"
+    assert fields["REDIS_HOST"]["advanced"] is False
+    assert fields["REDIS_PORT"]["section"] == "Services"
+    assert fields["REDIS_PORT"]["advanced"] is False
     assert "secret-token" not in str(payload)
     assert "UNRELATED" not in fields
 
