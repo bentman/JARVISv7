@@ -1,492 +1,411 @@
 # YYYYMMDD_slice-template.md
 ## Slice {Group} — {Short Title}
 
-Status: planned. This document is an implementation contract for the next coding agent. It is not completion evidence.
+Status: planned. This document is an implementation contract for a coding agent. It is not completion evidence.
 
 ---
 
 ## Purpose
 
-State the slice's single objective in one or two concise paragraphs. Describe the capability gap, the architectural reason this slice exists, and the observable behavior that will be true when the slice is complete.
+State the slice's single objective in one or two concise paragraphs. Describe the capability gap, why this slice exists, and what observable behavior will be true when the slice is complete.
 
-Every sub-slice, file touch, validation command, and closeout criterion must trace back to this section.
+Every sub-slice, file touch, validation command, and closeout criterion must trace back to this purpose.
 
 ---
 
 ## Agent Contract
 
-Implementation agents must follow these rules:
+State the rules an implementation agent must follow for this slice.
 
-- Preserve the existing architecture unless this slice explicitly changes it.
-- Do not create duplicate managers, launchers, setup flows, runtime paths, or desktop-only state for backend-owned behavior.
-- Keep generated/runtime data in existing approved roots only: `data/`, `cache/`, `reports/`, `models/`, or `runtimes/`.
-- Make new runtime/config decisions observable through status, readiness, logs, tests, or validation output.
-- Keep raw overrides as escape hatches, not the primary user experience, when a curated operator path is possible.
+Include only rules that constrain implementation. Avoid restating the whole repository contract unless the slice needs a sharper boundary.
+
+Required baseline rules:
+
+- Preserve existing validated behavior unless this slice explicitly changes it.
+- Do not create parallel mechanisms when the existing architecture can be extended.
+- Keep scope limited to the files and behavior named in this slice.
 - Add or update focused tests with each behavior change.
-- Append `CHANGE_LOG.md` only after validation evidence exists.
+- Record validation evidence before governance updates.
 - Do not update `SYSTEM_INVENTORY.md` until the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
 
-Add slice-specific rules here.
+Add slice-specific rules below:
+
+- {Rule 1}
+- {Rule 2}
+- {Rule 3}
 
 ---
 
 ## Baseline Consumed
 
-List the existing repository surfaces this slice consumes. Each item should be verifiable by direct file inspection, `SYSTEM_INVENTORY.md`, or `CHANGE_LOG.md`.
+List the existing repository capabilities, files, APIs, configs, scripts, or UI surfaces this slice consumes. Each item must be verifiable by direct inspection or existing governance evidence.
 
-- `path/to/file.py` already does {existing behavior}. This slice extends it by {specific extension}; it does not replace {boundary}.
-- `config/example.yaml` already declares {existing config}. This slice adds {specific metadata} while preserving {existing shape}.
-- `scripts/example.py` already runs {existing setup/validation}. This slice keeps that entry point and changes only {specific behavior}.
+Use this form:
 
-If a claimed baseline is not present, stop and resolve that gap before implementation.
+- `{path-or-surface}` already provides {existing behavior}. This slice {extends/uses/observes} it by {specific relationship}. Boundary: {what must not be inferred or changed}.
+- `{path-or-surface}` already provides {existing behavior}. This slice {extends/uses/observes} it by {specific relationship}. Boundary: {what must not be inferred or changed}.
+
+If a claimed baseline is missing, stop and resolve that gap before implementation.
 
 ---
 
 ## Out of Scope
 
-List explicit non-goals.
+List non-goals explicitly. These should be concrete enough for an agent to reject scope creep.
 
-- No {related capability that may be tempting but is not part of this slice}.
-- No {runtime/dependency/setup redesign outside the slice}.
-- No {new artifacts, external services, or live integrations unless explicitly required}.
-- No {governance claim beyond available validation evidence}.
+- No {nearby capability not included}.
+- No {architecture/runtime/setup/UI/domain outside this slice}.
+- No {artifact/dependency/external integration unless explicitly required}.
+- No {governance claim beyond available evidence}.
 
 ---
 
-## Target User Experience / Observable Behavior
+## Target Observable Behavior
 
-Describe the intended user/operator behavior in concrete terms. Include commands, UI shape, API response shape, or runtime behavior as appropriate.
+Describe the intended behavior without over-specifying implementation. Use the smallest form that makes success clear.
 
-```powershell
-backend\.venv\Scripts\python scripts\bootstrap.py
-```
+Examples of acceptable observable targets:
 
-Default behavior should be:
+- Command behavior: `{command}` produces `{expected output/state}`.
+- API behavior: `{endpoint/schema}` includes `{field/state}`.
+- Runtime behavior: `{condition}` selects/runs/reports `{expected result}`.
+- UI behavior: `{surface}` shows/allows/prevents `{expected behavior}`.
+- Governance behavior: `{file}` records `{evidence}` only after `{validation}`.
 
-1. Detect current host/profile.
-2. Resolve the relevant policy/config.
-3. Apply the selected backend mechanism.
-4. Report the active decision and any degraded candidates in readiness/status.
-5. Keep advanced overrides available but secondary.
-
-Operator-facing sketch when applicable:
+If the slice has user/operator-facing behavior, include a short sketch:
 
 ```text
-Primary setting: <curated control>
-Active value: <resolved value>
-Selected because: <short reason>
-Advanced: <raw overrides or diagnostics>
+Control/status: {label or field}
+Active value: {resolved value}
+Reason/evidence: {why this value is active}
+Advanced/details: {optional raw detail, if any}
 ```
 
-Omit this section only if the slice is strictly internal.
+If the slice is internal only, state: `No direct user-facing surface; behavior is observable through {tests/logs/API/status/etc.}`
 
 ---
 
-## Slice Vocabulary / Contract Terms
+## Vocabulary / Contract Terms
 
-Define terms that must be used consistently in code, config, tests, UI, and closeout reporting.
+Define only terms that could otherwise be ambiguous across code, tests, docs, and reports.
 
-- **term one**: exact meaning in this slice.
-- **policy**: the user/operator or default strategy used to derive a selected value.
-- **selected value**: the concrete value passed into the existing runtime/config path.
-- **degraded candidate**: an unavailable or skipped option that must be reported truthfully, not treated as a pass.
+- **{term}**: {definition}.
+- **{term}**: {definition}.
+- **{selected/active/current value}**: {definition, if applicable}.
+- **{degraded/skipped/fallback state}**: {definition, if applicable}.
 
-Omit or shorten this section for small slices.
+Delete this section if the slice uses only existing project vocabulary.
 
 ---
 
-## Proposed Shape / Design Sketch
+## Design Shape / Contract Sketch
 
-Use this section for the desired config/API/module shape when it helps avoid ambiguity. It is a sketch, not completion evidence. Keep it close to the current architecture.
+Use this section only when a structural sketch prevents ambiguity. Keep it generic and close to the existing architecture.
+
+```text
+{input or source}
+  -> {selection/resolution/processing step}
+  -> {existing mechanism or output}
+  -> {observable evidence}
+```
+
+Optional structured sketch:
 
 ```yaml
-example_policy:
-  default: auto
-  policies:
-    auto:
-      windows_amd64_cpu: baseline
-      windows_arm64_cpu: baseline
-    diagnostic:
-      "*": diagnostic
+{top_level_key}:
+  {policy_or_mode}:
+    {selector}: {target}
 ```
 
 Rules:
 
-- Show only the minimum structure needed to guide implementation.
-- Do not imply future capability is implemented.
-- Mark placeholders or future targets explicitly.
-- Keep final implementation close to this shape or update the slice doc before continuing.
+- Show form, not final implementation detail.
+- Mark placeholders explicitly.
+- Do not imply planned capability is already implemented.
+- If implementation diverges materially, update this slice doc before continuing.
 
 ---
 
 ## Execution Order
 
+Declare the required sequence. Use the smallest set of sub-slices that preserves dependency order.
+
 ```text
-{Group}.0 baseline contract capture -> {Group}.1 foundation/metadata -> {Group}.2 backend/core mechanism -> {Group}.3 startup/readiness/API integration -> {Group}.4 setup integration -> {Group}.5 operator/UI integration -> {Group}.6 closeout validation/docs
+{Group}.0 baseline capture -> {Group}.1 foundation -> {Group}.2 core behavior -> {Group}.3 integration -> {Group}.4 user/setup/docs surface -> {Group}.5 closeout
 ```
 
-Rule: each sub-slice must pass its focused validation before the next begins. Full regression is required at closeout and after changes to setup scripts, runtime selection, persistence, or cross-host behavior.
+Rules:
+
+- Each sub-slice must pass its focused validation before the next begins.
+- Changes to broad setup, runtime selection, persistence, or cross-host behavior require regression validation before closeout.
+- Do not perform governance closeout until implementation validation is complete.
 
 ---
 
-## Sub-Slice {Group}.0 — Baseline Contract Capture
+## Sub-Slice {Group}.0 — Baseline Capture
 
 ### Goal
 
-Capture current behavior before implementation so later failures can be separated from intentional contract changes.
+Capture current behavior before implementation so later failures can be separated from intentional changes.
 
 ### Scope
 
-Inspect only:
+Inspect:
 
-- `path/to/current/config.yaml`
-- `backend/app/current/module.py`
-- `scripts/current_setup.py`
-- relevant existing tests under `backend/tests/unit/...`
+- `{path-or-surface}` — {why inspected}.
+- `{path-or-surface}` — {why inspected}.
+- `{existing-test-or-validation-area}` — {why inspected}.
 
 ### Files Not to Modify
 
-All files. This is read-only except for optional notes in the agent's final report.
+- All files, unless this slice explicitly needs a baseline test update.
 
 ### Validation
 
-```powershell
-backend\.venv\Scripts\python -m pytest backend\tests\unit\<focused-area> -q
-backend\.venv\Scripts\python scripts\validate_backend.py profile
+```text
+{command 1}
+{command 2}
 ```
 
 ### Acceptance
 
 ```text
-PASS focused baseline tests or record pre-existing failure before edits.
-PASS/SKIP profile or setup command with clear reason.
-No source files modified.
+PASS or documented pre-existing failure for baseline validation.
+No implementation files changed.
+Baseline behavior recorded in agent closeout notes.
 ```
 
 ---
 
-## Sub-Slice {Group}.1 — {Foundation / Metadata / Contract Title}
+## Sub-Slice {Group}.1 — {Foundation Title}
 
 ### Goal
 
-Add the smallest foundation needed for later behavior without changing runtime behavior yet.
+Add the minimum foundation needed for later sub-slices. This should avoid broad behavior changes unless the foundation itself is the behavior.
 
 ### Scope
 
-Modify:
+Create/modify:
 
-- `config/...` — add metadata or policy shape.
-- `backend/app/...` — add schema/catalog tolerance if required.
-- `backend/tests/unit/...` — assert the new metadata contract.
+- `{path}` — {intended change}.
+- `{path}` — {intended change}.
 
 ### Files Not to Modify
 
-- Runtime launcher files.
-- Desktop files.
-- Governance files until validation passes.
+- `{path-or-area}` — {reason}.
+- `{path-or-area}` — {reason}.
 
 ### Validation
 
-```powershell
-backend\.venv\Scripts\python -m pytest backend\tests\unit\<focused-area> -q
+```text
+{focused command}
 ```
 
 ### Acceptance
 
 ```text
-PASS focused unit tests.
-New metadata/config validates.
-Runtime behavior remains unchanged.
+PASS focused validation.
+New contract is represented in tests or validation output.
+No out-of-scope behavior changed.
 ```
 
 ---
 
-## Sub-Slice {Group}.2 — {Backend/Core Mechanism Title}
+## Sub-Slice {Group}.2 — {Core Behavior Title}
 
 ### Goal
 
-Implement the pure backend/core mechanism. This should be testable without desktop, live services, or broad setup changes.
+Implement the central behavior of the slice in the smallest testable unit.
 
 ### Scope
 
-Create or modify:
+Create/modify:
 
-- `backend/app/<domain>/<new_module>.py` — pure resolver/selector/service logic.
-- `backend/tests/unit/<domain>/test_<new_module>.py` — success, fallback, invalid config, and fail-closed tests.
-- `backend/app/core/settings.py` — new settings only if needed.
-- `backend/app/api/routes/config.py` — allowlisted operator config only if needed.
+- `{path}` — {intended change}.
+- `{path}` — {intended change}.
 
-State precedence rules explicitly when relevant.
+State key precedence, fallback, or fail-closed rules if applicable:
+
+1. {Rule or precedence step}.
+2. {Rule or precedence step}.
+3. {Failure/skip/degraded behavior}.
 
 ### Files Not to Modify
 
-- Desktop files.
-- Runtime launcher/sidecar files unless this sub-slice explicitly owns them.
-- Setup scripts unless this sub-slice explicitly owns setup behavior.
+- `{path-or-area}` — {reason}.
 
 ### Validation
 
-```powershell
-backend\.venv\Scripts\python -m pytest backend\tests\unit\<domain>\test_<new_module>.py -q
-backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py -q
+```text
+{focused command}
+{related command}
 ```
 
 ### Acceptance
 
 ```text
-PASS focused mechanism tests.
-Invalid input fails closed with a clear reason.
-Existing default path still works.
+PASS focused validation.
+Expected success path works.
+Expected failure/degraded path is explicit and tested.
 ```
 
 ---
 
-## Sub-Slice {Group}.3 — {Startup / Runtime / Readiness Integration Title}
+## Sub-Slice {Group}.3 — {Integration Title}
 
 ### Goal
 
-Wire the new mechanism into the existing runtime/API path and make the selected decision observable.
+Wire the core behavior into the existing repository path that owns the user-visible or runtime-visible result.
 
 ### Scope
 
-Modify:
+Create/modify:
 
-- `backend/app/services/...` — call the new resolver/mechanism before the existing runtime path.
-- `backend/app/routing/...` — add trace fields only if needed.
-- `backend/app/api/schemas/readiness.py` — expose selected decision metadata.
-- `backend/app/api/routes/readiness.py` — include selected decision metadata and degraded reasons.
-- relevant focused tests.
+- `{path}` — {intended change}.
+- `{path}` — {intended change}.
 
 ### Files Not to Modify
 
-- Do not fork the existing runtime path.
-- Do not introduce a new setup entry point.
-- Do not modify desktop until the API/readiness contract is tested.
+- `{path-or-area}` — {reason}.
 
 ### Validation
 
-```powershell
-backend\.venv\Scripts\python -m pytest backend\tests\unit\services\<focused_test>.py backend\tests\unit\api\test_routes.py -q
-backend\.venv\Scripts\python scripts\validate_backend.py profile
+```text
+{focused integration command}
+{profile/smoke command, if applicable}
 ```
 
 ### Acceptance
 
 ```text
-PASS startup/service/API focused tests.
-PASS profile validator.
-Readiness/status reports selected value, policy/reason, active runtime/profile, and degraded candidates where applicable.
+PASS integration validation.
+Selected/active behavior is observable through the intended surface.
+Existing fallback/degraded states remain truthful.
 ```
 
 ---
 
-## Sub-Slice {Group}.4 — {Setup / Provision / Ensure Integration Title}
+## Sub-Slice {Group}.4 — {Surface / Setup / Documentation Title}
 
 ### Goal
 
-Integrate the mechanism into first-run setup and validation without making setup broader or harder for the user.
+Expose the behavior through the appropriate user, operator, setup, API, or documentation surface. Delete this sub-slice if there is no such surface.
 
 ### Scope
 
-Modify:
+Create/modify:
 
-- `scripts/ensure_models.py` or the relevant setup script — default behavior follows selected policy/current host.
-- `scripts/bootstrap.py` only if the existing bootstrap command must pass a new flag; prefer preserving the command.
-- `scripts/provision.py` only if dependency planning or explanation must change.
-- script unit tests.
-
-CLI rules to define when relevant:
-
-- Default command uses selected/current-host behavior.
-- Explicit `--model`, `--policy`, or equivalent remains supported.
-- Explicit `--all-*` remains available for full-catalog validation.
-- Non-target families or domains remain unchanged.
+- `{path-or-surface}` — {intended change}.
+- `{path-or-surface}` — {intended change}.
 
 ### Files Not to Modify
 
-- Desktop files.
-- Runtime command construction unless setup validation exposes a shared contract gap.
-- Artifact directories.
+- `{path-or-area}` — {reason}.
 
 ### Validation
 
-```powershell
-backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\<focused_script_test>.py -q
-backend\.venv\Scripts\python scripts\<setup_script>.py --verify-only
-backend\.venv\Scripts\python scripts\bootstrap.py --dry-run
+```text
+{focused surface/setup command}
+{static/UI/API/doc validation command, if applicable}
 ```
 
 ### Acceptance
 
 ```text
-PASS script unit tests.
-PASS selected/default setup verification.
-PASS explicit all-catalog/full verification if applicable.
-PASS bootstrap dry-run.
-Default setup does not acquire or validate unrelated future artifacts.
+PASS focused validation.
+Surface shows the new behavior without hiding raw evidence or degraded state.
+Normal user path remains simple.
+Advanced or diagnostic paths remain available where required.
 ```
 
 ---
 
-## Sub-Slice {Group}.5 — {Operator / Desktop / UX Integration Title}
+## Sub-Slice {Group}.5 — Closeout Evidence and Governance
 
 ### Goal
 
-Expose the capability through a simple operator-facing control or status surface, while preserving advanced/raw controls where needed.
-
-### Scope
-
-Modify:
-
-- `backend/app/api/routes/config.py` and schemas if the Operator needs curated field metadata.
-- `desktop/src/components/...` — grouped or curated operator control.
-- `desktop/src/main.js` only if wiring needs refresh/state changes.
-- `desktop/src/style.css` only for compact grouping.
-- desktop/static contract tests.
-
-UX constraints:
-
-- Prefer select/toggle/status controls over raw text for curated settings.
-- Group raw overrides under Advanced.
-- Preserve restart-required behavior.
-- Do not hide readiness/status truth when an override is active.
-- Use DOM-safe rendering for dynamic content.
-
-### Files Not to Modify
-
-- Core backend mechanism unless a desktop test exposes a backend contract gap.
-- Setup scripts after the setup sub-slice unless required.
-
-### Validation
-
-```powershell
-backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q
-npm --prefix desktop test
-```
-
-### Acceptance
-
-```text
-PASS API route tests.
-PASS desktop static contract tests.
-PASS npm desktop tests.
-Operator UX is curated-first and advanced overrides remain available.
-```
-
----
-
-## Sub-Slice {Group}.6 — Closeout Evidence and Documentation
-
-### Goal
-
-Record governance only after validation evidence exists. Do not use this sub-slice to finish implementation work.
+Record completion only after validation evidence exists. Do not use this sub-slice to finish implementation work.
 
 ### Scope
 
 Modify after validation:
 
-- `CHANGE_LOG.md` — append one concise entry per validated sub-slice or one consolidated slice entry if implementation was single-pass.
-- `SYSTEM_INVENTORY.md` — append/update only after the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
-- `docs/QuickStart.md` only if setup commands or user-facing behavior changed.
-- `README.md` only if project-level capability description changed.
-- Move completed slice doc to `docs/slices-done/` only after completion, if that is the current repo practice.
+- `CHANGE_LOG.md` — append validation-backed entry.
+- `SYSTEM_INVENTORY.md` — append/update only after both Windows AMD64 and Windows ARM64 verification exists, unless explicitly approved otherwise.
+- `{user-facing-doc}` — update only if user-facing behavior changed.
+- `{slice-doc-location}` — move/update only if current repo practice requires it.
 
 ### Validation
 
-Minimum closeout commands:
-
-```powershell
-backend\.venv\Scripts\python scripts\validate_backend.py profile
-backend\.venv\Scripts\python scripts\validate_backend.py unit
-backend\.venv\Scripts\python scripts\validate_backend.py regression
-npm --prefix desktop test
+```text
+{profile command}
+{unit command}
+{regression command}
+{surface/static/runtime command, if applicable}
 ```
-
-When host-specific behavior is involved, collect both host classes before inventory.
 
 ### Acceptance
 
 ```text
-PASS profile validator on implementing host.
-PASS unit validator on implementing host.
-PASS regression validator on implementing host.
-PASS desktop checks if desktop changed.
-PASS/SKIP-with-reason runtime validation where applicable.
-CHANGE_LOG.md records exact commands and host class.
-SYSTEM_INVENTORY.md is updated only when both Windows AMD64 and Windows ARM64 evidence exists, or when the user explicitly approved narrower inventory logging.
-No future capability is claimed from placeholders or planned config.
+PASS required validation on implementing host.
+PASS or SKIP-with-reason for optional/live/runtime validation.
+CHANGE_LOG.md records exact command, outcome, host class, and minimal evidence.
+SYSTEM_INVENTORY.md is updated only with required host-class evidence or explicit user approval.
+No planned/future capability is recorded as verified.
 ```
 
 ---
 
 ## File Placement Summary
 
-| File | Action | Sub-slice |
-|------|--------|-----------|
-| `config/...` | Extend | {Group}.1 |
-| `backend/app/<domain>/<module>.py` | New/Extend | {Group}.2 |
-| `backend/tests/unit/<domain>/test_<module>.py` | New/Extend | {Group}.2 |
-| `backend/app/api/schemas/readiness.py` | Extend if needed | {Group}.3 |
-| `backend/app/api/routes/readiness.py` | Extend if needed | {Group}.3 |
-| `scripts/<setup>.py` | Extend if needed | {Group}.4 |
-| `desktop/src/components/<component>.js` | Extend if needed | {Group}.5 |
-| `backend/tests/unit/desktop/test_desktop_static_contract.py` | Extend if desktop changed | {Group}.5 |
-| `CHANGE_LOG.md` | Append after evidence | {Group}.6 |
-| `SYSTEM_INVENTORY.md` | Append/update only after AMD64 + ARM64 verification | {Group}.6 |
-| `docs/QuickStart.md` | Extend if user-facing setup changed | {Group}.6 |
+| File or Area | Action | Sub-slice | Notes |
+|---|---|---|---|
+| `{path-or-area}` | New / Extend / Inspect / Append | `{Group}.n` | {short note} |
+| `{path-or-area}` | New / Extend / Inspect / Append | `{Group}.n` | {short note} |
 
 Must not create unless explicitly approved:
 
-- new parallel setup scripts
-- new runtime roots outside approved `runtimes/` structure
-- generated artifacts outside approved generated/runtime roots
-- desktop-only state files for backend-owned behavior
+- `{forbidden-path-or-pattern}`
+- `{forbidden-path-or-pattern}`
 
 ---
 
-## Host-Class / Profile Matrix
+## Validation Matrix
 
-Use this table when behavior varies by host, runtime, accelerator, or profile. Delete if not relevant.
+Use this table to declare required evidence. Delete rows that do not apply.
 
-| Host/profile | Default behavior | Rationale | Validation required |
-|---|---|---|---|
-| `windows_amd64_cpu` | `{default}` | CPU-safe baseline. | profile/unit/regression |
-| `windows_arm64_cpu` | `{default}` | ARM64 CPU baseline. | profile/unit/regression |
-| `windows_amd64_gpu_nvidia_cuda` | `{accelerated-default}` | CUDA-capable host. | profile/unit/regression/runtime if applicable |
-| `windows_amd64_gpu_amd` | `{degraded-or-default}` | Pending/degraded accelerator path unless proven. | SKIP/PASS reason required |
-| `windows_amd64_gpu_intel` | `{degraded-or-default}` | Pending/degraded accelerator path unless proven. | SKIP/PASS reason required |
-| `windows_arm64_gpu_qualcomm_adreno_opencl` | `{arm64-default}` | OpenCL/Adreno path must not overclaim. | ARM64 evidence required |
-| `windows_arm64_npu_qualcomm_qnn` | `{degraded-or-default}` | QNN proof in one family does not imply proof in another. | ARM64 evidence required |
+| Validation target | Host class | Command or method | Required for closeout? | Expected result |
+|---|---|---|---|---|
+| Baseline/focused test | `{host}` | `{command}` | Yes / No | PASS or documented pre-existing failure |
+| Integration/profile check | `{host}` | `{command}` | Yes / No | PASS |
+| Regression | `{host}` | `{command}` | Yes / No | PASS |
+| Runtime/live check | `{host}` | `{command or method}` | Yes / No | PASS or SKIP-with-reason |
+| User/operator validation | `{host}` | `{method}` | Yes / No | Accepted / rejected |
+| Inventory eligibility | Windows AMD64 + Windows ARM64 | `{commands/evidence}` | Yes for inventory | PASS on both, unless explicitly approved otherwise |
 
 ---
 
 ## Slice-Level Closeout Criteria
 
-All of these must be true:
+All criteria must be observable and testable.
 
-1. The new mechanism is implemented through the existing repository architecture rather than a parallel path.
-2. All new policy/config/settings values are validated by focused tests.
-3. Runtime/setup behavior is observable through status, readiness, logs, script output, or tests.
-4. Default setup remains simple for the user.
-5. Explicit/full-catalog or advanced validation remains available where applicable.
-6. Operator-facing controls are curated-first where the user should not edit raw values directly.
-7. Raw overrides remain available when operationally necessary.
-8. No new generated artifacts or large external artifacts are committed unless explicitly required.
-9. Host-specific degraded or skipped states are explicit and not reported as PASS.
-10. Focused tests pass before closeout.
-11. `scripts/validate_backend.py profile`, `unit`, and `regression` pass on the implementing host.
-12. `SYSTEM_INVENTORY.md` is updated only after both Windows AMD64 and Windows ARM64 verification exists, unless the user explicitly approves a narrower inventory state.
+1. {Primary capability is implemented through the intended architecture}.
+2. {Focused tests cover success behavior}.
+3. {Focused tests cover failure/degraded behavior, if applicable}.
+4. {Integration surface reports the active state truthfully}.
+5. {No out-of-scope files or behavior changed}.
+6. {Required validation commands pass or skip with explicit acceptable reason}.
+7. `CHANGE_LOG.md` is updated only after validation evidence exists.
+8. `SYSTEM_INVENTORY.md` is updated only after both Windows AMD64 and Windows ARM64 evidence exists, unless explicitly approved otherwise.
 
 ---
 
 ## Documentation and Governance Policy
 
-- `CHANGE_LOG.md`: append only after validation. Include exact command, outcome, host class, and minimal evidence excerpt/report path.
-- `SYSTEM_INVENTORY.md`: update only after the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state. Do not log planned capability.
-- `docs/QuickStart.md`: update only when user-facing setup or normal operation changes.
-- `README.md`: update only when project-level capability wording changes.
-- Completed slice docs belong under `docs/slices-done/` when implementation and governance closeout are complete.
-- If implementation diverges from this plan, update the slice doc before continuing.
+- `CHANGE_LOG.md`: append only after validation. Include exact command, outcome, host class, and minimal evidence excerpt or report path.
+- `SYSTEM_INVENTORY.md`: update only after the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
+- User-facing docs: update only when user-facing setup, operation, or behavior changes.
+- Slice docs: if implementation diverges from the plan, update the slice doc before continuing.
 - Use append-only corrections for governance files; do not rewrite history.
 
 ---
@@ -494,15 +413,14 @@ All of these must be true:
 ## Risks and Sequencing Notes
 
 | Risk | Severity | Mitigation |
-|------|----------|------------|
-| Default setup becomes broader or slower | High | Make selected/current-host behavior the default and require explicit full-catalog behavior for broader validation. |
-| A placeholder is mistaken for implemented capability | High | Mark placeholders/degraded states explicitly and block inventory promotion until proof exists. |
-| Operator UX exposes raw implementation details first | Medium | Add curated controls and group raw overrides under Advanced. |
-| Host-specific capability overclaims AMD64/ARM64 parity | High | Require separate host-class validation and log SKIP/PASS truthfully. |
-| New code forks an existing runtime/setup path | High | Integrate through existing modules and tests; reject parallel managers or launchers. |
+|---|---|---|
+| {Specific risk} | Low / Medium / High | {Specific mitigation} |
+| {Specific risk} | Low / Medium / High | {Specific mitigation} |
+
+Include only risks that can affect implementation order, validation, user behavior, or governance accuracy.
 
 ---
 
 ## Finish Line
 
-Slice {Group} is complete when {capability} is implemented through the existing repository architecture, observable through validated status/readiness/setup/test evidence, and documented without overclaiming future or host-specific capability. `CHANGE_LOG.md` records the exact validation evidence. `SYSTEM_INVENTORY.md` is updated only after both Windows AMD64 and Windows ARM64 verification exists, unless the user explicitly approved a narrower inventory state.
+Slice {Group} is complete when {capability} is implemented through the intended repository path, validated with the required evidence, and documented without overclaiming host-specific, future, skipped, or degraded capability.
