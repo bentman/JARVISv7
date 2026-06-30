@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-30 11:45
+  - Summary: Clarified the Slice W ensure-models unit test for derived local-model fetch behavior so it explicitly represents `LOCAL_MODEL_FETCH` being absent.
+  - Scope: `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\scripts\test_ensure_models_llm_runtime_artifacts.py backend\tests\unit\services\test_local_llm_startup.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`123 passed, 1 warning`).
+
 - 2026-06-30 11:06
   - Summary: Implemented Slice W settings posture cleanup. The starter `.env.example` now exposes only safe primary/operator knobs, backend settings derive local fetch/managed llama.cpp behavior from `USE_LOCAL_MODEL` unless explicitly overridden, SearXNG defaults to host port `8888`, and llama.cpp remains on default port `8080`.
   - Scope: `.env.example`, `docker-compose.yml`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `scripts/ensure_models.py`, `backend/app/services/local_llm_startup.py`, related backend tests, and `docs/QuickStart.md`.
