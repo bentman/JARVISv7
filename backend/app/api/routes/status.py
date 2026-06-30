@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from backend.app.api.app import ApiState, bind_session
 from backend.app.api.dependencies import get_api_state
 from backend.app.api.schemas.status import (
@@ -10,6 +8,7 @@ from backend.app.api.schemas.status import (
     ResidentVoiceStreamStatus,
     WakeStatusResponse,
 )
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
 
@@ -104,6 +103,7 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         and getattr(state.engine, "barge_in_detector", None) is not None
         and getattr(state.engine, "interruption_audio_chunks", None) is not None
     )
+    barge_in_supported = barge_in_wired and mode != "ptt-only"
     return ResidentVoiceStatusResponse(
         mode=mode,
         available=state.resident_voice is not None
@@ -131,7 +131,7 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         wake_supported=state.wake_monitor is not None,
         wake_active=wake.active,
         wake_monitoring=wake.monitoring,
-        barge_in_supported=barge_in_wired,
+        barge_in_supported=barge_in_supported,
         barge_in_wired=barge_in_wired,
         follow_up_listening=follow_up.listening if follow_up is not None else False,
         follow_up_source=follow_up.source if follow_up is not None else None,

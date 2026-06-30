@@ -23,6 +23,7 @@ class SessionStatusResponse(BaseModel):
     failure_reason: str | None = None
     invocation_source: str | None = None
     tts_output_device: str | None = None
+    voice_capture_diagnostics: dict[str, object] | None = None
 
 
 class CloseSessionRequest(BaseModel):

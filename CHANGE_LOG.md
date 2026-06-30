@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-30 05:44
+  - Summary: Recorded staged Windows ARM64 QNN resident voice stabilization after operator live proof showed both manual PTT and wake-sourced voice turns producing non-empty transcripts and assistant responses. The change remains staged/suspect for QNN voice and does not claim AMD64/CUDA parity.
+  - Scope: resident voice capture diagnostics, resident voice invocation flow, wake command capture diagnostics, session status diagnostics, QNN Whisper decode cap, and related backend tests.
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: Live backend session `ad5112b3187f4702a056d0b176c55c86`: `/session/status` reported `state=IDLE`, `invocation_source=wake`, non-empty `last_transcript`, and response `The capital of Mexico is Mexico City.`; `/status/wake` reported `detection_count=3` and `last_detected=2026-06-30T05:40:09.220691-05:00`; turn artifacts `299a77d4fdad4e19824877f77cf7373b.json` and `5ab69cbb5cb541c48d4aaa460819e01d.json` recorded non-empty voice transcripts/responses. Prior validation: `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`647 passed`); `$env:JARVISV7_LIVE_TESTS = "1"; backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_stt_live.py -q -k "whisper_qualcomm_qnn"` PASS (`1 passed, 3 deselected`). Caveat: the same live session still contains one earlier `STT returned empty transcript` turn, so this records improvement and evidence alignment, not full QNN voice acceptance.
+
 - 2026-06-29 13:09
   - Summary: Refined the desktop operator/status layout and static contract after visual validation. Services and Personality now live in the left status panel, Appearance is embedded inside Settings, service rows use compact two-line status copy with colored bullets, Wake/Resident Voice boolean values are color-coded, and desktop typography was tightened without changing runtime behavior.
   - Scope: `backend/app/api/service_status.py`, `backend/app/api/schemas/readiness.py`, `backend/app/api/routes/readiness.py`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/components/appearance-controls.js`, `desktop/src/components/service-status.js`, `desktop/src/components/settings-panel.js`, `desktop/src/components/wake-indicator.js`, `desktop/src/components/resident-voice.js`, `desktop/src/style.css`, `backend/tests/unit/desktop/test_desktop_static_contract.py`

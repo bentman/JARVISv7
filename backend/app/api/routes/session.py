@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state, get_session_service
 from backend.app.api.schemas.session import (
@@ -12,6 +10,7 @@ from backend.app.api.schemas.session import (
     SessionStatusResponse,
 )
 from backend.app.services.session_service import SessionService
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
 
@@ -36,8 +35,8 @@ def close_session(
 ) -> CloseSessionResponse:
     try:
         result = session_service.end_session(request.session_id, request.final_state)
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail="session_id is not active")
+    except ValueError:
+        raise HTTPException(status_code=404, detail="session_id is not active") from None
     return CloseSessionResponse(
         session_id=result.session_id,
         closed=result.closed,
@@ -69,4 +68,5 @@ def _session_status_response(status) -> SessionStatusResponse:
         failure_reason=status.failure_reason,
         invocation_source=status.invocation_source,
         tts_output_device=status.tts_output_device,
+        voice_capture_diagnostics=status.voice_capture_diagnostics,
     )

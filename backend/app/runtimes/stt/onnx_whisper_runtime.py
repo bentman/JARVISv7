@@ -4,12 +4,10 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
 from backend.app.core.settings import load_settings
 from backend.app.hardware.qnn_provider import create_qnn_session
 from backend.app.models.catalog import get_model_entry, get_model_path
 from backend.app.runtimes.stt.base import STTBase
-
 
 ONNX_WHISPER_QNN_NOT_WIRED_REASON = (
     "QNN STT is not wired through OnnxWhisperRuntime; use QnnWhisperRuntime for verified QNN execution"
@@ -127,10 +125,12 @@ class QnnWhisperRuntime(STTBase):
         language = str(decode.get("language") or load_settings().jarvis_language).strip()
         task = str(decode.get("task") or "transcribe").strip()
         predict_timestamps = bool(decode.get("predict_timestamps", False))
+        max_new_tokens = int(decode.get("max_new_tokens") or 196)
         return {
             "language": language,
             "task": task,
             "predict_timestamps": predict_timestamps,
+            "max_new_tokens": max(1, min(max_new_tokens, 196)),
         }
 
     def _find_model_file(self, filename: str) -> Path:
@@ -208,7 +208,7 @@ class QnnWhisperRuntime(STTBase):
         token_ids: list[int] = [int(token_id) for token_id in self._tokenizer.prefix_tokens]
         if not token_ids:
             raise RuntimeError("Whisper tokenizer did not provide decoder prefix tokens")
-        max_new_tokens = 448
+        max_new_tokens = int(self._decode_config()["max_new_tokens"])
         eot_token = 50257
 
         decoder_input_defs = {i.name: i for i in decoder.get_inputs()}

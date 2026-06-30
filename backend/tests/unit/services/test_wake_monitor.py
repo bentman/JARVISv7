@@ -1,16 +1,14 @@
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
-import threading
 
 import numpy as np
-
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import ResidentAudioStream
-from backend.app.services.session_service import SessionService
-from backend.app.services.wake_monitor import WakeMonitorService
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
+from backend.app.services.wake_monitor import WakeMonitorService
 from backend.tests.unit.services.test_session_service import _FakeWakeRuntime, _service
 
 
@@ -144,6 +142,12 @@ def test_wake_monitor_consumes_shared_stream_and_vad_delimits_command(tmp_path: 
     assert audio.dtype == np.float32
     assert audio.size >= 20
     assert stream.status().running is False
+    diagnostics = service.status().voice_capture_diagnostics
+    assert diagnostics is not None
+    assert diagnostics["source"] == "wake"
+    assert diagnostics["stage"] == "segment"
+    assert diagnostics["reason"] == "silence"
+    assert diagnostics["speech_chunks"] >= 1
 
 
 def test_wake_monitor_does_not_start_competing_fallback_when_resident_stream_is_stopped(tmp_path: Path) -> None:
@@ -193,6 +197,8 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
     assert invocations[0][1] is not None
     assert invocations[0][1].size == 0
     assert invocations[0][2] == 16000
+    assert service.status().voice_capture_diagnostics is not None
+    assert service.status().voice_capture_diagnostics["reason"] == "no-speech"
 
 
 def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:

@@ -5,15 +5,13 @@ from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 
 import numpy as np
-
 from backend.app.runtimes.wake.base import WakeBase
 from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 from backend.app.services.audio_stream import AudioChunk, ResidentAudioStream
 from backend.app.services.session_service import SessionService
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
-from backend.app.services.wake_status import WakeMonitorStatus
 from backend.app.services.voice_service import wake_chunk_source
-
+from backend.app.services.wake_status import WakeMonitorStatus
 
 WakeRuntimeFactory = Callable[[], WakeBase]
 WakeChunkSource = Callable[[threading.Event], Iterable[np.ndarray]]
@@ -183,6 +181,11 @@ class WakeMonitorService:
         if self._utterance_segmenter is None:
             return _chunks_to_stt_audio(self._collect_post_wake_chunks(source))
         segment = self._utterance_segmenter.capture(_wake_audio_chunks(source))
+        self._session_service.record_voice_capture_diagnostics(
+            source="wake",
+            stage="segment",
+            diagnostics=segment.diagnostics.as_dict(),
+        )
         if not segment.speech_started or segment.audio.size == 0:
             return None
         return _float_to_int16(segment.audio)
@@ -210,9 +213,7 @@ def _resident_wake_chunks(subscriber, stop_event: threading.Event) -> Iterator[n
 
 
 def _wake_audio_chunks(source: Iterator[np.ndarray]) -> Iterator[AudioChunk]:
-    sequence = 0
-    for chunk in source:
-        sequence += 1
+    for sequence, chunk in enumerate(source, start=1):
         samples = np.asarray(chunk, dtype=np.int16).reshape(-1).astype(np.float32) / 32768.0
         yield AudioChunk(samples=samples, sample_rate=WAKE_SAMPLE_RATE, sequence=sequence, captured_at=0.0)
 

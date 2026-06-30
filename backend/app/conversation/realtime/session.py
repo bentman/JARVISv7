@@ -5,14 +5,13 @@ from dataclasses import replace
 from typing import Protocol
 
 import numpy as np
-
 from backend.app.conversation.engine import TurnEngine, TurnResult
-from backend.app.conversation.states import ConversationState
 from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.realtime.interruption import record_interruption_boundary
 from backend.app.conversation.realtime.ledger import RealtimeEventLedger
 from backend.app.conversation.realtime.response_queue import RealtimeResponseQueue
 from backend.app.conversation.realtime.turn_taking import has_committable_audio
+from backend.app.conversation.states import ConversationState
 from backend.app.services.session_service import SessionService
 
 
@@ -64,7 +63,7 @@ class RealtimeConversationSession:
                 RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
                 source=source,
                 state=ConversationState.LISTENING,
-                metadata={"sample_rate": sample_rate, "audio_frames": int(np.asarray(audio).size)},
+                metadata=_audio_metadata(audio, sample_rate),
             )
             self.ledger.append(RealtimeEventType.USER_TURN_COMMITTED, source=source)
             self._session_service.mark_voice_transient_state(ConversationState.TRANSCRIBING)
@@ -115,3 +114,18 @@ class RealtimeConversationSession:
         self._session_service.complete_voice_invocation(result, state=result.final_state)
         self.ledger.append(RealtimeEventType.TURN_COMPLETED, source=source, turn_id=result.turn_id, state=result.final_state)
         self.ledger.append(RealtimeEventType.SESSION_IDLE, source=source, turn_id=result.turn_id, state=ConversationState.IDLE)
+
+
+def _audio_metadata(audio: np.ndarray, sample_rate: int | None) -> dict[str, float | int | str | None]:
+    samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+    sample_count = int(samples.size)
+    duration_s = sample_count / float(sample_rate) if sample_rate else 0.0
+    rms = float(np.sqrt(np.mean(np.square(samples)))) if sample_count else 0.0
+    peak = float(np.max(np.abs(samples))) if sample_count else 0.0
+    return {
+        "sample_rate": sample_rate,
+        "audio_frames": sample_count,
+        "duration_s": duration_s,
+        "rms": rms,
+        "peak": peak,
+    }

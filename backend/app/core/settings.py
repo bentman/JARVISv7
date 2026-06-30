@@ -6,7 +6,6 @@ from pathlib import Path
 
 from backend.app.core.paths import CONFIG_DIR, DATA_DIR, MODELS_DIR, REPO_ROOT
 
-
 ENV_FILE = REPO_ROOT / ".env"
 ENV_EXAMPLE_FILE = REPO_ROOT / ".env.example"
 
@@ -89,6 +88,24 @@ class Settings:
     tts_models: str | None = field(default_factory=lambda: os.getenv("TTS_MODELS"))
     stt_models: str | None = field(default_factory=lambda: os.getenv("STT_MODELS"))
     wake_model: str | None = field(default_factory=lambda: os.getenv("WAKE_MODEL"))
+    resident_voice_speech_rms_threshold: float = field(
+        default_factory=lambda: _env_float("RESIDENT_VOICE_SPEECH_RMS_THRESHOLD") or 0.02
+    )
+    resident_voice_no_speech_timeout_seconds: float = field(
+        default_factory=lambda: _env_float("RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS") or 5.0
+    )
+    resident_voice_silence_end_seconds: float = field(
+        default_factory=lambda: _env_float("RESIDENT_VOICE_SILENCE_END_SECONDS") or 0.5
+    )
+    resident_voice_max_duration_seconds: float = field(
+        default_factory=lambda: _env_float("RESIDENT_VOICE_MAX_DURATION_SECONDS") or 8.0
+    )
+    resident_voice_pre_roll_seconds: float = field(
+        default_factory=lambda: _env_float("RESIDENT_VOICE_PRE_ROLL_SECONDS") or 0.25
+    )
+    resident_voice_min_speech_seconds: float = field(
+        default_factory=lambda: _env_float("RESIDENT_VOICE_MIN_SPEECH_SECONDS") or 0.2
+    )
     qairt_sdk_path: str | None = field(default_factory=lambda: os.getenv("QAIRT_SDK_PATH"))
     picovoice_access_key: str | None = field(
         default_factory=lambda: os.getenv("PICOVOICE_ACCESS_KEY")

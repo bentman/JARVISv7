@@ -1,11 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import ClassVar
 
 import numpy as np
-
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -24,6 +24,7 @@ class SessionStatus:
     failure_reason: str | None = None
     invocation_source: str | None = None
     tts_output_device: str | None = None
+    voice_capture_diagnostics: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,7 +35,7 @@ class SessionCloseResult:
 
 
 class SessionService:
-    _VOICE_TRANSIENT_STATES = {
+    _VOICE_TRANSIENT_STATES: ClassVar[set[ConversationState]] = {
         ConversationState.TRANSCRIBING,
         ConversationState.RESPONDING,
         ConversationState.SPEAKING,
@@ -60,6 +61,7 @@ class SessionService:
         self._failure_reason: str | None = None
         self._invocation_source: str | None = None
         self._tts_output_device: str | None = None
+        self._voice_capture_diagnostics: dict[str, object] | None = None
         self._wake_status_store = WakeStatusStore(
             provider="openwakeword",
             available=False,
@@ -117,6 +119,7 @@ class SessionService:
             failure_reason=self._failure_reason,
             invocation_source=self._invocation_source,
             tts_output_device=self._tts_output_device,
+            voice_capture_diagnostics=self._voice_capture_diagnostics,
         )
 
     def is_session_active(self) -> bool:
@@ -132,6 +135,7 @@ class SessionService:
         self._state = ConversationState.LISTENING.value
         self._failure_reason = None
         self._invocation_source = source
+        self._voice_capture_diagnostics = None
         return self.status()
 
     def mark_voice_transient_state(self, state: ConversationState) -> SessionStatus:
@@ -153,6 +157,20 @@ class SessionService:
     def fail_voice_invocation(self, reason: str) -> SessionStatus:
         self._failure_reason = reason
         self._state = ConversationState.FAILED.value
+        return self.status()
+
+    def record_voice_capture_diagnostics(
+        self,
+        *,
+        source: str,
+        stage: str,
+        diagnostics: dict[str, object],
+    ) -> SessionStatus:
+        self._voice_capture_diagnostics = {
+            "source": source,
+            "stage": stage,
+            **diagnostics,
+        }
         return self.status()
 
     def configure_wake_status(self, *, provider: str, available: bool, reason: str) -> WakeMonitorStatus:

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import numpy as np
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.stt.barge_in import BargeInDetector
@@ -222,6 +222,13 @@ def test_qnn_runtime_uses_configured_language_for_tokenizer_prefix(monkeypatch, 
     assert calls == [{"language": "es", "task": "transcribe", "predict_timestamps": False}]
 
 
+def test_qnn_runtime_uses_artifact_safe_decode_token_limit(tmp_path):
+    runtime = QnnWhisperRuntime(model_path=tmp_path)
+    runtime._model_config = {"decode": {"max_new_tokens": 448}}
+
+    assert runtime._decode_config()["max_new_tokens"] == 196
+
+
 def test_qnn_runtime_primes_decoder_with_full_tokenizer_prefix(monkeypatch, tmp_path):
     model_path = tmp_path / "qnn-model"
     model_path.mkdir()
@@ -233,7 +240,7 @@ def test_qnn_runtime_primes_decoder_with_full_tokenizer_prefix(monkeypatch, tmp_
             return SimpleNamespace(input_features=np.zeros((1, 80, 3000), dtype=np.float32))
 
     class FakeTokenizer:
-        prefix_tokens = [10, 11, 12]
+        prefix_tokens: ClassVar[list[int]] = [10, 11, 12]
 
         def decode(self, token_ids, *, skip_special_tokens):
             return "ok"

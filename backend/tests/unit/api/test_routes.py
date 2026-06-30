@@ -5,23 +5,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from fastapi.testclient import TestClient
-
-from backend.app.api import app as app_module
-from backend.app.api.routes import config as config_route
-from backend.app.api import service_status
 from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
+from backend.app.api import app as app_module
+from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
+from backend.app.api.routes import config as config_route
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
-from backend.app.services.session_service import SessionService
-from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
-from backend.app.services.wake_monitor import WakeMonitorService
 from backend.app.routing.runtime_selector import SelectionTrace
+from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
+from backend.app.services.session_service import SessionService
+from backend.app.services.wake_monitor import WakeMonitorService
+from fastapi.testclient import TestClient
 
 
 class _FakeSTT:
@@ -489,8 +488,12 @@ def test_readiness_returns_additive_service_status(monkeypatch) -> None:
     payload = response.json()
 
     assert response.status_code == 200
-    assert payload["services"]["redis"] == {"reachable": True, "reason": "reachable"}
-    assert payload["services"]["searxng"] == {"reachable": True, "reason": "container reachable; json usable"}
+    assert payload["services"]["redis"] == {"reachable": True, "reason": "reachable", "endpoint": None}
+    assert payload["services"]["searxng"] == {
+        "reachable": True,
+        "reason": "container reachable; json usable",
+        "endpoint": None,
+    }
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
 
 
@@ -547,6 +550,7 @@ def test_session_status_returns_active_session() -> None:
         "failure_reason": None,
         "invocation_source": None,
         "tts_output_device": None,
+        "voice_capture_diagnostics": None,
     }
 
 
@@ -920,6 +924,7 @@ def test_resident_voice_mode_endpoint_sets_visible_mode_and_stops_wake_for_ptt_o
     assert payload["mode"] == "ptt-only"
     assert payload["wake_active"] is False
     assert payload["wake_monitoring"] is False
+    assert payload["barge_in_supported"] is False
     assert client.get("/status/wake").json()["active"] is False
 
 

@@ -1,11 +1,10 @@
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
-import threading
 
 import numpy as np
-
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
@@ -132,6 +131,12 @@ def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path:
     assert calls[0][0].shape == (20,)
     assert np.array_equal(calls[0][0][:4], np.zeros(4, dtype=np.float32))
     assert service.status().invocation_source == "ptt"
+    diagnostics = service.status().voice_capture_diagnostics
+    assert diagnostics is not None
+    assert diagnostics["source"] == "ptt"
+    assert diagnostics["stage"] == "segment"
+    assert diagnostics["reason"] == "silence"
+    assert diagnostics["speech_chunks"] == 2
 
 
 def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_path: Path) -> None:
@@ -158,6 +163,9 @@ def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_pat
     assert calls == []
     assert status.failure_reason == "No speech detected during PTT"
     assert status.invocation_source == "ptt"
+    assert status.voice_capture_diagnostics is not None
+    assert status.voice_capture_diagnostics["reason"] == "no-speech"
+    assert status.voice_capture_diagnostics["speech_chunks"] == 0
 
 
 def test_ptt_only_mode_falls_back_to_blocking_capture_when_stream_is_stopped(tmp_path: Path) -> None:
@@ -300,6 +308,65 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
     assert calls[1][0].shape == (20,)
     assert calls[1][1] == 16000
     assert service.status().last_transcript == "resident transcript"
+
+
+def test_interrupted_ptt_only_does_not_queue_barge_in_follow_up(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    interrupted = TurnResult(
+        turn_id="turn-interrupted",
+        session_id="session-resident",
+        transcript="first",
+        response_text="interrupted response",
+        final_state=ConversationState.IDLE,
+        interrupted=True,
+        interruption_events=[{"type": "barge_in", "recovery_state": "RECOVERING"}],
+    )
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+    resident.set_mode("ptt-only")
+
+    resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
+
+    _wait_for(lambda: service.status().invocation_source == "ptt")
+    time.sleep(0.05)
+
+    assert len(calls) == 1
+    assert service.status().invocation_source == "ptt"
+
+
+def test_ptt_only_temporarily_disables_engine_interruption_monitor(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    marker_detector = object()
+    marker_chunks = object()
+
+    class InspectingEngine(_FakeEngine):
+        barge_in_detector = marker_detector
+        interruption_audio_chunks = marker_chunks
+
+        def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+            assert self.barge_in_detector is None
+            assert self.interruption_audio_chunks is None
+            return super().run_voice_turn(audio, sample_rate)
+
+    engine = InspectingEngine(calls)
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: engine,  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+    resident.set_mode("ptt-only")
+
+    resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
+
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+
+    assert engine.barge_in_detector is marker_detector
+    assert engine.interruption_audio_chunks is marker_chunks
 
 
 def test_resident_interruption_chunks_tolerates_short_empty_reads() -> None:

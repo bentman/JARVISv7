@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import AudioChunk
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
@@ -47,6 +46,10 @@ def test_segmenter_reports_no_speech_after_timeout() -> None:
     assert result.speech_started is False
     assert result.reason == "no-speech"
     assert result.audio.size == 0
+    assert result.diagnostics.reason == "no-speech"
+    assert result.diagnostics.chunks == 2
+    assert result.diagnostics.sample_count == 8
+    assert result.diagnostics.rms == 0.0
 
 
 def test_segmenter_reports_too_short_when_stream_ends_before_minimum_duration() -> None:
@@ -76,6 +79,8 @@ def test_segmenter_stops_at_max_duration() -> None:
 
     assert result.reason == "max-duration"
     assert result.audio.shape == (12,)
+    assert result.diagnostics.duration_s == 12 / 16000
+    assert result.diagnostics.max_chunk_rms > 0.19
 
 
 def test_segmenter_includes_bounded_pre_roll_before_speech() -> None:
@@ -93,3 +98,36 @@ def test_segmenter_includes_bounded_pre_roll_before_speech() -> None:
     assert result.audio.shape == (16,)
     assert np.array_equal(result.audio[:8], np.zeros(8, dtype=np.float32))
     assert np.array_equal(result.audio[8:12], np.full(4, 0.2, dtype=np.float32))
+
+
+def test_segmenter_fixture_tolerates_operator_delay_with_resident_timeout() -> None:
+    import wave
+    from pathlib import Path
+
+    fixture = Path("backend/tests/fixtures/hello_world.wav")
+    with wave.open(str(fixture), "rb") as wav_file:
+        sample_rate = wav_file.getframerate()
+        audio = np.frombuffer(wav_file.readframes(wav_file.getnframes()), dtype="<i2").astype(np.float32) / 32768.0
+    delayed = np.concatenate([np.zeros(int(2.5 * sample_rate), dtype=np.float32), audio])
+    chunks = [
+        AudioChunk(
+            samples=delayed[index : index + 1280],
+            sample_rate=sample_rate,
+            sequence=index // 1280,
+            captured_at=0.0,
+        )
+        for index in range(0, delayed.size, 1280)
+    ]
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(),
+        sample_rate=sample_rate,
+        no_speech_timeout_s=5.0,
+        silence_end_s=0.5,
+    )
+
+    result = segmenter.capture(chunks)
+
+    assert result.speech_started is True
+    assert result.reason == "silence"
+    assert result.diagnostics.speech_chunks > 0
+    assert result.diagnostics.peak > 0.1

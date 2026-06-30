@@ -3,7 +3,6 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-
 ENV_NAMES = (
     "APP_NAME",
     "JARVIS_LANGUAGE",
@@ -29,6 +28,12 @@ ENV_NAMES = (
     "TTS_MODELS",
     "STT_MODELS",
     "WAKE_MODEL",
+    "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD",
+    "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS",
+    "RESIDENT_VOICE_SILENCE_END_SECONDS",
+    "RESIDENT_VOICE_MAX_DURATION_SECONDS",
+    "RESIDENT_VOICE_PRE_ROLL_SECONDS",
+    "RESIDENT_VOICE_MIN_SPEECH_SECONDS",
     "QAIRT_SDK_PATH",
     "PICOVOICE_ACCESS_KEY",
     "PVPORCUPINE_MODEL_PATH",
@@ -68,6 +73,12 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "TTS_MODELS",
     "STT_MODELS",
     "WAKE_MODEL",
+    "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD",
+    "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS",
+    "RESIDENT_VOICE_SILENCE_END_SECONDS",
+    "RESIDENT_VOICE_MAX_DURATION_SECONDS",
+    "RESIDENT_VOICE_PRE_ROLL_SECONDS",
+    "RESIDENT_VOICE_MIN_SPEECH_SECONDS",
     "QAIRT_SDK_PATH",
     "PICOVOICE_ACCESS_KEY",
     "PVPORCUPINE_MODEL_PATH",
@@ -303,6 +314,34 @@ def test_search_bool_settings_parse_common_truthy_falsey_values(monkeypatch, tmp
     assert settings.use_tavily is True
 
 
+def test_resident_voice_segmenter_settings_read_from_env(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "\n".join(
+            [
+                "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD=0.015",
+                "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS=6",
+                "RESIDENT_VOICE_SILENCE_END_SECONDS=0.75",
+                "RESIDENT_VOICE_MAX_DURATION_SECONDS=9",
+                "RESIDENT_VOICE_PRE_ROLL_SECONDS=0.5",
+                "RESIDENT_VOICE_MIN_SPEECH_SECONDS=0.3",
+            ]
+        )
+        + "\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.resident_voice_speech_rms_threshold == 0.015
+    assert settings.resident_voice_no_speech_timeout_seconds == 6.0
+    assert settings.resident_voice_silence_end_seconds == 0.75
+    assert settings.resident_voice_max_duration_seconds == 9.0
+    assert settings.resident_voice_pre_roll_seconds == 0.5
+    assert settings.resident_voice_min_speech_seconds == 0.3
+
+
 def _parse_env_template(path: Path) -> dict[str, str]:
     values: dict[str, str] = {}
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -330,6 +369,9 @@ def test_env_example_covers_current_settings_env_variables():
     assert values["LLAMA_CPP_PORT"] == "8080"
     assert values["LLAMA_CPP_MODEL_NAME"] == "assistant-small-q4"
     assert values["LLAMA_CPP_TIMEOUT_SECONDS"] == "30"
+    assert values["RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS"] == "5.0"
+    assert values["RESIDENT_VOICE_SILENCE_END_SECONDS"] == "0.5"
+    assert values["RESIDENT_VOICE_SPEECH_RMS_THRESHOLD"] == "0.02"
     assert values["SEARXNG_BASE_URL"] == "http://127.0.0.1:8888"
     assert values["JARVISV7_LIVE_TESTS"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["LOCAL_MODEL_FETCH"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}

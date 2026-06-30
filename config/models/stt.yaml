@@ -30,6 +30,7 @@ models:
       language: ""
       task: transcribe
       predict_timestamps: false
+      max_new_tokens: 196
     source:
       type: url_zip
       url: https://qaihub-public-assets.s3.us-west-2.amazonaws.com/qai-hub-models/models/whisper_base/releases/v0.53.1/whisper_base-precompiled_qnn_onnx-float-qualcomm_snapdragon_x_elite.zip
@@ -45,6 +46,7 @@ models:
       language: ""
       task: transcribe
       predict_timestamps: false
+      max_new_tokens: 196
     model_files:
       encoder: encoder/model.onnx
       decoder: decoder/model.onnx
