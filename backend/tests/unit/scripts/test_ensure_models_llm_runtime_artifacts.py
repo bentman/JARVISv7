@@ -565,7 +565,7 @@ def test_automatic_runtime_fetch_policy_derives_from_local_model_intent(monkeypa
     monkeypatch.setattr(
         ensure_models,
         "load_settings",
-        lambda: Settings(use_local_model=True, local_model_fetch=False),
+        lambda: Settings(use_local_model=True, local_model_fetch_explicit=False, local_model_fetch=False),
     )
     args = argparse.Namespace(family=None, model=None)
 
