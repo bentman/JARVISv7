@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from backend.app.core.settings import load_settings
 from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 from backend.app.services.audio_stream import ResidentAudioStream
 
@@ -26,6 +27,8 @@ class AudioIngressDiagnostics:
     rms: float
     peak: float
     reason: str
+    resident_speech_rms_threshold: float = 0.0
+    resident_vad_speech: bool = False
 
 
 def capture_audio(
@@ -110,6 +113,7 @@ def _capture_audio_from_stream(
 def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
     capped_duration = min(max(float(duration_s), 0.1), 2.0)
     input_device = describe_input_device()
+    speech_threshold = float(load_settings().resident_voice_speech_rms_threshold)
     try:
         audio, sample_rate = capture_audio(duration_s=capped_duration, sample_rate=16000)
     except Exception as exc:
@@ -123,6 +127,8 @@ def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
             rms=0.0,
             peak=0.0,
             reason=f"capture failed: {exc}",
+            resident_speech_rms_threshold=speech_threshold,
+            resident_vad_speech=False,
         )
 
     samples = np.asarray(audio, dtype=np.float32).reshape(-1)
@@ -138,11 +144,14 @@ def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
             rms=0.0,
             peak=0.0,
             reason="capture returned empty audio",
+            resident_speech_rms_threshold=speech_threshold,
+            resident_vad_speech=False,
         )
 
     rms = float(np.sqrt(np.mean(np.square(samples))))
     peak = float(np.max(np.abs(samples)))
     actual_duration = sample_count / float(sample_rate) if sample_rate else 0.0
+    resident_vad_speech = rms >= speech_threshold
     if peak <= 1e-4 or rms <= 1e-5:
         return AudioIngressDiagnostics(
             usable=False,
@@ -154,10 +163,26 @@ def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
             rms=rms,
             peak=peak,
             reason="capture succeeded but audio is silent",
+            resident_speech_rms_threshold=speech_threshold,
+            resident_vad_speech=False,
+        )
+    if not resident_vad_speech:
+        return AudioIngressDiagnostics(
+            usable=False,
+            sample_rate=sample_rate,
+            sample_count=sample_count,
+            dtype=str(samples.dtype),
+            duration=actual_duration,
+            input_device=input_device,
+            rms=rms,
+            peak=peak,
+            reason="capture succeeded but is below resident speech threshold",
+            resident_speech_rms_threshold=speech_threshold,
+            resident_vad_speech=False,
         )
 
     return AudioIngressDiagnostics(
-        usable=True,
+        usable=resident_vad_speech,
         sample_rate=sample_rate,
         sample_count=sample_count,
         dtype=str(samples.dtype),
@@ -166,6 +191,8 @@ def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
         rms=rms,
         peak=peak,
         reason="capture succeeded with non-silent audio",
+        resident_speech_rms_threshold=speech_threshold,
+        resident_vad_speech=resident_vad_speech,
     )
 
 

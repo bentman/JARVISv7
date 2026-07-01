@@ -39,4 +39,6 @@ def diagnostics_audio_ingress(duration_s: float = 1.0) -> DiagnosticsAudioIngres
         rms=result.rms,
         peak=result.peak,
         reason=result.reason,
+        resident_speech_rms_threshold=result.resident_speech_rms_threshold,
+        resident_vad_speech=result.resident_vad_speech,
     )

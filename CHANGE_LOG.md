@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-01 06:18
+  - Summary: Corrected resident voice diagnostics and wake/PTT status truth. Audio ingress diagnostics now report resident VAD threshold state instead of marking below-threshold mic input usable, and resident status reconciles `ptt-only` mode with stopped wake monitoring.
+  - Scope: `backend/app/services/voice_service.py`, `backend/app/api/routes/diagnostics.py`, `backend/app/api/schemas/diagnostics.py`, `backend/app/api/routes/status.py`, `backend/tests/unit/services/test_voice_service.py`, `backend/tests/unit/api/test_routes.py`
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_voice_service.py backend\tests\unit\api\test_routes.py -q` PASS (`59 passed, 1 warning`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`673 passed, 1 warning`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`153 passed, 5 deselected`, report `reports\validation\20260701110509-regression.txt`). Current running backend check PASS: `/diagnostics/audio-ingress` returned `usable=false`, `resident_vad_speech=false`, reason `capture succeeded but is below resident speech threshold`; `/status/resident-voice` returned `mode=ptt-only`, `wake_active=false`, `wake_monitoring=false`; `/session/status` recorded successful PTT transcript `what is the capital of mexico` with response `The capital of Mexico is Mexico City.` and capture diagnostics `speech_chunks=15`, `rms=0.03765574097633362`.
+
 - 2026-07-01 05:11
   - Summary: Implemented corrected Slice X local LLM tier activation. `LLM_MODEL_MODE` now defaults to `dev`, production mode selects explicit Qwen3 GGUF catalog models through the existing policy/role/hardware selection path, and mode metadata is carried through ensure-models, startup, runtime selection, readiness, and Operator metadata. The implementation corrected the earlier off-pattern direction by reusing the existing catalog, settings, selection, readiness, desktop metadata, and adjacent test shapes rather than adding new workflows or generated catalog structures.
   - Scope: `.env.example`, `config/models/llm.yaml`, backend settings/config/readiness/selection/profile/runtime/startup code, `scripts/ensure_models.py`, and existing adjacent backend/desktop tests.

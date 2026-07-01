@@ -26,3 +26,5 @@ class DiagnosticsAudioIngressResponse(BaseModel):
     rms: float
     peak: float
     reason: str
+    resident_speech_rms_threshold: float
+    resident_vad_speech: bool

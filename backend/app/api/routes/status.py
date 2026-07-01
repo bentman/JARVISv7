@@ -80,7 +80,6 @@ def set_resident_voice_mode(
 def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
     stream = state.resident_audio_stream
     stream_status = stream.status() if stream is not None else None
-    wake = state.session_service.wake_status()
     vad_configured = state.utterance_segmenter is not None
     degraded_reasons: list[str] = []
     if state.resident_voice is None:
@@ -96,6 +95,9 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
     if stream is not None and not stream_running:
         degraded_reasons.append("resident audio stream is stopped")
     mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
+    wake = state.session_service.wake_status()
+    if mode == "ptt-only" and (wake.active or wake.monitoring):
+        wake = state.wake_monitor.stop()
     follow_up = state.resident_voice.follow_up_status() if state.resident_voice is not None else None
     barge_in_wired = bool(
         stream_running

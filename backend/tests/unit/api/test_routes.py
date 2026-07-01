@@ -706,6 +706,8 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
             rms=0.12,
             peak=0.4,
             reason="capture succeeded with non-silent audio",
+            resident_speech_rms_threshold=0.02,
+            resident_vad_speech=True,
         ),
     )
 
@@ -722,6 +724,8 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
         "rms": 0.12,
         "peak": 0.4,
         "reason": "capture succeeded with non-silent audio",
+        "resident_speech_rms_threshold": 0.02,
+        "resident_vad_speech": True,
     }
 
 
@@ -937,6 +941,24 @@ def test_resident_voice_mode_endpoint_sets_visible_mode_and_stops_wake_for_ptt_o
     assert payload["wake_active"] is False
     assert payload["wake_monitoring"] is False
     assert payload["barge_in_supported"] is False
+    assert client.get("/status/wake").json()["active"] is False
+
+
+def test_resident_voice_status_reconciles_ptt_only_with_active_wake() -> None:
+    client = _client()
+    state = client.app.state.jarvis_state
+    state.resident_voice.set_mode("ptt-only")
+    wake_started = client.post("/status/wake/start")
+    assert wake_started.status_code == 200
+    assert wake_started.json()["active"] is True
+
+    response = client.get("/status/resident-voice")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "ptt-only"
+    assert payload["wake_active"] is False
+    assert payload["wake_monitoring"] is False
     assert client.get("/status/wake").json()["active"] is False
 
 

@@ -74,7 +74,8 @@ def test_wake_chunk_source_uses_persistent_sounddevice_stream(monkeypatch) -> No
     assert chunk.dtype == np.int16
 
 
-def test_diagnose_audio_ingress_reports_usable_non_silent_capture(monkeypatch):
+def test_diagnose_audio_ingress_reports_usable_non_silent_capture(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
     def fake_capture_audio(duration_s, sample_rate):
         assert duration_s == 1.0
         assert sample_rate == 16000
@@ -93,6 +94,27 @@ def test_diagnose_audio_ingress_reports_usable_non_silent_capture(monkeypatch):
     assert result.rms > 0
     assert result.peak == 0.25
     assert result.reason == "capture succeeded with non-silent audio"
+    assert result.resident_speech_rms_threshold > 0
+    assert result.rms >= result.resident_speech_rms_threshold
+    assert result.resident_vad_speech is True
+
+
+def test_diagnose_audio_ingress_reports_below_resident_speech_threshold(monkeypatch, tmp_path):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        "backend.app.services.voice_service.capture_audio",
+        lambda duration_s, sample_rate: (np.full(1600, 0.001, dtype=np.float32), sample_rate),
+    )
+    monkeypatch.setattr("backend.app.services.voice_service.describe_input_device", lambda: "default input")
+
+    result = diagnose_audio_ingress(1.0)
+
+    assert result.usable is False
+    assert result.sample_count == 1600
+    assert result.rms < result.resident_speech_rms_threshold
+    assert result.peak == pytest.approx(0.001)
+    assert result.resident_vad_speech is False
+    assert result.reason == "capture succeeded but is below resident speech threshold"
 
 
 def test_diagnose_audio_ingress_reports_empty_capture(monkeypatch):
@@ -123,6 +145,7 @@ def test_diagnose_audio_ingress_reports_silent_capture(monkeypatch):
     assert result.rms == 0.0
     assert result.peak == 0.0
     assert result.reason == "capture succeeded but audio is silent"
+    assert result.resident_vad_speech is False
 
 
 def test_diagnose_audio_ingress_reports_capture_exception(monkeypatch):
