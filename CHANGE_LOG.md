@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-06-30 15:51
+  - Summary: Implemented Architect-approved Slice W2 corrective settings cleanup. The starter env typo was corrected, `LLM_MODELS` was removed from starter defaults, llama.cpp-first backend defaults were restored, blank non-secret env values no longer mask defaults, and Operator settings metadata now separates llama.cpp, Ollama, Optional Services, App Paths, and Optional Wake.
+  - Scope: `.env.example`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`102 passed`). `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\bootstrap.py --dry-run` PASS (`5/5` checkpoints). `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with selection `{"policy":"auto","model":"assistant-small-q4"}`. `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=amd64`, readiness `ready`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`664 passed, 1 skipped`).
+
 - 2026-06-30 11:45
   - Summary: Clarified the Slice W ensure-models unit test for derived local-model fetch behavior so it explicitly represents `LOCAL_MODEL_FETCH` being absent.
   - Scope: `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`
