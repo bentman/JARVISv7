@@ -1,42 +1,29 @@
 # Quick Start
 
-This guide sets up a fresh JARVISv7 clone using the repository-owned setup and validation commands.
+This guide sets up a fresh JARVISv7 clone on Windows using repo-owned commands.
 
-Run commands from PowerShell at the repository root unless a step says otherwise.
-
-## What this setup does
-
-The standard setup path:
-
-- creates a repo-local Python virtual environment under `backend\.venv`
-- installs Python packages through `scripts\provision.py`
-- acquires or verifies configured model artifacts through `scripts\ensure_models.py`
-- runs hardware-aware preflight checks
-- validates the backend profile
-
-Do not install Python packages globally for this repo.
+Run commands from PowerShell at the repository root. Do not install Python packages globally for this repo.
 
 ## Prerequisites
 
-Required for backend setup:
+Backend setup:
 
 - Windows PowerShell
 - Git
-- Python `>=3.11,<3.14` available through the Windows `py` launcher
-- Internet access for package/model acquisition
+- Python `>=3.11,<3.14` through the Windows `py` launcher
+- Internet access for dependency and model acquisition
 
-Required for the desktop shell:
+Desktop shell:
 
 - Node.js and npm
 - Rust toolchain
 - Tauri Windows prerequisites
 
-Optional:
+Optional local services:
 
-- Docker Desktop for Redis and SearXNG local services
-- Visual Studio/CMake/native tools only for native runtime sidecar work
+- Docker Desktop for Redis and SearXNG
 
-## Clone and enter the repo
+## Clone
 
 ```powershell
 git clone https://github.com/bentman/JARVISv7.git
@@ -47,11 +34,10 @@ For an existing clone:
 
 ```powershell
 Set-Location <REPO_ROOT_PATH>
+git pull
 ```
 
-## Prepare the shell
-
-Use UTF-8 output and repo-local cache/temp folders during setup.
+## Prepare PowerShell
 
 ```powershell
 $env:PYTHONUTF8 = "1"
@@ -63,41 +49,66 @@ $env:PIP_CACHE_DIR = "$PWD\cache\pip"
 New-Item -ItemType Directory -Force $env:TEMP, $env:PIP_CACHE_DIR | Out-Null
 ```
 
-## Create the Python environment
+## Create the backend environment
 
-Prefer Python 3.13 when available.
+Prefer Python 3.13 when available:
 
 ```powershell
 py -3.13 -m venv backend\.venv
-```
-
-Fallback to another supported installed version if needed.
-
-```powershell
-py -3.12 -m venv backend\.venv
-```
-
-Upgrade pip inside the repo virtual environment.
-
-```powershell
 .\backend\.venv\Scripts\python -m pip install --upgrade pip
 ```
 
-## Run bootstrap
+Fallback if needed:
+
+```powershell
+py -3.12 -m venv backend\.venv
+.\backend\.venv\Scripts\python -m pip install --upgrade pip
+```
+
+## Configure local settings
+
+JARVIS loads `.env` when present. If `.env` is missing, it falls back to `.env.example`.
+
+For first setup, leave `.env.example` defaults in place:
+
+```text
+USE_LOCAL_MODEL=true
+LLM_MODEL_MODE=dev
+LLM_MODEL_POLICY=auto
+LLM_MODEL_ID=
+USE_OLLAMA=false
+USE_SEARXNG=false
+USE_DDGS=true
+```
+
+Create `.env` only for local overrides:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Use these local LLM modes:
+
+```text
+dev  = default starter mode; uses assistant-small-q4
+prod = production local LLM mode; uses the host/policy-selected Qwen3 catalog model
+```
+
+Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override. A nonblank `LLM_MODEL_ID` wins over dev/prod policy selection.
+
+## Bootstrap
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\bootstrap.py
 ```
 
-Bootstrap runs the repository setup checkpoints in order. If it fails, stop at the failed checkpoint and fix that prerequisite. Do not work around it by manually installing random packages.
+Bootstrap runs the repo setup checkpoints in order. If it fails, fix the failed checkpoint instead of manually installing packages or models outside the repo commands.
 
 ## Verify setup
 
-Run these after bootstrap.
-
 ```powershell
 .\backend\.venv\Scripts\python scripts\provision.py verify
-.\backend\.venv\Scripts\python scripts\ensure_models.py --verify-only
+.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
 .\backend\.venv\Scripts\python scripts\validate_backend.py profile
 ```
 
@@ -107,48 +118,39 @@ For a broader backend check:
 .\backend\.venv\Scripts\python scripts\validate_backend.py regression
 ```
 
-## Configure local settings
+## Use production local LLM mode
 
-JARVIS loads `.env` when present. If `.env` is missing, it falls back to `.env.example`.
-
-Create `.env` only when you need local overrides.
+Preview the selected production model for the current host:
 
 ```powershell
-Copy-Item .env.example .env
+$env:LLM_MODEL_MODE = "prod"
+.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --dry-run
 ```
 
-Common local settings:
+Acquire or verify the selected production model and current-host llama.cpp runtime:
 
-```text
-USE_LOCAL_MODEL=false
-LLM_MODEL_POLICY=auto
-LLM_MODEL_ID=
-USE_OLLAMA=true
-OLLAMA_MODEL=phi4-mini
-USE_SEARXNG=false
-SEARXNG_PORT=8888
-USE_DDGS=true
+```powershell
+$env:LLM_MODEL_MODE = "prod"
+.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm
+.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
 ```
 
-Leave defaults alone for first setup unless you already know which runtime path you are validating.
+Return the current shell to starter mode:
 
-Local LLM setup is policy-aware. By default, `scripts\ensure_models.py --family llm` verifies or acquires the selected policy model and current-host applicable llama.cpp runtime profiles. `USE_LOCAL_MODEL=true` enables the derived local fetch and managed llama.cpp behavior unless advanced overrides such as `LOCAL_MODEL_FETCH=false` or `LLAMA_CPP_MANAGED=false` are set. llama.cpp defaults to port `8080`. Use `--all-llm` only when you intentionally want full LLM catalog validation.
+```powershell
+$env:LLM_MODEL_MODE = "dev"
+```
+
+Use `--all-llm` only when intentionally validating the full LLM catalog.
 
 ## Optional local services
 
 Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
 
-SearXNG defaults to host port `8888` and maps to container port `8080`.
-
-Start services:
+SearXNG defaults to host port `8888`.
 
 ```powershell
 docker compose up --detach
-```
-
-Stop services:
-
-```powershell
 docker compose down
 ```
 
@@ -158,7 +160,7 @@ docker compose down
 .\backend\.venv\Scripts\python scripts\run_backend.py
 ```
 
-Default bind:
+Default URL:
 
 ```text
 http://127.0.0.1:8765
@@ -193,83 +195,54 @@ Voice-only turn requires working local STT, TTS, and an audio input device.
 
 ## Run the desktop shell
 
-Install repo-local desktop dependencies.
-
 ```powershell
 npm --prefix desktop install
-```
-
-Run the Tauri desktop shell.
-
-```powershell
+npm --prefix desktop test
 npm --prefix desktop run dev
 ```
 
-Do not install Tauri globally for this repo. Use the repo-local desktop package commands.
+Do not install Tauri globally for this repo. Use repo-local desktop package commands.
+
+Operator settings are supplied by backend metadata. Desktop settings should render that metadata; do not hardcode local model options in the desktop shell.
 
 ## Development validation
 
-Unit tests:
-
 ```powershell
 .\backend\.venv\Scripts\python scripts\validate_backend.py unit
-```
-
-Integration tests:
-
-```powershell
 .\backend\.venv\Scripts\python scripts\validate_backend.py integration
-```
-
-Runtime tests, excluding live hardware unless explicitly enabled:
-
-```powershell
 .\backend\.venv\Scripts\python scripts\validate_backend.py runtime
-```
-
-CI-safe validation:
-
-```powershell
 .\backend\.venv\Scripts\python scripts\validate_backend.py ci
-```
-
-Desktop static test:
-
-```powershell
 npm --prefix desktop test
 ```
 
-## Live tests
-
-Live tests are gated. Enable them only when the required hardware or external service is present.
+Live tests are gated. Enable them only when the required hardware or external service is available.
 
 ```powershell
 $env:JARVISV7_LIVE_TESTS = "1"
 ```
 
-Then run the focused live test you need. Do not use live-test results as general validation unless the required hardware path was actually available.
+Then run the focused live test you need.
 
 ## Hardware and model notes
 
-Provisioning is hardware-aware. The setup path detects the current host and selects the appropriate Python extras.
+Provisioning is hardware-aware. The setup path detects the current host and selects the appropriate Python extras and local runtime profile.
 
-Useful hardware/model checks:
+Useful checks:
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\provision.py explain
 .\backend\.venv\Scripts\python scripts\provision.py dry-run
 .\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
-.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assistant-small-q4 --verify-only
 ```
 
-Optional native/runtime paths have their own helper docs:
+Optional native/runtime paths have separate helper docs:
 
 ```text
 docs\jarvis-arm-llamacpp.md
 docs\jarvis-arm-whisper.md
 ```
 
-Use those only when working on the Windows ARM64 Adreno OpenCL llama.cpp sidecar or Windows ARM64 Qualcomm QNN Whisper artifact path.
+Use those only when working on Windows ARM64 Adreno OpenCL llama.cpp sidecar or Windows ARM64 Qualcomm QNN Whisper artifact paths.
 
 ## Repository rules that matter
 
@@ -278,7 +251,7 @@ Use those only when working on the Windows ARM64 Adreno OpenCL llama.cpp sidecar
 - Use `scripts\provision.py` for Python dependency installation.
 - Use `scripts\ensure_models.py` for configured model artifacts.
 - Keep generated models, runtimes, caches, and reports out of source commits unless a slice explicitly says otherwise.
-- Record validation claims with the exact command evidence.
+- Record validation claims with exact command evidence.
 
 ## Common fixes
 
