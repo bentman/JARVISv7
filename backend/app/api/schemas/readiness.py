@@ -16,6 +16,7 @@ class FamilyReadiness(BaseModel):
     base_url: str | None = None
     selected_reason: str | None = None
     degraded_reason: str | None = None
+    model_mode: str | None = None
     model_policy: str | None = None
     model_role: str | None = None
     model_selection_reason: str | None = None

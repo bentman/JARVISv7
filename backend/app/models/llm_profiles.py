@@ -30,6 +30,7 @@ class LLMServeProfileResolution:
     launch: dict[str, Any]
     generation_defaults: dict[str, Any]
     selected_reason: str
+    model_mode: str | None = None
     model_policy: str | None = None
     model_role: str | None = None
     model_selection_reason: str | None = None

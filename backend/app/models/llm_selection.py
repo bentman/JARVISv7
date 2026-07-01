@@ -16,6 +16,7 @@ class LLMSelectionError(ModelCatalogError):
 class LLMModelSelection:
     model_id: str
     route: str
+    mode: str
     policy: str
     role: str
     role_status: str | None
@@ -37,6 +38,7 @@ def select_llm_model(
     selection = _selection_config(data)
     resolved_settings = settings or load_settings()
     override = _clean(model_override if model_override is not None else resolved_settings.llm_model_id)
+    selected_mode = _clean(resolved_settings.llm_model_mode) or "dev"
     selected_policy = _clean(policy if policy is not None else resolved_settings.llm_model_policy)
     if selected_policy is None:
         selected_policy = _required_string(selection, "default_policy", "llm_selection.default_policy")
@@ -47,6 +49,7 @@ def select_llm_model(
         return LLMModelSelection(
             model_id=entry.name,
             route=route,
+            mode=selected_mode,
             policy=selected_policy,
             role="override",
             role_status=None,
@@ -54,6 +57,29 @@ def select_llm_model(
             reason=f"selected explicit LLM_MODEL_ID override {entry.name}",
             override=True,
         )
+
+    if selected_mode == "dev":
+        modes = _required_mapping(selection, "modes", "llm_selection.modes")
+        dev_config = modes.get("dev")
+        if not isinstance(dev_config, dict):
+            raise LLMSelectionError("LLM model mode 'dev' is not configured")
+        model_id = _required_string(dev_config, "model", "llm_selection.modes.dev.model")
+        role = _required_string(dev_config, "role", "llm_selection.modes.dev.role")
+        role_status = dev_config.get("status") if isinstance(dev_config.get("status"), str) else None
+        entry = _get_llm_entry(model_id)
+        _require_route(entry, route)
+        return LLMModelSelection(
+            model_id=entry.name,
+            route=route,
+            mode=selected_mode,
+            policy=selected_policy,
+            role=role,
+            role_status=role_status,
+            hardware_selector="mode:dev",
+            reason=f"mode dev selected {entry.name}",
+        )
+    if selected_mode != "prod":
+        raise LLMSelectionError(f"LLM model mode '{selected_mode}' is not configured")
 
     policies = _required_mapping(selection, "policies", "llm_selection.policies")
     policy_map = policies.get(selected_policy)
@@ -72,6 +98,7 @@ def select_llm_model(
     return LLMModelSelection(
         model_id=entry.name,
         route=route,
+        mode=selected_mode,
         policy=selected_policy,
         role=role,
         role_status=role_status,
