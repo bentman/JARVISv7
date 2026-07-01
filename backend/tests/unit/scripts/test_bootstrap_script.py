@@ -51,6 +51,8 @@ def test_bootstrap_has_no_dependency_bearing_checkpoint4_top_level_imports() -> 
 
     assert "backend.app.hardware.preflight" not in top_level_imports
     assert "backend.app.hardware.readiness" not in top_level_imports
+    assert "select_llm_model" not in source
+    assert "scripts/ensure_models.py" in source
 
 
 def test_bootstrap_halts_on_profiler_failure(monkeypatch, capsys) -> None:

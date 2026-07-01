@@ -584,7 +584,7 @@ def _verify_family(
     elif family == "llm" and not all_llm and hardware_profile is not None:
         selection = select_llm_model("voice_chat", hardware_profile, policy=llm_policy)
         entries = [get_model_entry(family, selection.model_id)]
-        selected_policy = selection.policy
+        selected_policy = selection
         selected_default = True
     else:
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
@@ -607,7 +607,13 @@ def _verify_family(
         "ready": all(result["ready"] for result in results),
     }
     if family == "llm" and selected_policy is not None:
-        payload["selection"] = {"policy": selected_policy, "model": entries[0].name}
+        payload["selection"] = {
+            "policy": selected_policy.policy,
+            "model": entries[0].name,
+            "mode": selected_policy.mode,
+            "role": selected_policy.role,
+            "hardware_selector": selected_policy.hardware_selector,
+        }
     return (0 if all(result["ready"] for result in results) else 1), payload
 
 
@@ -740,7 +746,7 @@ def _ensure_family(
     elif family == "llm" and not all_llm and hardware_profile is not None:
         selection = select_llm_model("voice_chat", hardware_profile, policy=llm_policy)
         entries = [get_model_entry(family, selection.model_id)]
-        selected_policy = selection.policy
+        selected_policy = selection
         selected_default = True
     else:
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
@@ -778,7 +784,13 @@ def _ensure_family(
         "ready": all(result["ready"] for result in results),
     }
     if family == "llm" and selected_policy is not None:
-        payload["selection"] = {"policy": selected_policy, "model": entries[0].name}
+        payload["selection"] = {
+            "policy": selected_policy.policy,
+            "model": entries[0].name,
+            "mode": selected_policy.mode,
+            "role": selected_policy.role,
+            "hardware_selector": selected_policy.hardware_selector,
+        }
     return (0 if all(result["ready"] for result in results) else 1), payload
 
 
