@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice X local LLM tier activation - 2026-07-01 10:25 UTC
+  - State: Verified
+  - Location: `.env.example`, `config/models/llm.yaml`, `backend/app/core/settings.py`, `backend/app/models/llm_selection.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/routing/runtime_selector.py`, `backend/app/api/routes/config.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `scripts/ensure_models.py`, `scripts/bootstrap.py`, `desktop/src/components/settings-panel.js`, related backend/desktop tests, `docs/20260630_slice-x.md`, `CHANGE_LOG.md`
+  - Validation: Windows AMD64 / amd64 evidence recorded in `CHANGE_LOG.md` entry `2026-07-01 05:11`: focused Slice X tests PASS (`143 passed`), desktop static PASS, bootstrap dry-run PASS, dev verify-only PASS, prod dry-run/acquire/verify PASS, prod live local-turn PASS (`1 passed`), profile PASS, unit PASS (`670 passed, 1 skipped`), and regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260701051618-regression.txt`). Windows ARM64 / arm64 evidence on 2026-07-01: focused Slice X tests PASS (`143 passed, 1 warning`), desktop static PASS, bootstrap dry-run PASS (`5/5` checkpoints), explicit dev verify-only PASS with `assistant-small-q4`, explicit prod dry-run PASS with `assistant-qwen3-4b-q4-portable`, profile PASS (`arch=arm64`, readiness `ready`), unit PASS (`671 passed, 1 warning`), and regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260701102538-regression.txt`).
+  - Notes: Adds `LLM_MODEL_MODE` with dev/prod selection, explicit Qwen3 production catalog entries, mode-aware readiness/setup/runtime metadata, and Operator metadata-driven rendering. ARM64 production live validation and NPU/QNN/Adreno LLM acceleration are not claimed.
+
 - Capability: Slice W2 settings grouping and default correction close-out - 2026-07-01 00:46 UTC
   - State: Verified
   - Location: `.env.example`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `desktop/src/components/settings-panel.js`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `desktop/tests/static.test.mjs`, `docs/20260630_slice-w2.md`
