@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice W2 settings grouping and default correction close-out - 2026-07-01 00:46 UTC
+  - State: Verified
+  - Location: `.env.example`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `desktop/src/components/settings-panel.js`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `desktop/tests/static.test.mjs`, `docs/20260630_slice-w2.md`
+  - Validation: Windows ARM64 / arm64 evidence on 2026-07-01: focused Slice W2 tests PASS (`backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q`, `102 passed, 1 warning`); desktop static PASS (`npm --prefix desktop test`, `desktop static voice checks passed`); profile PASS (`arch=arm64`, readiness `ready`, `ep:QNNExecutionProvider`, `opencl:adreno`); unit PASS (`665 passed, 1 warning`); regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260701004648-regression.txt`).
+  - Notes: Records the verified correction state where local llama.cpp and local Ollama settings remain separately grouped, starter defaults are settings-backed, and desktop rendering remains metadata-driven. No new runtime architecture, model artifact, or setup workflow is claimed.
+
 - Capability: Slice W environment and Operator settings posture cleanup - 2026-06-30 11:42
   - State: Verified
   - Location: `.env.example`, `docker-compose.yml`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `scripts/ensure_models.py`, `backend/app/services/local_llm_startup.py`, `desktop/src/components/settings-panel.js`, `docs/QuickStart.md`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `desktop/tests/static.test.mjs`, `CHANGE_LOG.md`
