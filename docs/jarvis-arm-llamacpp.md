@@ -1,6 +1,8 @@
 # JARVIS ARM llama.cpp Adreno OpenCL Helper
 
-This document explains how to use `docs\jarvis-arm-llamacpp.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Adreno OpenCL.
+This document explains how to use `docs\jarvis-arm-llamacpp.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Adreno OpenCL.  
+
+**WARNING:** This process is a "ram-hog" (~3.5+ GB on my 16GB laptop).
 
 The normal workflow runs directly on the ARM64 Snapdragon host. The helper keeps third-party source/build trees outside the repo and stages only the runtime files JARVIS consumes.
 
