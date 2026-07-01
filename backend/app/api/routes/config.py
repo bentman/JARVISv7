@@ -36,12 +36,6 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec("JARVIS_LANGUAGE", "Primary assistant language.", section="App Defaults"),
     OperatorFieldSpec("USE_LOCAL_MODEL", "Enable local llama.cpp runtime selection.", section="Local LLM intent (llama.cpp)"),
     OperatorFieldSpec(
-        "LLM_MODEL_MODE",
-        "Model mode.",
-        options=("dev", "prod"),
-        section="Local LLM intent (llama.cpp)",
-    ),
-    OperatorFieldSpec(
         "LLM_MODEL_POLICY",
         "Model policy.",
         options=("auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"),

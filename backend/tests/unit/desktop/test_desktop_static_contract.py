@@ -244,8 +244,6 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert "Advanced" in settings_panel
     for backend_section in ["Local LLM intent (llama.cpp)", "Use Local Ollama intent", "Optional Services"]:
         assert backend_section not in settings_panel
-    for model_mode_copy in ["LLM_MODEL_MODE", "dev", "prod"]:
-        assert model_mode_copy not in settings_panel
     for copy in ["Unsaved changes", "restart required", "written", "rejected", ".env is required"]:
         assert copy in settings_panel
     assert "payload.fields" in settings_panel

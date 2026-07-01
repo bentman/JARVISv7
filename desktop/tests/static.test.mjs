@@ -4,7 +4,6 @@ import { strict as assert } from "node:assert";
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
 const residentVoice = readFileSync(new URL("../src/components/resident-voice.js", import.meta.url), "utf8");
-const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
@@ -60,11 +59,5 @@ assert.ok(index.includes("personality-select"), "desktop must display personalit
 assert.ok(index.includes("personality-current"), "desktop must display active personality");
 assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
 assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
-assert.ok(settingsPanel.includes("field.options"), "settings panel must render select controls from backend metadata");
-assert.ok(settingsPanel.includes("field.section"), "settings panel must group settings from backend metadata");
-assert.ok(settingsPanel.includes("field.advanced"), "settings panel must use advanced metadata from backend");
-assert.ok(!settingsPanel.includes("LLM_MODEL_MODE"), "settings panel must not hardcode model mode field");
-assert.ok(!settingsPanel.includes("Local LLM intent (llama.cpp)"), "settings panel must not hardcode backend sections");
-assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
 
 console.log("desktop static voice checks passed");

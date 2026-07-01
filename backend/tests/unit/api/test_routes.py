@@ -72,7 +72,6 @@ class _FakeLocalLLM(_FakeLLM):
     accelerator = "gpu.cuda"
     base_url = "http://127.0.0.1:8080"
     selected_reason = "selected current-host gpu.cuda serve profile windows_amd64_gpu_nvidia_cuda"
-    model_mode = "prod"
     model_policy = "auto"
     model_role = "balanced"
     model_selection_reason = "policy auto mapped windows_amd64_gpu_nvidia_cuda to role balanced"
@@ -395,7 +394,6 @@ def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
         accelerator="cpu",
         base_url="http://127.0.0.1:8080",
         selected_reason="selected current-host CPU serve profile windows_amd64_cpu",
-        model_mode="prod",
         model_policy="auto",
         model_role="portable",
         model_selection_reason="policy auto mapped windows_amd64_cpu to role portable",
@@ -414,7 +412,6 @@ def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
     assert llm["base_url"] == "http://127.0.0.1:8080"
     assert llm["selected_reason"] == "selected current-host gpu.cuda serve profile windows_amd64_gpu_nvidia_cuda"
     assert llm["degraded_reason"] == "llama.cpp /v1/models reachable"
-    assert llm["model_mode"] == "prod"
     assert llm["model_policy"] == "auto"
     assert llm["model_role"] == "balanced"
     assert "role balanced" in llm["model_selection_reason"]
@@ -1071,18 +1068,11 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["JARVIS_LANGUAGE"]["section"] == "App Defaults"
     assert fields["USE_LOCAL_MODEL"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["USE_LOCAL_MODEL"]["advanced"] is False
-    assert fields["LLM_MODEL_MODE"]["options"] == ["dev", "prod"]
-    assert fields["LLM_MODEL_MODE"]["section"] == "Local LLM intent (llama.cpp)"
-    assert fields["LLM_MODEL_MODE"]["advanced"] is False
-    assert fields["LLM_MODEL_MODE"]["restart_required"] is True
     assert fields["LOCAL_MODEL_FETCH"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["LOCAL_MODEL_FETCH"]["advanced"] is True
     assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]
     assert fields["LLM_MODEL_POLICY"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["LLM_MODEL_ID"]["advanced"] is True
-    ordered_keys = [field["key"] for field in payload["fields"]]
-    assert ordered_keys.index("USE_LOCAL_MODEL") < ordered_keys.index("LLM_MODEL_MODE")
-    assert ordered_keys.index("LLM_MODEL_MODE") < ordered_keys.index("LLM_MODEL_POLICY")
     assert fields["USE_OLLAMA"]["section"] == "Use Local Ollama intent"
     assert fields["OLLAMA_MODEL"]["section"] == "Use Local Ollama intent"
     assert fields["OLLAMA_BASE_URL"]["section"] == "Use Local Ollama intent"

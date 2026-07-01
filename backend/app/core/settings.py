@@ -17,7 +17,6 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "MODEL_PATH": "advanced",
     "TOOL_FILESYSTEM_SANDBOX_PATH": "advanced",
     "USE_LOCAL_MODEL": "primary",
-    "LLM_MODEL_MODE": "primary",
     "LLM_MODEL_POLICY": "primary",
     "LLM_MODEL_ID": "advanced",
     "LOCAL_MODEL_FETCH": "derived",
@@ -112,16 +111,6 @@ def _env_str(name: str, default: str | None = None) -> str | None:
     return value
 
 
-def _env_choice(name: str, choices: set[str], default: str) -> str:
-    value = _env_str(name, default)
-    assert value is not None
-    selected = value.strip()
-    if selected not in choices:
-        allowed = ", ".join(sorted(choices))
-        raise ValueError(f"{name} must be one of: {allowed}")
-    return selected
-
-
 def _env_path(name: str, default: Path | str) -> Path:
     value = _env_str(name)
     return Path(value) if value is not None else Path(default)
@@ -146,7 +135,6 @@ class Settings:
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", True))
     local_model_fetch_explicit: bool = field(default_factory=lambda: _env_present("LOCAL_MODEL_FETCH"))
     local_model_fetch: bool = field(default_factory=lambda: _env_bool("LOCAL_MODEL_FETCH", False))
-    llm_model_mode: str = field(default_factory=lambda: _env_choice("LLM_MODEL_MODE", {"dev", "prod"}, "dev"))
     llm_model_policy: str | None = field(default_factory=lambda: _env_str("LLM_MODEL_POLICY", "auto"))
     llm_model_id: str | None = field(default_factory=lambda: _env_str("LLM_MODEL_ID"))
     llama_cpp_model_path: str | None = field(

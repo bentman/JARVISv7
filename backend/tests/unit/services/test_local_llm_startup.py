@@ -67,7 +67,6 @@ def test_prepare_managed_local_llm_reports_profile_degraded_reason(
             (),
             {
                 "model_id": "assistant-small-q4",
-                "mode": "dev",
                 "policy": "auto",
                 "role": "portable",
                 "reason": "policy auto selected assistant-small-q4",
@@ -166,7 +165,6 @@ def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runt
             (),
             {
                 "model_id": "assistant-small-q4",
-                "mode": "dev",
                 "policy": "auto",
                 "role": "portable",
                 "reason": "policy auto selected assistant-small-q4",
@@ -186,6 +184,5 @@ def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runt
     assert sidecars[0].started is True
     assert result.runtime.model == "assistant-small-q4"
     assert result.runtime.serve_profile_id == "windows_amd64_cpu"
-    assert result.runtime.model_mode == "dev"
     assert result.runtime.model_policy == "auto"
     assert result.runtime.model_role == "portable"

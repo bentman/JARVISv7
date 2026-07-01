@@ -3,8 +3,6 @@ from __future__ import annotations
 import importlib
 from pathlib import Path
 
-import pytest
-
 ENV_NAMES = (
     "APP_NAME",
     "JARVIS_LANGUAGE",
@@ -13,7 +11,6 @@ ENV_NAMES = (
     "MODEL_PATH",
     "TOOL_FILESYSTEM_SANDBOX_PATH",
     "USE_LOCAL_MODEL",
-    "LLM_MODEL_MODE",
     "LLM_MODEL_POLICY",
     "LLM_MODEL_ID",
     "LOCAL_MODEL_FETCH",
@@ -60,7 +57,6 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "APP_NAME",
     "JARVIS_LANGUAGE",
     "USE_LOCAL_MODEL",
-    "LLM_MODEL_MODE",
     "LLM_MODEL_POLICY",
     "LLM_MODEL_ID",
     "USE_OLLAMA",
@@ -404,7 +400,6 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
     settings = settings_module.load_settings()
 
     assert settings.use_local_model is True
-    assert settings.llm_model_mode == "dev"
     assert settings.llm_model_policy == "auto"
     assert settings.use_ollama is False
     assert settings.ollama_base_url == "http://127.0.0.1:11434"
@@ -424,34 +419,18 @@ def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path)
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "USE_LOCAL_MODEL=\nLLM_MODEL_MODE=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nUSE_SEARXNG=\nCONFIG_PATH=\n",
+        "USE_LOCAL_MODEL=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nUSE_SEARXNG=\nCONFIG_PATH=\n",
         None,
     )
 
     settings = settings_module.load_settings()
 
     assert settings.use_local_model is True
-    assert settings.llm_model_mode == "dev"
     assert settings.llm_model_policy == "auto"
     assert settings.ollama_model == "phi4-mini"
     assert settings.ollama_num_ctx == 8192
     assert settings.use_searxng is False
     assert settings.config_path == settings_module.CONFIG_DIR
-
-
-def test_llm_model_mode_accepts_prod(monkeypatch, tmp_path):
-    settings_module = _reload_settings(monkeypatch, tmp_path, "LLM_MODEL_MODE=prod\n", None)
-
-    settings = settings_module.load_settings()
-
-    assert settings.llm_model_mode == "prod"
-
-
-def test_llm_model_mode_rejects_invalid_value(monkeypatch, tmp_path):
-    settings_module = _reload_settings(monkeypatch, tmp_path, "LLM_MODEL_MODE=staging\n", None)
-
-    with pytest.raises(ValueError, match="LLM_MODEL_MODE"):
-        settings_module.load_settings()
 
 
 def test_resident_voice_segmenter_settings_read_from_env(monkeypatch, tmp_path):
@@ -504,7 +483,6 @@ def test_env_example_covers_current_settings_env_variables():
     assert advertised_advanced == []
     assert "LLM_MODELS" not in values
     assert values["JARVIS_LANGUAGE"] == "english"
-    assert values["LLM_MODEL_MODE"] == "dev"
     assert values["LLM_MODEL_POLICY"] == "auto"
     assert values["LLM_MODEL_ID"] == ""
     assert values["OLLAMA_MODEL"] == "phi4-mini"

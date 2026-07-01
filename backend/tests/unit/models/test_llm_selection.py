@@ -10,19 +10,15 @@ from backend.app.models.catalog import load_catalog
 from backend.app.models.llm_selection import LLMSelectionError, select_llm_model
 
 
-def _settings(
-    policy: str | None = None,
-    model_id: str | None = None,
-    mode: str = "dev",
-) -> Settings:
-    return Settings(llm_model_mode=mode, llm_model_policy=policy, llm_model_id=model_id)
+def _settings(policy: str | None = None, model_id: str | None = None) -> Settings:
+    return Settings(llm_model_policy=policy, llm_model_id=model_id)
 
 
 def _catalog() -> dict:
     return deepcopy(load_catalog("llm"))
 
 
-def test_dev_mode_selects_development_model_even_on_cuda_host() -> None:
+def test_auto_policy_maps_cuda_host_to_balanced_dev_alias() -> None:
     selection = select_llm_model(
         "voice_chat",
         HardwareProfile(
@@ -36,47 +32,23 @@ def test_dev_mode_selects_development_model_even_on_cuda_host() -> None:
     )
 
     assert selection.model_id == "assistant-small-q4"
-    assert selection.mode == "dev"
-    assert selection.policy == "auto"
-    assert selection.role == "dev"
-    assert selection.role_status == "active-development-default"
-    assert selection.hardware_selector == "mode:dev"
-    assert "mode dev selected assistant-small-q4" in selection.reason
-
-
-def test_prod_auto_policy_maps_cuda_host_to_balanced_model() -> None:
-    selection = select_llm_model(
-        "voice_chat",
-        HardwareProfile(
-            os_name="windows",
-            arch="amd64",
-            gpu_vendor="nvidia",
-            gpu_available=True,
-            cuda_available=True,
-        ),
-        settings=_settings(mode="prod"),
-    )
-
-    assert selection.model_id == "assistant-qwen3-8b-q5-balanced"
-    assert selection.mode == "prod"
     assert selection.policy == "auto"
     assert selection.role == "balanced"
-    assert selection.role_status == "active"
+    assert selection.role_status == "dev-alias"
     assert selection.hardware_selector == "windows_amd64_gpu_nvidia_cuda"
     assert "role balanced" in selection.reason
 
 
-def test_prod_named_policy_degrades_to_portable_on_cpu() -> None:
+def test_named_policy_uses_wildcard_role() -> None:
     selection = select_llm_model(
         "text_chat",
         HardwareProfile(os_name="windows", arch="amd64"),
-        settings=_settings(policy="quality", mode="prod"),
+        settings=_settings(policy="quality"),
     )
 
-    assert selection.model_id == "assistant-qwen3-4b-q4-portable"
-    assert selection.mode == "prod"
+    assert selection.model_id == "assistant-small-q4"
     assert selection.policy == "quality"
-    assert selection.role == "portable"
+    assert selection.role == "quality"
     assert selection.hardware_selector == "*"
 
 
@@ -84,7 +56,7 @@ def test_explicit_model_override_wins_over_policy() -> None:
     selection = select_llm_model(
         "voice_chat",
         HardwareProfile(os_name="windows", arch="amd64"),
-        settings=_settings(policy="quality", model_id="assistant-small-q4", mode="prod"),
+        settings=_settings(policy="quality", model_id="assistant-small-q4"),
     )
 
     assert selection.model_id == "assistant-small-q4"
@@ -98,7 +70,7 @@ def test_invalid_policy_fails_closed() -> None:
         select_llm_model(
             "voice_chat",
             HardwareProfile(os_name="windows", arch="amd64"),
-            settings=_settings(policy="missing", mode="prod"),
+            settings=_settings(policy="missing"),
         )
 
 
@@ -110,7 +82,7 @@ def test_invalid_role_fails_closed() -> None:
         select_llm_model(
             "voice_chat",
             HardwareProfile(os_name="windows", arch="amd64"),
-            settings=_settings(mode="prod"),
+            settings=_settings(),
             catalog=catalog,
         )
 
@@ -123,7 +95,7 @@ def test_invalid_role_model_fails_closed() -> None:
         select_llm_model(
             "voice_chat",
             HardwareProfile(os_name="windows", arch="amd64"),
-            settings=_settings(policy="portable", mode="prod"),
+            settings=_settings(policy="portable"),
             catalog=catalog,
         )
 
@@ -133,11 +105,11 @@ def test_route_compatibility_is_required() -> None:
         select_llm_model(
             "image_chat",
             HardwareProfile(os_name="windows", arch="amd64"),
-            settings=_settings(policy="portable", mode="prod"),
+            settings=_settings(policy="portable"),
         )
 
 
-def test_prod_arm64_qualcomm_qnn_host_selects_portable_model() -> None:
+def test_arm64_qualcomm_qnn_host_still_selects_existing_model() -> None:
     selection = select_llm_model(
         "voice_chat",
         HardwareProfile(
@@ -146,17 +118,9 @@ def test_prod_arm64_qualcomm_qnn_host_selects_portable_model() -> None:
             npu_vendor="qualcomm",
             npu_available=True,
         ),
-        settings=_settings(mode="prod"),
+        settings=_settings(),
     )
 
-    assert selection.model_id == "assistant-qwen3-4b-q4-portable"
-    assert selection.mode == "prod"
+    assert selection.model_id == "assistant-small-q4"
     assert selection.role == "portable"
     assert selection.hardware_selector == "windows_arm64_npu_qualcomm_qnn"
-
-
-def test_prod_policies_do_not_select_development_model() -> None:
-    profile = HardwareProfile(os_name="windows", arch="amd64")
-    for policy in ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]:
-        selection = select_llm_model("voice_chat", profile, settings=_settings(policy=policy, mode="prod"))
-        assert selection.model_id != "assistant-small-q4"

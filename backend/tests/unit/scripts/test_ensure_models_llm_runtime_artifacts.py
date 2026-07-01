@@ -617,13 +617,7 @@ def test_verify_family_llm_defaults_to_selected_model(monkeypatch, tmp_path: Pat
         lambda route, profile, policy=None: selected.append((route, policy)) or type(
             "Selection",
             (),
-            {
-                "model_id": "assistant-small-q4",
-                "mode": "prod",
-                "policy": policy or "auto",
-                "role": "balanced",
-                "hardware_selector": "windows_amd64_gpu_nvidia_cuda",
-            },
+            {"model_id": "assistant-small-q4", "policy": policy or "auto"},
         )(),
     )
 
@@ -637,13 +631,7 @@ def test_verify_family_llm_defaults_to_selected_model(monkeypatch, tmp_path: Pat
 
     assert code == 0
     assert selected == [("voice_chat", "balanced")]
-    assert result["selection"] == {
-        "mode": "prod",
-        "policy": "balanced",
-        "role": "balanced",
-        "model": "assistant-small-q4",
-        "hardware_selector": "windows_amd64_gpu_nvidia_cuda",
-    }
+    assert result["selection"] == {"policy": "balanced", "model": "assistant-small-q4"}
     assert [model["model"] for model in result["models"]] == ["assistant-small-q4"]
 
 
