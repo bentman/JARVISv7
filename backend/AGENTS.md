@@ -49,13 +49,17 @@ Backend tests live under:
 
 Tests are marker-gated, not directory-split by architecture. Use existing markers such as `x64`, `arm64`, `cuda`, `directml`, `qnn`, `live`, `stt`, `tts`, `llm`, `wake`, `turn`, `desktop`, and `agents`.
 
-For changed backend modules, add or maintain pytest coverage. Minimum bar is import/structure coverage. Preferred bar is behavior coverage.
+For changed backend modules, add or maintain pytest coverage. Import/structure coverage is enough for diffs under 20 lines unless new logic branches are introduced; behavior coverage is required only for new or changed logic branches.
 
 Use `backend/tests/conftest.py` helpers for hardware/live skips. Do not implement duplicate host detection inside tests.
+
+`live`-marked tests are validated only when the task changes runtime or hardware execution paths. Do not run or repair unrelated `live` tests.
 
 ## Validation
 
 Inner-loop focused pytest is fine while developing. Closeout evidence must use validator commands unless explicitly waived.
+
+Default closeout tier is `unit` for single-module backend changes. Escalate to `integration` or `runtime` only when the task explicitly touches those layers.
 
 Common backend validation commands:
 
