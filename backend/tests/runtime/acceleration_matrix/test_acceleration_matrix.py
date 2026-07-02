@@ -2,19 +2,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import wave
 
 import numpy as np
 import pytest
 
+from backend.app.conversation.engine import TurnEngine
+from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.paths import REPO_ROOT
 from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.personality.loader import load_default_personality
+from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
-from backend.tests.conftest import SKIP_UNLESS_LIVE
+from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime
+from backend.tests.conftest import (
+    SKIP_UNLESS_ARM64,
+    SKIP_UNLESS_LIVE,
+    SKIP_UNLESS_OLLAMA,
+    SKIP_UNLESS_X64,
+    ollama_base_url,
+)
 
 
 ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "NOT-WIRED", "N/A")
+FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
 REPORT_PATH = REPO_ROOT / "reports" / "validation" / "h8-voice-acceleration-matrix-current-host.txt"
 
 
@@ -24,6 +37,9 @@ class MatrixCell:
     device: str
     state: str
     evidence: str
+
+
+# Non-live selector/matrix logic.
 
 
 def _has_token(preflight: PreflightResult, token: str) -> bool:
@@ -98,8 +114,6 @@ def _format_matrix(cells: list[MatrixCell]) -> str:
     return "\n".join(lines) + "\n"
 
 
-@pytest.mark.live
-@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
 def test_h8_voice_acceleration_matrix_current_host(profiler_fixture, preflight_fixture):
     profile = profiler_fixture.profile
 
@@ -115,3 +129,111 @@ def test_h8_voice_acceleration_matrix_current_host(profiler_fixture, preflight_f
 
     assert not invalid_states, matrix
     assert not blocked_cells, matrix
+
+
+# Live smoke execution.
+
+
+@dataclass(frozen=True)
+class VoiceSmokeCase:
+    device: str
+    tts_reason: str
+    expected_device: str | None = None
+    allow_qnn_cpu_fallback: bool = False
+    require_transcript: bool = False
+
+
+def _load_mono_pcm16_wav(path: Path) -> tuple[np.ndarray, int]:
+    with wave.open(str(path), "rb") as wav_file:
+        raw_audio = wav_file.readframes(wav_file.getnframes())
+        sample_rate = wav_file.getframerate()
+        channels = wav_file.getnchannels()
+        sample_width = wav_file.getsampwidth()
+    if channels != 1 or sample_width != 2:
+        raise ValueError("expected mono 16-bit PCM WAV fixture")
+    return np.frombuffer(raw_audio, dtype="<i2").astype(np.float32) / 32768.0, sample_rate
+
+
+def _build_voice_engine(device: str, reason: str) -> TurnEngine:
+    return TurnEngine(
+        stt=OnnxWhisperRuntime(device=device),
+        tts=NullTTSRuntime(reason=reason),
+        llm=OllamaLLM(base_url=ollama_base_url()),
+        personality=load_default_personality(),
+    )
+
+
+def _assert_successful_voice_turn(
+    engine: TurnEngine,
+    audio: np.ndarray,
+    sample_rate: int,
+    *,
+    require_transcript: bool = False,
+) -> None:
+    result = engine.run_voice_turn(audio, sample_rate)
+
+    assert result.final_state == ConversationState.IDLE
+    if require_transcript:
+        assert result.transcript is not None and result.transcript.strip()
+    assert result.response_text is not None and result.response_text.strip()
+    assert result.failure_reason is None
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        pytest.param(
+            VoiceSmokeCase(
+                device="cpu",
+                tts_reason="TTS acceleration matrix live gate uses STT+LLM full-turn proof only",
+                require_transcript=True,
+            ),
+            id="cpu-current-host",
+        ),
+        pytest.param(
+            VoiceSmokeCase(device="cuda", tts_reason="x64 I.3 STT+LLM full-turn proof", expected_device="cuda"),
+            marks=[pytest.mark.stt, pytest.mark.cuda, pytest.mark.x64, pytest.mark.skipif(SKIP_UNLESS_X64, reason="requires x64 host")],
+            id="x64-cuda",
+        ),
+        pytest.param(
+            VoiceSmokeCase(
+                device="qnn",
+                tts_reason="arm64 I.3 STT+LLM full-turn proof",
+                expected_device="qnn",
+                allow_qnn_cpu_fallback=True,
+            ),
+            marks=[pytest.mark.stt, pytest.mark.qnn, pytest.mark.arm64, pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")],
+            id="arm64-qnn-with-cpu-fallback",
+        ),
+        pytest.param(
+            VoiceSmokeCase(device="cpu", tts_reason="arm64 I.3 CPU fallback full-turn proof", expected_device="cpu"),
+            marks=[pytest.mark.stt, pytest.mark.arm64, pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")],
+            id="arm64-cpu-fallback",
+        ),
+    ],
+)
+@pytest.mark.live
+@pytest.mark.turn
+@pytest.mark.requires_ollama
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+@pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
+def test_voice_acceleration_matrix_live_smoke(case: VoiceSmokeCase) -> None:
+    audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
+    engine = _build_voice_engine(case.device, case.tts_reason)
+
+    if not case.allow_qnn_cpu_fallback:
+        _assert_successful_voice_turn(engine, audio, sample_rate, require_transcript=case.require_transcript)
+        if case.expected_device is not None:
+            assert getattr(engine.stt, "device", None) == case.expected_device
+        return
+
+    result = engine.run_voice_turn(audio, sample_rate)
+    if result.final_state == ConversationState.IDLE:
+        assert result.response_text is not None and result.response_text.strip()
+        assert result.failure_reason is None
+        assert getattr(engine.stt, "device", None) == case.expected_device
+        return
+
+    fallback_engine = _build_voice_engine("cpu", "arm64 I.3 deterministic fallback proof after qnn path failure")
+    _assert_successful_voice_turn(fallback_engine, audio, sample_rate)
+    assert getattr(fallback_engine.stt, "device", None) == "cpu"
