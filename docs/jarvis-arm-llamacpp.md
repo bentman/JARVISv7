@@ -139,7 +139,7 @@ backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assis
 Then run a managed local-turn proof:
 
 ```powershell
-cmd /c "set JARVISV7_LIVE_TESTS=1&& set USE_LOCAL_MODEL=true&& set LLAMA_CPP_MANAGED=true&& set LLM_MODEL_MODE=prod&& backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_llm_live.py backend\tests\runtime\turn\test_local_llm_turn_live.py -q -m requires_llama_cpp"
+cmd /c "set JARVISV7_LIVE_TESTS=1&& set USE_LOCAL_MODEL=true&& set LLAMA_CPP_MANAGED=true&& set LLM_MODEL_MODE=prod&& backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_llm_llama_cpp_live.py backend\tests\runtime\turn -q -m requires_llama_cpp"
 ```
 
 Required evidence:

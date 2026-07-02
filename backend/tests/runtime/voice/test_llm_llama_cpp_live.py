@@ -3,14 +3,7 @@ from __future__ import annotations
 import pytest
 
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
-from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
-from backend.tests.conftest import (
-    LLAMA_CPP_READY_PROMPT,
-    SKIP_UNLESS_LIVE,
-    SKIP_UNLESS_OLLAMA,
-    assert_llama_cpp_ready_contract,
-    ollama_base_url,
-)
+from backend.tests.conftest import LLAMA_CPP_READY_PROMPT, SKIP_UNLESS_LIVE, assert_llama_cpp_ready_contract
 
 
 def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:
@@ -37,24 +30,6 @@ def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:
     )
     assert runtime.is_available(), runtime.reason
     return runtime
-
-
-@pytest.mark.live
-@pytest.mark.llm
-@pytest.mark.requires_ollama
-@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
-@pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
-def test_llm_ollama_returns_valid_string_response_to_known_prompt():
-    runtime = OllamaLLM(
-        base_url=ollama_base_url(),
-    )
-
-    if not runtime.is_available():
-        pytest.skip(f"ollama live endpoint unavailable: {runtime.reason}")
-    response = runtime.generate(LLAMA_CPP_READY_PROMPT)
-
-    assert isinstance(response, str)
-    assert response.strip()
 
 
 @pytest.mark.live

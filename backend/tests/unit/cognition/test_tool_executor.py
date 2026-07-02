@@ -18,7 +18,7 @@ class _Registry:
         return "ok"
 
 
-def test_executor_calls_registry_invoke() -> None:
+def test_tool_executor_calls_registry_invoke() -> None:
     registry = _Registry()
     result = ToolExecutor().execute("stub.echo", {"value": 1}, registry)
 
@@ -28,7 +28,7 @@ def test_executor_calls_registry_invoke() -> None:
     assert result.tool_output == "ok"
 
 
-def test_executor_returns_fail_closed_result_when_tool_missing() -> None:
+def test_tool_executor_returns_fail_closed_result_when_tool_missing() -> None:
     registry = _Registry(missing=True)
     result = ToolExecutor().execute("missing.tool", {}, registry)
 
@@ -37,7 +37,7 @@ def test_executor_returns_fail_closed_result_when_tool_missing() -> None:
     assert result.tool_output == ""
 
 
-def test_executor_returns_fail_closed_result_when_tool_raises() -> None:
+def test_tool_executor_returns_fail_closed_result_when_tool_raises() -> None:
     registry = _Registry(should_raise=True)
     result = ToolExecutor().execute("stub.echo", {"x": "y"}, registry)
 
@@ -46,7 +46,7 @@ def test_executor_returns_fail_closed_result_when_tool_raises() -> None:
     assert result.tool_output == ""
 
 
-def test_executor_result_has_success_false_on_error() -> None:
+def test_tool_executor_result_has_success_false_on_error() -> None:
     registry = _Registry(should_raise=True)
     result = ToolExecutor().execute("stub.echo", {}, registry)
 
