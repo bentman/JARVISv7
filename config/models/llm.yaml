@@ -417,6 +417,8 @@ models:
       top_k: 40
       repeat_penalty: 1.08
       max_tokens: 256
+      chat_template_kwargs:
+        enable_thinking: false
       stop:
         - "\nUser:"
         - "\nAssistant:"
@@ -750,6 +752,8 @@ models:
       top_k: 40
       repeat_penalty: 1.08
       max_tokens: 256
+      chat_template_kwargs:
+        enable_thinking: false
       stop:
         - "\nUser:"
         - "\nAssistant:"
@@ -1083,6 +1087,8 @@ models:
       top_k: 40
       repeat_penalty: 1.08
       max_tokens: 256
+      chat_template_kwargs:
+        enable_thinking: false
       stop:
         - "\nUser:"
         - "\nAssistant:"
@@ -1416,6 +1422,8 @@ models:
       top_k: 40
       repeat_penalty: 1.08
       max_tokens: 256
+      chat_template_kwargs:
+        enable_thinking: false
       stop:
         - "\nUser:"
         - "\nAssistant:"

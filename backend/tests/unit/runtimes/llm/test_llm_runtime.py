@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.models.catalog import get_model_entry
 from backend.app.runtimes.llm.claude_runtime import ClaudeLLM
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
@@ -113,6 +114,7 @@ def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
             "repeat_penalty": 1.08,
             "max_tokens": 256,
             "stop": ["\nUser:"],
+            "chat_template_kwargs": {"enable_thinking": False},
         },
     )
 
@@ -130,10 +132,67 @@ def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
                 "repeat_penalty": 1.08,
                 "max_tokens": 256,
                 "stop": ["\nUser:"],
+                "chat_template_kwargs": {"enable_thinking": False},
             },
             7.0,
         )
     ]
+
+
+def test_local_runtime_generate_envelope_sends_flat_prompt_over_chat_with_template_kwargs(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append((url, json, timeout))
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready"}}]},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+    runtime = LlamaCppLLM(
+        base_url="http://test",
+        model="assistant-qwen3-4b-q4-portable",
+        timeout=7.0,
+        generation_defaults={
+            "max_tokens": 16,
+            "temperature": 0,
+            "chat_template_kwargs": {"enable_thinking": False},
+        },
+    )
+    envelope = PromptEnvelope(
+        segments=(
+            PromptSegment(
+                authority="application",
+                content_type="instruction",
+                trusted=True,
+                text="Answer the latest request.",
+            ),
+            PromptSegment(
+                authority="user",
+                content_type="user_input",
+                trusted=False,
+                text="User: Reply ready",
+            ),
+        )
+    )
+
+    assert runtime.generate_envelope(envelope) == "ready"
+    payload = calls[0][1]
+    assert calls[0][0] == "http://test/v1/chat/completions"
+    assert payload["messages"] == [
+        {
+            "role": "user",
+            "content": (
+                "[APPLICATION RULES - trusted]\n"
+                "Answer the latest request.\n\n"
+                "[USER REQUEST - user instruction]\n"
+                "User: Reply ready\n\n"
+                "Assistant:"
+            ),
+        }
+    ]
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
 
 
 def test_local_runtime_generate_fails_on_empty_response(monkeypatch):

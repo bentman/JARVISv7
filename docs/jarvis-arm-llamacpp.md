@@ -139,7 +139,7 @@ backend\.venv\Scripts\python scripts\ensure_models.py --family llm --model assis
 Then run a managed local-turn proof:
 
 ```powershell
-cmd /c "set USE_LOCAL_MODEL=true&& set LLAMA_CPP_MANAGED=true&& backend\.venv\Scripts\python scripts\run_jarvis.py --text-only --turns 1 --trace-to reports\validation\slice_s_adreno_opencl_live"
+cmd /c "set JARVISV7_LIVE_TESTS=1&& set USE_LOCAL_MODEL=true&& set LLAMA_CPP_MANAGED=true&& set LLM_MODEL_MODE=prod&& backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_llm_live.py backend\tests\runtime\turn\test_local_llm_turn_live.py -q -m requires_llama_cpp"
 ```
 
 Required evidence:
@@ -147,7 +147,7 @@ Required evidence:
 - JARVIS selects the Windows ARM64 Adreno OpenCL llama.cpp profile.
 - The profile reports `gpu.opencl.adreno` or equivalent Adreno OpenCL evidence.
 - llama.cpp logs mention OpenCL and the Qualcomm/Adreno device.
-- The response is non-empty.
+- The live llama.cpp tests prove the selected prod model/profile metadata and deterministic `ready` response contract.
 - The process exits cleanly.
 
 ## Manual recovery path

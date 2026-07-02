@@ -150,6 +150,7 @@ class LlamaCppLLM(LLMBase):
         _copy_default(defaults, payload, "repeat_penalty")
         _copy_default(defaults, payload, "max_tokens")
         _copy_default(defaults, payload, "stop")
+        _copy_default(defaults, payload, "chat_template_kwargs")
         return payload
 
 

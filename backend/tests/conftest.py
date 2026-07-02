@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import shutil
 import time
 from functools import lru_cache
@@ -14,7 +15,9 @@ from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult, run_preflight
 from backend.app.hardware.provisioning import resolve_required_extras
+from backend.app.models.llm_selection import select_llm_model
 from backend.app.models.llm_profiles import resolve_llm_serve_profile
+from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 
 
@@ -84,6 +87,24 @@ SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None
 SKIP_UNLESS_DOCKER = shutil.which("docker") is None
 SKIP_UNLESS_QAIRT = not bool(_settings().qairt_sdk_path)
 SKIP_UNLESS_LIVE = not _settings().live_tests
+LLAMA_CPP_READY_PROMPT = "Reply with exactly the single lowercase word: ready"
+_THINK_BLOCK = re.compile(r"<think>.*?</think>", re.IGNORECASE | re.DOTALL)
+
+
+def normalize_llm_contract_text(text: str) -> str:
+    cleaned = _THINK_BLOCK.sub("", text).strip().lower()
+    cleaned = cleaned.removeprefix("assistant:").strip()
+    return re.sub(r"[^a-z0-9]+", " ", cleaned).strip()
+
+
+def assert_llama_cpp_ready_contract(response: str, *, runtime: LlamaCppLLM) -> None:
+    normalized = normalize_llm_contract_text(response)
+    assert normalized == "ready", (
+        "llama.cpp deterministic response contract failed; "
+        f"normalized={normalized!r}; raw={response!r}; "
+        f"model={runtime.model}; mode={runtime.model_mode}; policy={runtime.model_policy}; "
+        f"profile={runtime.serve_profile_id}; accelerator={runtime.accelerator}"
+    )
 
 
 @pytest.fixture(scope="session")
@@ -155,11 +176,37 @@ def _kill_processes(processes: list[psutil.Process], *, timeout_seconds: float =
 
 @pytest.fixture(scope="session")
 def live_llama_cpp_sidecar(profiler_fixture, preflight_fixture):
+    settings = _settings()
+    selection = select_llm_model(
+        "voice_chat",
+        profiler_fixture.profile,
+        settings=settings,
+    )
     resolution = resolve_llm_serve_profile(
         "voice_chat",
         profiler_fixture.profile,
         preflight_fixture,
+        settings=settings,
         flags=profiler_fixture.flags,
+        model_name=selection.model_id,
+    )
+    resolution = type(resolution)(
+        model_id=resolution.model_id,
+        route=resolution.route,
+        serve_profile_id=resolution.serve_profile_id,
+        local_model_path=resolution.local_model_path,
+        binary_path=resolution.binary_path,
+        base_url=resolution.base_url,
+        accelerator=resolution.accelerator,
+        launch=resolution.launch,
+        generation_defaults=resolution.generation_defaults,
+        selected_reason=resolution.selected_reason,
+        model_mode=selection.mode,
+        model_policy=selection.policy,
+        model_role=selection.role,
+        model_selection_reason=selection.reason,
+        degraded_reasons=resolution.degraded_reasons,
+        degraded_candidates=resolution.degraded_candidates,
     )
     if resolution.degraded_reason:
         pytest.skip(f"requires selected local llama.cpp artifacts: {resolution.degraded_reason}")
@@ -176,7 +223,7 @@ def live_llama_cpp_sidecar(profiler_fixture, preflight_fixture):
         pytest.fail(f"llama.cpp sidecar failed readiness polling: {reason}")
 
     try:
-        yield SimpleNamespace(resolution=resolution, service=service)
+        yield SimpleNamespace(resolution=resolution, selection=selection, service=service)
     finally:
         service.stop()
         leftovers = _processes_for_binary(resolution.binary_path)
