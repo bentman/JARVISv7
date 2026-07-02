@@ -17,6 +17,7 @@ from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport,
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.routing.runtime_selector import SelectionTrace
+from backend.app.services.startup_context import StartupContext
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.session_service import SessionService
 from backend.app.services.wake_monitor import WakeMonitorService
@@ -251,18 +252,21 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     prepare_calls: list[tuple[HardwareProfile, PreflightResult, CapabilityFlags]] = []
     selector_calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile, object]] = []
 
-    monkeypatch.setattr(app_module, "run_profiler", lambda: report)
-    monkeypatch.setattr(app_module, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(app_module, "run_preflight", lambda profile, extras: preflight)
     monkeypatch.setattr(
         app_module,
-        "_derive_readiness",
-        lambda preflight, profile: {
-            "stt": ("cpu", True, "stt ready"),
-            "tts": ("cpu", True, "tts ready"),
-            "llm": ("cpu", True, "llm ready"),
-            "wake": ("cpu", True, "wake ready"),
-        },
+        "load_startup_context",
+        lambda: StartupContext(
+            report=report,
+            profile=profile,
+            extras=["dev"],
+            preflight=preflight,
+            readiness={
+                "stt": ("cpu", True, "stt ready"),
+                "tts": ("cpu", True, "tts ready"),
+                "llm": ("cpu", True, "llm ready"),
+                "wake": ("cpu", True, "wake ready"),
+            },
+        ),
     )
     monkeypatch.setattr(app_module, "_load_runtime_policy", lambda: policy)
     monkeypatch.setattr(app_module, "load_default_personality", lambda: _FakeEngine.personality)

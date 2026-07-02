@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-02 09:48
+  - Summary: Implemented Slice Z.1 startup context cleanup. Backend startup facts are now centralized in a service helper, while API runtime/service construction and proving-host runtime behavior remain in their existing owners.
+  - Scope: `backend/app/services/startup_context.py`, `backend/app/api/app.py`, `scripts/bootstrap.py`, `scripts/run_backend.py`, `scripts/run_jarvis.py`, `scripts/validate_backend.py`, and focused backend unit tests.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_startup_context.py backend\tests\unit\scripts\test_bootstrap_script.py backend\tests\unit\scripts\test_run_backend_script.py backend\tests\unit\scripts\test_run_jarvis_script.py backend\tests\unit\api\test_routes.py -q` PASS (`74 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\scripts\test_validate_backend_script.py -q` PASS (`10 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`681 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+
 - 2026-07-02 05:08
   - Summary: Corrected the Windows ARM64 Qualcomm QNN Whisper decode loop to follow the Qualcomm AI Hub Whisper artifact contract, restoring automatic QNN STT selection for resident voice. Live desktop STT/TTS was confirmed improved with QNN Whisper visibly active in the app.
   - Scope: `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/hardware/readiness.py`, related STT/QNN unit tests, and resident voice audio replay diagnostics.

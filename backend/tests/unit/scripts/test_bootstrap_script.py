@@ -6,6 +6,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
+from backend.app.services.startup_context import ProfileContext, StartupContext
 from scripts import bootstrap
 
 
@@ -40,6 +41,27 @@ def _fake_preflight_helpers():
     )
 
 
+def _fake_profile_context() -> ProfileContext:
+    report = _fake_report()
+    return ProfileContext(report=report, profile=report.profile, extras=["dev"])
+
+
+def _fake_startup_context() -> StartupContext:
+    profile_context = _fake_profile_context()
+    return StartupContext(
+        report=profile_context.report,
+        profile=profile_context.profile,
+        extras=profile_context.extras,
+        preflight=_fake_preflight(),
+        readiness={
+            "stt": ("cpu", True, "stt ready"),
+            "tts": ("cpu", True, "tts ready"),
+            "llm": ("ollama", True, "llm ready"),
+            "wake": ("cpu", True, "wake ready"),
+        },
+    )
+
+
 def test_bootstrap_has_no_dependency_bearing_checkpoint4_top_level_imports() -> None:
     source = Path(bootstrap.__file__).read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -58,7 +80,7 @@ def test_bootstrap_has_no_dependency_bearing_checkpoint4_top_level_imports() -> 
 def test_bootstrap_halts_on_profiler_failure(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
         bootstrap,
-        "_load_profiler",
+        "_load_profile_context",
         lambda: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
@@ -71,9 +93,8 @@ def test_bootstrap_halts_on_profiler_failure(monkeypatch, capsys) -> None:
 
 
 def test_bootstrap_halts_on_provision_failure_with_checkpoint_reason(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(bootstrap, "_load_profiler", lambda: lambda: _fake_report())
-    monkeypatch.setattr(bootstrap, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(bootstrap, "_load_preflight_readiness_helpers", _fake_preflight_helpers)
+    monkeypatch.setattr(bootstrap, "_load_profile_context", _fake_profile_context)
+    monkeypatch.setattr(bootstrap, "_complete_startup_context", lambda context: _fake_startup_context())
     monkeypatch.setattr(
         bootstrap.subprocess,
         "run",
@@ -90,9 +111,8 @@ def test_bootstrap_halts_on_provision_failure_with_checkpoint_reason(monkeypatch
 
 
 def test_bootstrap_checkpoint_numbering_is_stable(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(bootstrap, "_load_profiler", lambda: lambda: _fake_report())
-    monkeypatch.setattr(bootstrap, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(bootstrap, "_load_preflight_readiness_helpers", _fake_preflight_helpers)
+    monkeypatch.setattr(bootstrap, "_load_profile_context", _fake_profile_context)
+    monkeypatch.setattr(bootstrap, "_complete_startup_context", lambda context: _fake_startup_context())
     monkeypatch.setattr(
         bootstrap.subprocess,
         "run",

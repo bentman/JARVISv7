@@ -18,13 +18,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
-from backend.app.hardware.preflight import run_preflight
-from backend.app.hardware.provisioning import resolve_required_extras
-from backend.app.hardware.readiness import (
-    derive_stt_device_readiness,
-    derive_tts_device_readiness,
-    derive_wake_device_readiness,
-)
+from backend.app.services.startup_context import load_startup_context, selected_path_readiness_summary
 
 REPORTS_DIR = APP_REPO_ROOT / "reports"
 DIAGNOSTICS_DIR = REPORTS_DIR / "diagnostics"
@@ -33,35 +27,8 @@ BENCHMARKS_DIR = REPORTS_DIR / "benchmarks"
 CACHE_DIR = APP_REPO_ROOT / "cache" / "validate_backend"
 
 
-def _load_profiler():
-    from backend.app.hardware.profiler import run_profiler
-
-    return run_profiler
-
-
 def _load_context():
-    profiler = _load_profiler()
-    report = profiler()
-    profile = report.profile
-    extras = resolve_required_extras(profile)
-    preflight = run_preflight(profile, extras)
-    return report, extras, preflight
-
-
-def _current_readiness_summary(profile, preflight) -> str:
-    stt_device, stt_ready, _ = derive_stt_device_readiness(preflight, profile)
-    _tts_device, tts_ready, _ = derive_tts_device_readiness(preflight, profile)
-    _wake_device, wake_ready, _ = derive_wake_device_readiness(preflight, profile)
-
-    selected_path_ready = stt_ready and tts_ready and wake_ready
-
-    stt_path_probe_error = stt_device == "qnn" and any(
-        key.startswith("onnxruntime.qnn") or key == "onnxruntime-qnn"
-        for key in preflight.probe_errors
-    )
-
-    status = "ready" if selected_path_ready and not stt_path_probe_error else "degraded"
-    return f"{status}; tokens={len(preflight.tokens)}"
+    return load_startup_context()
 
 
 def _current_timestamp() -> str:
@@ -454,9 +421,12 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv or sys.argv[1:])
     configure_logging(level="DEBUG" if args.verbose else "INFO", trace_to=args.trace_to)
 
-    report, extras, preflight = _load_context()
-    readiness = _current_readiness_summary(report.profile, preflight)
-    fingerprint_line = _capture_host_fingerprint(report.profile, extras, readiness=readiness)
+    context = _load_context()
+    report = context.report
+    extras = context.extras
+    preflight = context.preflight
+    readiness = selected_path_readiness_summary(context)
+    fingerprint_line = _capture_host_fingerprint(context.profile, extras, readiness=readiness)
     print(fingerprint_line)
 
     if args.command == "profile":

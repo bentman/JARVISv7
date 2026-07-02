@@ -11,9 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
-from backend.app.hardware.preflight import run_preflight
-from backend.app.hardware.profiler import run_profiler
-from backend.app.hardware.provisioning import resolve_required_extras
+from backend.app.services.startup_context import load_startup_context, readiness_summary
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -27,11 +25,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _readiness_summary(preflight) -> str:
-    status = "ready" if not preflight.probe_errors else "degraded"
-    return f"{status}; tokens={len(preflight.tokens)}"
-
-
 def _emit_fallback_fingerprint(out: TextIO) -> None:
     profile = type("Profile", (), {"arch": "unknown", "profiled_at": "unknown"})()
     emit_host_fingerprint(profile, [], readiness="profile-failed", out=out)
@@ -43,15 +36,13 @@ def main(argv: list[str] | None = None, out: TextIO | None = None) -> int:
     configure_logging(level="DEBUG" if args.verbose else "INFO", trace_to=args.trace_to)
 
     try:
-        report = run_profiler()
-        extras = resolve_required_extras(report.profile)
-        preflight = run_preflight(report.profile, extras)
+        context = load_startup_context()
     except Exception as exc:
         _emit_fallback_fingerprint(output)
         print(f"PROFILER_UNAVAILABLE {exc}", file=output)
         return 1
 
-    emit_host_fingerprint(report.profile, extras, readiness=_readiness_summary(preflight), out=output)
+    emit_host_fingerprint(context.profile, context.extras, readiness=readiness_summary(context), out=output)
     if args.dry_run:
         print(f"run_backend dry-run host={args.host} port={args.port} reload={args.reload}", file=output)
         return 0

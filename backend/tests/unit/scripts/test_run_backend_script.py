@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.services.startup_context import StartupContext
 from scripts import run_backend
 
 
@@ -26,12 +27,17 @@ def _fake_report() -> _Report:
 
 
 def _patch_startup(monkeypatch) -> None:
-    monkeypatch.setattr(run_backend, "run_profiler", lambda: _fake_report())
-    monkeypatch.setattr(run_backend, "resolve_required_extras", lambda profile: ["dev"])
+    report = _fake_report()
     monkeypatch.setattr(
         run_backend,
-        "run_preflight",
-        lambda profile, extras: PreflightResult(tokens=["import:onnxruntime"], dll_discovery_log=[], probe_errors={}),
+        "load_startup_context",
+        lambda: StartupContext(
+            report=report,
+            profile=report.profile,
+            extras=["dev"],
+            preflight=PreflightResult(tokens=["import:onnxruntime"], dll_discovery_log=[], probe_errors={}),
+            readiness={},
+        ),
     )
 
 

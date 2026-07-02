@@ -13,15 +13,7 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.core.paths import CONFIG_DIR
-from backend.app.hardware.preflight import PreflightResult, run_preflight
-from backend.app.hardware.profiler import run_profiler
-from backend.app.hardware.provisioning import resolve_required_extras
-from backend.app.hardware.readiness import (
-    derive_llm_device_readiness,
-    derive_stt_device_readiness,
-    derive_tts_device_readiness,
-    derive_wake_device_readiness,
-)
+from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
@@ -42,11 +34,11 @@ from backend.app.services.resident_voice_invocation import (
     default_utterance_segmenter,
     resident_interruption_chunks,
 )
+from backend.app.services.startup_context import ReadinessMap, load_startup_context
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.app.services.wake_monitor import WakeMonitorService
 
 
-ReadinessMap = dict[str, tuple[str, bool, str]]
 DEFAULT_POLICY_PATH = CONFIG_DIR / "app" / "policies.yaml"
 
 
@@ -71,15 +63,6 @@ class ApiState:
     resident_voice: ResidentVoiceInvocationService | None = None
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
-
-
-def _derive_readiness(preflight: PreflightResult, profile: HardwareProfile) -> ReadinessMap:
-    return {
-        "stt": derive_stt_device_readiness(preflight, profile),
-        "tts": derive_tts_device_readiness(preflight, profile),
-        "llm": derive_llm_device_readiness(preflight, profile),
-        "wake": derive_wake_device_readiness(preflight, profile),
-    }
 
 
 def _load_runtime_policy(path=DEFAULT_POLICY_PATH) -> dict[str, object]:
@@ -112,11 +95,12 @@ def bind_session(state: ApiState, session_manager: SessionManager) -> TurnEngine
 
 
 def build_startup_state() -> ApiState:
-    report = run_profiler()
-    profile = report.profile
-    extras = resolve_required_extras(profile)
-    preflight = run_preflight(profile, extras)
-    readiness = _derive_readiness(preflight, profile)
+    startup = load_startup_context()
+    report = startup.report
+    profile = startup.profile
+    extras = startup.extras
+    preflight = startup.preflight
+    readiness = startup.readiness
     personality = load_default_personality()
     stt = select_stt_runtime(preflight, profile)
     tts = select_tts_runtime(preflight, profile)

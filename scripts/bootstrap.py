@@ -13,32 +13,16 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
-from backend.app.hardware.provisioning import resolve_required_extras
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
+from backend.app.services.startup_context import complete_startup_context, load_profile_context
 
 
-def _load_profiler():
-    from backend.app.hardware.profiler import run_profiler
-
-    return run_profiler
+def _load_profile_context():
+    return load_profile_context()
 
 
-def _load_preflight_readiness_helpers():
-    from backend.app.hardware.preflight import run_preflight
-    from backend.app.hardware.readiness import (
-        derive_llm_device_readiness,
-        derive_stt_device_readiness,
-        derive_tts_device_readiness,
-        derive_wake_device_readiness,
-    )
-
-    return (
-        run_preflight,
-        derive_stt_device_readiness,
-        derive_tts_device_readiness,
-        derive_llm_device_readiness,
-        derive_wake_device_readiness,
-    )
+def _complete_startup_context(context):
+    return complete_startup_context(context)
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -74,10 +58,9 @@ def main(argv: list[str] | None = None) -> int:
 
     total = 5
     try:
-        profiler = _load_profiler()
-        report = profiler()
-        profile = report.profile
-        extras = resolve_required_extras(profile)
+        profile_context = _load_profile_context()
+        profile = profile_context.profile
+        extras = profile_context.extras
         _emit_header(profile, extras)
         _checkpoint(1, total, "profile", True, "run_profiler() completed")
     except Exception as exc:
@@ -102,25 +85,15 @@ def main(argv: list[str] | None = None) -> int:
         return code
 
     try:
-        (
-            run_preflight,
-            derive_stt_device_readiness,
-            derive_tts_device_readiness,
-            derive_llm_device_readiness,
-            derive_wake_device_readiness,
-        ) = _load_preflight_readiness_helpers()
-        preflight = run_preflight(profile, extras)
-        stt = derive_stt_device_readiness(preflight, profile)
-        tts = derive_tts_device_readiness(preflight, profile)
-        llm = derive_llm_device_readiness(preflight, profile)
-        wake = derive_wake_device_readiness(preflight, profile)
+        startup_context = _complete_startup_context(profile_context)
+        preflight = startup_context.preflight
         reason = json.dumps(
             {
                 "tokens": preflight.tokens,
-                "stt": stt,
-                "tts": tts,
-                "llm": llm,
-                "wake": wake,
+                "stt": startup_context.readiness["stt"],
+                "tts": startup_context.readiness["tts"],
+                "llm": startup_context.readiness["llm"],
+                "wake": startup_context.readiness["wake"],
             },
             sort_keys=True,
         )

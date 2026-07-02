@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.services.startup_context import StartupContext
 from scripts import validate_backend
 
 
@@ -30,14 +31,28 @@ def _fake_preflight() -> PreflightResult:
     )
 
 
-def test_profile_subcommand_prints_fingerprint_first_line(monkeypatch, capsys) -> None:
-    monkeypatch.setattr(validate_backend, "_load_profiler", lambda: lambda: _fake_report())
-    monkeypatch.setattr(validate_backend, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(
-        validate_backend,
-        "run_preflight",
-        lambda profile, extras: _fake_preflight(),
+def _fake_context() -> StartupContext:
+    report = _fake_report()
+    return StartupContext(
+        report=report,
+        profile=report.profile,
+        extras=["dev"],
+        preflight=_fake_preflight(),
+        readiness={
+            "stt": ("cpu", True, "stt ready"),
+            "tts": ("cpu", True, "tts ready"),
+            "llm": ("cpu", True, "llm ready"),
+            "wake": ("cpu", True, "wake ready"),
+        },
     )
+
+
+def _patch_context(monkeypatch) -> None:
+    monkeypatch.setattr(validate_backend, "load_startup_context", _fake_context)
+
+
+def test_profile_subcommand_prints_fingerprint_first_line(monkeypatch, capsys) -> None:
+    _patch_context(monkeypatch)
     monkeypatch.setattr(validate_backend, "_write_report", lambda *args, **kwargs: None)
 
     exit_code = validate_backend.main(["profile"])
@@ -120,13 +135,7 @@ def test_unit_subcommand_invokes_pytest_on_unit_dir(monkeypatch, capsys) -> None
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    monkeypatch.setattr(validate_backend, "_load_profiler", lambda: lambda: _fake_report())
-    monkeypatch.setattr(validate_backend, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(
-        validate_backend,
-        "run_preflight",
-        lambda profile, extras: _fake_preflight(),
-    )
+    _patch_context(monkeypatch)
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
@@ -152,13 +161,7 @@ def test_runtime_subcommand_accepts_families_and_devices_filters(monkeypatch, ca
     calls: list[list[str]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    monkeypatch.setattr(validate_backend, "_load_profiler", lambda: lambda: _fake_report())
-    monkeypatch.setattr(validate_backend, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(
-        validate_backend,
-        "run_preflight",
-        lambda profile, extras: _fake_preflight(),
-    )
+    _patch_context(monkeypatch)
     monkeypatch.setattr(
         validate_backend.subprocess,
         "run",
@@ -187,13 +190,7 @@ def test_ci_subcommand_suppresses_live_markers(monkeypatch, capsys) -> None:
     calls: list[list[str]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    monkeypatch.setattr(validate_backend, "_load_profiler", lambda: lambda: _fake_report())
-    monkeypatch.setattr(validate_backend, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(
-        validate_backend,
-        "run_preflight",
-        lambda profile, extras: _fake_preflight(),
-    )
+    _patch_context(monkeypatch)
     monkeypatch.setattr(
         validate_backend.subprocess,
         "run",

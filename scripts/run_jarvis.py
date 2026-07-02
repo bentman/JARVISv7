@@ -17,21 +17,14 @@ from backend.app.conversation.engine import TurnEngine, TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
-from backend.app.hardware.preflight import PreflightResult, run_preflight
-from backend.app.hardware.profiler import run_profiler
-from backend.app.hardware.provisioning import resolve_required_extras
-from backend.app.hardware.readiness import (
-    derive_llm_device_readiness,
-    derive_stt_device_readiness,
-    derive_tts_device_readiness,
-    derive_wake_device_readiness,
-)
+from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import load_default_personality
 from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
+from backend.app.services.startup_context import load_startup_context, readiness_summary
 from backend.app.services import turn_service, voice_service
 
 
@@ -45,7 +38,6 @@ class StartupContext:
     extras: list[str]
     preflight: PreflightResult
     readiness: dict[str, tuple[str, bool, str]]
-    readiness_summary: str
     local_llm_sidecar: LocalLLMSidecarService | None = None
     llm_trace: SelectionTrace | None = None
 
@@ -71,29 +63,14 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
-def _readiness_summary(preflight: PreflightResult) -> str:
-    status = "ready" if not preflight.probe_errors else "degraded"
-    return f"{status}; tokens={len(preflight.tokens)}"
-
-
 def _load_startup_context() -> StartupContext:
-    report = run_profiler()
-    profile = report.profile
-    extras = resolve_required_extras(profile)
-    preflight = run_preflight(profile, extras)
-    readiness = {
-        "stt": derive_stt_device_readiness(preflight, profile),
-        "tts": derive_tts_device_readiness(preflight, profile),
-        "llm": derive_llm_device_readiness(preflight, profile),
-        "wake": derive_wake_device_readiness(preflight, profile),
-    }
+    startup = load_startup_context()
     return StartupContext(
-        report=report,
-        profile=profile,
-        extras=extras,
-        preflight=preflight,
-        readiness=readiness,
-        readiness_summary=_readiness_summary(preflight),
+        report=startup.report,
+        profile=startup.profile,
+        extras=startup.extras,
+        preflight=startup.preflight,
+        readiness=startup.readiness,
     )
 
 
@@ -327,7 +304,7 @@ def main(argv: list[str] | None = None, out: TextIO | None = None) -> int:
     emit_host_fingerprint(
         context.profile,
         context.extras,
-        readiness=context.readiness_summary,
+        readiness=readiness_summary(context),
         out=output,
     )
     _print_startup_plan(context, args, output)

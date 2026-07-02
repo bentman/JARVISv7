@@ -92,28 +92,22 @@ def _fake_tool_result(turn_id: str = "turn-tool") -> TurnResult:
 
 
 def _patch_startup(monkeypatch, *, stt_ready: bool = True) -> None:
-    monkeypatch.setattr(run_jarvis, "run_profiler", lambda: _fake_report())
-    monkeypatch.setattr(run_jarvis, "resolve_required_extras", lambda profile: ["dev"])
-    monkeypatch.setattr(run_jarvis, "run_preflight", lambda profile, extras: _fake_preflight())
+    report = _fake_report()
     monkeypatch.setattr(
         run_jarvis,
-        "derive_stt_device_readiness",
-        lambda preflight, profile: ("cpu", stt_ready, "stt reason"),
-    )
-    monkeypatch.setattr(
-        run_jarvis,
-        "derive_tts_device_readiness",
-        lambda preflight, profile: ("cpu", True, "tts reason"),
-    )
-    monkeypatch.setattr(
-        run_jarvis,
-        "derive_llm_device_readiness",
-        lambda preflight, profile: ("cpu", True, "llm reason"),
-    )
-    monkeypatch.setattr(
-        run_jarvis,
-        "derive_wake_device_readiness",
-        lambda preflight, profile: ("cpu", True, "wake reason"),
+        "load_startup_context",
+        lambda: SimpleNamespace(
+            report=report,
+            profile=report.profile,
+            extras=["dev"],
+            preflight=_fake_preflight(),
+            readiness={
+                "stt": ("cpu", stt_ready, "stt reason"),
+                "tts": ("cpu", True, "tts reason"),
+                "llm": ("cpu", True, "llm reason"),
+                "wake": ("cpu", True, "wake reason"),
+            },
+        ),
     )
 
 
@@ -176,7 +170,6 @@ def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> 
             "llm": ("cpu", True, "llm ready"),
             "wake": ("cpu", True, "wake ready"),
         },
-        readiness_summary="ready; tokens=3",
     )
     prepared_runtime = _FakeLLM()
     selected_runtime = _FakeLLM()
