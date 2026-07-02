@@ -139,6 +139,38 @@ def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path:
     assert diagnostics["speech_chunks"] == 2
 
 
+def test_ptt_uses_resident_stream_buffer_for_manual_pre_roll(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    resident.ptt()
+
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+    stream.stop()
+
+    assert len(calls) == 1
+    assert calls[0][0].shape == (20,)
+    assert np.array_equal(calls[0][0][:4], np.zeros(4, dtype=np.float32))
+    diagnostics = service.status().voice_capture_diagnostics
+    assert diagnostics is not None
+    assert diagnostics["reason"] == "silence"
+    assert diagnostics["speech_chunks"] == 2
+
+
 def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_path: Path) -> None:
     calls: list[tuple[np.ndarray, int]] = []
     service = _service(tmp_path)

@@ -104,19 +104,18 @@ class QnnWhisperRuntime(STTBase):
         self._decoder_session: Any | None = None
         self._feature_extractor: Any | None = None
         self._tokenizer: Any | None = None
+        self._whisper_config: Any | None = None
 
     def _ensure_preprocessors(self) -> None:
-        if self._feature_extractor is None or self._tokenizer is None:
-            from transformers import WhisperFeatureExtractor, WhisperTokenizer
+        if self._feature_extractor is None or self._tokenizer is None or self._whisper_config is None:
+            from transformers import WhisperConfig, WhisperFeatureExtractor, WhisperTokenizer
 
-            decode_config = self._decode_config()
             self._feature_extractor = WhisperFeatureExtractor.from_pretrained("openai/whisper-base")
-            self._tokenizer = WhisperTokenizer.from_pretrained(
-                "openai/whisper-base",
-                language=decode_config["language"],
-                task=decode_config["task"],
-                predict_timestamps=decode_config["predict_timestamps"],
-            )
+            self._tokenizer = WhisperTokenizer.from_pretrained("openai/whisper-base")
+            self._whisper_config = WhisperConfig.from_pretrained("openai/whisper-base")
+            self._whisper_config.return_dict = False
+            self._whisper_config.tie_word_embeddings = False
+            self._whisper_config.mask_neg = -100.0
 
     def _decode_config(self) -> dict[str, Any]:
         decode = self._model_config.get("decode", {})
@@ -190,6 +189,8 @@ class QnnWhisperRuntime(STTBase):
             raise RuntimeError("QNNExecutionProvider not primary; CPU fallback detected")
 
         waveform = np.asarray(audio, dtype=np.float32)
+        audio_rms = float(np.sqrt(np.mean(np.square(waveform)))) if waveform.size else 0.0
+        audio_peak = float(np.max(np.abs(waveform))) if waveform.size else 0.0
         features = self._feature_extractor(
             waveform,
             sampling_rate=sample_rate,
@@ -201,18 +202,22 @@ class QnnWhisperRuntime(STTBase):
         encoder_feed: dict[str, np.ndarray] = {encoder_inputs[0].name: features}
         encoder_values = encoder.run(None, encoder_feed)
         encoder_map = {output.name: value for output, value in zip(encoder_outputs, encoder_values, strict=False)}
-        decoder_input_names = [i.name for i in decoder.get_inputs()]
-        print("[QNN_STT_DEBUG] encoder_map.keys=", list(encoder_map.keys()))
-        print("[QNN_STT_DEBUG] decoder_input_names=", decoder_input_names)
-
-        token_ids: list[int] = [int(token_id) for token_id in self._tokenizer.prefix_tokens]
-        if not token_ids:
-            raise RuntimeError("Whisper tokenizer did not provide decoder prefix tokens")
-        max_new_tokens = int(self._decode_config()["max_new_tokens"])
-        eot_token = 50257
-
         decoder_input_defs = {i.name: i for i in decoder.get_inputs()}
         decoder_output_defs = {o.name: o for o in decoder.get_outputs()}
+        if "attention_mask" not in decoder_input_defs:
+            raise RuntimeError("QNN Whisper decoder is missing required attention_mask input")
+
+        attention_shape = [
+            1 if dim is None or isinstance(dim, str) else int(dim)
+            for dim in (decoder_input_defs["attention_mask"].shape or [])
+        ]
+        if len(attention_shape) != 4 or attention_shape[-1] < 2:
+            raise RuntimeError(f"unsupported QNN Whisper attention_mask shape {attention_shape}")
+        mean_decode_len = int(attention_shape[-1])
+        max_decode_steps = mean_decode_len - 1
+        mask_neg = float(getattr(self._whisper_config, "mask_neg", -100.0))
+        token_ids: list[int] = [int(self._whisper_config.decoder_start_token_id)]
+        eot_token = int(self._whisper_config.eos_token_id)
 
         def _norm_tokens(name: str) -> list[str]:
             cleaned = name.replace("_in", "").replace("_out", "")
@@ -269,7 +274,13 @@ class QnnWhisperRuntime(STTBase):
         first_step_decoder_keys: list[str] | None = None
         first_step_cache_keys: list[str] | None = None
 
-        def _run_decoder_step(input_token_id: int, position_id: int, *, capture_debug: bool = False) -> int:
+        def _run_decoder_step(
+            input_token_id: int,
+            position_id: int,
+            attention_mask: np.ndarray,
+            *,
+            capture_debug: bool = False,
+        ) -> int:
             nonlocal first_step_cache_keys, first_step_decoder_keys
 
             last_token = np.array([[input_token_id]], dtype=np.int32)
@@ -280,11 +291,10 @@ class QnnWhisperRuntime(STTBase):
                     decoder_feed[name] = last_token
                     continue
                 if name == "attention_mask":
-                    mask_shape = [
-                        1 if dim is None or isinstance(dim, str) else int(dim) for dim in (input_def.shape or [])
-                    ]
                     mask_dtype = np.int32 if input_def.type == "tensor(int32)" else np.float16
-                    decoder_feed[name] = np.ones(mask_shape, dtype=mask_dtype)
+                    if input_def.type == "tensor(float)":
+                        mask_dtype = np.float32
+                    decoder_feed[name] = attention_mask.astype(mask_dtype, copy=False)
                     continue
                 if name == "position_ids":
                     decoder_feed[name] = np.array([position_id], dtype=np.int32)
@@ -324,24 +334,31 @@ class QnnWhisperRuntime(STTBase):
 
             return next_token
 
-        for position_id, prefix_token_id in enumerate(token_ids[:-1]):
-            _run_decoder_step(prefix_token_id, position_id)
-
-        for step_idx in range(max_new_tokens):
+        attention_dtype = np.float32 if decoder_input_defs["attention_mask"].type == "tensor(float)" else np.float16
+        attention_mask = np.full(attention_shape, mask_neg, dtype=attention_dtype)
+        position_id = 0
+        for step_idx in range(max_decode_steps):
+            attention_mask[:, :, :, mean_decode_len - step_idx - 1] = 0.0
             next_token = _run_decoder_step(
-                token_ids[-1],
-                len(token_ids) - 1,
+                token_ids[step_idx],
+                position_id,
+                attention_mask,
                 capture_debug=step_idx == 0,
             )
+            token_ids.append(next_token)
             if next_token == eot_token:
                 break
-            token_ids.append(next_token)
+            position_id += 1
 
         transcript = self._tokenizer.decode(token_ids, skip_special_tokens=True)
         result = transcript.strip().lower()
         if not result:
-            print("[QNN_STT_DEBUG] decoder_map.keys(step1)=", first_step_decoder_keys)
-            print("[QNN_STT_DEBUG] cache_state.keys(step1)=", first_step_cache_keys)
-            print("[QNN_STT_DEBUG] token_ids=", token_ids)
-            print("[QNN_STT_DEBUG] return_value=", result)
+            if audio_peak > 1e-4 and audio_rms > 1e-5:
+                raise RuntimeError(
+                    "QNN STT returned empty transcript for non-silent audio "
+                    f"(rms={audio_rms:.6f}, peak={audio_peak:.6f}, "
+                    f"tokens={token_ids}, encoder_provider={encoder.get_providers()[0]}, "
+                    f"decoder_provider={decoder.get_providers()[0]}, "
+                    f"decoder_outputs={first_step_decoder_keys}, cache_inputs={first_step_cache_keys})"
+                )
         return result

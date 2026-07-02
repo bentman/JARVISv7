@@ -218,7 +218,7 @@ class ResidentVoiceInvocationService:
         if not self._resident_stream.status().running:
             return request
 
-        subscriber = self._resident_stream.subscribe()
+        subscriber = self._resident_stream.subscribe(include_buffer=request.source == "ptt")
         try:
             segment = self._utterance_segmenter.capture(_subscriber_chunks(subscriber))
         finally:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import wave
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 from uuid import uuid4
@@ -43,6 +44,7 @@ class TurnResult:
     interruption_events: list[dict[str, object]] = field(default_factory=list)
     tool_calls: list[dict[str, object]] = field(default_factory=list)
     tool_results: list[dict[str, object]] = field(default_factory=list)
+    raw_audio_path: str | None = None
 
 
 class TurnEngine:
@@ -102,21 +104,29 @@ class TurnEngine:
         tool_input: dict[str, object] | None = None,
     ) -> TurnResult:
         context = self._create_context("voice")
+        raw_audio_path = self._persist_voice_audio(context, audio, sample_rate)
         try:
             context.advance(ConversationState.LISTENING)
             context.advance(ConversationState.TRANSCRIBING)
             transcript = self.stt.transcribe(np.asarray(audio, dtype=np.float32), sample_rate)
             if not transcript.strip():
-                return self._fail(context, transcript=transcript, response_text=None, reason="STT returned empty transcript")
+                return self._fail(
+                    context,
+                    transcript=transcript,
+                    response_text=None,
+                    reason="STT returned empty transcript",
+                    raw_audio_path=raw_audio_path,
+                )
             return self._run_reasoning_path(
                 context,
                 transcript,
                 speak_response=True,
                 tool_name=tool_name,
                 tool_input=tool_input,
+                raw_audio_path=raw_audio_path,
             )
         except Exception as exc:
-            return self._fail(context, transcript=None, response_text=None, reason=str(exc))
+            return self._fail(context, transcript=None, response_text=None, reason=str(exc), raw_audio_path=raw_audio_path)
 
     def _run_reasoning_path(
         self,
@@ -126,6 +136,7 @@ class TurnEngine:
         speak_response: bool,
         tool_name: str | None = None,
         tool_input: dict[str, object] | None = None,
+        raw_audio_path: str | None = None,
     ) -> TurnResult:
         try:
             context.advance(ConversationState.REASONING)
@@ -182,6 +193,7 @@ class TurnEngine:
                     final_prompt_text=prompt,
                     tool_results=tool_results,
                     retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
+                    raw_audio_path=raw_audio_path,
                 )
             context.advance(ConversationState.IDLE)
             result = TurnResult(
@@ -192,6 +204,7 @@ class TurnEngine:
                 final_state=context.state,
                 tool_calls=self._to_tool_calls(tool_results),
                 tool_results=self._to_tool_results(tool_results),
+                raw_audio_path=raw_audio_path,
             )
             self._record_artifact(
                 context,
@@ -212,6 +225,7 @@ class TurnEngine:
         final_prompt_text: str,
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
+        raw_audio_path: str | None = None,
     ) -> TurnResult:
         if not self.tts.is_available():
             context.advance(ConversationState.IDLE)
@@ -225,6 +239,7 @@ class TurnEngine:
                 tts_degraded_reason="TTS runtime is unavailable",
                 tool_calls=self._to_tool_calls(tool_results or []),
                 tool_results=self._to_tool_results(tool_results or []),
+                raw_audio_path=raw_audio_path,
             )
             self._record_artifact(
                 context,
@@ -246,6 +261,7 @@ class TurnEngine:
                 retrieved_memory_refs=retrieved_memory_refs,
                 audio=audio,
                 sample_rate=sample_rate,
+                raw_audio_path=raw_audio_path,
             )
         self.playback_api.play(audio, sample_rate)
         tts_output_device = getattr(self.playback_api, "last_output_device", lambda: None)()
@@ -257,6 +273,7 @@ class TurnEngine:
             response_text=response_text,
             final_state=context.state,
             tts_output_device=tts_output_device,
+            raw_audio_path=raw_audio_path,
         )
         self._record_artifact(
             context,
@@ -277,6 +294,7 @@ class TurnEngine:
         sample_rate: int,
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
+        raw_audio_path: str | None = None,
     ) -> TurnResult:
         assert self.barge_in_detector is not None
         self.barge_in_detector.reset()
@@ -308,6 +326,7 @@ class TurnEngine:
                     interruption_events=interruption_events,
                     tool_calls=self._to_tool_calls(tool_results or []),
                     tool_results=self._to_tool_results(tool_results or []),
+                    raw_audio_path=raw_audio_path,
                 )
                 self._record_artifact(
                     context,
@@ -326,6 +345,7 @@ class TurnEngine:
             final_state=context.state,
             tool_calls=self._to_tool_calls(tool_results or []),
             tool_results=self._to_tool_results(tool_results or []),
+            raw_audio_path=raw_audio_path,
         )
         self._record_artifact(
             context,
@@ -348,6 +368,7 @@ class TurnEngine:
         transcript: str | None,
         response_text: str | None,
         reason: str,
+        raw_audio_path: str | None = None,
     ) -> TurnResult:
         if context.state != ConversationState.FAILED:
             context.advance(ConversationState.FAILED)
@@ -358,6 +379,7 @@ class TurnEngine:
             response_text=response_text,
             final_state=context.state,
             failure_reason=reason,
+            raw_audio_path=raw_audio_path,
         )
         self._record_artifact(context, result, final_prompt_text=None)
         return result
@@ -391,6 +413,7 @@ class TurnEngine:
             transcript=result.transcript,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=list(retrieved_memory_refs or []),
+            raw_audio_path=result.raw_audio_path,
             response_text=result.response_text,
             final_state=result.final_state.value,
             failure_reason=result.failure_reason,
@@ -410,6 +433,24 @@ class TurnEngine:
                 pass
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
+
+    def _persist_voice_audio(self, context: TurnContext, audio: np.ndarray, sample_rate: int) -> str | None:
+        if self.session_manager is None:
+            return None
+        samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+        if samples.size == 0:
+            return None
+        session_dir = self.session_manager.turns_base_dir / context.session_id
+        session_dir.mkdir(parents=True, exist_ok=True)
+        audio_path = session_dir / f"{context.turn_id}.wav"
+        clipped = np.clip(samples, -1.0, 1.0)
+        pcm16 = (clipped * 32767.0).astype("<i2")
+        with wave.open(str(audio_path), "wb") as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(int(sample_rate))
+            wav_file.writeframes(pcm16.tobytes())
+        return str(audio_path)
 
     def _execute_tool(self, tool_name: str, tool_input: dict[str, object]) -> ToolResult:
         if self.tool_registry is None:

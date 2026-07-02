@@ -94,8 +94,8 @@ class ResidentAudioStream:
         subscriber: queue.Queue[AudioChunk] = queue.Queue(maxsize=self._subscriber_queue_size)
         with self._lock:
             if include_buffer:
-                for chunk in self._buffer:
-                    self._put_or_drop(subscriber, chunk)
+                for chunk in list(self._buffer)[-self._subscriber_queue_size :]:
+                    subscriber.put_nowait(chunk)
             self._subscribers.append(subscriber)
         return subscriber
 

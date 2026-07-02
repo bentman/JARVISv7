@@ -524,6 +524,20 @@ def test_engine_with_session_manager_records_failed_turn_artifact(tmp_path):
     assert manager.turn_artifacts[0].failure_reason == "llm failed"
 
 
+def test_voice_failure_artifact_preserves_raw_audio_path(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    audio = np.linspace(-0.25, 0.25, 160, dtype=np.float32)
+
+    result = _engine(session_manager=manager, stt=FakeSTT(transcript="")).run_voice_turn(audio, 16000)
+
+    assert result.final_state == ConversationState.FAILED
+    artifact = manager.turn_artifacts[0]
+    assert artifact.failure_reason == "STT returned empty transcript"
+    assert artifact.raw_audio_path is not None
+    assert Path(artifact.raw_audio_path).exists()
+    assert Path(artifact.raw_audio_path).suffix == ".wav"
+
+
 def test_engine_calls_episodic_write_after_artifact_write_when_injected(tmp_path: Path) -> None:
     manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
     episodic = FakeEpisodic()

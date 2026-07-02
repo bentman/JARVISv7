@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-07-02 05:08
+  - Summary: Corrected the Windows ARM64 Qualcomm QNN Whisper decode loop to follow the Qualcomm AI Hub Whisper artifact contract, restoring automatic QNN STT selection for resident voice. Live desktop STT/TTS was confirmed improved with QNN Whisper visibly active in the app.
+  - Scope: `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/hardware/readiness.py`, related STT/QNN unit tests, and resident voice audio replay diagnostics.
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: Saved desktop failure audio replay through QNN PASS with transcript `'what is the capital of mexico?'`. Automatic selector PASS: `QnnWhisperRuntime qnn whisper-qualcomm-qnn`. `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\stt\test_stt_runtime.py backend\tests\unit\hardware -q` PASS (`91 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`678 passed, 1 warning`). `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=arm64`, `ep:QNNExecutionProvider`, `dll:QnnHtp`). `$env:JARVISV7_LIVE_TESTS='1'; backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_stt_live.py -q -k qnn` PASS (`2 passed, 2 deselected`). Operator live desktop confirmation: STT/TTS working better and QNN Whisper visibly active.
+  - Note: This records the resulting QNN Whisper correction only; intermediate fallback/churn is intentionally omitted.
+
 - 2026-07-02 03:32
   - Summary: Recorded Slice Y validation-only evidence for the Windows AMD64 CUDA local LLM path. No implementation, inventory, or documentation changes were made beyond this evidence entry.
   - Scope: Slice Y validation evidence only; `CHANGE_LOG.md`.

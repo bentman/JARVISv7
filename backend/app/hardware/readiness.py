@@ -17,7 +17,6 @@ def derive_stt_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
-    # ARM64 Qualcomm path (H.3 PASS): evaluate QNN prerequisites first.
     if profile.npu_available and profile.npu_vendor == "qualcomm":
         qnn_tokens_present = all(
             _has_token(preflight, token)
@@ -28,7 +27,6 @@ def derive_stt_device_readiness(
             )
         )
         if qnn_tokens_present:
-            # Preserve token-proven QNN selection contract used by existing runtime/unit tests.
             return ("qnn", True, "qnn prerequisites proven; selecting qnn")
         return ("cpu", True, "selecting cpu")
 

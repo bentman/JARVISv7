@@ -68,6 +68,18 @@ def test_stream_buffers_chunks_and_replays_to_new_subscriber() -> None:
     assert stream.status().subscribers == 0
 
 
+def test_stream_buffer_replay_keeps_newest_chunks_when_subscriber_queue_is_smaller() -> None:
+    stream = ResidentAudioStream(buffer_chunks=4, subscriber_queue_size=2)
+
+    for sequence_value in range(1, 5):
+        stream.publish_for_test(np.array([sequence_value], dtype=np.float32))
+
+    replay = stream.subscribe(include_buffer=True)
+
+    assert [replay.get_nowait().sequence, replay.get_nowait().sequence] == [3, 4]
+    assert stream.status().dropped_chunks == 0
+
+
 def test_stream_counts_dropped_chunks_for_full_subscriber_queue() -> None:
     stream = ResidentAudioStream(subscriber_queue_size=1)
     subscriber = stream.subscribe()
