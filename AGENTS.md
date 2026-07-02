@@ -76,6 +76,7 @@ Proposal format:
 - Host classes affected
 - Commands to run
 - Expected evidence
+- Coverage scope: import/structure for diffs under 20 lines unless new logic branches are introduced; behavior coverage only for new or changed logic branches.
 
 ## 4. Work pattern
 
@@ -147,32 +148,3 @@ Never run destructive Git operations without explicit approval, including:
 - `git clean`
 - `git rebase`
 - history rewrites
-
-If rollback is requested, propose the safest path based on whether the target changes are committed or uncommitted.
-
-## 9. Where to look
-
-Scoped operating files:
-
-- `backend/AGENTS.md` — backend app, tests, runtime selection, hardware rules
-- `desktop/AGENTS.md` — Tauri desktop shell rules
-- `models/AGENTS.md` — local model artifact rules
-- `runtimes/AGENTS.md` — local runtime sidecar rules
-- `scripts/AGENTS.md` — repository script conventions
-
-Operational docs:
-
-- `docs/QuickStart.md` — setup and normal commands
-
-Do not treat archived docs, completed slice notes, or helper notes as permission to bypass current source/config/catalog design.
-
-## 10. Reporting format
-
-When reporting completion or progress, use:
-
-- Summary
-- Host class validated on
-- Files inspected and changed
-- Commands executed and outcomes
-- Minimal evidence excerpt or report path
-- Stop unless a next action was explicitly requested
