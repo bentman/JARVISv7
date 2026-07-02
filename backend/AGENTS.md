@@ -49,6 +49,21 @@ Backend tests live under:
 
 Tests are marker-gated, not directory-split by architecture. Use existing markers such as `x64`, `arm64`, `cuda`, `directml`, `qnn`, `live`, `stt`, `tts`, `llm`, `wake`, `turn`, `desktop`, and `agents`.
 
+Preferred marker locations:
+
+| Marker or concern | Intended location | Notes |
+|---|---|---|
+| `stt`, `tts`, `llm`, `wake` unit behavior | `backend/tests/unit/runtimes/<family>/` | Runtime adapter logic and payload/selection behavior. |
+| hardware/profile/readiness selectors | `backend/tests/unit/hardware/` | Host facts, preflight tokens, readiness decisions, and degraded reasons. |
+| service lifecycle without live hardware | `backend/tests/unit/services/` | Startup, sidecar command construction, resident service state, no real devices. |
+| turn/session/cognition behavior | `backend/tests/unit/conversation/` or `backend/tests/unit/cognition/` | Prompt, continuity, memory, tools, and state-flow behavior with fakes. |
+| API/readiness/config surfaces | `backend/tests/unit/api/` | Route/schema truth, no runtime ownership. |
+| `live` runtime proof | `backend/tests/runtime/<family-or-concern>/` | Only for real runtime/hardware execution paths. |
+| `cuda`, `directml`, `qnn`, `x64`, `arm64` | Existing runtime or hardware test for that family | Add to an existing marked file before creating a new file. |
+| `desktop` backend contract | `backend/tests/unit/desktop/` or `backend/tests/runtime/desktop/` | Static contract in unit; real app/process checks in runtime only. |
+| `agents` | `backend/tests/unit/agents/` | Keep distinct from turn-level cognition executor/planner tests. |
+| cross-runtime matrix | `backend/tests/runtime/acceleration_matrix/` | Matrix shape/smoke only; do not duplicate per-family assertions. |
+
 For changed backend modules, add or maintain pytest coverage. Import/structure coverage is enough for diffs under 20 lines unless new logic branches are introduced; behavior coverage is required only for new or changed logic branches.
 
 Use `backend/tests/conftest.py` helpers for hardware/live skips. Do not implement duplicate host detection inside tests.
