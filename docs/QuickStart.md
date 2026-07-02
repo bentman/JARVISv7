@@ -1,6 +1,6 @@
 # Quick Start
 
-This guide sets up a fresh JARVISv7 clone on Windows using repo-owned commands.
+This guide sets up and launches the current repo-run JARVISv7 desktop preview on Windows using repo-owned commands.
 
 Run commands from PowerShell at the repository root. Do not install Python packages globally for this repo.
 
@@ -37,7 +37,17 @@ Set-Location <REPO_ROOT_PATH>
 git pull
 ```
 
-## Prepare PowerShell
+## Repo-run desktop preview
+
+Use this path for the normal product-preview flow:
+
+```text
+prepare shell -> create backend venv -> bootstrap -> install desktop deps -> launch desktop
+```
+
+The desktop shell starts the backend, creates or resumes a session, loads readiness, starts the resident voice stream when available, and displays backend, readiness, service, wake, resident voice, and session state.
+
+### 1. Prepare PowerShell
 
 ```powershell
 $env:PYTHONUTF8 = "1"
@@ -49,7 +59,7 @@ $env:PIP_CACHE_DIR = "$PWD\cache\pip"
 New-Item -ItemType Directory -Force $env:TEMP, $env:PIP_CACHE_DIR | Out-Null
 ```
 
-## Create the backend environment
+### 2. Create the backend environment
 
 Prefer Python 3.13 when available:
 
@@ -65,7 +75,7 @@ py -3.12 -m venv backend\.venv
 .\backend\.venv\Scripts\python -m pip install --upgrade pip
 ```
 
-## Configure local settings
+### 3. Use starter settings
 
 JARVIS loads `.env` when present. If `.env` is missing, it falls back to `.env.example`.
 
@@ -87,28 +97,47 @@ Create `.env` only for local overrides:
 Copy-Item .env.example .env
 ```
 
-Use these local LLM modes:
-
-```text
-dev  = default starter mode; uses assistant-small-q4
-prod = production local LLM mode; uses the host/policy-selected Qwen3 catalog model
-```
-
 Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override. A nonblank `LLM_MODEL_ID` wins over dev/prod policy selection.
 
-## Bootstrap
+### 4. Bootstrap backend dependencies and models
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\bootstrap.py
 ```
 
-Bootstrap runs the repo setup checkpoints in order. If it fails, fix the failed checkpoint instead of manually installing packages or models outside the repo commands.
+Bootstrap runs repo setup checkpoints in order. If it fails, fix the failed checkpoint instead of manually installing packages or models outside the repo commands.
 
-## Verify setup
+### 5. Install desktop dependencies and launch
+
+```powershell
+npm --prefix desktop install
+npm --prefix desktop test
+npm --prefix desktop run dev
+```
+
+Do not install Tauri globally for this repo. Use repo-local desktop package commands.
+
+The running desktop is the main product-preview surface. Use its readiness, services, resident voice, wake, session, and error panels before dropping to backend scripts.
+
+## Troubleshooting and focused checks
+
+Use these commands when bootstrap or desktop launch fails, or when the desktop reports degraded readiness.
+
+Verify installed Python requirements:
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\provision.py verify
+```
+
+Verify selected model artifacts:
+
+```powershell
 .\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
+```
+
+Inspect backend profile and readiness evidence:
+
+```powershell
 .\backend\.venv\Scripts\python scripts\validate_backend.py profile
 ```
 
@@ -118,7 +147,20 @@ For a broader backend check:
 .\backend\.venv\Scripts\python scripts\validate_backend.py regression
 ```
 
+## Optional local services
+
+Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
+
+SearXNG defaults to host port `8888`.
+
+```powershell
+docker compose up --detach
+docker compose down
+```
+
 ## Use production local LLM mode
+
+Starter mode uses `dev` and selects `assistant-small-q4`. Production mode uses the host/policy-selected Qwen3 catalog model.
 
 Preview the selected production model for the current host:
 
@@ -143,18 +185,9 @@ $env:LLM_MODEL_MODE = "dev"
 
 Use `--all-llm` only when intentionally validating the full LLM catalog.
 
-## Optional local services
+## Backend and proving-host commands
 
-Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
-
-SearXNG defaults to host port `8888`.
-
-```powershell
-docker compose up --detach
-docker compose down
-```
-
-## Run the backend API
+The desktop preview starts the backend for normal use. Run the backend directly only for API development or diagnosis:
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\run_backend.py
@@ -173,9 +206,7 @@ Useful options:
 .\backend\.venv\Scripts\python scripts\run_backend.py --host 127.0.0.1 --port 8765
 ```
 
-## Run a diagnostic turn
-
-Text-only proving-host turn:
+Diagnostic text-only proving-host turn:
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\run_jarvis.py --text-only --turns 1
@@ -187,23 +218,11 @@ Profile-only startup check:
 .\backend\.venv\Scripts\python scripts\run_jarvis.py --profile
 ```
 
-Voice-only turn requires working local STT, TTS, and an audio input device.
+Voice-only proving-host turn requires working local STT, TTS, and an audio input device.
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\run_jarvis.py --voice-only --turns 1
 ```
-
-## Run the desktop shell
-
-```powershell
-npm --prefix desktop install
-npm --prefix desktop test
-npm --prefix desktop run dev
-```
-
-Do not install Tauri globally for this repo. Use repo-local desktop package commands.
-
-Operator settings are supplied by backend metadata. Desktop settings should render that metadata; do not hardcode local model options in the desktop shell.
 
 ## Development validation
 
