@@ -2,6 +2,8 @@
 
 This is the repo-wide operating contract for AI and human agents. It is intentionally compact. Follow the nearest `AGENTS.md` for files in a subtree; explicit user/developer instructions override repository instructions. If instructions conflict, report the conflict and use the narrowest safe path.
 
+Keep this file limited to repository-wide rules agents cannot reliably infer from code, docs, or tooling. Put subtree-specific rules in the scoped `AGENTS.md` closest to the affected files.
+
 ## 1. Precedence and truth sources
 
 Use this order for repository truth:
@@ -14,7 +16,7 @@ Use this order for repository truth:
 6. `SYSTEM_INVENTORY.md`
 7. `CHANGE_LOG.md`
 
-Do not infer completion from intent docs. `SYSTEM_INVENTORY.md` records observable capability state. `CHANGE_LOG.md` records completed work after validation evidence exists.
+Do not infer completion from intent docs. `SYSTEM_INVENTORY.md` records observable capability state. `CHANGE_LOG.md` records completed work after validation evidence exists. If files conflict with observed behavior, report the conflict and propose the smallest correction.
 
 ## 2. Environment contract
 
@@ -28,6 +30,10 @@ Python:
 - `backend/requirements.txt` is generated; never edit it by hand.
 - Use `scripts/provision.py` for dependency install/verify/lock/explain.
 - Prefer `scripts/bootstrap.py` for new-host setup.
+- If a dependency is required for approved work, declare it in the proposal, add it to the correct `pyproject.toml` dependency group or hardware extra, then re-provision before using it.
+- Use `>=` by default for dependency versions; use `==` only with a documented reason.
+- Keep runtime-specific ML packages out of base dependencies; use hardware extras.
+- If `backend/.venv` is broken or inconsistent, stop and report minimal repair steps before continuing.
 
 Desktop:
 
@@ -36,17 +42,31 @@ Desktop:
 
 Generated/runtime data belongs in existing locations only: `data/`, `cache/`, `reports/`, `models/`, or `runtimes/`. Do not invent new storage roots without approval.
 
-## 3. Scope control
+## 3. Scope control and engineering principles
 
 Default behavior:
 
 - Do not guess. Verify from repository evidence or state what was checked and stop.
+- Do not claim completion without reproducible evidence.
 - Do not expand scope beyond the explicit request.
 - Do not create new repo artifacts unless requested.
 - Do not introduce parallel architectures, shadow workflows, or alternate setup paths.
 - Do not create custom helper scripts/docs as a workaround for missing design.
 - Prefer existing patterns and minimal diffs.
 - Keep responses concise and evidence-focused.
+
+Programming principles:
+
+- Existing Patterns First: reinforce existing patterns before adding new structure. If no pattern exists, propose the smallest consistent extension.
+- KISS: keep implementations simple, direct, and easy to follow. Avoid clever abstractions, unnecessary indirection, and speculative generalization.
+- YAGNI: add only what the approved task requires. Do not build future capabilities, alternate modes, or convenience layers unless they are explicitly requested.
+- DRY: reuse shared logic and utilities. Avoid duplicating logic, command paths, configuration rules, or validation behavior.
+- Single Responsibility: keep each module, function, script, and change focused on one clear responsibility.
+- Idempotency: commands and changes must be safe to re-run. Setup and repair flows should test current state before changing it.
+- Test-Configure-Install: for setup, test if present, configure if available, install only if missing. For updates, reconfigure and re-validate.
+- Determinism: prefer explicit paths, stable ordering, non-interactive flags, and repeatable command sequences.
+- Minimal Surface Area: avoid new dependencies, files, services, environment variables, or helper scripts unless they are the narrowest approved solution.
+- Observable Behavior: favor changes that can be validated by command output, tests, reports, or visible runtime behavior.
 
 Before editing, provide a short proposal and wait for approval when touching multiple files, core backend systems, scripts, validation harnesses, desktop, Docker/compose, dependencies, environment repair, or repo tooling config.
 
@@ -69,7 +89,7 @@ For each task:
 6. Validate observable behavior.
 7. Report exact outcomes and stop.
 
-Use simple, deterministic steps. For validation and repair, run commands one at a time unless one compound command is required by the toolchain.
+Use simple, deterministic steps. Prefer non-interactive flags and explicit paths. For validation and repair, run commands one at a time unless one compound command is required by the toolchain. Use the smallest viable validation first, then broaden only when required. If repeated attempts do not change the failure mode, stop and report.
 
 ## 5. Validation evidence
 
