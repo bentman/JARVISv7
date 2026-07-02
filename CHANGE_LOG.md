@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-07-02 03:32
+  - Summary: Recorded Slice Y validation-only evidence for the Windows AMD64 CUDA local LLM path. No implementation, inventory, or documentation changes were made beyond this evidence entry.
+  - Scope: Slice Y validation evidence only; `CHANGE_LOG.md`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with `model=assistant-qwen3-8b-q5-balanced`, `selected_profile_id=windows_amd64_gpu_nvidia_cuda`, `accelerator=gpu.cuda`. `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=amd64`, readiness `ready`, CUDA LLM support true). `backend\.venv\Scripts\python -m pytest backend\tests\unit\models\test_llm_selection.py backend\tests\unit\services\test_local_llm_startup.py backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm backend\tests\unit\cognition backend\tests\unit\conversation\test_engine.py backend\tests\unit\routing\test_runtime_selector.py backend\tests\unit\api\test_routes.py -q` PASS (`192 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`673 passed, 1 skipped`). `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`153 passed, 5 deselected`, report `reports\validation\20260702082834-regression.txt`). `$env:JARVISV7_LIVE_TESTS='1'; $env:USE_LOCAL_MODEL='true'; $env:LLM_MODEL_MODE='prod'; $env:LLM_MODEL_POLICY='auto'; Remove-Item Env:\LLM_MODEL_ID -ErrorAction SilentlyContinue; backend\.venv\Scripts\python -m pytest backend\tests\runtime\voice\test_llm_live.py backend\tests\runtime\turn\test_local_llm_turn_live.py -q` PASS (`5 passed`).
+  - Note: This pass validates the available AMD64 CUDA Slice Y matrix row only. It does not update `SYSTEM_INVENTORY.md` or claim AMD64 CPU fallback, ARM64 CPU fallback, or ARM64 Adreno/OpenCL execution in this pass.
+
 - 2026-07-02 08:11
   - Summary: Implemented Slice Y ARM64 Adreno/OpenCL local LLM response-contract hardening. Live llama.cpp fixtures now use the same model-selection path as backend startup, Qwen3 llama.cpp payloads disable thinking through catalog-owned `chat_template_kwargs`, and live response tests now fail on empty/wrong/stale deterministic output instead of accepting any non-empty text.
   - Scope: `config/models/llm.yaml`, `backend/app/runtimes/llm/local_runtime.py`, `backend/tests/conftest.py`, `backend/tests/runtime/voice/test_llm_live.py`, `backend/tests/runtime/turn/test_local_llm_turn_live.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `docs/20260701_slice-y.md`, `docs/jarvis-arm-llamacpp.md`
