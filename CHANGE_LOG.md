@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-02 10:14
+  - Summary: Validated Slice Z.1 startup context cleanup on Windows ARM64. No implementation changes were made in this pass.
+  - Scope: Slice Z.1 validation evidence only; `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`.
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_startup_context.py backend\tests\unit\scripts\test_bootstrap_script.py backend\tests\unit\scripts\test_run_jarvis_script.py backend\tests\unit\api\test_routes.py -q` PASS (`71 passed, 1 warning`). `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS (`arch=arm64`, readiness `ready`, `tokens=21`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`682 passed, 1 warning`; fingerprint `arch=arm64`, readiness `ready`, `tokens=21`).
+
 - 2026-07-02 09:48
   - Summary: Implemented Slice Z.1 startup context cleanup. Backend startup facts are now centralized in a service helper, while API runtime/service construction and proving-host runtime behavior remain in their existing owners.
   - Scope: `backend/app/services/startup_context.py`, `backend/app/api/app.py`, `scripts/bootstrap.py`, `scripts/run_backend.py`, `scripts/run_jarvis.py`, `scripts/validate_backend.py`, and focused backend unit tests.

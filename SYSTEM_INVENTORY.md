@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice Z.1 startup context cleanup - 2026-07-02 10:14
+  - State: Verified
+  - Location: `backend/app/services/startup_context.py`, `backend/app/api/app.py`, `scripts/bootstrap.py`, `scripts/run_backend.py`, `scripts/run_jarvis.py`, `scripts/validate_backend.py`, `backend/tests/unit/services/test_startup_context.py`, `backend/tests/unit/scripts/test_bootstrap_script.py`, `backend/tests/unit/scripts/test_run_backend_script.py`, `backend/tests/unit/scripts/test_run_jarvis_script.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`, `backend/tests/unit/api/test_routes.py`, `docs/20260702_slice-z1.md`, `CHANGE_LOG.md`
+  - Validation: Windows AMD64 / amd64 evidence recorded in `CHANGE_LOG.md` entry `2026-07-02 09:48`: focused Slice Z.1 tests PASS (`74 passed`), validate-backend script tests PASS (`10 passed`), and unit validator PASS (`681 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`). Windows ARM64 / arm64 evidence on 2026-07-02: focused Slice Z.1 tests PASS (`71 passed, 1 warning`), profile PASS (`arch=arm64`, readiness `ready`, `tokens=21`), and unit validator PASS (`682 passed, 1 warning`; fingerprint `arch=arm64`, readiness `ready`, `tokens=21`).
+  - Notes: Centralizes profile, provisioning extras, preflight, readiness map, and startup readiness summaries in the backend service helper. API runtime/service construction and proving-host engine behavior remain in their existing owners.
+
 - Capability: Slice X local LLM tier activation - 2026-07-01 10:25 UTC
   - State: Verified
   - Location: `.env.example`, `config/models/llm.yaml`, `backend/app/core/settings.py`, `backend/app/models/llm_selection.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/routing/runtime_selector.py`, `backend/app/api/routes/config.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `scripts/ensure_models.py`, `scripts/bootstrap.py`, `desktop/src/components/settings-panel.js`, related backend/desktop tests, `docs/20260630_slice-x.md`, `CHANGE_LOG.md`
