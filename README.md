@@ -25,11 +25,11 @@ JARVISv7 exists because v6 proved the vision was mostly right and the implementa
 
 ## 🚀 Quick Start
 
-Fresh-clone setup lives in [docs/QuickStart.md](docs/QuickStart.md). That guide is the right place for commands, prerequisites, and the current bootstrap flow. The short version is: create `backend\.venv`, run `scripts\bootstrap.py`, verify with `scripts\validate_backend.py profile`, then use the backend, diagnostic runner, or desktop shell depending on what you are testing.
+Fresh-clone setup lives in [docs/QuickStart.md](docs/QuickStart.md). That guide is the right place for commands, prerequisites, and the current repo-run desktop preview flow. The short version is: create `backend\.venv`, run `scripts\bootstrap.py`, install desktop dependencies, then launch the desktop shell with `npm --prefix desktop run dev`. The desktop starts the backend and displays readiness, services, resident voice, wake, session, and error state.
 
 Useful entry points:
 
-* [docs/QuickStart.md](docs/QuickStart.md) — first setup and validation
+* [docs/QuickStart.md](docs/QuickStart.md) — first setup and repo-run desktop launch
 * [ProjectVision.md](ProjectVision.md) — target product behavior
 * [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) — what is actually observable now
 * [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
@@ -218,68 +218,3 @@ Compared with v6, v7 emphasizes:
 * explicit personality, policy, memory, and tool boundaries
 * validation on target host classes instead of wishful portability
 * truthful degraded states when a feature is unavailable
-
-In short, v7 is not “v6 but cleaner.” It is v6 after being forced to write down what happened, prove it, and stop hiding TODOs under the rug.
-
-> That sounds less exciting, but it is much harder to lie to.
-
-* * *
-
-## 🤝 Contributions Welcome
-
-JARVISv7 has enough structure now that contributions should make the existing system better, not more mythological. Useful work tends to be focused, validated, and boring in the productive sense. Bonus points for making something simpler without quietly moving the complexity into a new file with an impressive name.
-
-Good contribution areas:
-
-* voice interaction quality and reliability
-* desktop/operator experience
-* memory and retrieval depth
-* runtime coverage and validation
-* hardware profile support
-* tool execution boundaries
-* agent integration that remains explicit and policy-gated
-* documentation that says what is true, not what would have been convenient
-
-The rules are stricter now. Read [AGENTS.md](AGENTS.md), check the inventory, run the validation commands, and avoid claiming that a thing is complete merely because it looked friendly in one terminal.
-
-> Solving one real problem beats introducing three elegant ones.
-
-* * *
-
-## 📜 License
-
-JARVISv7 is distributed under the MIT License. Use it, modify it, improve it, break it, and preferably document which of those happened. Experimental software may occasionally behave experimentally, which is both a warning and a lifestyle.
-
-See [LICENSE](LICENSE) for the formal terms.
-
-> The legal part is short. Please do not make that the most surprising feature.
-
-* * *
-
-## 🧱 Acknowledgments
-
-JARVISv7 exists because earlier versions succeeded just enough to expose better problems. Each prior version contributed something useful, even when the lesson was “do not do that again with confidence.” This one is the current construction site.
-
-The lineage:
-
-* [**JARVISv1 (Just A Rough Very Incomplete Start)**](https://github.com/bentman/JARVISv1) — the beginning, alpha included at no extra charge.
-* [**JARVISv2 (Just Almost Real Viable Intelligent System)**](https://github.com/bentman/JARVISv2) — the first hint this might be possible.
-* [**JARVISv3 (Just A Reliable Variant In Service)**](https://github.com/bentman/JARVISv3) — the stability attempt.
-* [**JARVISv4 (Just A Reimagined Version In Stabilization)**](https://github.com/bentman/JARVISv4) — the discipline attempt.
-* [**JARVISv5 (Just A Runnable, Verified Iterative System)**](https://github.com/bentman/JARVISv5) — the first version that behaved like a system, voice not included.
-* [**JARVISv6 (Just Another Restart, Voice Included System)**](https://github.com/bentman/JARVISv6) — the version that proved the vision and exposed the mess.
-* [**JARVISv7 (Judiciously Adaptive Runtime Voice Interface System)**](README.md) — this one, now with more evidence and fewer polite hiding places.
-
-The project has not escaped its history. It has at least started labeling the boxes.
-
-> Built from successes, mistakes, rewrites, and the occasional moment of accidental competence.
-
-* * *
-
-## 🧩 Bottom Line
-
-JARVISv7 is not trying to reinvent the vision. It is trying to realize it with enough structure that progress survives contact with the next slice. The destination is still a local-first, voice-first assistant that feels present, understandable, interruptible, and useful on real hardware.
-
-Recent work moved more of the vision from “this should exist” to “this exists with evidence, caveats, and a TODO list that keeps making eye contact.” That is the right kind of progress. Construction is finally outpacing reinvention.
-
-> “Sometimes you gotta run before you can walk.” — Tony Stark
