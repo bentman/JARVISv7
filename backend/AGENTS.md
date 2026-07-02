@@ -62,7 +62,7 @@ Preferred marker locations:
 | `cuda`, `directml`, `qnn`, `x64`, `arm64` | Existing runtime or hardware test for that family | Add to an existing marked file before creating a new file. |
 | `desktop` backend contract | `backend/tests/unit/desktop/` or `backend/tests/runtime/desktop/` | Static contract in unit; real app/process checks in runtime only. |
 | `agents` | `backend/tests/unit/agents/` | Keep distinct from turn-level cognition executor/planner tests. |
-| cross-runtime matrix | `backend/tests/runtime/acceleration_matrix/` | Matrix shape/smoke only; do not duplicate per-family assertions. |
+| cross-runtime matrix | `backend/tests/runtime/acceleration_matrix/` | Matrix shape/smoke only; do not duplicate per-family assertions. Extend this suite instead of adding new per-family device-matrix live files. |
 
 For changed backend modules, add or maintain pytest coverage. Import/structure coverage is enough for diffs under 20 lines unless new logic branches are introduced; behavior coverage is required only for new or changed logic branches.
 
