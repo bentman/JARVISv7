@@ -18,6 +18,13 @@
 
 ## Entries 
 
+- 2026-07-03 13:19
+  - Summary: Validated Slice X.4 desktop readiness display and Wake-mode barge-in behavior after Operator visual confirmation. System State shows ready when the selected llama.cpp path is ready, Wake mode reports barge-in unsupported while wiring truth remains visible, and a desktop text turn completed successfully against the managed llama.cpp path.
+  - Scope: Slice X.4 validation evidence only; `CHANGE_LOG.md`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\api\test_routes.py -q` PASS (`73 passed`). `cargo check` from `desktop\src-tauri` PASS (`Finished dev profile`; Windows incremental compilation warning only). Operator visual validation confirmed the barge-in adjustment and UI display fix.
+  - Note: `backend\.venv\Scripts\python scripts\validate_backend.py unit` was also run and failed in unrelated LLM runtime/catalog tests (`2 failed, 684 passed, 1 skipped`: `test_llm_catalog_declares_lower_quant_default_and_cpu_profiles`, `test_openai_compatible_providers_use_bound_generate_envelope`). No implementation files were changed in this validation-only pass.
+
 - 2026-07-03 11:35
   - Summary: Implemented Slice Z.4 desktop state smoothing. The header now separates System State from Turn Status, aligns both cards to the main desktop columns, renders text-based turn phase labels, removes the extra Conversation turn badge, and keeps readiness summary focused on diagnostics.
   - Scope: `desktop/src/components/desktop-state.js`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/resident-voice.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`.
