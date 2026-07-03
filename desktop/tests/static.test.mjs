@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
+import { renderConversationDebug } from "../src/components/conversation-debug.js";
 import { collectDegradedConditions } from "../src/components/degraded-list.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
@@ -150,5 +151,30 @@ assert.equal(
   false,
   "ready llama.cpp must not show an LLM degraded detail solely because degraded_reason exists",
 );
+
+const staleVoiceDetail = { textContent: "" };
+renderConversationDebug(
+  {
+    state: "IDLE",
+    invocation_source: "wake",
+    failure_reason: "stale voice failure",
+    tts_output_device: "stale output device",
+    latest_turn: {
+      turn_id: "text-turn-123",
+      input_modality: "text",
+      final_state: "IDLE",
+      failure_reason: null,
+      tts_output_device: null,
+      artifact_path: "data\\turns\\session\\text-turn-123.json",
+      runtime_context: { llm: "llama.cpp" },
+    },
+  },
+  staleVoiceDetail,
+);
+assert.ok(staleVoiceDetail.textContent.includes("turn: text text-t IDLE"), "text latest turn must render text source");
+assert.ok(staleVoiceDetail.textContent.includes("runtime: llm=llama.cpp"), "text latest turn must render latest runtime context");
+assert.ok(!staleVoiceDetail.textContent.includes("wake"), "text latest turn must not show stale voice source");
+assert.ok(!staleVoiceDetail.textContent.includes("stale voice failure"), "text latest turn must not show stale flat failure");
+assert.ok(!staleVoiceDetail.textContent.includes("stale output device"), "text latest turn must not show stale flat TTS output");
 
 console.log("desktop static voice checks passed");

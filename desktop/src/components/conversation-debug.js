@@ -36,18 +36,21 @@ export function renderConversationDebug(status, detailEl) {
   pushLine(lines, "state", status?.state || "unknown");
 
   if (latestTurn) {
-    const source = status?.invocation_source || latestTurn.input_modality || "turn";
+    const source =
+      latestTurn.input_modality === "voice" && status?.invocation_source
+        ? status.invocation_source
+        : latestTurn.input_modality || "turn";
     pushLine(
       lines,
       "turn",
       `${source} ${shortTurnId(latestTurn.turn_id)} ${latestTurn.final_state || status?.state || "unknown"}`,
     );
     pushLine(lines, "runtime", runtimeLine(latestTurn.runtime_context));
-    pushLine(lines, "failure", latestTurn.failure_reason || status?.failure_reason);
+    pushLine(lines, "failure", latestTurn.failure_reason);
     if (latestTurn.degraded_reason) {
       pushLine(lines, "degraded", `tts=${latestTurn.degraded_reason}`);
     }
-    pushLine(lines, "tts_output_device", latestTurn.tts_output_device || status?.tts_output_device);
+    pushLine(lines, "tts_output_device", latestTurn.tts_output_device);
     pushLine(lines, "artifact", latestTurn.artifact_path);
     return void (detailEl.textContent = lines.join("\n"));
   }
