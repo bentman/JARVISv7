@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-03 11:35
+  - Summary: Implemented Slice Z.4 desktop state smoothing. The header now separates System State from Turn Status, aligns both cards to the main desktop columns, renders text-based turn phase labels, removes the extra Conversation turn badge, and keeps readiness summary focused on diagnostics.
+  - Scope: `desktop/src/components/desktop-state.js`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/resident-voice.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`). Operator visual validation approved the Z.4 header/card alignment correction.
+
 - 2026-07-03 08:57
   - Summary: Implemented Slice Z.3 conversation debug and turn artifact contract. `/session/status` now includes a backward-compatible latest-turn summary, turn artifacts carry compact runtime context, and the desktop Conversation debug details surface renders compact session/latest-turn diagnostics without duplicating transcript or response text.
   - Scope: `backend/app/api/routes/session.py`, `backend/app/api/schemas/session.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/conversation/engine.py`, `backend/app/services/session_service.py`, focused backend tests, `desktop/src/components/conversation-debug.js`, `desktop/src/components/resident-voice.js`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/tests/static.test.mjs`.

@@ -26,7 +26,6 @@ function appendFactList(payload, containerEl) {
     ["Arch", payload?.arch],
     ["Profile", payload?.profile_id],
     ["LLM", payload?.active_llm_runtime],
-    ["Status", payload?.status],
   ]) {
     const term = document.createElement("dt");
     term.textContent = label;

@@ -1,12 +1,9 @@
-import { setStateLabel } from "./state-label.js";
-
 export function createResidentVoicePresenter(options) {
   const {
     pttButton,
     voiceStatusEl,
     residentModeEl,
     residentStatusEl,
-    turnStateEl,
     setState,
     showError,
     appendMessage,
@@ -130,7 +127,6 @@ export function createResidentVoicePresenter(options) {
 
   function renderResidentVoiceStatus(status) {
     const state = status.state || "IDLE";
-    setStateLabel(state, turnStateEl);
     const source = status.invocation_source || "";
     const isResidentVoice = source === "ptt" || source === "wake" || source === "barge_in" || source === "hands_free" || source === "continuous";
     if (!isResidentVoice) return;

@@ -660,18 +660,24 @@ def test_j2_state_label_component_exports_mapping_and_preserves_data_state() -> 
         assert label in state_label
 
 
-def test_j2_main_state_displays_flow_through_state_label_helper() -> None:
+def test_j2_main_state_displays_flow_through_desktop_state_helper() -> None:
     main_js = _read("desktop/src/main.js")
+    desktop_state = _read("desktop/src/components/desktop-state.js")
 
-    assert "./components/state-label.js" in main_js
+    assert "./components/desktop-state.js" in main_js
+    assert "createDesktopState" in main_js
     assert "function setState(value, degraded = false)" in main_js
-    assert "setStateLabel(value, stateEl)" in main_js
+    assert "desktopState?.renderSystemState(value, degraded)" in main_js
+    assert "desktopState.renderSystemState" in main_js
+    assert "desktopState.renderTurnStatus" in main_js
+    assert "desktopState?.setPendingState" in main_js
     assert "document.body.dataset.degraded" in main_js
+    assert "turnStateEl" not in main_js
     assert "turnStateEl.textContent =" not in main_js
     assert "stateEl.textContent =" not in main_js
-    assert "setStateLabel(response.final_state, turnStateEl)" in main_js
-    assert 'setStateLabel("REASONING", turnStateEl)' in main_js
-    assert 'setStateLabel("FAILED", turnStateEl)' in main_js
+    assert "TURN_RAIL_STATES" in desktop_state
+    for label in ["IDLE", "LISTEN", "TRANSCRIBE", "REASON", "ACT", "RESPOND", "SPEAK", "INTERRUPT", "RECOVER", "FAILED"]:
+        assert label in desktop_state
 
 
 def test_backend_startup_diagnostics_are_exposed() -> None:

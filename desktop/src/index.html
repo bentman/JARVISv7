@@ -10,12 +10,13 @@
   <body>
     <main class="shell">
       <header class="header">
-        <div>
+        <div class="header-left">
           <h1>JARVISv7</h1>
           <p class="subtitle">Durable desktop host</p>
         </div>
-        <div class="state-card">
-          <span class="label">State</span>
+        <div id="turn-status-anchor" class="turn-status-anchor"></div>
+        <div class="state-card system-state-card">
+          <span class="label">System State</span>
           <strong id="startup-state">BOOTSTRAP</strong>
         </div>
       </header>
@@ -61,7 +62,6 @@
         <section class="panel conversation-panel">
           <div class="conversation-header">
             <h2>Conversation</h2>
-            <span id="turn-state" class="turn-state">IDLE</span>
           </div>
           <div id="conversation-log" class="conversation-log" aria-live="polite"></div>
           <form id="text-form" class="text-form">

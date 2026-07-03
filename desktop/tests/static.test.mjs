@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { renderConversationDebug } from "../src/components/conversation-debug.js";
 import { collectDegradedConditions } from "../src/components/degraded-list.js";
+import { createDesktopState } from "../src/components/desktop-state.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -94,6 +95,104 @@ assert.ok(settingsPanel.includes("field.advanced"), "settings panel must use adv
 assert.ok(!settingsPanel.includes("LLM_MODEL_MODE"), "settings panel must not hardcode model mode field");
 assert.ok(!settingsPanel.includes("Local LLM intent (llama.cpp)"), "settings panel must not hardcode backend sections");
 assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
+
+// Slice Z.4: Desktop State Smoothing assertions
+assert.ok(index.includes("System State"), "desktop must display System State label");
+assert.ok(index.includes("turn-status-anchor"), "desktop must include turn status anchor container");
+assert.ok(index.includes("system-state-card"), "desktop must size System State to Operator column");
+assert.ok(main.includes("createDesktopState"), "desktop must create desktop state coordinator");
+assert.ok(main.includes("desktopState.renderSystemState"), "desktop must render system state from readiness");
+assert.ok(main.includes("desktopState.renderTurnStatus"), "desktop must render turn status from session");
+assert.ok(!index.includes("id=\"turn-state\""), "desktop must not keep separate turn-state badge in Conversation header");
+const readinessPanelContent = readFileSync(new URL("../src/components/readiness-panel.js", import.meta.url), "utf8");
+assert.ok(!readinessPanelContent.includes('["Status"'), "desktop must not include Status fact in readiness summary");
+assert.ok(readinessPanelContent.includes('["Arch"'), "desktop must include Arch fact in readiness summary");
+assert.ok(readinessPanelContent.includes('["Profile"'), "desktop must include Profile fact in readiness summary");
+assert.ok(readinessPanelContent.includes('["LLM"'), "desktop must include LLM fact in readiness summary");
+
+function createElement(tagName) {
+  const element = {
+    tagName,
+    className: "",
+    id: "",
+    dataset: {},
+    textContent: "",
+    children: [],
+    parentElement: null,
+    appendChild(child) {
+      child.parentElement = this;
+      this.children.push(child);
+      return child;
+    },
+    append(...children) {
+      for (const child of children) this.appendChild(child);
+    },
+    querySelector(selector) {
+      if (selector === "#startup-state") return findElement(this, (node) => node.id === "startup-state");
+      if (selector === ".label") return findElement(this, (node) => String(node.className).split(" ").includes("label"));
+      if (selector === "strong") return findElement(this, (node) => node.tagName === "strong");
+      return null;
+    },
+    querySelectorAll(selector) {
+      if (selector === ".turn-status-label") {
+        return findElements(this, (node) => String(node.className).split(" ").includes("turn-status-label"));
+      }
+      return [];
+    },
+  };
+  element.classList = {
+    toggle(className, enabled) {
+      const classes = new Set(String(element.className).split(" ").filter(Boolean));
+      if (enabled) classes.add(className);
+      else classes.delete(className);
+      element.className = [...classes].join(" ");
+    },
+  };
+  return element;
+}
+
+function findElement(node, predicate) {
+  if (predicate(node)) return node;
+  for (const child of node.children || []) {
+    const found = findElement(child, predicate);
+    if (found) return found;
+  }
+  return null;
+}
+
+function findElements(node, predicate, found = []) {
+  if (predicate(node)) found.push(node);
+  for (const child of node.children || []) findElements(child, predicate, found);
+  return found;
+}
+
+const previousDocument = globalThis.document;
+globalThis.document = { createElement };
+const shellEl = createElement("main");
+const systemCard = createElement("div");
+const systemLabel = createElement("span");
+systemLabel.className = "label";
+const systemValue = createElement("strong");
+systemValue.id = "startup-state";
+systemCard.append(systemLabel, systemValue);
+shellEl.appendChild(systemCard);
+const turnAnchor = createElement("div");
+const desktopState = createDesktopState(shellEl, turnAnchor);
+desktopState.renderTurnStatus("TRANSCRIBING");
+desktopState.renderSystemState("BACKEND_UNAVAILABLE");
+const railLabels = findElements(turnAnchor, (node) => String(node.className).split(" ").includes("turn-status-label"));
+assert.deepEqual(
+  railLabels.map((node) => node.textContent),
+  ["IDLE", "LISTEN", "TRANSCRIBE", "REASON", "ACT", "RESPOND", "SPEAK", "INTERRUPT", "RECOVER", "FAILED"],
+  "Turn Status rail must render compact text labels",
+);
+assert.equal(
+  railLabels.find((node) => node.dataset.label === "TRANSCRIBE").className.includes("active"),
+  true,
+  "Turn Status must activate the mapped backend state label",
+);
+assert.equal(systemValue.textContent, "Backend unavailable", "System State must represent backend unavailable");
+globalThis.document = previousDocument;
 
 const readyConditions = collectDegradedConditions({
   status: "ready",

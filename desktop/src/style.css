@@ -83,8 +83,100 @@ select {
 }
 
 .header {
-  justify-content: space-between;
   margin-bottom: var(--space-3);
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(260px, 340px);
+  align-items: stretch;
+  gap: var(--space-4);
+}
+
+.header-left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.turn-status-anchor {
+  display: flex;
+  min-width: 0;
+  align-self: stretch;
+}
+
+.turn-status-rail {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-rows: auto 1fr;
+  align-items: center;
+  gap: var(--space-2);
+  background: var(--color-bg-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+  box-sizing: border-box;
+  height: 100%;
+}
+
+.turn-status-title {
+  font-size: var(--text-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-text-muted);
+}
+
+.turn-status-labels {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 4px;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  line-height: 1.1;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.turn-status-label {
+  color: var(--color-text-muted);
+  opacity: 0.4;
+}
+
+.turn-status-separator {
+  color: var(--color-text-muted);
+  opacity: 0.35;
+}
+
+.turn-status-label.active {
+  color: var(--color-ready);
+  opacity: 1;
+  text-shadow: 0 0 8px currentColor;
+}
+
+.turn-status-rail[data-state="LISTENING"] .turn-status-label.active,
+.turn-status-rail[data-state="TRANSCRIBING"] .turn-status-label.active,
+.turn-status-rail[data-state="REASONING"] .turn-status-label.active,
+.turn-status-rail[data-state="ACTING"] .turn-status-label.active,
+.turn-status-rail[data-state="RESPONDING"] .turn-status-label.active,
+.turn-status-rail[data-state="SPEAKING"] .turn-status-label.active {
+  color: var(--color-ready);
+}
+
+.turn-status-rail[data-state="INTERRUPTED"] .turn-status-label.active,
+.turn-status-rail[data-state="RECOVERING"] .turn-status-label.active {
+  color: var(--color-degraded);
+}
+
+.turn-status-rail[data-state="FAILED"] .turn-status-label.active {
+  color: var(--color-failed);
+}
+
+.system-state-card {
+  width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+  text-align: right;
+  box-sizing: border-box;
 }
 
 h1,

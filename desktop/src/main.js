@@ -6,10 +6,9 @@ import { renderReadiness as renderReadinessPanel } from "./components/readiness-
 import { createResidentVoicePresenter } from "./components/resident-voice.js";
 import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
-import { setStateLabel } from "./components/state-label.js";
+import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 
-const stateEl = document.querySelector("#startup-state");
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
 const turnCountEl = document.querySelector("#session-turn-count");
@@ -28,7 +27,7 @@ const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
 const errorEl = document.querySelector("#error-panel");
 const logEl = document.querySelector("#conversation-log");
-const turnStateEl = document.querySelector("#turn-state");
+const turnStatusAnchorEl = document.querySelector("#turn-status-anchor");
 const formEl = document.querySelector("#text-form");
 const inputEl = document.querySelector("#text-input");
 const sendButton = document.querySelector("#send-button");
@@ -42,6 +41,7 @@ let activePersonalityId = "default";
 let wakePollTimer = null;
 let sessionPollTimer = null;
 let residentVoicePollTimer = null;
+let desktopState = null;
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -50,14 +50,14 @@ const presenceByProfile = {
 };
 
 function setState(value, degraded = false) {
-  setStateLabel(value, stateEl);
+  desktopState?.renderSystemState(value, degraded);
   document.body.dataset.degraded = degraded ? "true" : "false";
 }
 
-function showError(message) {
+function showError(message, systemState = "FAILED") {
   errorEl.textContent = message;
   errorEl.classList.remove("hidden");
-  setState("FAILED");
+  setState(systemState);
 }
 
 function clearError() {
@@ -123,17 +123,18 @@ const residentVoice = createResidentVoicePresenter({
   voiceStatusEl,
   residentModeEl,
   residentStatusEl,
-  turnStateEl,
-  setState,
+  setState: (state) => desktopState?.renderTurnStatus(state),
   showError,
   appendMessage,
 });
+
+desktopState = createDesktopState(document.querySelector(".shell"), turnStatusAnchorEl);
 
 function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);
   renderDegradedList(readiness, degradedEl);
   renderServiceStatus(readiness.services, serviceStatusEl);
-  setState(readiness.requires_degraded_mode || readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
+  desktopState.renderSystemState(readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
 }
 
 async function refreshSessionStatus() {
@@ -142,6 +143,7 @@ async function refreshSessionStatus() {
   if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
   renderConversationDebug(status, voiceDetailEl);
   residentVoice.renderResidentVoiceStatus(status);
+  if (desktopState) desktopState.renderTurnStatus(status.state);
   return status;
 }
 
@@ -307,7 +309,7 @@ async function startDesktop() {
   pttButton.disabled = true;
 
   if (!api) {
-    showError("Tauri command bridge is unavailable; desktop backend lifecycle cannot start.");
+    showError("Tauri command bridge is unavailable; desktop backend lifecycle cannot start.", "BACKEND_UNAVAILABLE");
     healthEl.textContent = "error";
     return;
   }
@@ -333,7 +335,7 @@ async function startDesktop() {
     inputEl.focus();
   } catch (error) {
     healthEl.textContent = "error";
-    showError(String(error));
+    showError(String(error), "BACKEND_UNAVAILABLE");
   }
 }
 
@@ -365,7 +367,7 @@ async function invokeResidentPtt() {
   clearError();
   residentVoice.setCaptureState("processing");
   voiceStatusEl.textContent = "PTT invoked";
-  setState("LISTENING");
+  desktopState?.setPendingState("LISTENING");
   appendPresence("listening");
   try {
     const status = await api.invokeResidentPtt();
@@ -381,15 +383,13 @@ async function invokeResidentPtt() {
 async function submitText(text) {
   clearError();
   appendMessage("user", text);
-  setState("REASONING");
+  desktopState?.setPendingState("REASONING");
   appendPresence("reasoning");
-  setStateLabel("REASONING", turnStateEl);
   sendButton.disabled = true;
 
   try {
     const response = await api.submitText(text);
-    setStateLabel(response.final_state, turnStateEl);
-    setState(response.failure_reason ? "FAILED" : response.final_state);
+    desktopState?.renderTurnStatus(response.failure_reason ? "FAILED" : response.final_state);
     if (response.failure_reason) {
       showError(response.failure_reason);
     }
@@ -397,7 +397,7 @@ async function submitText(text) {
     appendToolCalls(response.tool_calls);
     await refreshSessionStatus();
   } catch (error) {
-    setStateLabel("FAILED", turnStateEl);
+    desktopState?.renderTurnStatus("FAILED");
     showError(String(error));
   } finally {
     sendButton.disabled = false;
