@@ -27,7 +27,7 @@
 
 ## Inventory
 
-- Capability: Slice X.4/Z desktop readiness and status UI enhancements - 2026-07-03 13:19
+- Capability: Slice Z.4 desktop readiness and status UI enhancements - 2026-07-03 13:19
   - State: Verified
   - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/desktop-state.js`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/resident-voice.js`, `desktop/src/components/conversation-debug.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `CHANGE_LOG.md`
   - Validation: Windows AMD64 / amd64 evidence recorded in `CHANGE_LOG.md` entry `2026-07-03 13:19`: `npm --prefix desktop test` PASS (`desktop static voice checks passed`), desktop static contract PASS (`32 passed`), focused resident voice/API tests PASS (`73 passed`), and `cargo check` PASS with a Windows incremental-cache warning only. User/Operator manually validated the UI on both Windows AMD64 and Windows ARM64.
