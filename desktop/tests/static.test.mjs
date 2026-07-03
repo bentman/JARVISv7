@@ -47,6 +47,14 @@ assert.ok(index.includes("degraded-detail"), "desktop must include collapsed deg
 assert.ok(index.includes("Degraded list detail"), "desktop degraded detail surface must use the required title");
 assert.ok(index.indexOf("Voice debug details") < index.indexOf("Degraded list detail"), "desktop degraded detail must be directly after voice debug details");
 assert.ok(main.includes("renderDegradedList(readiness, degradedEl)"), "desktop degraded detail must render from existing readiness payload");
+assert.ok(
+  main.indexOf("await ensureResidentVoiceStream()") < main.indexOf("const readiness = await api.getReadiness()"),
+  "desktop must fetch readiness after resident stream startup settles",
+);
+assert.ok(
+  main.indexOf("await startWakeMonitorIfAvailable()") < main.indexOf("const readiness = await api.getReadiness()"),
+  "desktop must fetch readiness after wake startup status settles",
+);
 assert.ok(degradedList.includes("closest(\"details\")"), "degraded detail renderer must control its collapsed details container");
 assert.ok(degradedList.includes("optional-service"), "degraded detail must label optional services separately");
 assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
@@ -107,8 +115,29 @@ const degradedConditions = collectDegradedConditions({
 });
 assert.deepEqual(
   degradedConditions.map((row) => row.kind),
-  ["backend", "family", "family", "resident-audio", "optional-service"],
+  ["backend", "family", "resident-audio", "optional-service"],
   "degraded detail must include selected-path blockers, resident audio reasons, and optional services separately",
+);
+
+const readyLlamaCppConditions = collectDegradedConditions({
+  status: "ready",
+  active_llm_runtime: "llama.cpp",
+  families: {
+    llm: {
+      family: "llm",
+      ready: true,
+      reason: "local llama.cpp available",
+      degraded_reason: "llama.cpp /v1/models reachable",
+    },
+  },
+  preflight: { probe_error_count: 0 },
+  services: {},
+  resident_audio: { degraded_reasons: [] },
+});
+assert.equal(
+  readyLlamaCppConditions.some((row) => row.title === "LLM selected path degraded"),
+  false,
+  "ready llama.cpp must not show an LLM degraded detail solely because degraded_reason exists",
 );
 
 console.log("desktop static voice checks passed");

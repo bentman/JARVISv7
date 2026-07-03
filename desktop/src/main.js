@@ -316,11 +316,11 @@ async function startDesktop() {
     sessionEl.textContent = startPayload.session_id || "created";
     if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
     healthEl.textContent = "ok";
-    const readiness = await api.getReadiness();
-    renderReadiness(readiness);
     await refreshSessionStatus();
     await ensureResidentVoiceStream();
     await startWakeMonitorIfAvailable();
+    const readiness = await api.getReadiness();
+    renderReadiness(readiness);
     startWakePolling();
     startSessionPolling();
     startResidentVoicePolling();
@@ -344,10 +344,10 @@ async function restartBackendForSettings() {
   sessionEl.textContent = startPayload.session_id || "created";
   if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
   healthEl.textContent = "ok";
-  const readiness = await api.getReadiness();
-  renderReadiness(readiness);
   await ensureResidentVoiceStream();
   await startWakeMonitorIfAvailable();
+  const readiness = await api.getReadiness();
+  renderReadiness(readiness);
   startWakePolling();
   startSessionPolling();
   startResidentVoicePolling();

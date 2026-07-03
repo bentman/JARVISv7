@@ -45,11 +45,6 @@ export function collectDegradedConditions(readinessPayload) {
     );
   }
 
-  const llm = readinessPayload.families?.llm;
-  if (llm?.ready && llm?.degraded_reason && llm.degraded_reason !== llm.reason) {
-    addCondition(rows, "family", "LLM selected path degraded", llm.degraded_reason);
-  }
-
   for (const reason of readinessPayload.resident_audio?.degraded_reasons || []) {
     addCondition(rows, "resident-audio", "Resident audio degraded", reason);
   }

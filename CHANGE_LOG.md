@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-03 06:00
+  - Summary: Corrected Slice Z.2 degraded-detail false positives. Ready selected `llama.cpp` no longer produces an LLM degraded row solely from `degraded_reason`, and desktop startup now renders degraded detail from readiness fetched after resident stream and wake startup settle.
+  - Scope: `desktop/src/components/degraded-list.js`, `desktop/src/main.js`, `desktop/tests/static.test.mjs`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`681 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+
 - 2026-07-03 05:27
   - Summary: Implemented Slice Z.2 readiness summary cleanup. The desktop readiness pane stays compact, degraded details now render in a collapsed `Degraded list detail` surface under voice debug, and optional service outages are labeled separately from selected-path blockers.
   - Scope: `desktop/src/index.html`, `desktop/src/style.css`, `desktop/src/components/degraded-list.js`, `desktop/src/components/service-status.js`, `desktop/tests/static.test.mjs`.
