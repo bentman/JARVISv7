@@ -25,6 +25,7 @@ NO_SPEECH_PTT_REASON = "No speech detected during PTT"
 RESIDENT_STREAM_STOPPED_PTT_REASON = "resident audio stream is stopped; start resident voice stream before PTT"
 RESIDENT_VOICE_MODES = frozenset({"ptt-only", "ptt+wake", "hands-free", "continuous"})
 RESIDENT_FOLLOW_UP_SOURCES = frozenset({"hands_free", "barge_in"})
+RESIDENT_BARGE_IN_DISABLED_MODES = frozenset({"ptt-only", "ptt+wake"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +161,7 @@ class ResidentVoiceInvocationService:
                 self._session_service.fail_voice_invocation(NO_SPEECH_PTT_REASON)
                 return
             engine_provider = self._engine_provider
-            if self._mode == "ptt-only":
+            if self._mode in RESIDENT_BARGE_IN_DISABLED_MODES:
                 engine = self._engine_provider()
                 previous_barge_in_detector = getattr(engine, "barge_in_detector", None)
                 previous_interruption_audio_chunks = getattr(engine, "interruption_audio_chunks", None)
@@ -181,7 +182,7 @@ class ResidentVoiceInvocationService:
                 audio_capture=self._audio_capture,
             )
             self._record_capture_diagnostics(request)
-            if result.interrupted and request.source != "barge_in" and self._mode != "ptt-only":
+            if result.interrupted and request.source != "barge_in" and self._mode not in RESIDENT_BARGE_IN_DISABLED_MODES:
                 self._enqueue_barge_in_follow_up()
             if result.failure_reason:
                 return

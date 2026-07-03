@@ -105,7 +105,7 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         and getattr(state.engine, "barge_in_detector", None) is not None
         and getattr(state.engine, "interruption_audio_chunks", None) is not None
     )
-    barge_in_supported = barge_in_wired and mode != "ptt-only"
+    barge_in_supported = barge_in_wired and mode in {"hands-free", "continuous"}
     return ResidentVoiceStatusResponse(
         mode=mode,
         available=state.resident_voice is not None

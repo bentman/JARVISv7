@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { renderConversationDebug } from "../src/components/conversation-debug.js";
-import { collectDegradedConditions } from "../src/components/degraded-list.js";
+import { collectDegradedConditions, selectedFamilyBlockers } from "../src/components/degraded-list.js";
 import { createDesktopState } from "../src/components/desktop-state.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
@@ -102,6 +102,10 @@ assert.ok(index.includes("turn-status-anchor"), "desktop must include turn statu
 assert.ok(index.includes("system-state-card"), "desktop must size System State to Operator column");
 assert.ok(main.includes("createDesktopState"), "desktop must create desktop state coordinator");
 assert.ok(main.includes("desktopState.renderSystemState"), "desktop must render system state from readiness");
+assert.ok(
+  main.includes("selectedFamilyBlockers(readiness)"),
+  "desktop System State must consider selected required-family readiness",
+);
 assert.ok(main.includes("desktopState.renderTurnStatus"), "desktop must render turn status from session");
 assert.ok(!index.includes("id=\"turn-state\""), "desktop must not keep separate turn-state badge in Conversation header");
 const readinessPanelContent = readFileSync(new URL("../src/components/readiness-panel.js", import.meta.url), "utf8");
@@ -228,6 +232,40 @@ assert.deepEqual(
   degradedConditions.map((row) => row.kind),
   ["backend", "family", "resident-audio", "optional-service"],
   "degraded detail must include selected-path blockers, resident audio reasons, and optional services separately",
+);
+
+const selectedFamilyOnlyConditions = collectDegradedConditions({
+  status: "ready",
+  active_llm_runtime: "llama.cpp",
+  families: {
+    llm: { family: "llm", ready: false, reason: "selected llama.cpp path unavailable" },
+    stt: { family: "stt", ready: true, reason: "stt ready" },
+  },
+  preflight: { probe_error_count: 0 },
+  services: {
+    redis: { reachable: false, reason: "connection refused" },
+  },
+  resident_audio: { degraded_reasons: [] },
+});
+assert.deepEqual(
+  selectedFamilyBlockers({
+    status: "ready",
+    active_llm_runtime: "llama.cpp",
+    families: {
+      llm: { family: "llm", ready: false, reason: "selected llama.cpp path unavailable" },
+      stt: { family: "stt", ready: true, reason: "stt ready" },
+    },
+    services: {
+      redis: { reachable: false, reason: "connection refused" },
+    },
+  }).map((family) => family.family),
+  ["llm"],
+  "System State degradation must use selected required-family blockers and ignore optional services",
+);
+assert.deepEqual(
+  selectedFamilyOnlyConditions.map((row) => row.kind),
+  ["family", "optional-service"],
+  "selected-family blockers and optional service detail rows must remain distinct",
 );
 
 const readyLlamaCppConditions = collectDegradedConditions({

@@ -35,8 +35,7 @@ export function collectDegradedConditions(readinessPayload) {
     );
   }
 
-  for (const family of Object.values(readinessPayload.families || {})) {
-    if (family?.ready || isOllamaLocalRuntimeFallback(family, readinessPayload)) continue;
+  for (const family of selectedFamilyBlockers(readinessPayload)) {
     addCondition(
       rows,
       "family",
@@ -60,6 +59,13 @@ export function collectDegradedConditions(readinessPayload) {
   }
 
   return rows;
+}
+
+export function selectedFamilyBlockers(readinessPayload) {
+  if (!readinessPayload || typeof readinessPayload !== "object") return [];
+  return Object.values(readinessPayload.families || {}).filter(
+    (family) => !family?.ready && !isOllamaLocalRuntimeFallback(family, readinessPayload),
+  );
 }
 
 function renderCondition(row) {

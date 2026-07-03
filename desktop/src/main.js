@@ -1,7 +1,7 @@
 import { createApiClient } from "./api-client.js";
 import { applyStored } from "./components/appearance-controls.js";
 import { renderConversationDebug } from "./components/conversation-debug.js";
-import { renderDegradedList } from "./components/degraded-list.js";
+import { renderDegradedList, selectedFamilyBlockers } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
 import { createResidentVoicePresenter } from "./components/resident-voice.js";
 import { renderServiceStatus } from "./components/service-status.js";
@@ -134,7 +134,9 @@ function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);
   renderDegradedList(readiness, degradedEl);
   renderServiceStatus(readiness.services, serviceStatusEl);
-  desktopState.renderSystemState(readiness.status !== "ready" ? "DEGRADED" : "READY", readiness.requires_degraded_mode);
+  const selectedPathDegraded = selectedFamilyBlockers(readiness).length > 0;
+  const degraded = readiness.status !== "ready" || readiness.requires_degraded_mode || selectedPathDegraded;
+  desktopState.renderSystemState(degraded ? "DEGRADED" : "READY", degraded);
 }
 
 async function refreshSessionStatus() {

@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 
 import numpy as np
+import pytest
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
@@ -324,6 +325,7 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
     )
+    resident.set_mode("hands-free")
 
     resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
     _wait_for(lambda: len(calls) == 1)
@@ -342,7 +344,8 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
     assert service.status().last_transcript == "resident transcript"
 
 
-def test_interrupted_ptt_only_does_not_queue_barge_in_follow_up(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mode", ["ptt-only", "ptt+wake"])
+def test_interrupted_non_barge_mode_does_not_queue_barge_in_follow_up(tmp_path: Path, mode: str) -> None:
     calls: list[tuple[np.ndarray, int]] = []
     service = _service(tmp_path)
     interrupted = TurnResult(
@@ -359,7 +362,7 @@ def test_interrupted_ptt_only_does_not_queue_barge_in_follow_up(tmp_path: Path) 
         engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
-    resident.set_mode("ptt-only")
+    resident.set_mode(mode)
 
     resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
 
@@ -370,7 +373,8 @@ def test_interrupted_ptt_only_does_not_queue_barge_in_follow_up(tmp_path: Path) 
     assert service.status().invocation_source == "ptt"
 
 
-def test_ptt_only_temporarily_disables_engine_interruption_monitor(tmp_path: Path) -> None:
+@pytest.mark.parametrize("mode", ["ptt-only", "ptt+wake"])
+def test_non_barge_mode_temporarily_disables_engine_interruption_monitor(tmp_path: Path, mode: str) -> None:
     calls: list[tuple[np.ndarray, int]] = []
     service = _service(tmp_path)
     marker_detector = object()
@@ -391,7 +395,7 @@ def test_ptt_only_temporarily_disables_engine_interruption_monitor(tmp_path: Pat
         engine_provider=lambda: engine,  # type: ignore[return-value]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
-    resident.set_mode("ptt-only")
+    resident.set_mode(mode)
 
     resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
 

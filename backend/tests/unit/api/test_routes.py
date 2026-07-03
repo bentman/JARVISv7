@@ -937,7 +937,8 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert started_payload["available"] is True
     assert started_payload["stream_running"] is True
     assert started_payload["degraded_reasons"] == []
-    assert started_payload["barge_in_supported"] is True
+    assert started_payload["mode"] == "ptt+wake"
+    assert started_payload["barge_in_supported"] is False
     assert started_payload["barge_in_wired"] is True
     assert started_payload["stream"]["running"] is True
     assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is not None
@@ -952,6 +953,33 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert stopped_payload["barge_in_wired"] is False
     assert stopped_payload["stream"]["running"] is False
     assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None
+
+
+def test_resident_voice_hands_free_and_continuous_report_barge_in_supported_when_wired() -> None:
+    state = _state()
+
+    from backend.app.services.audio_stream import ResidentAudioStream
+    from backend.app.services.resident_voice_invocation import default_utterance_segmenter
+
+    state.resident_audio_stream = ResidentAudioStream(chunk_source_factory=_wake_source)
+    state.utterance_segmenter = default_utterance_segmenter()
+    client = TestClient(create_app(state))
+
+    started = client.post("/status/resident-voice/start")
+    assert started.status_code == 200
+    assert started.json()["barge_in_wired"] is True
+    assert started.json()["barge_in_supported"] is False
+
+    for mode in ("hands-free", "continuous"):
+        response = client.put("/status/resident-voice/mode", json={"mode": mode})
+        payload = response.json()
+
+        assert response.status_code == 200
+        assert payload["mode"] == mode
+        assert payload["barge_in_wired"] is True
+        assert payload["barge_in_supported"] is True
+
+    client.post("/status/resident-voice/stop")
 
 
 def test_resident_voice_stream_start_endpoint_rejects_missing_stream() -> None:
