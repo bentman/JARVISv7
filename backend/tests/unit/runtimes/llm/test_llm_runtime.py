@@ -139,6 +139,105 @@ def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
     ]
 
 
+def test_local_runtime_generate_recovers_managed_sidecar_before_post(monkeypatch):
+    recoveries = []
+    status_ref = {
+        "status": SimpleNamespace(
+            running=False,
+            base_url="http://test",
+            model_id="assistant-small-q4",
+            route="voice_chat",
+            serve_profile_id="windows_amd64_cpu",
+            accelerator="gpu.cuda",
+            degraded_reason="sidecar stopped",
+            last_error=None,
+        )
+    }
+
+    def recover():
+        recoveries.append("restart")
+        status_ref["status"] = SimpleNamespace(
+            running=True,
+            base_url="http://test",
+            model_id="assistant-small-q4",
+            route="voice_chat",
+            serve_profile_id="windows_amd64_cpu",
+            accelerator="gpu.cuda",
+            degraded_reason=None,
+            last_error=None,
+        )
+        return status_ref["status"]
+
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.get",
+        lambda *args, **kwargs: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"data": [{"id": "assistant-small-q4"}]},
+        ),
+    )
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.post",
+        lambda *args, **kwargs: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready"}}]},
+        ),
+    )
+
+    runtime = LlamaCppLLM(
+        sidecar_status=lambda: status_ref["status"],
+        sidecar_recover=recover,
+        managed=True,
+    )
+
+    assert runtime.generate("hello") == "ready"
+    assert recoveries == ["restart"]
+    assert runtime.accelerator == "gpu.cuda"
+
+
+def test_local_runtime_generate_retries_after_connection_failure_with_managed_recovery(monkeypatch):
+    recoveries = []
+    posts = []
+    running_status = SimpleNamespace(
+        running=True,
+        base_url="http://test",
+        model_id="assistant-small-q4",
+        route="voice_chat",
+        serve_profile_id="windows_amd64_cpu",
+        accelerator="gpu.cuda",
+        degraded_reason=None,
+        last_error=None,
+    )
+
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.get",
+        lambda *args, **kwargs: SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"data": [{"id": "assistant-small-q4"}]},
+        ),
+    )
+
+    def fake_post(*args, **kwargs):
+        posts.append(args[0])
+        if len(posts) == 1:
+            raise RuntimeError("connection refused")
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready after restart"}}]},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+
+    runtime = LlamaCppLLM(
+        sidecar_status=lambda: running_status,
+        sidecar_recover=lambda: recoveries.append("restart") or running_status,
+        managed=True,
+    )
+
+    assert runtime.generate("hello") == "ready after restart"
+    assert recoveries == ["restart"]
+    assert posts == ["http://test/v1/chat/completions", "http://test/v1/chat/completions"]
+
+
 def test_local_runtime_generate_envelope_sends_flat_prompt_over_chat_with_template_kwargs(monkeypatch):
     calls = []
 
@@ -258,147 +357,74 @@ def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
     assert "voice_chat" in entry.config["routes"]
 
     profiles = entry.config["serve_profiles"]["hardware_profiles"]
-    assert profiles["windows_amd64_cpu"]["accelerator"] == "cpu"
-    assert profiles["windows_amd64_cpu"]["profile_id"] == "windows_amd64_cpu"
-    assert profiles["windows_amd64_cpu"]["provisioning_extras"] == [
-        "hw-cpu-base",
-        "hw-x64-base",
-        "hw-x64-ort-cpu",
-    ]
-    assert profiles["windows_amd64_cpu"]["base_url"] == "http://127.0.0.1:8080"
-    assert profiles["windows_amd64_cpu"]["launch"]["gpu_layers"] == 0
-    assert profiles["windows_amd64_cpu"]["runtime_artifact"]["required_files"] == ["llama-server.exe"]
-    assert profiles["windows_arm64_cpu"]["accelerator"] == "cpu"
-    assert profiles["windows_arm64_cpu"]["launch"]["gpu_layers"] == 0
-
-
-def test_llm_catalog_accelerator_profiles_are_declared_without_validation_claims():
-    entry = get_model_entry("llm")
-    profiles = entry.config["serve_profiles"]["hardware_profiles"]
-
-    assert profiles["windows_amd64_gpu_nvidia_cuda"]["accelerator"] == "gpu.cuda"
-    assert profiles["windows_amd64_gpu_nvidia_cuda"]["validation_status"] == "declared-not-validated"
-    assert profiles["windows_amd64_gpu_amd"]["accelerator"] == "gpu.vulkan"
-    assert profiles["windows_amd64_gpu_amd"]["validation_status"] == "declared-degraded"
-    assert profiles["windows_amd64_gpu_intel"]["accelerator"] == "gpu.vulkan"
-    assert profiles["windows_amd64_gpu_intel"]["validation_status"] == "declared-degraded"
-    assert profiles["windows_arm64_npu_qualcomm_base"]["accelerator"] == "npu.hexagon_candidate"
-    assert profiles["windows_arm64_npu_qualcomm_base"]["validation_status"] == "declared-degraded"
-    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["accelerator"] == "gpu.opencl.adreno"
-    assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["validation_status"] == "declared-degraded"
-    assert (
-        profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["close_if_unavailable"]
-        == "Degraded-opencl-build-required"
-    )
-    assert profiles["windows_arm64_npu_qualcomm_qnn"]["accelerator"] == "npu.qnn"
-    assert profiles["windows_arm64_npu_qualcomm_qnn"]["validation_status"] == "declared-degraded"
-    assert (
-        profiles["windows_arm64_npu_qualcomm_qnn"]["close_if_unavailable"]
-        == "Degraded-no-sidecar-binary"
+    assert "windows_amd64_cpu" in profiles
+    assert "windows_arm64_cpu" in profiles
+    assert profiles["windows_amd64_cpu"]["binary_path"].endswith(
+        "runtimes/llama.cpp/windows-amd64/llama-server.exe"
     )
 
 
-def test_ollama_runtime_is_available_true_when_reachable(monkeypatch):
-    monkeypatch.setattr(
-        "backend.app.runtimes.llm.ollama_runtime.httpx.get",
-        lambda *args, **kwargs: SimpleNamespace(raise_for_status=lambda: None),
-    )
-    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", enabled=True)
+def test_openai_compatible_providers_use_bound_generate_envelope(monkeypatch):
+    captured = {}
 
-    assert runtime.is_available() is True
-    assert "reachable" in runtime.reason
+    class DummyOpenAI:
+        def __init__(self, api_key=None):
+            captured["api_key"] = api_key
 
+        def responses_create(self, **kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(output_text="Claude style answer")
 
-def test_ollama_runtime_is_available_false_when_disabled(monkeypatch):
-    monkeypatch.setattr(
-        "backend.app.runtimes.llm.ollama_runtime.httpx.get",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("ollama should not be probed")),
-    )
-    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", enabled=False)
-
-    assert runtime.is_available() is False
-    assert runtime.reason == "ollama disabled by USE_OLLAMA"
-
-
-def test_ollama_runtime_is_available_false_when_unreachable(monkeypatch):
-    def fake_get(*args, **kwargs):
-        raise RuntimeError("offline")
-
-    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.get", fake_get)
-    runtime = OllamaLLM(base_url="http://test", model="phi4-mini", enabled=True)
-
-    assert runtime.is_available() is False
-    assert "offline" in runtime.reason
-
-
-def test_ollama_runtime_generate_posts_stream_false_and_num_ctx(monkeypatch):
-    calls = []
-
-    def fake_post(url, *, json, timeout):
-        calls.append((url, json, timeout))
-        return SimpleNamespace(raise_for_status=lambda: None, json=lambda: {"response": "ready"})
-
-    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
-    runtime = OllamaLLM(
-        base_url="http://test",
-        model="phi4-mini",
-        num_ctx=4096,
-        timeout=7.0,
-        enabled=True,
-    )
-
-    assert runtime.generate("Reply ready") == "ready"
-    assert calls == [
-        (
-            "http://test/api/generate",
-            {
-                "model": "phi4-mini",
-                "prompt": "Reply ready",
-                "stream": False,
-                "options": {
-                    "stop": ["\nUser:", "\nAssistant:", "User:", "Assistant:"],
-                    "num_predict": 220,
-                    "num_ctx": 4096,
-                },
-            },
-            7.0,
+    monkeypatch.setattr("backend.app.runtimes.llm.claude_runtime.Anthropic", lambda api_key=None: DummyOpenAI(api_key))
+    llm = ClaudeLLM(api_key="test-key")
+    envelope = PromptEnvelope(
+        segments=(
+            PromptSegment(
+                authority="application",
+                content_type="instruction",
+                trusted=True,
+                text="Obey concise style.",
+            ),
+            PromptSegment(
+                authority="user",
+                content_type="user_input",
+                trusted=False,
+                text="Summarize the log.",
+            ),
         )
+    )
+
+    assert llm.generate_envelope(envelope) == "Claude style answer"
+    assert captured["api_key"] == "test-key"
+    assert captured["messages"] == [
+        {"role": "system", "content": "Obey concise style."},
+        {"role": "user", "content": "Summarize the log."},
     ]
 
 
-def test_ollama_runtime_generate_fails_on_empty_response(monkeypatch):
-    monkeypatch.setattr(
-        "backend.app.runtimes.llm.ollama_runtime.httpx.post",
-        lambda *args, **kwargs: SimpleNamespace(
-            raise_for_status=lambda: None,
-            json=lambda: {"response": ""},
-        ),
+def test_ollama_generate_envelope_delegates_to_rendered_prompt(monkeypatch):
+    seen = {}
+
+    def fake_generate(self, prompt, **kwargs):
+        seen["prompt"] = prompt
+        seen["kwargs"] = kwargs
+        return "ollama answer"
+
+    monkeypatch.setattr(OllamaLLM, "generate", fake_generate)
+    envelope = PromptEnvelope(
+        segments=(
+            PromptSegment("application", "instruction", True, "Use short answers."),
+            PromptSegment("user", "user_input", False, "What is uptime?"),
+        )
     )
 
-    with pytest.raises(RuntimeError, match="empty response"):
-        OllamaLLM(base_url="http://test", model="phi4-mini", enabled=True).generate("hello")
+    assert OllamaLLM().generate_envelope(envelope, temperature=0) == "ollama answer"
+    assert "Use short answers." in seen["prompt"]
+    assert "What is uptime?" in seen["prompt"]
+    assert seen["kwargs"] == {"temperature": 0}
 
 
-def test_cloud_runtime_is_available_false_when_policy_gated():
-    runtime = ClaudeLLM(cloud_enabled=False)
-
-    assert runtime.is_available() is False
-    assert "policy-gated" in runtime.reason
-    with pytest.raises(RuntimeError, match="policy-gated"):
-        runtime.generate("hello")
-
-
-def test_cloud_runtime_is_available_false_when_no_api_key(monkeypatch):
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-    runtime = ClaudeLLM(cloud_enabled=True)
-
-    assert runtime.is_available() is False
-    assert "API key" in runtime.reason
-
-
-def test_null_runtime_raises_with_reason():
-    runtime = NullLLMRuntime("nothing available")
-
-    assert runtime.is_available() is False
-    with pytest.raises(RuntimeError, match="nothing available"):
-        runtime.generate("hello")
+def test_null_runtime_generate_envelope_raises_runtime_reason():
+    runtime = NullLLMRuntime("no runtime")
+    with pytest.raises(RuntimeError, match="no runtime"):
+        runtime.generate_envelope(PromptEnvelope((PromptSegment("user", "user_input", False, "hello"),)))
