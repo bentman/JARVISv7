@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-03 05:27
+  - Summary: Implemented Slice Z.2 readiness summary cleanup. The desktop readiness pane stays compact, degraded details now render in a collapsed `Degraded list detail` surface under voice debug, and optional service outages are labeled separately from selected-path blockers.
+  - Scope: `desktop/src/index.html`, `desktop/src/style.css`, `desktop/src/components/degraded-list.js`, `desktop/src/components/service-status.js`, `desktop/tests/static.test.mjs`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\scripts\test_validate_backend_script.py -q` PASS (`60 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`681 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+
 - 2026-07-02 10:14
   - Summary: Validated Slice Z.1 startup context cleanup on Windows ARM64. No implementation changes were made in this pass.
   - Scope: Slice Z.1 validation evidence only; `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md`.

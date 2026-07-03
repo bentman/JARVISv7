@@ -1,6 +1,6 @@
 const SERVICE_LABELS = {
-  redis: "Redis Cache",
-  searxng: "SearXNG Search",
+  redis: "Redis Cache (optional)",
+  searxng: "SearXNG Search (optional)",
 };
 
 function serviceLabel(name) {

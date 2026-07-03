@@ -1,9 +1,11 @@
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
+import { collectDegradedConditions } from "../src/components/degraded-list.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
 const residentVoice = readFileSync(new URL("../src/components/resident-voice.js", import.meta.url), "utf8");
+const degradedList = readFileSync(new URL("../src/components/degraded-list.js", import.meta.url), "utf8");
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
@@ -41,6 +43,12 @@ assert.ok(index.includes("ptt-only"), "desktop must include PTT-only resident mo
 assert.ok(index.includes("hands-free"), "desktop must include hands-free resident mode");
 assert.ok(index.includes("continuous"), "desktop must include continuous resident mode");
 assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
+assert.ok(index.includes("degraded-detail"), "desktop must include collapsed degraded detail surface");
+assert.ok(index.includes("Degraded list detail"), "desktop degraded detail surface must use the required title");
+assert.ok(index.indexOf("Voice debug details") < index.indexOf("Degraded list detail"), "desktop degraded detail must be directly after voice debug details");
+assert.ok(main.includes("renderDegradedList(readiness, degradedEl)"), "desktop degraded detail must render from existing readiness payload");
+assert.ok(degradedList.includes("closest(\"details\")"), "degraded detail renderer must control its collapsed details container");
+assert.ok(degradedList.includes("optional-service"), "degraded detail must label optional services separately");
 assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
 assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
 assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
@@ -66,5 +74,41 @@ assert.ok(settingsPanel.includes("field.advanced"), "settings panel must use adv
 assert.ok(!settingsPanel.includes("LLM_MODEL_MODE"), "settings panel must not hardcode model mode field");
 assert.ok(!settingsPanel.includes("Local LLM intent (llama.cpp)"), "settings panel must not hardcode backend sections");
 assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
+
+const readyConditions = collectDegradedConditions({
+  status: "ready",
+  active_llm_runtime: "llama.cpp",
+  families: {
+    llm: { family: "llm", ready: true, reason: "local llama.cpp available" },
+    stt: { family: "stt", ready: true, reason: "stt ready" },
+  },
+  preflight: { probe_error_count: 0 },
+  services: {
+    redis: { reachable: true, reason: "reachable" },
+    searxng: { reachable: true, reason: "container reachable; json usable" },
+  },
+  resident_audio: { degraded_reasons: [] },
+});
+assert.equal(readyConditions.length, 0, "ready desktop payload must not show degraded detail rows");
+
+const degradedConditions = collectDegradedConditions({
+  status: "degraded",
+  active_llm_runtime: "ollama",
+  families: {
+    llm: { family: "llm", ready: true, reason: "test ollama available", degraded_reason: "Degraded-no-sidecar-binary" },
+    stt: { family: "stt", ready: false, reason: "STT model missing" },
+    tts: { family: "tts", ready: true, reason: "tts ready" },
+  },
+  preflight: { probe_error_count: 1 },
+  services: {
+    redis: { reachable: false, reason: "connection refused" },
+  },
+  resident_audio: { degraded_reasons: ["resident audio stream is stopped"] },
+});
+assert.deepEqual(
+  degradedConditions.map((row) => row.kind),
+  ["backend", "family", "family", "resident-audio", "optional-service"],
+  "degraded detail must include selected-path blockers, resident audio reasons, and optional services separately",
+);
 
 console.log("desktop static voice checks passed");

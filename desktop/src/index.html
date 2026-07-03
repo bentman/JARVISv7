@@ -41,9 +41,7 @@
             <h2>Readiness</h2>
             <div id="readiness-panel" class="readiness empty">Waiting for backend readiness…</div>
           </section>
-          <section class="panel-section">
-            <div id="degraded-conditions" class="degraded-conditions" hidden></div>
-          </section>
+          <!-- id="degraded-conditions" moved to the collapsed detail under Voice debug details. -->
           <section class="panel-section">
             <h2>Services</h2>
             <div id="service-status" class="profile-detail">Service status unavailable.</div>
@@ -77,6 +75,10 @@
           <details class="voice-debug">
             <summary>Voice debug details</summary>
             <pre id="voice-detail" class="voice-detail" aria-live="polite"></pre>
+          </details>
+          <details id="degraded-detail" class="voice-debug degraded-detail" hidden>
+            <summary>Degraded list detail</summary>
+            <div id="degraded-conditions" class="degraded-conditions" aria-live="polite"></div>
           </details>
         </section>
         <aside class="panel operator-panel" aria-label="Operator controls">
