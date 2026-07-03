@@ -12,7 +12,7 @@ from backend.app.hardware.preflight import PreflightResult
 from backend.app.models.llm_selection import select_llm_model
 from backend.app.models.llm_profiles import LLMServeProfileResolution, resolve_llm_serve_profile
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
-from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
+from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, LocalLLMSidecarStatus
 
 
 ReadinessProbe = Callable[[str, float], tuple[bool, str]]
@@ -76,6 +76,7 @@ def prepare_managed_local_llm(
             degraded_reason=resolution.degraded_reason,
         )
 
+    probe = readiness_probe or wait_for_llama_cpp_ready
     sidecar: LocalLLMSidecarService | None = None
     if resolved_settings.effective_llama_cpp_managed:
         sidecar = LocalLLMSidecarService()
@@ -88,7 +89,6 @@ def prepare_managed_local_llm(
                 degraded_reason=status.degraded_reason or status.last_error or "managed llama.cpp sidecar did not start",
             )
 
-        probe = readiness_probe or wait_for_llama_cpp_ready
         ready, reason = probe(resolution.base_url, 45.0)
         if not ready:
             sidecar.stop()
@@ -98,11 +98,23 @@ def prepare_managed_local_llm(
                 degraded_reason=f"Degraded-sidecar-unreachable: {reason}",
             )
 
+    def recover_sidecar() -> LocalLLMSidecarStatus:
+        if sidecar is None:
+            raise RuntimeError("managed llama.cpp sidecar recovery requested without a sidecar service")
+        status = sidecar.restart(resolution)
+        if not status.running:
+            return status
+        ready, _reason = probe(resolution.base_url, 45.0)
+        if not ready:
+            sidecar.stop()
+        return sidecar.status()
+
     runtime = LlamaCppLLM(
         base_url=resolution.base_url,
         model=resolution.model_id,
         generation_defaults=resolution.generation_defaults,
         sidecar_status=sidecar.status if sidecar is not None else None,
+        sidecar_recover=recover_sidecar if sidecar is not None else None,
         managed=resolved_settings.effective_llama_cpp_managed,
         route=resolution.route,
         serve_profile_id=resolution.serve_profile_id,
