@@ -14,6 +14,7 @@ DEFAULT_LLAMA_CPP_BASE_URL = "http://127.0.0.1:8080"
 _OPENAI_MODELS_PATH = "/v1/models"
 _OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 _HEALTH_PATHS = ("/health", "/healthz")
+SidecarRecovery = Callable[[], LocalLLMSidecarStatus]
 
 
 class LlamaCppLLM(LLMBase):
@@ -24,6 +25,7 @@ class LlamaCppLLM(LLMBase):
         generation_defaults: dict[str, Any] | None = None,
         timeout: float | None = None,
         sidecar_status: Callable[[], LocalLLMSidecarStatus] | None = None,
+        sidecar_recover: SidecarRecovery | None = None,
         managed: bool | None = None,
         route: str | None = None,
         serve_profile_id: str | None = None,
@@ -41,6 +43,7 @@ class LlamaCppLLM(LLMBase):
         self.generation_defaults = generation_defaults or {}
         self.timeout = timeout if timeout is not None else settings.llama_cpp_timeout_seconds
         self.sidecar_status = sidecar_status
+        self.sidecar_recover = sidecar_recover
         self.managed = settings.llama_cpp_managed if managed is None else managed
         self.route = route
         self.serve_profile_id = serve_profile_id
@@ -70,18 +73,21 @@ class LlamaCppLLM(LLMBase):
         return False
 
     def generate(self, prompt: str, **kwargs: object) -> str:
+        if not self._ensure_sidecar_available_for_turn():
+            raise RuntimeError(f"llama.cpp chat completion failed: {self.reason}")
+
         payload = self._chat_payload(prompt)
         payload.update(kwargs)
         try:
-            response = httpx.post(
-                f"{self.base_url}{_OPENAI_CHAT_COMPLETIONS_PATH}",
-                json=payload,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-            data = response.json()
+            data = self._post_chat_completion(payload)
         except Exception as exc:
-            raise RuntimeError(f"llama.cpp chat completion failed: {exc}") from exc
+            if self._recover_sidecar() and self.is_available():
+                try:
+                    data = self._post_chat_completion(payload)
+                except Exception as retry_exc:
+                    raise RuntimeError(f"llama.cpp chat completion failed after sidecar recovery: {retry_exc}") from retry_exc
+            else:
+                raise RuntimeError(f"llama.cpp chat completion failed: {exc}") from exc
 
         generated = _chat_completion_text(data)
         if not generated.strip():
@@ -97,22 +103,57 @@ class LlamaCppLLM(LLMBase):
             if not status.running:
                 self.reason = status.degraded_reason or status.last_error or "managed llama.cpp sidecar is not running"
                 return False
-            if status.base_url:
-                self.base_url = status.base_url.rstrip("/")
-            if status.model_id:
-                self.model = status.model_id
-            if status.route:
-                self.route = status.route
-            if status.serve_profile_id:
-                self.serve_profile_id = status.serve_profile_id
-            if status.accelerator:
-                self.accelerator = status.accelerator
+            self._apply_sidecar_status(status)
             return True
 
         if self._explicit_base_url or self.managed:
             return True
         self.reason = "managed llama.cpp sidecar is disabled"
         return False
+
+    def _apply_sidecar_status(self, status: LocalLLMSidecarStatus) -> None:
+        if status.base_url:
+            self.base_url = status.base_url.rstrip("/")
+        if status.model_id:
+            self.model = status.model_id
+        if status.route:
+            self.route = status.route
+        if status.serve_profile_id:
+            self.serve_profile_id = status.serve_profile_id
+        if status.accelerator:
+            self.accelerator = status.accelerator
+
+    def _recover_sidecar(self) -> bool:
+        if self.sidecar_recover is None:
+            return False
+        try:
+            status = self.sidecar_recover()
+        except Exception as exc:
+            self.reason = f"managed llama.cpp sidecar recovery failed: {exc}"
+            return False
+        if not status.running:
+            self.reason = status.degraded_reason or status.last_error or "managed llama.cpp sidecar recovery did not start the sidecar"
+            return False
+        self._apply_sidecar_status(status)
+        return True
+
+    def _ensure_sidecar_available_for_turn(self) -> bool:
+        if self.sidecar_status is None:
+            return True
+        if self.is_available():
+            return True
+        if not self._recover_sidecar():
+            return False
+        return self.is_available()
+
+    def _post_chat_completion(self, payload: dict[str, Any]) -> Any:
+        response = httpx.post(
+            f"{self.base_url}{_OPENAI_CHAT_COMPLETIONS_PATH}",
+            json=payload,
+            timeout=self.timeout,
+        )
+        response.raise_for_status()
+        return response.json()
 
     def _probe_models_endpoint(self) -> str | None:
         try:
