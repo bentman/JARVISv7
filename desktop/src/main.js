@@ -1,5 +1,6 @@
 import { createApiClient } from "./api-client.js";
 import { applyStored } from "./components/appearance-controls.js";
+import { renderConversationDebug } from "./components/conversation-debug.js";
 import { renderDegradedList } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
 import { createResidentVoicePresenter } from "./components/resident-voice.js";
@@ -120,7 +121,6 @@ function updatePersonalityDisplay(profile) {
 const residentVoice = createResidentVoicePresenter({
   pttButton,
   voiceStatusEl,
-  voiceDetailEl,
   residentModeEl,
   residentStatusEl,
   turnStateEl,
@@ -140,6 +140,7 @@ async function refreshSessionStatus() {
   const status = await api.getSessionStatus();
   sessionEl.textContent = status.session_id || "not active";
   if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
+  renderConversationDebug(status, voiceDetailEl);
   residentVoice.renderResidentVoiceStatus(status);
   return status;
 }

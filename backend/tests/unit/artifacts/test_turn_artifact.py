@@ -17,6 +17,7 @@ def _turn_artifact() -> TurnArtifact:
         final_prompt_text="User: hello",
         response_text="ready",
         final_state="IDLE",
+        runtime_context={"llm": "fake"},
         phase_timestamps={"IDLE": "2026-04-27T00:00:00+00:00"},
     )
 
@@ -26,6 +27,7 @@ def test_turn_artifact_serializes_to_json():
 
     assert payload["turn_id"] == "turn-1"
     assert payload["session_id"] == "session-1"
+    assert payload["runtime_context"] == {"llm": "fake"}
     assert payload["phase_timestamps"]["IDLE"].endswith("+00:00")
 
 
@@ -72,6 +74,7 @@ def test_turn_schema_fields_unchanged():
         "tts_degraded",
         "tts_degraded_reason",
         "tts_output_device",
+        "runtime_context",
         "phase_timestamps",
     )
 

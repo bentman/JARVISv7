@@ -429,6 +429,7 @@ def test_desktop_ptt_uses_resident_voice_not_webview_wav_capture() -> None:
     main_js = _read("desktop/src/main.js")
     api_client = _read("desktop/src/api-client.js")
     resident_voice = _read("desktop/src/components/resident-voice.js")
+    conversation_debug = _read("desktop/src/components/conversation-debug.js")
     assert "POST /session/ptt" in backend_rs
     assert "invoke_resident_ptt" in backend_rs
     assert "invoke_resident_ptt" in lib_rs
@@ -436,8 +437,9 @@ def test_desktop_ptt_uses_resident_voice_not_webview_wav_capture() -> None:
     assert "residentVoice.renderResidentVoiceStatus" in main_js
     assert "function renderResidentVoiceStatus(status)" in resident_voice
     assert "function appendResidentVoiceCompletion(status)" in resident_voice
-    for field in ["last_transcript", "last_response", "state", "invocation_source", "failure_reason", "turn_count"]:
+    for field in ["last_transcript", "last_response", "state", "invocation_source", "failure_reason"]:
         assert field in resident_voice
+    assert "turn_count" in conversation_debug
     assert "MediaRecorder" not in main_js
     assert "getUserMedia" not in main_js
     assert "audioBytes" not in main_js
@@ -505,14 +507,16 @@ def test_j1_readiness_components_and_containers_exist() -> None:
     assert "containerEl.hidden = true" in degraded_list
 
 
-def test_j1_voice_debug_is_collapsed_details_without_voice_capture_change() -> None:
+def test_j1_conversation_debug_is_collapsed_details_without_voice_capture_change() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
 
     assert "<details" in index_html
-    assert "<summary>Voice debug details</summary>" in index_html
+    assert "<summary>Conversation debug details</summary>" in index_html
+    assert "<summary>Voice debug details</summary>" not in index_html
     assert 'id="voice-detail"' in index_html
     assert index_html.index("<details") < index_html.index('id="voice-detail"')
+    assert "renderConversationDebug(status, voiceDetailEl)" in main_js
     assert 'pttButton.addEventListener("click"' in main_js
     assert 'pttButton.addEventListener("pointerdown"' not in main_js
     assert 'pttButton.addEventListener("pointerup"' not in main_js

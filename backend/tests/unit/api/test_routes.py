@@ -17,6 +17,7 @@ from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport,
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.routing.runtime_selector import SelectionTrace
+from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.services.startup_context import StartupContext
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.session_service import SessionService
@@ -566,7 +567,39 @@ def test_session_status_returns_active_session() -> None:
         "failure_reason": None,
         "invocation_source": None,
         "tts_output_device": None,
+        "latest_turn": None,
         "voice_capture_diagnostics": None,
+    }
+
+
+def test_session_status_returns_latest_turn_summary() -> None:
+    client = _client()
+    state = client.app.state.jarvis_state
+    session_id = state.session_service.status().session_id
+    assert session_id is not None
+    state.session_service.session_manager.turn_artifacts.append(
+        TurnArtifact(
+            turn_id="turn-debug",
+            session_id=session_id,
+            input_modality="text",
+            final_state="IDLE",
+            runtime_context={"llm": "fake-llm"},
+        )
+    )
+
+    payload = client.get("/session/status").json()
+
+    assert payload["latest_turn"] == {
+        "turn_id": "turn-debug",
+        "session_id": session_id,
+        "input_modality": "text",
+        "final_state": "IDLE",
+        "failure_reason": None,
+        "degraded_reason": None,
+        "tts_output_device": None,
+        "raw_audio_path": None,
+        "artifact_path": f"data\\turns\\{session_id}\\turn-debug.json",
+        "runtime_context": {"llm": "fake-llm"},
     }
 
 

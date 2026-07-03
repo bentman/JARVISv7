@@ -4,7 +4,6 @@ export function createResidentVoicePresenter(options) {
   const {
     pttButton,
     voiceStatusEl,
-    voiceDetailEl,
     residentModeEl,
     residentStatusEl,
     turnStateEl,
@@ -19,20 +18,6 @@ export function createResidentVoicePresenter(options) {
     "hands-free": "Hands-free",
     continuous: "Continuous",
   };
-
-  function setVoiceDetail(result) {
-    const lines = [
-      `state: ${result.state ?? ""}`,
-      `source: ${result.invocation_source ?? ""}`,
-      `resident_mode: ${result.resident_mode ?? result.mode ?? ""}`,
-      `transcript: ${result.last_transcript ?? ""}`,
-      `response: ${result.last_response ?? ""}`,
-      `failure_reason: ${result.failure_reason ?? ""}`,
-      `tts_output_device: ${result.tts_output_device ?? ""}`,
-      `turn_count: ${result.turn_count ?? 0}`,
-    ];
-    voiceDetailEl.textContent = lines.join("\n");
-  }
 
   function boolText(value) {
     return value ? "true" : "false";
@@ -144,7 +129,6 @@ export function createResidentVoicePresenter(options) {
   }
 
   function renderResidentVoiceStatus(status) {
-    setVoiceDetail(status);
     const state = status.state || "IDLE";
     setStateLabel(state, turnStateEl);
     const source = status.invocation_source || "";

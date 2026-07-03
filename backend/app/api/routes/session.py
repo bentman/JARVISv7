@@ -7,6 +7,7 @@ from backend.app.api.schemas.session import (
     CloseSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
+    LatestTurnSummary,
     SessionStatusResponse,
 )
 from backend.app.services.session_service import SessionService
@@ -58,6 +59,20 @@ def invoke_ptt(state: ApiState = Depends(get_api_state)) -> SessionStatusRespons
 
 
 def _session_status_response(status) -> SessionStatusResponse:
+    latest_turn = None
+    if status.latest_turn is not None:
+        latest_turn = LatestTurnSummary(
+            turn_id=status.latest_turn.turn_id,
+            session_id=status.latest_turn.session_id,
+            input_modality=status.latest_turn.input_modality,
+            final_state=status.latest_turn.final_state,
+            failure_reason=status.latest_turn.failure_reason,
+            degraded_reason=status.latest_turn.degraded_reason,
+            tts_output_device=status.latest_turn.tts_output_device,
+            raw_audio_path=status.latest_turn.raw_audio_path,
+            artifact_path=status.latest_turn.artifact_path,
+            runtime_context=status.latest_turn.runtime_context,
+        )
     return SessionStatusResponse(
         session_id=status.session_id,
         active=status.active,
@@ -68,5 +83,6 @@ def _session_status_response(status) -> SessionStatusResponse:
         failure_reason=status.failure_reason,
         invocation_source=status.invocation_source,
         tts_output_device=status.tts_output_device,
+        latest_turn=latest_turn,
         voice_capture_diagnostics=status.voice_capture_diagnostics,
     )

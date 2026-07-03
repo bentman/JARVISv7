@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 
+from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -112,6 +113,106 @@ def test_status_reports_active_session_and_turn_count(tmp_path: Path) -> None:
     assert result.session_id == status.session_id
     assert status.active is True
     assert status.turn_count == 1
+    assert status.latest_turn is not None
+    assert status.latest_turn.turn_id == result.turn_id
+    assert status.latest_turn.input_modality == "text"
+    assert status.latest_turn.runtime_context == {"llm": "fake-llm"}
+    assert status.latest_turn.artifact_path == str(tmp_path / "turns" / result.session_id / f"{result.turn_id}.json")
+
+
+def test_status_reports_no_latest_turn_before_artifact_exists(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+
+    status = service.status()
+
+    assert status.turn_count == 0
+    assert status.latest_turn is None
+
+
+def test_status_reports_voice_latest_turn_runtime_context(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    result = service.engine().run_voice_turn(np.zeros(160, dtype=np.float32), 16000)
+
+    status = service.status()
+
+    assert status.latest_turn is not None
+    assert status.latest_turn.turn_id == result.turn_id
+    assert status.latest_turn.input_modality == "voice"
+    assert status.latest_turn.runtime_context == {
+        "stt": "fake-stt/cpu",
+        "llm": "fake-llm",
+    }
+
+
+def test_status_reports_tts_degraded_artifact_turn(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    session_id = service.status().session_id
+    assert session_id is not None
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="tts-degraded-turn",
+            session_id=session_id,
+            input_modality="voice",
+            final_state="IDLE",
+            tts_degraded=True,
+            tts_degraded_reason="TTS runtime is unavailable",
+            runtime_context={"stt": "fake-stt/cpu", "llm": "fake-llm", "tts": "fake-tts/cpu"},
+        )
+    )
+
+    status = service.status()
+
+    assert status.latest_turn is not None
+    assert status.latest_turn.turn_id == "tts-degraded-turn"
+    assert status.latest_turn.degraded_reason == "TTS runtime is unavailable"
+    assert status.latest_turn.runtime_context == {
+        "stt": "fake-stt/cpu",
+        "llm": "fake-llm",
+        "tts": "fake-tts/cpu",
+    }
+
+
+def test_pre_engine_voice_failure_uses_live_status_without_latest_turn(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+
+    service.begin_voice_invocation("ptt")
+    service.record_voice_capture_diagnostics(
+        source="ptt",
+        stage="segment",
+        diagnostics={"reason": "no-speech", "speech_started": False},
+    )
+    status = service.fail_voice_invocation("voice capture did not produce speech")
+
+    assert status.state == "FAILED"
+    assert status.failure_reason == "voice capture did not produce speech"
+    assert status.invocation_source == "ptt"
+    assert status.latest_turn is None
+    assert status.voice_capture_diagnostics is not None
+    assert status.voice_capture_diagnostics["speech_started"] is False
+
+
+def test_status_reports_failed_artifact_turn(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    session_id = service.status().session_id
+    assert session_id is not None
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="failed-turn",
+            session_id=session_id,
+            input_modality="text",
+            final_state="FAILED",
+            failure_reason="llm failed",
+            runtime_context={"llm": "fake-llm"},
+        )
+    )
+
+    status = service.status()
+
+    assert status.latest_turn is not None
+    assert status.latest_turn.turn_id == "failed-turn"
+    assert status.latest_turn.final_state == "FAILED"
+    assert status.latest_turn.failure_reason == "llm failed"
+    assert status.latest_turn.runtime_context == {"llm": "fake-llm"}
 
 
 def test_end_session_marks_service_inactive(tmp_path: Path) -> None:

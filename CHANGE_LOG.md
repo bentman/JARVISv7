@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-03 08:57
+  - Summary: Implemented Slice Z.3 conversation debug and turn artifact contract. `/session/status` now includes a backward-compatible latest-turn summary, turn artifacts carry compact runtime context, and the desktop Conversation debug details surface renders compact session/latest-turn diagnostics without duplicating transcript or response text.
+  - Scope: `backend/app/api/routes/session.py`, `backend/app/api/schemas/session.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/conversation/engine.py`, `backend/app/services/session_service.py`, focused backend tests, `desktop/src/components/conversation-debug.js`, `desktop/src/components/resident-voice.js`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/tests/static.test.mjs`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\services\test_session_service.py backend\tests\unit\artifacts\test_turn_artifact.py backend\tests\unit\conversation\test_engine.py -q` PASS (`121 passed`). `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`687 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`). Operator visual validation approved the Conversation debug details height/scroll correction.
+
 - 2026-07-03 06:00
   - Summary: Corrected Slice Z.2 degraded-detail false positives. Ready selected `llama.cpp` no longer produces an LLM degraded row solely from `degraded_reason`, and desktop startup now renders degraded detail from readiness fetched after resident stream and wake startup settle.
   - Scope: `desktop/src/components/degraded-list.js`, `desktop/src/main.js`, `desktop/tests/static.test.mjs`.

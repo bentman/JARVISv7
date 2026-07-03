@@ -9,8 +9,23 @@ import numpy as np
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
+from backend.app.core.paths import DATA_DIR
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
+
+
+@dataclass(frozen=True, slots=True)
+class LatestTurnStatus:
+    turn_id: str
+    session_id: str
+    input_modality: str
+    final_state: str
+    failure_reason: str | None = None
+    degraded_reason: str | None = None
+    tts_output_device: str | None = None
+    raw_audio_path: str | None = None
+    artifact_path: str | None = None
+    runtime_context: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +39,7 @@ class SessionStatus:
     failure_reason: str | None = None
     invocation_source: str | None = None
     tts_output_device: str | None = None
+    latest_turn: LatestTurnStatus | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
 
 
@@ -119,7 +135,32 @@ class SessionService:
             failure_reason=self._failure_reason,
             invocation_source=self._invocation_source,
             tts_output_device=self._tts_output_device,
+            latest_turn=self._latest_turn_status(),
             voice_capture_diagnostics=self._voice_capture_diagnostics,
+        )
+
+    def _latest_turn_status(self) -> LatestTurnStatus | None:
+        if not self._session_manager.turn_artifacts:
+            return None
+        latest = self._session_manager.turn_artifacts[-1]
+        degraded_reason = latest.tts_degraded_reason if latest.tts_degraded else None
+        turns_base_dir = getattr(self._session_manager, "turns_base_dir", DATA_DIR / "turns")
+        artifact_path = _turn_artifact_display_path(
+            turns_base_dir,
+            latest.session_id,
+            latest.turn_id,
+        )
+        return LatestTurnStatus(
+            turn_id=latest.turn_id,
+            session_id=latest.session_id,
+            input_modality=latest.input_modality,
+            final_state=latest.final_state,
+            failure_reason=latest.failure_reason,
+            degraded_reason=degraded_reason,
+            tts_output_device=latest.tts_output_device,
+            raw_audio_path=latest.raw_audio_path,
+            artifact_path=str(artifact_path),
+            runtime_context=dict(latest.runtime_context),
         )
 
     def is_session_active(self) -> bool:
@@ -212,3 +253,13 @@ class SessionService:
 
     def process_wake_chunks(self, wake_runtime: WakeRuntime, audio_chunks: Iterable[np.ndarray]) -> WakeMonitorStatus:
         return self._wake_status_store.process_chunks(wake_runtime, audio_chunks)
+
+
+def _turn_artifact_display_path(turns_base_dir: Path, session_id: str, turn_id: str) -> Path:
+    artifact_path = turns_base_dir / session_id / f"{turn_id}.json"
+    try:
+        if turns_base_dir.resolve() == (DATA_DIR / "turns").resolve():
+            return Path("data") / "turns" / session_id / f"{turn_id}.json"
+    except OSError:
+        pass
+    return artifact_path

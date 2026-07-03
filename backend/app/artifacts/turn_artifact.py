@@ -10,7 +10,7 @@ TURN_ARTIFACT_FIELDS: tuple[str, ...] = (
     "transcript", "final_prompt_text", "retrieved_memory_refs", "tools_invoked",
     "agent_trace", "reasoning_trace_metadata", "response_text", "audio_output_path",
     "interruption_events", "final_state", "failure_reason", "tts_degraded",
-    "tts_degraded_reason", "tts_output_device", "phase_timestamps",
+    "tts_degraded_reason", "tts_output_device", "runtime_context", "phase_timestamps",
 )
 
 
@@ -37,6 +37,7 @@ class TurnArtifact:
     tts_degraded: bool = False
     tts_degraded_reason: str | None = None
     tts_output_device: str | None = None
+    runtime_context: dict[str, str] = field(default_factory=dict)
     phase_timestamps: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:

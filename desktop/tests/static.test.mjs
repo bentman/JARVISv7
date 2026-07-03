@@ -5,6 +5,7 @@ import { collectDegradedConditions } from "../src/components/degraded-list.js";
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
 const residentVoice = readFileSync(new URL("../src/components/resident-voice.js", import.meta.url), "utf8");
+const conversationDebug = readFileSync(new URL("../src/components/conversation-debug.js", import.meta.url), "utf8");
 const degradedList = readFileSync(new URL("../src/components/degraded-list.js", import.meta.url), "utf8");
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
@@ -45,7 +46,17 @@ assert.ok(index.includes("continuous"), "desktop must include continuous residen
 assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
 assert.ok(index.includes("degraded-detail"), "desktop must include collapsed degraded detail surface");
 assert.ok(index.includes("Degraded list detail"), "desktop degraded detail surface must use the required title");
-assert.ok(index.indexOf("Voice debug details") < index.indexOf("Degraded list detail"), "desktop degraded detail must be directly after voice debug details");
+assert.ok(index.includes("Conversation debug details"), "desktop must title the conversation debug surface correctly");
+assert.ok(!index.includes("Voice debug details"), "desktop must not keep the voice-only debug label");
+assert.ok(index.indexOf("Conversation debug details") < index.indexOf("Degraded list detail"), "desktop degraded detail must be directly after conversation debug details");
+assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
+assert.ok(main.includes("await refreshSessionStatus()"), "desktop text and voice flows must refresh session status");
+assert.ok(conversationDebug.includes("latest_turn"), "conversation debug must render latest-turn session status");
+assert.ok(conversationDebug.includes("artifact_path"), "conversation debug must render turn artifact path");
+assert.ok(conversationDebug.includes("runtime_context"), "conversation debug must render runtime context");
+assert.ok(conversationDebug.includes("degraded_reason"), "conversation debug must render compact degraded reason");
+assert.ok(!conversationDebug.includes("last_transcript"), "conversation debug must not duplicate transcript text");
+assert.ok(!conversationDebug.includes("last_response"), "conversation debug must not duplicate assistant response text");
 assert.ok(main.includes("renderDegradedList(readiness, degradedEl)"), "desktop degraded detail must render from existing readiness payload");
 assert.ok(
   main.indexOf("await ensureResidentVoiceStream()") < main.indexOf("const readiness = await api.getReadiness()"),

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import wave
 from dataclasses import dataclass, field
 from typing import Any, Iterable
@@ -420,6 +421,7 @@ class TurnEngine:
             tts_degraded=result.tts_degraded,
             tts_degraded_reason=result.tts_degraded_reason,
             tts_output_device=result.tts_output_device,
+            runtime_context=self._runtime_context(context, result),
             interruption_events=result.interruption_events,
             tools_invoked=[str(call["tool_name"]) for call in result.tool_calls if isinstance(call.get("tool_name"), str)],
             agent_trace={"tool_calls": result.tool_calls, "tool_results": result.tool_results} if result.tool_calls else None,
@@ -433,6 +435,24 @@ class TurnEngine:
                 pass
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
+
+    def _runtime_context(self, context: TurnContext, result: TurnResult) -> dict[str, str]:
+        phases = set(context.phase_timestamps)
+        runtime_context: dict[str, str] = {}
+        if context.modality == "voice" and "TRANSCRIBING" in phases:
+            runtime_context["stt"] = _runtime_device_label(self.stt)
+        if "REASONING" in phases:
+            runtime_context["llm"] = self.llm.runtime_name()
+        if (
+            context.modality == "voice"
+            and (
+                "SPEAKING" in phases
+                or result.tts_degraded
+                or result.tts_output_device is not None
+            )
+        ):
+            runtime_context["tts"] = _runtime_device_label(self.tts)
+        return runtime_context
 
     def _persist_voice_audio(self, context: TurnContext, audio: np.ndarray, sample_rate: int) -> str | None:
         if self.session_manager is None:
@@ -488,3 +508,19 @@ def timestamp_now() -> str:
     from backend.app.conversation.turn_manager import utc_now
 
     return utc_now().isoformat()
+
+
+def _runtime_device_label(runtime: object) -> str:
+    runtime_name = getattr(runtime, "runtime_name", None)
+    if callable(runtime_name):
+        label = str(runtime_name())
+    else:
+        class_name = runtime.__class__.__name__.lstrip("_")
+        for suffix in ("Runtime",):
+            if class_name.endswith(suffix):
+                class_name = class_name[: -len(suffix)]
+                break
+        first_pass = re.sub(r"(.)([A-Z][a-z]+)", r"\1-\2", class_name)
+        label = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", first_pass).lower()
+    device = getattr(runtime, "device", None)
+    return f"{label}/{device or 'unknown'}"
