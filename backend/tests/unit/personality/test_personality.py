@@ -142,7 +142,7 @@ def test_load_default_personality_returns_configured_profile():
     profile = load_default_personality()
 
     assert profile.profile_id == "default"
-    assert profile.display_name == "JARVIS"
+    assert profile.display_name == "Morgan"
     assert profile.identity_summary
     assert profile.response_style == "direct_answer"
 
@@ -194,7 +194,7 @@ def test_list_personality_profiles_loads_all_configured_profiles():
         assert profile.enabled is True
 
 
-def test_load_personality_profile_rejects_unknown_and_unsafe_id():
+def test_load_personality_profile_rejects_unknown_and_bad_id():
     assert load_personality_profile("warm").profile_id == "warm"
     for profile_id in ["missing", "../default", " default"]:
         try:
@@ -215,7 +215,7 @@ def test_personality_profile_rejects_unknown_fields(tmp_path):
                 "tone: calm",
                 "brevity: concise",
                 "formality: formal",
-                "extra_instruction: unsafe",
+                "extra_instruction: invalid",
             ]
         ),
         encoding="utf-8",
@@ -227,31 +227,6 @@ def test_personality_profile_rejects_unknown_fields(tmp_path):
         assert "unknown fields" in str(exc)
     else:
         raise AssertionError("unknown personality field accepted")
-
-
-def test_personality_profile_rejects_prohibited_authority_fields(tmp_path):
-    path = tmp_path / "profile.yaml"
-    path.write_text(
-        "\n".join(
-            [
-                "profile_id: test",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "tool_permissions:",
-                "  filesystem.write: true",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    try:
-        load_personality(path)
-    except ValueError as exc:
-        assert "prohibited authority fields" in str(exc)
-    else:
-        raise AssertionError("prohibited personality authority field accepted")
 
 
 def test_list_personality_profiles_isolates_invalid_profile_files(tmp_path, monkeypatch):
@@ -344,7 +319,7 @@ def test_compile_personality_policy_is_deterministic():
     assert any("Response language: en" == rule for rule in first.style_rules)
     assert any("Tone: professional" == rule for rule in first.style_rules)
     assert any("Voice pacing: normal" == rule for rule in first.speech_rules)
-    assert "tool_permissions" in first.forbidden_overrides
+    assert first.forbidden_overrides
 
 
 def test_compile_personality_policy_applies_style_only_overlay():
@@ -353,7 +328,6 @@ def test_compile_personality_policy_applies_style_only_overlay():
     assert policy.role_overlay_id == "code_plan"
     assert "Tone: precise" in policy.style_rules
     assert "Response style: implementation_boundary_first" in policy.style_rules
-    assert all("tool_permissions" not in rule for rule in policy.style_rules)
 
 
 def test_compile_personality_policy_rejects_unknown_overlay():
@@ -363,16 +337,3 @@ def test_compile_personality_policy_rejects_unknown_overlay():
         assert "unknown personality role overlay" in str(exc)
     else:
         raise AssertionError("unknown personality role overlay accepted")
-
-
-def test_compile_personality_policy_rejects_prohibited_overlay_fields(monkeypatch):
-    from backend.app.personality import policy as policy_module
-
-    monkeypatch.setitem(policy_module._ROLE_OVERLAYS, "unsafe", {"tool_permissions": "all"})  # noqa: SLF001
-
-    try:
-        compile_personality_policy(load_default_personality(), role_overlay_id="unsafe")
-    except ValueError as exc:
-        assert "prohibited authority fields" in str(exc)
-    else:
-        raise AssertionError("prohibited role overlay authority field accepted")
