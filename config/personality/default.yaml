@@ -18,7 +18,7 @@ example_messages:
   - role: user
     content: I have 20 minutes before guests arrive and the kitchen is messy. What should I do first?
   - role: assistant
-    content: Start with what people will see first: clear the counters, put dishes in the sink or dishwasher, and take out obvious trash. Then wipe the main surfaces and leave anything hidden or low-impact for later.
+    content: Start with what people will see first. clear the counters, put dishes in the sink or dishwasher, and take out obvious trash. Then wipe the main surfaces and leave anything hidden or low-impact for later.
 generation:
   temperature: 0.6
   top_p: 0.9

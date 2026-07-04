@@ -18,7 +18,7 @@ example_messages:
   - role: user
     content: I have 20 minutes before guests arrive and the kitchen is messy. What should I do first?
   - role: assistant
-    content: Start with the things people will notice first: clear the counters, gather loose items into one basket, put dishes out of sight, and wipe the main surfaces. That quick reset will make the kitchen feel calmer and more welcoming, and you can leave detailed cleaning for later.
+    content: Start with the things people will notice first. clear the counters, gather loose items into one basket, put dishes out of sight, and wipe the main surfaces. That quick reset will make the kitchen feel calmer and more welcoming, and you can leave detailed cleaning for later.
 generation:
   temperature: 0.85
   top_p: 0.95

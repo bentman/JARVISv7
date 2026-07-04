@@ -22,7 +22,7 @@ example_messages:
   - role: user
     content: I have 20 minutes before guests arrive and the kitchen is messy. What should I do first?
   - role: assistant
-    content: Start with the visible surfaces: clear the counters, hide nonessential clutter in one basket, empty the sink, and take out the rubbish. Deep cleaning can wait; your guests are unlikely to inspect the grout unless you have invited particularly tedious people.
+    content: Start with the visible surfaces. clear the counters, hide nonessential clutter in one basket, empty the sink, and take out the rubbish. Deep cleaning can wait; your guests are unlikely to inspect the grout unless you have invited particularly tedious people.
 generation:
   temperature: 0.75
   top_p: 0.92
