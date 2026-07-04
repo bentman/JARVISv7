@@ -65,6 +65,79 @@ def test_load_personality_reads_minimal_legacy_yaml_with_defaults(tmp_path):
     assert profile.enabled is True
 
 
+def test_load_personality_rejects_scalar_style_rules(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                "profile_id: test",
+                "display_name: JARVIS",
+                "tone: calm",
+                "brevity: concise",
+                "formality: formal",
+                "style_rules: terse",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_personality(path)
+    except ValueError as exc:
+        assert "style_rules must be a list of non-empty strings" in str(exc)
+    else:
+        raise AssertionError("scalar style_rules value accepted")
+
+
+def test_load_personality_rejects_scalar_speech_rules(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                "profile_id: test",
+                "display_name: JARVIS",
+                "tone: calm",
+                "brevity: concise",
+                "formality: formal",
+                "speech_rules: brisk",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    try:
+        load_personality(path)
+    except ValueError as exc:
+        assert "speech_rules must be a list of non-empty strings" in str(exc)
+    else:
+        raise AssertionError("scalar speech_rules value accepted")
+
+
+def test_load_personality_accepts_rule_lists_as_tuples(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(
+        "\n".join(
+            [
+                "profile_id: test",
+                "display_name: JARVIS",
+                "tone: calm",
+                "brevity: concise",
+                "formality: formal",
+                "style_rules:",
+                "  - Prefer short answers.",
+                "speech_rules:",
+                "  - Speak briskly.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    profile = load_personality(path)
+
+    assert profile.style_rules == ("Prefer short answers.",)
+    assert profile.speech_rules == ("Speak briskly.",)
+
+
 def test_load_default_personality_returns_configured_profile():
     profile = load_default_personality()
 
@@ -204,6 +277,46 @@ def test_list_personality_profiles_isolates_invalid_profile_files(tmp_path, monk
     assert [profile.profile_id for profile in result.profiles] == ["valid"]
     assert len(result.profile_errors) == 1
     assert result.profile_errors[0].profile_path == "invalid.yaml"
+
+
+def test_list_personality_profiles_reports_scalar_rule_profile_errors(tmp_path, monkeypatch):
+    personality_dir = tmp_path / "personality"
+    personality_dir.mkdir()
+    (personality_dir / "valid.yaml").write_text(
+        "\n".join(
+            [
+                "profile_id: valid",
+                "display_name: JARVIS",
+                "tone: calm",
+                "brevity: concise",
+                "formality: formal",
+                "style_rules:",
+                "  - Keep it short.",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (personality_dir / "invalid.yaml").write_text(
+        "\n".join(
+            [
+                "profile_id: invalid",
+                "display_name: JARVIS",
+                "tone: calm",
+                "brevity: concise",
+                "formality: formal",
+                "style_rules: terse",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+
+    result = list_personality_profiles_with_errors()
+
+    assert [profile.profile_id for profile in result.profiles] == ["valid"]
+    assert len(result.profile_errors) == 1
+    assert result.profile_errors[0].profile_path == "invalid.yaml"
+    assert "style_rules must be a list of non-empty strings" in result.profile_errors[0].reason
 
 
 def test_personality_profile_rejects_invalid_style_values():

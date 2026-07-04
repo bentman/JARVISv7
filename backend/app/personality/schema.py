@@ -126,8 +126,8 @@ class PersonalityProfile:
             response_language=str(data.get("response_language", "")),
             locale=str(data.get("locale", "")),
             system_prompt=str(data.get("system_prompt", "")),
-            style_rules=tuple(str(rule) for rule in data.get("style_rules", ()) or ()),
-            speech_rules=tuple(str(rule) for rule in data.get("speech_rules", ()) or ()),
+            style_rules=_coerce_string_list("style_rules", data.get("style_rules")),
+            speech_rules=_coerce_string_list("speech_rules", data.get("speech_rules")),
             example_messages=_coerce_example_messages(data.get("example_messages", ()) or ()),
             generation=_coerce_generation(data.get("generation", {}) or {}),
             identity_summary=str(
@@ -161,6 +161,16 @@ def _coerce_enabled(value: Any) -> bool:
 def _validate_string_list(field_name: str, value: tuple[str, ...]) -> None:
     if not isinstance(value, tuple) or any(not isinstance(item, str) or not item.strip() for item in value):
         raise ValueError(f"{field_name} must be a list of non-empty strings")
+
+
+def _coerce_string_list(field_name: str, value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, str) or not isinstance(value, list | tuple):
+        raise ValueError(f"{field_name} must be a list of non-empty strings")
+    coerced = tuple(str(item) for item in value)
+    _validate_string_list(field_name, coerced)
+    return coerced
 
 
 def _coerce_example_messages(value: Any) -> tuple[dict[str, str], ...]:
