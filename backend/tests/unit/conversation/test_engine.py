@@ -206,7 +206,7 @@ def test_text_turn_returns_response_for_known_prompt():
     assert llm.prompts[0].endswith("Assistant:")
 
 
-def test_personality_prompt_injection_is_not_applied_in_live_prompt_path():
+def test_personality_guidance_is_applied_as_trusted_persona_prompt_segment():
     llm = FakeLLM(response="styled")
 
     result = _engine(llm=llm).run_text_turn("style check")
@@ -214,8 +214,9 @@ def test_personality_prompt_injection_is_not_applied_in_live_prompt_path():
     prompt = llm.prompts[0]
     assert result.final_state == ConversationState.IDLE
     assert "User: style check" in prompt
-    assert "Prefer direct answers." not in prompt
     assert "[PERSONALITY STYLE - trusted]" in prompt
+    assert "Prefer direct answers." in prompt
+    assert prompt.index("Prefer direct answers.") < prompt.index("[USER REQUEST - user instruction]")
     assert prompt.endswith("Assistant:")
 
 

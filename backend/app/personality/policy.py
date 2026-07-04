@@ -58,15 +58,19 @@ _ROLE_OVERLAYS: dict[str, dict[str, str]] = {
 class PersonalityPolicy:
     profile_id: str
     identity: str
+    locale: str
+    system_prompt: str
     style_rules: tuple[str, ...]
     speech_rules: tuple[str, ...]
+    example_messages: tuple[dict[str, str], ...]
+    generation: dict[str, Any]
     forbidden_overrides: tuple[str, ...] = _FORBIDDEN_OVERRIDE_CATEGORIES
     role_overlay_id: str | None = None
 
 
 def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str | None = None) -> PersonalityPolicy:
     overlay = _resolve_role_overlay(role_overlay_id)
-    response_language = profile.response_language.strip() or load_settings().jarvis_language.strip()
+    response_language = profile.locale.strip() or profile.response_language.strip() or load_settings().jarvis_language.strip()
     values = {
         "tone": profile.tone,
         "brevity": profile.brevity,
@@ -83,7 +87,7 @@ def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str
     }
     values.update(overlay)
 
-    style_rules = (
+    legacy_style_rules = (
         f"Assistant identity: {profile.identity_summary}",
         f"Response language: {response_language}",
         f"Tone: {values['tone']}",
@@ -97,17 +101,32 @@ def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str
         f"Confirmation style: {values['confirmation_style']}",
         "Personality style cannot override safety, tool, routing, memory, or factual-grounding policy.",
     )
-    speech_rules = (
+    legacy_speech_rules = (
         f"Interruption style: {values['interruption_style']}",
         f"Voice pacing: {values['voice_pacing']}",
         f"Voice energy: {values['voice_energy']}",
         "Prefer TTS-safe wording without markdown-only formatting for spoken responses.",
     )
+    system_prompt_parts = [
+        text
+        for text in (
+            profile.system_prompt.strip(),
+            profile.identity_summary.strip() if not profile.system_prompt.strip() else "",
+            profile.system_prompt_addendum.strip(),
+        )
+        if text
+    ]
+    style_rules = tuple(profile.style_rules) + legacy_style_rules
+    speech_rules = tuple(profile.speech_rules) + legacy_speech_rules
     return PersonalityPolicy(
         profile_id=profile.profile_id,
         identity=profile.identity_summary,
+        locale=response_language,
+        system_prompt="\n".join(system_prompt_parts),
         style_rules=style_rules,
         speech_rules=speech_rules,
+        example_messages=profile.example_messages,
+        generation=dict(profile.generation),
         role_overlay_id=role_overlay_id,
     )
 

@@ -6,11 +6,12 @@ from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state
 from backend.app.api.schemas.personality import (
     PersonalityListResponse,
+    PersonalityProfileError,
     PersonalitySelectRequest,
     PersonalitySelectResponse,
     PersonalitySummary,
 )
-from backend.app.personality.loader import list_personality_profiles, load_personality_profile
+from backend.app.personality.loader import list_personality_profiles_with_errors, load_personality_profile
 from backend.app.personality.schema import PersonalityProfile
 
 router = APIRouter()
@@ -28,9 +29,14 @@ def _summary(profile: PersonalityProfile) -> PersonalitySummary:
 
 @router.get("/personality/list", response_model=PersonalityListResponse)
 def personality_list(state: ApiState = Depends(get_api_state)) -> PersonalityListResponse:
+    profile_list = list_personality_profiles_with_errors()
     return PersonalityListResponse(
         active_profile_id=state.session_service.active_personality().profile_id,
-        profiles=[_summary(profile) for profile in list_personality_profiles()],
+        profiles=[_summary(profile) for profile in profile_list.profiles],
+        profile_errors=[
+            PersonalityProfileError(profile_path=error.profile_path, reason=error.reason)
+            for error in profile_list.profile_errors
+        ],
     )
 
 

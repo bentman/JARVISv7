@@ -87,6 +87,8 @@ assert.ok(apiClient.includes('invoke("get_personality_list")'), "desktop API cli
 assert.ok(apiClient.includes('invoke("select_personality"'), "desktop API client must invoke select_personality");
 assert.ok(index.includes("personality-select"), "desktop must display personality selector");
 assert.ok(index.includes("personality-current"), "desktop must display active personality");
+assert.ok(main.includes("profile_errors"), "desktop must render backend personality profile diagnostics");
+assert.ok(main.includes("Profile diagnostics"), "desktop must label skipped personality profile diagnostics");
 assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
 assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
 assert.ok(settingsPanel.includes("field.options"), "settings panel must render select controls from backend metadata");

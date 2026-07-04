@@ -31,10 +31,11 @@ def test_assemble_includes_personality_policy():
     assert "Formality: semi-formal" in prompt
 
 
-def test_assemble_ignores_personality_addendum_for_prompt_content():
+def test_assemble_applies_personality_addendum_as_trusted_prompt_content():
     prompt = assemble_prompt("hello", _profile("Use a calm voice."))
 
-    assert "Use a calm voice." not in prompt
+    assert "Use a calm voice." in prompt
+    assert prompt.index("Use a calm voice.") < prompt.index("[USER REQUEST - user instruction]")
 
 
 def test_assemble_includes_working_memory_lines_when_provided():

@@ -11,9 +11,15 @@ class PersonalitySummary(BaseModel):
     formality: str
 
 
+class PersonalityProfileError(BaseModel):
+    profile_path: str
+    reason: str
+
+
 class PersonalityListResponse(BaseModel):
     active_profile_id: str
     profiles: list[PersonalitySummary]
+    profile_errors: list[PersonalityProfileError] = []
 
 
 class PersonalitySelectRequest(BaseModel):

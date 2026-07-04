@@ -118,6 +118,18 @@ function updatePersonalityDisplay(profile) {
   personalityDetailEl.replaceChildren(...rows);
 }
 
+function renderProfileDiagnostics(profileErrors) {
+  if (!Array.isArray(profileErrors) || profileErrors.length === 0) return;
+  const heading = document.createElement("div");
+  heading.textContent = "Profile diagnostics";
+  const rows = profileErrors.map((error) => {
+    const row = document.createElement("div");
+    row.textContent = `${error.profile_path || "profile"}: ${error.reason || "load failed"}`;
+    return row;
+  });
+  personalityDetailEl.append(heading, ...rows);
+}
+
 const residentVoice = createResidentVoicePresenter({
   pttButton,
   voiceStatusEl,
@@ -290,6 +302,7 @@ async function refreshPersonalityProfiles() {
     personalitySelectEl.appendChild(option);
     if (option.selected) updatePersonalityDisplay(profile);
   }
+  renderProfileDiagnostics(payload.profile_errors);
   personalitySelectEl.disabled = false;
   return payload;
 }

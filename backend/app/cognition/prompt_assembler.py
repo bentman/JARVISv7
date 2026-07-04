@@ -35,7 +35,7 @@ def assemble_prompt_envelope(
             authority="persona",
             content_type="style",
             trusted=True,
-            text="\n".join((*policy.style_rules, *policy.speech_rules)),
+            text="\n".join((policy.system_prompt, *policy.style_rules, *policy.speech_rules)).strip(),
         ),
     ]
     if session_continuity:
@@ -98,7 +98,11 @@ def assemble_prompt_envelope(
             ),
         ]
     )
-    return PromptEnvelope(segments=tuple(segments))
+    return PromptEnvelope(
+        segments=tuple(segments),
+        example_messages=policy.example_messages,
+        generation=policy.generation,
+    )
 
 
 def assemble_prompt(

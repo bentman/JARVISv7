@@ -5,6 +5,8 @@ from typing import Any
 
 import httpx
 
+from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
+from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.core.settings import load_settings
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarStatus
@@ -78,6 +80,19 @@ class LlamaCppLLM(LLMBase):
 
         payload = self._chat_payload(prompt)
         payload.update(kwargs)
+        return self._generate_chat_payload(payload)
+
+    def generate_envelope(self, envelope: PromptEnvelope, **kwargs: object) -> str:
+        if not self._ensure_sidecar_available_for_turn():
+            raise RuntimeError(f"llama.cpp chat completion failed: {self.reason}")
+
+        chat_prompt = render_chat_prompt(envelope)
+        payload = self._chat_payload_from_messages(chat_prompt.messages)
+        payload.update(chat_prompt.generation)
+        payload.update(kwargs)
+        return self._generate_chat_payload(payload)
+
+    def _generate_chat_payload(self, payload: dict[str, Any]) -> str:
         try:
             data = self._post_chat_completion(payload)
         except Exception as exc:
@@ -179,9 +194,12 @@ class LlamaCppLLM(LLMBase):
         return last_reason
 
     def _chat_payload(self, prompt: str) -> dict[str, Any]:
+        return self._chat_payload_from_messages([{"role": "user", "content": prompt}])
+
+    def _chat_payload_from_messages(self, messages: list[dict[str, str]]) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": messages,
             "stream": False,
         }
         defaults = dict(self.generation_defaults)

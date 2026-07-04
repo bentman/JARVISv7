@@ -12,7 +12,7 @@ agents:
 cloud_providers:
   claude:
     api_key_env: ANTHROPIC_API_KEY
-    model: claude-sonnet-4-20250514
+    model: claude-sonnet
   openai:
     api_key_env: OPENAI_API_KEY
     model: gpt-4o

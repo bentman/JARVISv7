@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from backend.app.personality.adapter import apply_personality
-from backend.app.personality.loader import list_personality_profiles, load_default_personality, load_personality, load_personality_profile
+from backend.app.personality.loader import (
+    list_personality_profiles,
+    list_personality_profiles_with_errors,
+    load_default_personality,
+    load_personality,
+    load_personality_profile,
+)
 from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
 
@@ -14,6 +20,12 @@ def test_personality_profile_roundtrips_dict():
         "concise",
         "semi-formal",
         response_language="english",
+        locale="en",
+        system_prompt="Use this persona.",
+        style_rules=("Prefer direct answers.",),
+        speech_rules=("Use TTS-safe wording.",),
+        example_messages=({"role": "user", "content": "Status?"}, {"role": "assistant", "content": "Ready."}),
+        generation={"temperature": 0.5, "max_tokens": 120, "stop": ["\nUser:"]},
         identity_summary="A local-first assistant.",
         warmth="moderate",
         assertiveness="moderate",
@@ -44,6 +56,12 @@ def test_load_personality_reads_minimal_legacy_yaml_with_defaults(tmp_path):
     assert profile.identity_summary
     assert profile.warmth == "moderate"
     assert profile.response_language == ""
+    assert profile.locale == ""
+    assert profile.system_prompt == ""
+    assert profile.style_rules == ()
+    assert profile.speech_rules == ()
+    assert profile.example_messages == ()
+    assert profile.generation == {}
     assert profile.enabled is True
 
 
@@ -84,6 +102,12 @@ def test_list_personality_profiles_loads_all_configured_profiles():
         assert profile.formality
         assert isinstance(profile.system_prompt_addendum, str)
         assert isinstance(profile.response_language, str)
+        assert isinstance(profile.locale, str)
+        assert profile.system_prompt
+        assert profile.style_rules
+        assert profile.speech_rules
+        assert profile.example_messages
+        assert profile.generation
         assert profile.identity_summary
         assert profile.warmth
         assert profile.assertiveness
@@ -157,6 +181,31 @@ def test_personality_profile_rejects_prohibited_authority_fields(tmp_path):
         raise AssertionError("prohibited personality authority field accepted")
 
 
+def test_list_personality_profiles_isolates_invalid_profile_files(tmp_path, monkeypatch):
+    personality_dir = tmp_path / "personality"
+    personality_dir.mkdir()
+    (personality_dir / "valid.yaml").write_text(
+        "\n".join(
+            [
+                "profile_id: valid",
+                "display_name: JARVIS",
+                "tone: calm",
+                "brevity: concise",
+                "formality: formal",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    (personality_dir / "invalid.yaml").write_text("profile_id: invalid\nsystem_prompt: []\n", encoding="utf-8")
+    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+
+    result = list_personality_profiles_with_errors()
+
+    assert [profile.profile_id for profile in result.profiles] == ["valid"]
+    assert len(result.profile_errors) == 1
+    assert result.profile_errors[0].profile_path == "invalid.yaml"
+
+
 def test_personality_profile_rejects_invalid_style_values():
     try:
         PersonalityProfile("test", "JARVIS", "chaotic", "concise", "formal")
@@ -175,7 +224,11 @@ def test_compile_personality_policy_is_deterministic():
     assert first == second
     assert first.profile_id == "default"
     assert first.identity == profile.identity_summary
-    assert any("Response language: english" == rule for rule in first.style_rules)
+    assert first.system_prompt
+    assert first.locale == "en"
+    assert first.example_messages
+    assert first.generation["max_tokens"] == 220
+    assert any("Response language: en" == rule for rule in first.style_rules)
     assert any("Tone: professional" == rule for rule in first.style_rules)
     assert any("Voice pacing: normal" == rule for rule in first.speech_rules)
     assert "tool_permissions" in first.forbidden_overrides

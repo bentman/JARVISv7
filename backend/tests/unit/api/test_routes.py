@@ -15,6 +15,7 @@ from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.personality.loader import PersonalityProfileError, PersonalityProfileList
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.routing.runtime_selector import SelectionTrace
 from backend.app.artifacts.turn_artifact import TurnArtifact
@@ -521,6 +522,27 @@ def test_personality_list_returns_available_profiles() -> None:
     assert response.status_code == 200
     assert payload["active_profile_id"] == "default"
     assert {profile["profile_id"] for profile in payload["profiles"]} >= {"default", "concise", "warm"}
+    assert payload["profile_errors"] == []
+
+
+def test_personality_list_reports_skipped_profile_errors(monkeypatch) -> None:
+    from backend.app.api.routes import personality as personality_route
+
+    monkeypatch.setattr(
+        personality_route,
+        "list_personality_profiles_with_errors",
+        lambda: PersonalityProfileList(
+            profiles=[],
+            profile_errors=[PersonalityProfileError(profile_path="broken.yaml", reason="invalid personality tone")],
+        ),
+    )
+
+    response = _client().get("/personality/list")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["profiles"] == []
+    assert payload["profile_errors"] == [{"profile_path": "broken.yaml", "reason": "invalid personality tone"}]
 
 
 def test_personality_select_switches_active_profile_without_session_reset() -> None:

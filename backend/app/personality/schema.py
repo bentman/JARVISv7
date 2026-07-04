@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
@@ -12,6 +12,12 @@ _ALLOWED_FIELDS = {
     "formality",
     "system_prompt_addendum",
     "response_language",
+    "locale",
+    "system_prompt",
+    "style_rules",
+    "speech_rules",
+    "example_messages",
+    "generation",
     "identity_summary",
     "warmth",
     "assertiveness",
@@ -34,7 +40,6 @@ _PROHIBITED_FIELDS = {
     "memory_permissions",
     "safety_overrides",
     "hidden_instructions",
-    "system_prompt",
 }
 
 _ALLOWED_TONE = {"professional", "direct", "warm", "calm", "precise"}
@@ -60,6 +65,12 @@ class PersonalityProfile:
     formality: str
     system_prompt_addendum: str = ""
     response_language: str = ""
+    locale: str = ""
+    system_prompt: str = ""
+    style_rules: tuple[str, ...] = field(default_factory=tuple)
+    speech_rules: tuple[str, ...] = field(default_factory=tuple)
+    example_messages: tuple[dict[str, str], ...] = field(default_factory=tuple)
+    generation: dict[str, Any] = field(default_factory=dict)
     identity_summary: str = "A local-first personal assistant with a consistent JARVIS identity."
     warmth: str = "moderate"
     assertiveness: str = "moderate"
@@ -87,6 +98,10 @@ class PersonalityProfile:
         _validate_member("voice_energy", self.voice_energy, _ALLOWED_VOICE_ENERGY)
         if not isinstance(self.enabled, bool):
             raise ValueError("enabled must be a boolean")
+        _validate_string_list("style_rules", self.style_rules)
+        _validate_string_list("speech_rules", self.speech_rules)
+        _validate_example_messages(self.example_messages)
+        _validate_generation(self.generation)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -109,6 +124,12 @@ class PersonalityProfile:
             formality=str(data["formality"]),
             system_prompt_addendum=str(data.get("system_prompt_addendum", "")),
             response_language=str(data.get("response_language", "")),
+            locale=str(data.get("locale", "")),
+            system_prompt=str(data.get("system_prompt", "")),
+            style_rules=tuple(str(rule) for rule in data.get("style_rules", ()) or ()),
+            speech_rules=tuple(str(rule) for rule in data.get("speech_rules", ()) or ()),
+            example_messages=_coerce_example_messages(data.get("example_messages", ()) or ()),
+            generation=_coerce_generation(data.get("generation", {}) or {}),
             identity_summary=str(
                 data.get("identity_summary", "A local-first personal assistant with a consistent JARVIS identity.")
             ),
@@ -135,3 +156,54 @@ def _coerce_enabled(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     raise ValueError("enabled must be a boolean")
+
+
+def _validate_string_list(field_name: str, value: tuple[str, ...]) -> None:
+    if not isinstance(value, tuple) or any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"{field_name} must be a list of non-empty strings")
+
+
+def _coerce_example_messages(value: Any) -> tuple[dict[str, str], ...]:
+    if not isinstance(value, list | tuple):
+        raise ValueError("example_messages must be a list")
+    messages: list[dict[str, str]] = []
+    for index, item in enumerate(value):
+        if not isinstance(item, dict):
+            raise ValueError(f"example_messages[{index}] must be a mapping")
+        role = str(item.get("role", ""))
+        content = str(item.get("content", ""))
+        messages.append({"role": role, "content": content})
+    return tuple(messages)
+
+
+def _validate_example_messages(value: tuple[dict[str, str], ...]) -> None:
+    for index, item in enumerate(value):
+        role = item.get("role", "")
+        content = item.get("content", "")
+        if role not in {"user", "assistant"}:
+            raise ValueError(f"example_messages[{index}].role must be user or assistant")
+        if not content.strip():
+            raise ValueError(f"example_messages[{index}].content must be non-empty")
+
+
+def _coerce_generation(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError("generation must be a mapping")
+    return dict(value)
+
+
+def _validate_generation(value: dict[str, Any]) -> None:
+    allowed = {"temperature", "top_p", "top_k", "repeat_penalty", "max_tokens", "stop"}
+    unexpected = set(value) - allowed
+    if unexpected:
+        raise ValueError(f"generation contains unknown fields: {', '.join(sorted(unexpected))}")
+    for key in ("temperature", "top_p", "repeat_penalty"):
+        if key in value and not isinstance(value[key], int | float):
+            raise ValueError(f"generation.{key} must be numeric")
+    for key in ("top_k", "max_tokens"):
+        if key in value and not isinstance(value[key], int):
+            raise ValueError(f"generation.{key} must be an integer")
+    if "stop" in value:
+        stop = value["stop"]
+        if not isinstance(stop, list | tuple) or any(not isinstance(item, str) for item in stop):
+            raise ValueError("generation.stop must be a list of strings")

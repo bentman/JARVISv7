@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
+from dataclasses import dataclass
 
 import yaml
 
@@ -31,6 +32,18 @@ DEFAULT_PERSONALITY = PersonalityProfile(
 )
 
 
+@dataclass(frozen=True, slots=True)
+class PersonalityProfileError:
+    profile_path: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class PersonalityProfileList:
+    profiles: list[PersonalityProfile]
+    profile_errors: list[PersonalityProfileError]
+
+
 def load_personality(path: Path) -> PersonalityProfile:
     with path.open("r", encoding="utf-8") as stream:
         data: Any = yaml.safe_load(stream) or {}
@@ -57,11 +70,24 @@ def load_personality_profile(profile_id: str) -> PersonalityProfile:
 
 
 def list_personality_profiles() -> list[PersonalityProfile]:
+    return list_personality_profiles_with_errors().profiles
+
+
+def list_personality_profiles_with_errors() -> PersonalityProfileList:
     directory = CONFIG_DIR / "personality"
     if not directory.exists():
-        return [DEFAULT_PERSONALITY]
-    profiles = [load_personality(path) for path in sorted(directory.glob("*.yaml"))]
-    return sorted(profiles, key=lambda profile: profile.profile_id)
+        return PersonalityProfileList(profiles=[DEFAULT_PERSONALITY], profile_errors=[])
+    profiles: list[PersonalityProfile] = []
+    errors: list[PersonalityProfileError] = []
+    for path in sorted(directory.glob("*.yaml")):
+        try:
+            profiles.append(load_personality(path))
+        except Exception as exc:
+            errors.append(PersonalityProfileError(profile_path=path.name, reason=str(exc)))
+    return PersonalityProfileList(
+        profiles=sorted(profiles, key=lambda profile: profile.profile_id),
+        profile_errors=errors,
+    )
 
 
 def load_default_personality() -> PersonalityProfile:
