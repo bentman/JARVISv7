@@ -27,6 +27,12 @@
 
 ## Inventory
 
+- Capability: Slice Z.5B personality simplification and runtime profile instruction - 2026-07-04 10:35
+  - State: Verified
+  - Location: `config/personality/`, `backend/app/personality/`, `backend/app/cognition/`, `backend/app/conversation/`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/runtimes/llm/ollama_runtime.py`, `backend/app/api/routes/personality.py`, `backend/app/api/routes/task.py`, `backend/app/api/schemas/personality.py`, `backend/app/api/schemas/task.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/services/session_service.py`, `desktop/src/main.js`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/api/test_routes.py`, `desktop/tests/static.test.mjs`, `docs/20260704_slice-z5b.md`, `CHANGE_LOG.md`
+  - Validation: Windows AMD64 / amd64 implementation and User/Operator evidence recorded in `CHANGE_LOG.md` entry `2026-07-04 09:54`: focused personality tests PASS (`16 passed`), adjacent backend tests PASS (`88 passed`), follow-up backend/desktop guard tests PASS, desktop static PASS, unit validator PASS (`694 passed, 1 skipped`), and User/Operator live desktop validation confirmed five profiles produced different response styles. Windows ARM64 / arm64 automated evidence on 2026-07-04: personality tests PASS (`16 passed`), adjacent backend tests PASS (`88 passed, 1 warning`), desktop static PASS, profile PASS (`arch=arm64`, readiness `ready`, `tokens=21`), and unit validator PASS (`695 passed, 1 warning`; fingerprint `arch=arm64`, readiness `ready`, `tokens=21`).
+  - Notes: Records strong profile-specific system instructions, generation defaults, role-separated llama.cpp/Ollama payload behavior, profile-neutral application prompt, and description/locale/default-word profile display. ARM64 manual desktop profile eval was not rerun in this validation-only pass.
+
 - Capability: Slice Z.4 desktop readiness and status UI enhancements - 2026-07-03 13:19
   - State: Verified
   - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/desktop-state.js`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/resident-voice.js`, `desktop/src/components/conversation-debug.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `CHANGE_LOG.md`
