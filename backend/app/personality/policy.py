@@ -3,19 +3,42 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from backend.app.personality import schema as schema_module
 from backend.app.personality.schema import PersonalityProfile
 
 
-_FORBIDDEN_OVERRIDE_CATEGORIES = (
-    "safety_overrides",
-    "tool_permissions",
-    "tool_policy",
-    "routing_policy",
-    "model_routing",
-    "memory_policy",
-    "memory_permissions",
-    "hidden_instructions",
-)
+_FORBIDDEN_OVERRIDE_CATEGORIES = tuple(sorted(schema_module._PROHIBITED_FIELDS))  # noqa: SLF001
+
+_TRAIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
+    "warmth": {
+        "none": "Use direct helpfulness with no extra warmth.",
+        "low": "Keep warmth minimal and practical.",
+        "medium": "Use a calm, friendly tone without extra reassurance.",
+        "high": "Use clearly warm and supportive phrasing without overstating certainty.",
+        "strong": "Use strongly warm and encouraging phrasing while staying truthful.",
+    },
+    "assertiveness": {
+        "none": "Avoid recommendations unless the user asks for one.",
+        "low": "Offer suggestions gently and avoid sounding commanding.",
+        "medium": "Give clear recommendations while allowing uncertainty.",
+        "high": "State the recommended path plainly when evidence supports it.",
+        "strong": "Be decisive and action-oriented when the answer is clear.",
+    },
+    "detail": {
+        "none": "Keep detail to the minimum needed for the answer.",
+        "low": "Keep details sparse and action-focused.",
+        "medium": "Include enough detail to explain the answer.",
+        "high": "Add useful context and tradeoffs when they help.",
+        "strong": "Provide fuller context, tradeoffs, and reasoning when useful.",
+    },
+    "humor": {
+        "none": "Use no humor.",
+        "light": "Use light humor rarely and only when natural.",
+        "medium": "Use occasional light humor when it supports the tone.",
+        "high": "Use humor more readily, but never at the expense of clarity.",
+        "dry": "Use at most one dry aside when it sharpens the answer; never force jokes.",
+    },
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +65,8 @@ def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str
             "Response contract:",
             f"- Default maximum answer length: {profile.style.max_words_default} words unless the user asks for detail.",
             f"- Structure: {profile.style.structure}",
+            "",
+            *_trait_instruction_lines(profile),
             "",
             "Do:",
             *(f"- {item}" for item in profile.style.do),
@@ -70,4 +95,14 @@ def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str
             "humor": profile.traits.humor,
         },
         max_words_default=profile.style.max_words_default,
+    )
+
+
+def _trait_instruction_lines(profile: PersonalityProfile) -> tuple[str, ...]:
+    return (
+        "Behavior traits:",
+        f"- Warmth guidance: {_TRAIT_INSTRUCTIONS['warmth'][profile.traits.warmth]}",
+        f"- Assertiveness guidance: {_TRAIT_INSTRUCTIONS['assertiveness'][profile.traits.assertiveness]}",
+        f"- Detail guidance: {_TRAIT_INSTRUCTIONS['detail'][profile.traits.detail]}",
+        f"- Humor guidance: {_TRAIT_INSTRUCTIONS['humor'][profile.traits.humor]}",
     )
