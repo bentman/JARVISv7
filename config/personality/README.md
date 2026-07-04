@@ -34,6 +34,10 @@ Use `system` and `style` for hard response requirements. Use `traits` for light 
 
 Keep examples general-assistant focused and short. Keep `style.max_words_default` aligned with `generation.max_tokens`. Update tests when profile shape, trait behavior, examples, or generation defaults change.
 
+## Manual profile check
+
+Use the same short prompt after selecting different profiles. The response should preserve factual content while changing length, warmth, detail, and humor according to the selected profile. `concise` should stay brief, `warm` should expand more, and `jarvis` may use British phrasing with at most one dry aside.
+
 ## Validation
 
 Focused personality validation:
