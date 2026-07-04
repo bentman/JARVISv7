@@ -89,6 +89,18 @@ assert.ok(index.includes("personality-select"), "desktop must display personalit
 assert.ok(index.includes("personality-current"), "desktop must display active personality");
 assert.ok(main.includes("profile_errors"), "desktop must render backend personality profile diagnostics");
 assert.ok(main.includes("Profile diagnostics"), "desktop must label skipped personality profile diagnostics");
+assert.ok(main.includes("personalitySelectionPending"), "desktop must guard sends while profile selection is pending");
+assert.ok(main.includes("Active personality confirmed"), "desktop must show backend-confirmed active personality");
+assert.ok(main.includes("active_personality_profile_id"), "desktop must render backend-reported turn profile metadata");
+assert.ok(main.includes("jarvisv7_active_personality"), "desktop must persist the backend-confirmed active personality");
+assert.ok(main.includes("dataset.profileId"), "desktop must attach turn profile metadata without appending it to assistant text");
+assert.ok(!main.includes("[profile:"), "desktop must not append profile metadata into assistant message text");
+assert.ok(main.includes("Description"), "desktop must display profile description");
+assert.ok(main.includes("Locale"), "desktop must display profile locale");
+assert.ok(main.includes("Default words"), "desktop must display profile default word count");
+assert.ok(!main.includes("profile.tone"), "desktop must not depend on old personality tone field");
+assert.ok(!main.includes("profile.brevity"), "desktop must not depend on old personality brevity field");
+assert.ok(!main.includes("profile.formality"), "desktop must not depend on old personality formality field");
 assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
 assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
 assert.ok(settingsPanel.includes("field.options"), "settings panel must render select controls from backend metadata");

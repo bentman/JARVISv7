@@ -59,6 +59,7 @@ def test_turn_schema_fields_unchanged():
         "hardware_profile_id",
         "capability_flags_snapshot",
         "active_personality_profile_id",
+        "profile_epoch",
         "raw_audio_path",
         "transcript",
         "final_prompt_text",

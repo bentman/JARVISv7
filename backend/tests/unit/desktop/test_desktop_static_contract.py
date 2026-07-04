@@ -184,10 +184,18 @@ def test_desktop_displays_personality_selector_and_presence_ui() -> None:
     assert "updatePersonalityDisplay(payload.active)" in main_js
     assert "function updatePersonalityDisplay(profile)" in main_js
     assert "personalityDetailEl.replaceChildren" in main_js
-    for label in ["Tone", "Brevity", "Formality"]:
+    assert "personalitySelectionPending" in main_js
+    assert "Active personality confirmed" in main_js
+    assert "active_personality_profile_id" in main_js
+    assert "jarvisv7_active_personality" in main_js
+    assert "dataset.profileId" in main_js
+    assert "[profile:" not in main_js
+    for label in ["Description", "Locale", "Default words"]:
         assert label in main_js
-    for field in ["profile.tone", "profile.brevity", "profile.formality"]:
+    for field in ["profile.description", "profile.locale", "profile.max_words_default"]:
         assert field in main_js
+    for field in ["profile.tone", "profile.brevity", "profile.formality"]:
+        assert field not in main_js
     assert "value || \"—\"" in main_js
     assert "personalityDetailEl.innerHTML" not in main_js
 
@@ -413,7 +421,7 @@ def test_k4b_layout_css_defines_three_region_scrollable_shell() -> None:
 def test_k4b_conversation_message_rendering_uses_dom_text_apis() -> None:
     main_js = _read("desktop/src/main.js")
 
-    assert "function appendMessage(role, text)" in main_js
+    assert "function appendMessage(role, text, metadata = {})" in main_js
     assert "document.createElement(\"article\")" in main_js
     assert "document.createElement(\"span\")" in main_js
     assert "document.createElement(\"strong\")" in main_js

@@ -19,9 +19,9 @@ def apply_personality_style_guard(text: str, policy: PersonalityPolicy, *, modal
 
 
 def _prefers_trimmed_acknowledgment(policy: PersonalityPolicy, modality: Modality) -> bool:
-    style_text = "\n".join(policy.style_rules).lower()
-    if "acknowledgment style: none" in style_text:
+    text = policy.system_text.lower()
+    if "no intro" in text or "do not add reassurance" in text:
         return True
-    if modality == "voice" and "acknowledgment style: minimal" in style_text:
+    if modality == "voice" and policy.max_words_default <= 80:
         return True
     return False

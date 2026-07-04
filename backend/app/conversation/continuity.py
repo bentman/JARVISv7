@@ -81,6 +81,8 @@ class ContinuityPacketBuilder:
         policy_result: ContinuityPolicyResult,
         turn_artifacts: list[TurnArtifact],
         working_memory: list[str] | None = None,
+        suppress_assistant_context: bool = False,
+        suppressed_context_reason: str | None = None,
     ) -> ContinuityPacket:
         if not policy_result.include_continuity:
             return ContinuityPacket(
@@ -93,17 +95,27 @@ class ContinuityPacketBuilder:
         recent_turns = turn_artifacts[-self.max_turns :]
         last_turn = recent_turns[-1] if recent_turns else None
         interruption_context = _interruption_context(last_turn)
+        excluded_context: tuple[str, ...] = ()
+        assistant_response = _bounded(last_turn.response_text if last_turn else None, self.max_text_chars)
+        bounded_working_memory = tuple((working_memory or [])[-self.max_working_memory_entries :])
+        if suppress_assistant_context:
+            assistant_response = None
+            bounded_working_memory = ()
+            excluded_context = (
+                suppressed_context_reason or "profile switch suppressed prior assistant wording and working memory",
+            )
         return ContinuityPacket(
             session_id=session_id,
             policy_decision=policy_result.decision,
             reason=policy_result.reason,
             recent_turn_ids=tuple(turn.turn_id for turn in recent_turns),
             last_user_request=_bounded(last_turn.transcript if last_turn else None, self.max_text_chars),
-            last_assistant_response=_bounded(last_turn.response_text if last_turn else None, self.max_text_chars),
+            last_assistant_response=assistant_response,
             open_topic=_bounded(last_turn.transcript if last_turn else None, self.max_text_chars),
             interruption_context=interruption_context,
             recent_retrieved_memory_refs=tuple(_recent_retrieved_refs(recent_turns)),
-            working_memory=tuple((working_memory or [])[-self.max_working_memory_entries :]),
+            working_memory=bounded_working_memory,
+            excluded_context=excluded_context,
         )
 
 

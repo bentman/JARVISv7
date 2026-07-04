@@ -6,9 +6,9 @@ from pydantic import BaseModel
 class PersonalitySummary(BaseModel):
     profile_id: str
     display_name: str
-    tone: str
-    brevity: str
-    formality: str
+    description: str
+    locale: str
+    max_words_default: int
 
 
 class PersonalityProfileError(BaseModel):

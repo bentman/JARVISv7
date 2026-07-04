@@ -46,6 +46,8 @@ class TurnResult:
     tool_calls: list[dict[str, object]] = field(default_factory=list)
     tool_results: list[dict[str, object]] = field(default_factory=list)
     raw_audio_path: str | None = None
+    active_personality_profile_id: str = "unknown"
+    profile_epoch: int = 0
 
 
 class TurnEngine:
@@ -141,11 +143,21 @@ class TurnEngine:
     ) -> TurnResult:
         try:
             context.advance(ConversationState.REASONING)
-            working_memory = self.session_manager.get_working_context(self.write_policy) if self.session_manager else None
             continuity_packet = self.session_manager.build_continuity_packet(latest_text=transcript) if self.session_manager else None
             session_continuity = None
             if continuity_packet is not None and not continuity_packet.is_empty():
                 session_continuity = continuity_packet.to_prompt_text()
+            suppress_working_memory = bool(
+                continuity_packet
+                and any("suppressed prior assistant wording and working memory" in item for item in continuity_packet.excluded_context)
+            )
+            working_memory = (
+                []
+                if suppress_working_memory
+                else self.session_manager.get_working_context(self.write_policy)
+                if self.session_manager
+                else None
+            )
             retrieved_context: list[RetrievedFact] = []
             if self.episodic is not None:
                 try:
@@ -206,6 +218,8 @@ class TurnEngine:
                 tool_calls=self._to_tool_calls(tool_results),
                 tool_results=self._to_tool_results(tool_results),
                 raw_audio_path=raw_audio_path,
+                active_personality_profile_id=self.personality.profile_id,
+                profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
             )
             self._record_artifact(
                 context,
@@ -241,6 +255,8 @@ class TurnEngine:
                 tool_calls=self._to_tool_calls(tool_results or []),
                 tool_results=self._to_tool_results(tool_results or []),
                 raw_audio_path=raw_audio_path,
+                active_personality_profile_id=self.personality.profile_id,
+                profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
             )
             self._record_artifact(
                 context,
@@ -275,6 +291,8 @@ class TurnEngine:
             final_state=context.state,
             tts_output_device=tts_output_device,
             raw_audio_path=raw_audio_path,
+            active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
         )
         self._record_artifact(
             context,
@@ -328,6 +346,8 @@ class TurnEngine:
                     tool_calls=self._to_tool_calls(tool_results or []),
                     tool_results=self._to_tool_results(tool_results or []),
                     raw_audio_path=raw_audio_path,
+                    active_personality_profile_id=self.personality.profile_id,
+                    profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
                 )
                 self._record_artifact(
                     context,
@@ -347,6 +367,8 @@ class TurnEngine:
             tool_calls=self._to_tool_calls(tool_results or []),
             tool_results=self._to_tool_results(tool_results or []),
             raw_audio_path=raw_audio_path,
+            active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
         )
         self._record_artifact(
             context,
@@ -381,6 +403,8 @@ class TurnEngine:
             final_state=context.state,
             failure_reason=reason,
             raw_audio_path=raw_audio_path,
+            active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
         )
         self._record_artifact(context, result, final_prompt_text=None)
         return result
@@ -411,6 +435,7 @@ class TurnEngine:
             session_id=result.session_id,
             input_modality=context.modality,
             active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=self.session_manager.profile_epoch,
             transcript=result.transcript,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=list(retrieved_memory_refs or []),

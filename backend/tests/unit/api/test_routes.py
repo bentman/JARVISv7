@@ -16,7 +16,7 @@ from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import PersonalityProfileError, PersonalityProfileList
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
 from backend.app.routing.runtime_selector import SelectionTrace
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.services.startup_context import StartupContext
@@ -123,24 +123,49 @@ class _FakeWakeRuntime:
         return False
 
 
+def _personality(profile_id: str = "default", display_name: str = "Morgan") -> PersonalityProfile:
+    return PersonalityProfile(
+        profile_id=profile_id,
+        display_name=display_name,
+        description="Balanced assistant.",
+        locale="en",
+        system="Answer directly.",
+        style=PersonalityStyle(
+            max_words_default=120,
+            structure="Answer first, then context.",
+            do=("Lead with the answer.",),
+            avoid=("Filler.",),
+        ),
+        traits=PersonalityTraits(warmth="medium", assertiveness="medium", detail="medium", humor="light"),
+        examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+        generation={
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 120,
+            "stop": ["\nUser:", "\nAssistant:"],
+        },
+    )
+
+
 @dataclass(slots=True)
 class _FakeSessionManager:
     session_id: str = "session-test"
     turn_artifacts: list[object] = field(default_factory=list)
+    profile_epoch: int = 0
 
     def close_session(self, final_state: str = "IDLE") -> Path:
         _ = final_state
         return Path("data/sessions/session-test.json")
 
+    def mark_profile_switch(self, profile_id: str) -> None:
+        _ = profile_id
+        self.profile_epoch += 1
+
 
 class _FakeEngine:
-    personality = PersonalityProfile(
-        profile_id="default",
-        display_name="JARVIS",
-        tone="professional",
-        brevity="concise",
-        formality="semi-formal",
-    )
+    personality = _personality()
 
     def run_text_turn(self, text: str) -> TurnResult:
         return TurnResult(
@@ -158,6 +183,8 @@ class _FakeEngine:
                     "error": None,
                 }
             ],
+            active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=0,
         )
 
     def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
@@ -200,13 +227,7 @@ def _state() -> ApiState:
             "llm": ("cpu", True, "llm ready"),
             "wake": ("cpu", True, "wake ready"),
         },
-        personality=PersonalityProfile(
-            profile_id="default",
-            display_name="JARVIS",
-            tone="professional",
-            brevity="concise",
-            formality="semi-formal",
-        ),
+        personality=_personality(),
         stt=_FakeSTT(),  # type: ignore[arg-type]
         tts=_FakeTTS(),  # type: ignore[arg-type]
         llm=_FakeLLM(),  # type: ignore[arg-type]
@@ -522,6 +543,11 @@ def test_personality_list_returns_available_profiles() -> None:
     assert response.status_code == 200
     assert payload["active_profile_id"] == "default"
     assert {profile["profile_id"] for profile in payload["profiles"]} >= {"default", "concise", "warm"}
+    default = next(profile for profile in payload["profiles"] if profile["profile_id"] == "default")
+    assert default["description"] == "Balanced general assistant."
+    assert default["locale"] == "en"
+    assert default["max_words_default"] == 120
+    assert "tone" not in default
     assert payload["profile_errors"] == []
 
 
@@ -712,6 +738,8 @@ def test_text_turn_returns_turn_result() -> None:
     assert response.status_code == 200
     assert payload["turn_id"] == "turn-text"
     assert payload["response_text"] == "text response"
+    assert payload["active_personality_profile_id"] == "default"
+    assert payload["profile_epoch"] == 0
     assert payload["tool_calls"][0]["tool_name"] == "time"
 
 

@@ -18,3 +18,5 @@ class TextTurnResponse(BaseModel):
     final_state: str
     failure_reason: str | None = None
     tool_calls: list[ToolCallSummary] | None = None
+    active_personality_profile_id: str = "unknown"
+    profile_epoch: int = 0

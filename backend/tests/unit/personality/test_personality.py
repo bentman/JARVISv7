@@ -12,130 +12,67 @@ from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
 
 
-def test_personality_profile_roundtrips_dict():
-    profile = PersonalityProfile(
-        "default",
-        "JARVIS",
-        "professional",
-        "concise",
-        "semi-formal",
-        response_language="english",
-        locale="en",
-        system_prompt="Use this persona.",
-        style_rules=("Prefer direct answers.",),
-        speech_rules=("Use TTS-safe wording.",),
-        example_messages=({"role": "user", "content": "Status?"}, {"role": "assistant", "content": "Ready."}),
-        generation={"temperature": 0.5, "max_tokens": 120, "stop": ["\nUser:"]},
-        identity_summary="A local-first assistant.",
-        warmth="moderate",
-        assertiveness="moderate",
-        humor_policy="none",
-        response_style="direct_answer",
-        acknowledgment_style="minimal",
-        confirmation_style="explicit_when_needed",
-        interruption_style="stop_cleanly",
-        voice_pacing="normal",
-        voice_energy="neutral",
-        enabled=True,
+def _valid_yaml(profile_id: str = "test") -> str:
+    return "\n".join(
+        [
+            f"profile_id: {profile_id}",
+            "display_name: Test",
+            "description: Test profile.",
+            "locale: en",
+            "system: Answer directly.",
+            "style:",
+            "  max_words_default: 80",
+            "  structure: Answer then next step.",
+            "  do:",
+            "    - Lead with the answer.",
+            "  avoid:",
+            "    - Filler.",
+            "traits:",
+            "  warmth: medium",
+            "  assertiveness: medium",
+            "  detail: medium",
+            "  humor: light",
+            "examples:",
+            "  - user: Status?",
+            "    assistant: Ready.",
+            "generation:",
+            "  temperature: 0.5",
+            "  top_p: 0.9",
+            "  top_k: 40",
+            "  repeat_penalty: 1.08",
+            "  max_tokens: 120",
+            "  stop:",
+            "    - \"\\nUser:\"",
+            "    - \"\\nAssistant:\"",
+            "enabled: true",
+        ]
     )
+
+
+def test_personality_profile_roundtrips_dict(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(_valid_yaml(), encoding="utf-8")
+    profile = load_personality(path)
 
     assert PersonalityProfile.from_dict(profile.to_dict()) == profile
 
 
-def test_load_personality_reads_minimal_legacy_yaml_with_defaults(tmp_path):
-    path = tmp_path / "profile.yaml"
-    path.write_text(
-        "profile_id: test\ndisplay_name: JARVIS\ntone: calm\nbrevity: concise\nformality: formal\n",
-        encoding="utf-8",
-    )
+def test_valid_target_profiles_load():
+    profiles = {profile.profile_id: profile for profile in list_personality_profiles()}
 
-    profile = load_personality(path)
-
-    assert profile.profile_id == "test"
-    assert profile.tone == "calm"
-    assert profile.identity_summary
-    assert profile.warmth == "moderate"
-    assert profile.response_language == ""
-    assert profile.locale == ""
-    assert profile.system_prompt == ""
-    assert profile.style_rules == ()
-    assert profile.speech_rules == ()
-    assert profile.example_messages == ()
-    assert profile.generation == {}
-    assert profile.enabled is True
-
-
-def test_load_personality_rejects_scalar_style_rules(tmp_path):
-    path = tmp_path / "profile.yaml"
-    path.write_text(
-        "\n".join(
-            [
-                "profile_id: test",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "style_rules: terse",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    try:
-        load_personality(path)
-    except ValueError as exc:
-        assert "style_rules must be a list of non-empty strings" in str(exc)
-    else:
-        raise AssertionError("scalar style_rules value accepted")
-
-
-def test_load_personality_rejects_scalar_speech_rules(tmp_path):
-    path = tmp_path / "profile.yaml"
-    path.write_text(
-        "\n".join(
-            [
-                "profile_id: test",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "speech_rules: brisk",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    try:
-        load_personality(path)
-    except ValueError as exc:
-        assert "speech_rules must be a list of non-empty strings" in str(exc)
-    else:
-        raise AssertionError("scalar speech_rules value accepted")
-
-
-def test_load_personality_accepts_rule_lists_as_tuples(tmp_path):
-    path = tmp_path / "profile.yaml"
-    path.write_text(
-        "\n".join(
-            [
-                "profile_id: test",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "style_rules:",
-                "  - Prefer short answers.",
-                "speech_rules:",
-                "  - Speak briskly.",
-            ]
-        ),
-        encoding="utf-8",
-    )
-
-    profile = load_personality(path)
-
-    assert profile.style_rules == ("Prefer short answers.",)
-    assert profile.speech_rules == ("Speak briskly.",)
+    assert set(profiles) >= {"default", "concise", "warm", "jarvis", "sage"}
+    assert profiles["jarvis"].display_name == "J.A.R.V.I.S"
+    assert profiles["jarvis"].locale == "en_GB"
+    assert profiles["sage"].display_name == "Sage"
+    for profile in profiles.values():
+        assert profile.description
+        assert profile.system
+        assert profile.style.max_words_default > 0
+        assert profile.style.do
+        assert profile.style.avoid
+        assert profile.examples
+        assert profile.generation["max_tokens"] > 0
+        assert profile.enabled is True
 
 
 def test_load_default_personality_returns_configured_profile():
@@ -143,55 +80,13 @@ def test_load_default_personality_returns_configured_profile():
 
     assert profile.profile_id == "default"
     assert profile.display_name == "Morgan"
-    assert profile.identity_summary
-    assert profile.response_style == "direct_answer"
+    assert profile.description == "Balanced general assistant."
 
 
-def test_adapter_appends_all_behavioral_guidance_without_profile_id():
-    profile = PersonalityProfile("concise", "JARVIS", "direct", "terse", "semi-formal")
+def test_adapter_remains_noop():
+    profile = load_default_personality()
 
-    prompt = apply_personality("prompt", profile)
-
-    assert prompt == "prompt"
-
-
-def test_adapter_uses_non_empty_addendum_once():
-    addendum = "Prefer short answers."
-    profile = PersonalityProfile("concise", "JARVIS", "direct", "terse", "semi-formal", addendum)
-
-    prompt = apply_personality(f"prompt\n{addendum}", profile)
-
-    assert prompt == f"prompt\n{addendum}"
-
-
-def test_list_personality_profiles_loads_all_configured_profiles():
-    profiles = {profile.profile_id: profile for profile in list_personality_profiles()}
-
-    assert set(profiles) >= {"default", "concise", "warm"}
-    for profile in profiles.values():
-        assert profile.display_name
-        assert profile.tone
-        assert profile.brevity
-        assert profile.formality
-        assert isinstance(profile.system_prompt_addendum, str)
-        assert isinstance(profile.response_language, str)
-        assert isinstance(profile.locale, str)
-        assert profile.system_prompt
-        assert profile.style_rules
-        assert profile.speech_rules
-        assert profile.example_messages
-        assert profile.generation
-        assert profile.identity_summary
-        assert profile.warmth
-        assert profile.assertiveness
-        assert profile.humor_policy
-        assert profile.response_style
-        assert profile.acknowledgment_style
-        assert profile.confirmation_style
-        assert profile.interruption_style
-        assert profile.voice_pacing
-        assert profile.voice_energy
-        assert profile.enabled is True
+    assert apply_personality("prompt", profile) == "prompt"
 
 
 def test_load_personality_profile_rejects_unknown_and_bad_id():
@@ -205,135 +100,125 @@ def test_load_personality_profile_rejects_unknown_and_bad_id():
             raise AssertionError(f"invalid profile id accepted: {profile_id}")
 
 
-def test_personality_profile_rejects_unknown_fields(tmp_path):
+def test_personality_profile_rejects_old_active_fields(tmp_path):
     path = tmp_path / "profile.yaml"
-    path.write_text(
-        "\n".join(
-            [
-                "profile_id: test",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "extra_instruction: invalid",
-            ]
-        ),
-        encoding="utf-8",
-    )
+    path.write_text(_valid_yaml() + "\ntone: calm\n", encoding="utf-8")
 
     try:
         load_personality(path)
     except ValueError as exc:
         assert "unknown fields" in str(exc)
+        assert "tone" in str(exc)
     else:
-        raise AssertionError("unknown personality field accepted")
+        raise AssertionError("old personality field accepted")
 
 
-def test_list_personality_profiles_isolates_invalid_profile_files(tmp_path, monkeypatch):
-    personality_dir = tmp_path / "personality"
-    personality_dir.mkdir()
-    (personality_dir / "valid.yaml").write_text(
-        "\n".join(
-            [
-                "profile_id: valid",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (personality_dir / "invalid.yaml").write_text("profile_id: invalid\nsystem_prompt: []\n", encoding="utf-8")
-    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+def test_personality_profile_rejects_prohibited_authority_fields(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(_valid_yaml() + "\nrouting_policy: local_only\n", encoding="utf-8")
 
-    result = list_personality_profiles_with_errors()
-
-    assert [profile.profile_id for profile in result.profiles] == ["valid"]
-    assert len(result.profile_errors) == 1
-    assert result.profile_errors[0].profile_path == "invalid.yaml"
-
-
-def test_list_personality_profiles_reports_scalar_rule_profile_errors(tmp_path, monkeypatch):
-    personality_dir = tmp_path / "personality"
-    personality_dir.mkdir()
-    (personality_dir / "valid.yaml").write_text(
-        "\n".join(
-            [
-                "profile_id: valid",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "style_rules:",
-                "  - Keep it short.",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    (personality_dir / "invalid.yaml").write_text(
-        "\n".join(
-            [
-                "profile_id: invalid",
-                "display_name: JARVIS",
-                "tone: calm",
-                "brevity: concise",
-                "formality: formal",
-                "style_rules: terse",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
-
-    result = list_personality_profiles_with_errors()
-
-    assert [profile.profile_id for profile in result.profiles] == ["valid"]
-    assert len(result.profile_errors) == 1
-    assert result.profile_errors[0].profile_path == "invalid.yaml"
-    assert "style_rules must be a list of non-empty strings" in result.profile_errors[0].reason
-
-
-def test_personality_profile_rejects_invalid_style_values():
     try:
-        PersonalityProfile("test", "JARVIS", "chaotic", "concise", "formal")
+        load_personality(path)
     except ValueError as exc:
-        assert "invalid personality tone" in str(exc)
+        assert "prohibited authority fields" in str(exc)
     else:
-        raise AssertionError("invalid personality tone accepted")
+        raise AssertionError("prohibited personality authority field accepted")
 
 
-def test_compile_personality_policy_is_deterministic():
-    profile = load_default_personality()
+def test_load_personality_rejects_scalar_style_do(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(_valid_yaml().replace("  do:\n    - Lead with the answer.", "  do: terse"), encoding="utf-8")
+
+    try:
+        load_personality(path)
+    except ValueError as exc:
+        assert "style.do must be a list of non-empty strings" in str(exc)
+    else:
+        raise AssertionError("scalar style.do value accepted")
+
+
+def test_load_personality_rejects_scalar_style_avoid(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(_valid_yaml().replace("  avoid:\n    - Filler.", "  avoid: brisk"), encoding="utf-8")
+
+    try:
+        load_personality(path)
+    except ValueError as exc:
+        assert "style.avoid must be a list of non-empty strings" in str(exc)
+    else:
+        raise AssertionError("scalar style.avoid value accepted")
+
+
+def test_valid_yaml_list_values_load_as_tuples(tmp_path):
+    path = tmp_path / "profile.yaml"
+    path.write_text(_valid_yaml(), encoding="utf-8")
+
+    profile = load_personality(path)
+
+    assert profile.style.do == ("Lead with the answer.",)
+    assert profile.style.avoid == ("Filler.",)
+
+
+def test_malformed_examples_report_through_profile_errors(tmp_path, monkeypatch):
+    personality_dir = tmp_path / "personality"
+    personality_dir.mkdir()
+    (personality_dir / "valid.yaml").write_text(_valid_yaml("valid"), encoding="utf-8")
+    (personality_dir / "invalid.yaml").write_text(
+        _valid_yaml("invalid").replace("  - user: Status?\n    assistant: Ready.", "  - user: Status?"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+
+    result = list_personality_profiles_with_errors()
+
+    assert [profile.profile_id for profile in result.profiles] == ["valid"]
+    assert len(result.profile_errors) == 1
+    assert result.profile_errors[0].profile_path == "invalid.yaml"
+    assert "examples[0] must include user and assistant" in result.profile_errors[0].reason
+
+
+def test_list_personality_profiles_reports_scalar_style_profile_errors(tmp_path, monkeypatch):
+    personality_dir = tmp_path / "personality"
+    personality_dir.mkdir()
+    (personality_dir / "valid.yaml").write_text(_valid_yaml("valid"), encoding="utf-8")
+    (personality_dir / "invalid.yaml").write_text(
+        _valid_yaml("invalid").replace("  do:\n    - Lead with the answer.", "  do: terse"),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+
+    result = list_personality_profiles_with_errors()
+
+    assert [profile.profile_id for profile in result.profiles] == ["valid"]
+    assert len(result.profile_errors) == 1
+    assert result.profile_errors[0].profile_path == "invalid.yaml"
+    assert "style.do must be a list of non-empty strings" in result.profile_errors[0].reason
+
+
+def test_compile_personality_policy_is_deterministic_and_strong():
+    profile = load_personality_profile("jarvis")
 
     first = compile_personality_policy(profile)
     second = compile_personality_policy(profile)
 
     assert first == second
-    assert first.profile_id == "default"
-    assert first.identity == profile.identity_summary
-    assert first.system_prompt
-    assert first.locale == "en"
-    assert first.example_messages
-    assert first.generation["max_tokens"] == 220
-    assert any("Response language: en" == rule for rule in first.style_rules)
-    assert any("Tone: professional" == rule for rule in first.style_rules)
-    assert any("Voice pacing: normal" == rule for rule in first.speech_rules)
+    assert first.profile_id == "jarvis"
+    assert first.system_text
+    assert "Default maximum answer length: 170 words" in first.system_text
+    assert "British spelling" in first.system_text
+    assert "one dry aside" in first.system_text
+    assert first.locale == "en_GB"
+    assert first.examples
+    assert first.generation["max_tokens"] == 280
     assert first.forbidden_overrides
+    for legacy in ("Tone:", "Brevity:", "Warmth:", "Voice pacing:"):
+        assert legacy not in first.system_text
 
 
-def test_compile_personality_policy_applies_style_only_overlay():
-    policy = compile_personality_policy(load_default_personality(), role_overlay_id="code_plan")
-
-    assert policy.role_overlay_id == "code_plan"
-    assert "Tone: precise" in policy.style_rules
-    assert "Response style: implementation_boundary_first" in policy.style_rules
-
-
-def test_compile_personality_policy_rejects_unknown_overlay():
+def test_compile_personality_policy_rejects_role_overlay():
     try:
-        compile_personality_policy(load_default_personality(), role_overlay_id="unknown")
+        compile_personality_policy(load_default_personality(), role_overlay_id="code_plan")
     except ValueError as exc:
-        assert "unknown personality role overlay" in str(exc)
+        assert "role overlays are not supported" in str(exc)
     else:
-        raise AssertionError("unknown personality role overlay accepted")
+        raise AssertionError("role overlay accepted")

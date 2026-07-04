@@ -6,7 +6,7 @@ from typing import Any, Literal
 
 TURN_ARTIFACT_FIELDS: tuple[str, ...] = (
     "turn_id", "session_id", "input_modality", "hardware_profile_id",
-    "capability_flags_snapshot", "active_personality_profile_id", "raw_audio_path",
+    "capability_flags_snapshot", "active_personality_profile_id", "profile_epoch", "raw_audio_path",
     "transcript", "final_prompt_text", "retrieved_memory_refs", "tools_invoked",
     "agent_trace", "reasoning_trace_metadata", "response_text", "audio_output_path",
     "interruption_events", "final_state", "failure_reason", "tts_degraded",
@@ -23,6 +23,7 @@ class TurnArtifact:
     hardware_profile_id: str = "unknown"
     capability_flags_snapshot: dict[str, Any] = field(default_factory=dict)
     active_personality_profile_id: str = "unknown"
+    profile_epoch: int = 0
     raw_audio_path: str | None = None
     transcript: str | None = None
     final_prompt_text: str | None = None

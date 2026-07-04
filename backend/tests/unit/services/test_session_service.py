@@ -8,7 +8,7 @@ from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
 from backend.app.services.session_service import SessionService
 
 
@@ -74,14 +74,34 @@ def _engine(manager: SessionManager) -> TurnEngine:
         stt=_FakeSTT(),  # type: ignore[arg-type]
         tts=_FakeTTS(),  # type: ignore[arg-type]
         llm=_FakeLLM(),  # type: ignore[arg-type]
-        personality=PersonalityProfile(
-            profile_id="default",
-            display_name="JARVIS",
-            tone="professional",
-            brevity="concise",
-            formality="semi-formal",
-        ),
+        personality=_personality(),
         session_manager=manager,
+    )
+
+
+def _personality(profile_id: str = "default", display_name: str = "Morgan") -> PersonalityProfile:
+    return PersonalityProfile(
+        profile_id=profile_id,
+        display_name=display_name,
+        description="Balanced assistant.",
+        locale="en",
+        system="Answer directly.",
+        style=PersonalityStyle(
+            max_words_default=120,
+            structure="Answer first, then context.",
+            do=("Lead with the answer.",),
+            avoid=("Filler.",),
+        ),
+        traits=PersonalityTraits(warmth="medium", assertiveness="medium", detail="medium", humor="light"),
+        examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+        generation={
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 120,
+            "stop": ["\nUser:", "\nAssistant:"],
+        },
     )
 
 
@@ -266,14 +286,7 @@ def test_select_personality_updates_engine_without_resetting_session_or_wake(tmp
     service = _service(tmp_path)
     service.configure_wake_status(provider="openwakeword", available=True, reason="wake ready")
     before = service.status()
-    selected = PersonalityProfile(
-        profile_id="warm",
-        display_name="JARVIS",
-        tone="warm",
-        brevity="balanced",
-        formality="conversational",
-        system_prompt_addendum="Use a supportive style.",
-    )
+    selected = _personality("warm", "Avery")
 
     active = service.select_personality(selected)
     after = service.status()
@@ -284,6 +297,7 @@ def test_select_personality_updates_engine_without_resetting_session_or_wake(tmp
     assert after.session_id == before.session_id
     assert after.turn_count == before.turn_count
     assert service.wake_status().reason == "wake ready"
+    assert service.session_manager.profile_epoch == 1
 
 
 def test_wake_status_defaults_to_configured_readiness(tmp_path: Path) -> None:

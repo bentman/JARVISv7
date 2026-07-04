@@ -5,7 +5,9 @@ from types import SimpleNamespace
 import pytest
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
+from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
 from backend.app.models.catalog import get_model_entry
+from backend.app.personality.loader import load_personality_profile
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.routing.runtime_selector import NullLLMRuntime
@@ -320,6 +322,55 @@ def test_local_runtime_generate_envelope_sends_role_separated_chat_payload(monke
     assert payload["chat_template_kwargs"] == {"enable_thinking": False}
 
 
+def test_llama_cpp_payload_contains_selected_profile_system_instruction(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append((url, json, timeout))
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready"}}]},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+    envelope = assemble_prompt_envelope(
+        "I have 20 minutes before guests arrive and the kitchen is messy. What should I do first?",
+        load_personality_profile("concise"),
+    )
+
+    assert LlamaCppLLM(base_url="http://test", model="assistant").generate_envelope(envelope) == "ready"
+    payload = calls[0][1]
+    system_text = payload["messages"][0]["content"]
+    assert calls[0][0] == "http://test/v1/chat/completions"
+    assert payload["messages"][0]["role"] == "system"
+    assert "Default maximum answer length: 50 words" in system_text
+    assert payload["max_tokens"] <= 100
+
+
+def test_profile_generation_payloads_are_distinct_for_avery_and_jarvis(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append(json)
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready"}}]},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+    runtime = LlamaCppLLM(base_url="http://test", model="assistant")
+
+    runtime.generate_envelope(assemble_prompt_envelope("Explain compound interest.", load_personality_profile("warm")))
+    runtime.generate_envelope(assemble_prompt_envelope("Explain compound interest.", load_personality_profile("jarvis")))
+
+    avery_system = calls[0]["messages"][0]["content"]
+    jarvis_system = calls[1]["messages"][0]["content"]
+    assert "fuller explanations" in avery_system
+    assert calls[0]["max_tokens"] >= 350
+    assert "British spelling" in jarvis_system
+    assert "one dry aside" in jarvis_system
+
+
 def test_local_runtime_generate_fails_on_empty_response(monkeypatch):
     monkeypatch.setattr(
         "backend.app.runtimes.llm.local_runtime.httpx.post",
@@ -460,6 +511,29 @@ def test_ollama_generate_envelope_posts_chat_messages(monkeypatch):
             60.0,
         )
     ]
+
+
+def test_ollama_payload_contains_selected_profile_system_instruction(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append((url, json, timeout))
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"message": {"content": "ollama answer"}},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
+    envelope = assemble_prompt_envelope("Explain compound interest.", load_personality_profile("jarvis"))
+
+    assert OllamaLLM(base_url="http://test", model="assistant").generate_envelope(envelope) == "ollama answer"
+    payload = calls[0][1]
+    system_text = payload["messages"][0]["content"]
+    assert calls[0][0] == "http://test/api/chat"
+    assert payload["messages"][0]["role"] == "system"
+    assert "British spelling" in system_text
+    assert "one dry aside" in system_text
+    assert payload["options"]["num_predict"] == 280
 
 
 def test_null_runtime_generate_envelope_raises_runtime_reason():

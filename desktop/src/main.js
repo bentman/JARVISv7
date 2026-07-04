@@ -42,6 +42,8 @@ let wakePollTimer = null;
 let sessionPollTimer = null;
 let residentVoicePollTimer = null;
 let desktopState = null;
+let personalitySelectionPending = false;
+const PERSONALITY_STORAGE_KEY = "jarvisv7_active_personality";
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -65,12 +67,17 @@ function clearError() {
   errorEl.classList.add("hidden");
 }
 
-function appendMessage(role, text) {
+function appendMessage(role, text, metadata = {}) {
   const entry = document.createElement("article");
   const stampEl = document.createElement("span");
   const roleEl = document.createElement("strong");
   const bodyEl = document.createElement("p");
   entry.className = `message ${role}`;
+  if (metadata.profileId) {
+    entry.dataset.profileId = metadata.profileId;
+    entry.dataset.profileEpoch = String(metadata.profileEpoch ?? 0);
+    entry.title = `profile=${metadata.profileId}; epoch=${metadata.profileEpoch ?? 0}`;
+  }
   stampEl.className = "stamp";
   stampEl.textContent = new Date().toLocaleTimeString();
   roleEl.textContent = role;
@@ -78,6 +85,11 @@ function appendMessage(role, text) {
   entry.append(stampEl, roleEl, bodyEl);
   logEl.appendChild(entry);
   logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setTextEntryEnabled(enabled) {
+  sendButton.disabled = !enabled;
+  inputEl.disabled = !enabled;
 }
 
 function appendToolCalls(toolCalls) {
@@ -102,9 +114,9 @@ function updatePersonalityDisplay(profile) {
   activePersonalityId = profile.profile_id || activePersonalityId;
   personalityCurrentEl.textContent = activePersonalityId;
   const metadataFields = [
-    ["Tone", profile.tone],
-    ["Brevity", profile.brevity],
-    ["Formality", profile.formality],
+    ["Description", profile.description],
+    ["Locale", profile.locale],
+    ["Default words", profile.max_words_default],
   ];
   const rows = metadataFields.map(([label, value]) => {
     const row = document.createElement("div");
@@ -293,6 +305,7 @@ async function startWakeMonitorIfAvailable() {
 async function refreshPersonalityProfiles() {
   const payload = await api.getPersonalityList();
   activePersonalityId = payload.active_profile_id || "default";
+  let selectedProfile = null;
   personalitySelectEl.innerHTML = "";
   for (const profile of payload.profiles || []) {
     const option = document.createElement("option");
@@ -300,19 +313,42 @@ async function refreshPersonalityProfiles() {
     option.textContent = `${profile.display_name} (${profile.profile_id})`;
     option.selected = profile.profile_id === activePersonalityId;
     personalitySelectEl.appendChild(option);
-    if (option.selected) updatePersonalityDisplay(profile);
+    if (option.selected) selectedProfile = profile;
   }
+  if (selectedProfile) updatePersonalityDisplay(selectedProfile);
+  personalitySelectEl.value = activePersonalityId;
   renderProfileDiagnostics(payload.profile_errors);
   personalitySelectEl.disabled = false;
   return payload;
 }
 
 async function selectPersonality(profileId) {
-  const before = await refreshSessionStatus();
-  const payload = await api.selectPersonality(profileId);
-  updatePersonalityDisplay(payload.active);
-  const after = await refreshSessionStatus();
-  appendMessage("system", `Personality switched to ${payload.active.profile_id}; applies to the next turn. Session preserved: ${before.session_id === after.session_id}.`);
+  personalitySelectionPending = true;
+  setTextEntryEnabled(false);
+  personalitySelectEl.disabled = true;
+  try {
+    const before = await refreshSessionStatus();
+    const payload = await api.selectPersonality(profileId);
+    updatePersonalityDisplay(payload.active);
+    window.localStorage?.setItem(PERSONALITY_STORAGE_KEY, payload.active.profile_id);
+    const after = await refreshSessionStatus();
+    appendMessage("system", `Personality switched to ${payload.active.profile_id}; applies to the next turn. Session preserved: ${before.session_id === after.session_id}.`);
+  } finally {
+    personalitySelectionPending = false;
+    personalitySelectEl.disabled = false;
+    setTextEntryEnabled(true);
+    inputEl.focus();
+  }
+}
+
+async function applyStoredPersonalityIfAvailable(profilePayload) {
+  const storedProfileId = window.localStorage?.getItem(PERSONALITY_STORAGE_KEY);
+  if (!storedProfileId || storedProfileId === activePersonalityId) return profilePayload;
+  const available = (profilePayload.profiles || []).some((profile) => profile.profile_id === storedProfileId);
+  if (!available) return profilePayload;
+  await selectPersonality(storedProfileId);
+  setTextEntryEnabled(false);
+  return api.getPersonalityList();
 }
 
 async function startDesktop() {
@@ -342,10 +378,12 @@ async function startDesktop() {
     startWakePolling();
     startSessionPolling();
     startResidentVoicePolling();
-    await refreshPersonalityProfiles();
+    let personalityPayload = await refreshPersonalityProfiles();
+    personalityPayload = await applyStoredPersonalityIfAvailable(personalityPayload);
+    personalityPayload = await refreshPersonalityProfiles();
     appendMessage("system", "Backend started and readiness loaded.");
-    sendButton.disabled = false;
-    inputEl.disabled = false;
+    appendMessage("system", `Active personality confirmed: ${personalityPayload.active_profile_id || activePersonalityId}.`);
+    setTextEntryEnabled(true);
     pttButton.disabled = false;
     inputEl.focus();
   } catch (error) {
@@ -396,6 +434,10 @@ async function invokeResidentPtt() {
 }
 
 async function submitText(text) {
+  if (personalitySelectionPending) {
+    appendMessage("system", "Profile selection is still applying; try again once it is confirmed.");
+    return;
+  }
   clearError();
   appendMessage("user", text);
   desktopState?.setPendingState("REASONING");
@@ -408,20 +450,27 @@ async function submitText(text) {
     if (response.failure_reason) {
       showError(response.failure_reason);
     }
-    appendMessage("assistant", response.response_text || response.failure_reason);
+    appendMessage("assistant", response.response_text || response.failure_reason, {
+      profileId: response.active_personality_profile_id,
+      profileEpoch: response.profile_epoch,
+    });
     appendToolCalls(response.tool_calls);
     await refreshSessionStatus();
   } catch (error) {
     desktopState?.renderTurnStatus("FAILED");
     showError(String(error));
   } finally {
-    sendButton.disabled = false;
+    sendButton.disabled = personalitySelectionPending;
     inputEl.focus();
   }
 }
 
 formEl.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (personalitySelectionPending) {
+    appendMessage("system", "Profile selection is still applying; wait for confirmation before sending.");
+    return;
+  }
   const text = inputEl.value.trim();
   if (!text) return;
   inputEl.value = "";

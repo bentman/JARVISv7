@@ -34,6 +34,8 @@ class SessionManager:
     turn_artifacts: list[TurnArtifact] = field(default_factory=list)
     timeline: SessionTimeline | None = None
     clock: Callable[[], datetime] = utc_now
+    profile_epoch: int = 0
+    _suppress_assistant_context_once: bool = False
 
     def __post_init__(self) -> None:
         if self.timeline is None:
@@ -45,6 +47,8 @@ class SessionManager:
 
     def get_working_context(self, policy: WritePolicy) -> list[str]:
         self._apply_policy_capacity(policy)
+        if self._suppress_assistant_context_once:
+            return []
         if not policy.write_to_working_memory:
             return []
         return self.working_memory.as_list()
@@ -96,6 +100,15 @@ class SessionManager:
         self._apply_policy_capacity(policy)
         if policy.write_to_working_memory and response_text:
             self.working_memory.add(response_text)
+
+    def mark_profile_switch(self, profile_id: str) -> None:
+        self.profile_epoch += 1
+        self._suppress_assistant_context_once = True
+        self.record_timeline_event(
+            "personality_selected",
+            state=ConversationState.IDLE.value,
+            metadata={"profile_id": profile_id, "profile_epoch": self.profile_epoch},
+        )
 
     def close_session(self, final_state: ConversationState | str = ConversationState.IDLE) -> Path:
         final_state_value = final_state.value if isinstance(final_state, ConversationState) else final_state
@@ -153,12 +166,31 @@ class SessionManager:
                 prior_interrupted=bool(last_turn and last_turn.interruption_events),
             )
         )
+        suppress_assistant_context = self._consume_assistant_context_suppression()
+        suppressed_context_reason = None
+        if suppress_assistant_context:
+            suppressed_context_reason = "profile switch suppressed prior assistant wording and working memory"
+        elif self._is_immediate_repeat(latest_text, last_turn):
+            suppress_assistant_context = True
+            suppressed_context_reason = "repeat prompt suppressed prior assistant wording and working memory"
         return ContinuityPacketBuilder().build(
             session_id=self.session_id,
             policy_result=policy_result,
             turn_artifacts=self.turn_artifacts,
             working_memory=self.working_memory.as_list(),
+            suppress_assistant_context=suppress_assistant_context,
+            suppressed_context_reason=suppressed_context_reason,
         )
+
+    def _consume_assistant_context_suppression(self) -> bool:
+        suppress = self._suppress_assistant_context_once
+        self._suppress_assistant_context_once = False
+        return suppress
+
+    def _is_immediate_repeat(self, latest_text: str | None, last_turn: TurnArtifact | None) -> bool:
+        if not latest_text or last_turn is None or not last_turn.transcript:
+            return False
+        return latest_text.strip().casefold() == last_turn.transcript.strip().casefold()
 
     def _latest_turn_timestamp(self, last_turn: TurnArtifact | None) -> datetime | None:
         if last_turn is not None:

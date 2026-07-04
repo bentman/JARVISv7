@@ -102,8 +102,11 @@ class SessionService:
         return self._personality
 
     def select_personality(self, profile: PersonalityProfile) -> PersonalityProfile:
+        previous_profile_id = self._personality.profile_id
         self._personality = profile
         self._engine.personality = profile
+        if profile.profile_id != previous_profile_id:
+            self._session_manager.mark_profile_switch(profile.profile_id)
         return self._personality
 
     def start_session(self, client_id: str | None = None) -> SessionStatus:

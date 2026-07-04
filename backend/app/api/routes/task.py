@@ -36,6 +36,8 @@ def text_turn_response(result: TurnResult) -> TextTurnResponse:
         final_state=result.final_state.value,
         failure_reason=result.failure_reason,
         tool_calls=tool_calls,
+        active_personality_profile_id=result.active_personality_profile_id,
+        profile_epoch=result.profile_epoch,
     )
 
 

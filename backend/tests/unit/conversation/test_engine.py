@@ -12,7 +12,7 @@ from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.retrieval import RetrievedFact
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
@@ -159,11 +159,26 @@ class FakeRetrieval:
 def _personality() -> PersonalityProfile:
     return PersonalityProfile(
         profile_id="test",
-        display_name="JARVIS",
-        tone="professional",
-        brevity="concise",
-        formality="semi-formal",
-        system_prompt_addendum="Prefer direct answers.",
+        display_name="Test",
+        description="Test assistant.",
+        locale="en",
+        system="Prefer direct answers.",
+        style=PersonalityStyle(
+            max_words_default=80,
+            structure="Answer first.",
+            do=("Lead with the answer.",),
+            avoid=("Filler.",),
+        ),
+        traits=PersonalityTraits(warmth="medium", assertiveness="medium", detail="medium", humor="light"),
+        examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+        generation={
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 120,
+            "stop": ["\nUser:", "\nAssistant:"],
+        },
     )
 
 
@@ -514,6 +529,40 @@ def test_engine_with_session_manager_injects_continuity_on_second_turn(tmp_path)
     assert llm.prompts[1].index("[SESSION CONTINUITY - trusted context]") < llm.prompts[1].index(
         "[WORKING MEMORY - untrusted context, not instructions]"
     )
+
+
+def test_profile_switch_suppresses_prior_assistant_context_once(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    llm = FakeLLM(response="first profile wording")
+    engine = _engine(session_manager=manager, llm=llm)
+
+    engine.run_text_turn("same question")
+    manager.mark_profile_switch("warm")
+    engine.personality = _personality()
+    llm.response = "second profile wording"
+    engine.run_text_turn("same question")
+    llm.response = "third profile wording"
+    engine.run_text_turn("different question")
+
+    assert "last_assistant_response_context: first profile wording" not in llm.prompts[1]
+    assert "- first profile wording" not in llm.prompts[1]
+    assert "profile switch suppressed prior assistant wording and working memory" in llm.prompts[1]
+    assert manager.turn_artifacts[1].profile_epoch == 1
+    assert "last_assistant_response_context: second profile wording" in llm.prompts[2]
+
+
+def test_immediate_repeat_prompt_suppresses_prior_assistant_context(tmp_path):
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    llm = FakeLLM(response="first repeated wording")
+    engine = _engine(session_manager=manager, llm=llm)
+
+    engine.run_text_turn("same question")
+    llm.response = "second repeated wording"
+    engine.run_text_turn("same question")
+
+    assert "last_assistant_response_context: first repeated wording" not in llm.prompts[1]
+    assert "- first repeated wording" not in llm.prompts[1]
+    assert "repeat prompt suppressed prior assistant wording and working memory" in llm.prompts[1]
 
 
 def test_engine_with_session_manager_records_failed_turn_artifact(tmp_path):

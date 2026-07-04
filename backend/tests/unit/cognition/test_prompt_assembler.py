@@ -3,11 +3,33 @@ from __future__ import annotations
 from backend.app.cognition.prompt_assembler import assemble_prompt, assemble_prompt_envelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.memory.retrieval import RetrievedFact
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
 
 
-def _profile(addendum: str = "") -> PersonalityProfile:
-    return PersonalityProfile("default", "JARVIS", "professional", "concise", "semi-formal", addendum)
+def _profile(system: str = "Use a calm voice.") -> PersonalityProfile:
+    return PersonalityProfile(
+        profile_id="default",
+        display_name="Morgan",
+        description="Balanced assistant.",
+        locale="en",
+        system=system,
+        style=PersonalityStyle(
+            max_words_default=120,
+            structure="Answer first, then context.",
+            do=("Lead with the answer.",),
+            avoid=("Filler.",),
+        ),
+        traits=PersonalityTraits(warmth="medium", assertiveness="medium", detail="medium", humor="light"),
+        examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+        generation={
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 120,
+            "stop": ["\nUser:", "\nAssistant:"],
+        },
+    )
 
 
 def test_assemble_includes_transcript():
@@ -17,6 +39,7 @@ def test_assemble_includes_transcript():
     assert prompt.endswith("Assistant:")
     assert "Do not continue the dialogue" in prompt
     assert "session-history" in prompt
+    assert "You are JARVIS" not in prompt
     assert "[APPLICATION RULES - trusted]" in prompt
     assert "[USER REQUEST - user instruction]" in prompt
 
@@ -25,17 +48,18 @@ def test_assemble_includes_personality_policy():
     prompt = assemble_prompt("hello world", _profile())
 
     assert "[PERSONALITY STYLE - trusted]" in prompt
-    assert "Response language: english" in prompt
-    assert "Tone: professional" in prompt
-    assert "Brevity: concise" in prompt
-    assert "Formality: semi-formal" in prompt
+    assert "Use a calm voice." in prompt
+    assert "Default maximum answer length: 120 words" in prompt
+    assert "Tone:" not in prompt
+    assert "Brevity:" not in prompt
+    assert "Warmth:" not in prompt
 
 
 def test_assemble_applies_personality_addendum_as_trusted_prompt_content():
-    prompt = assemble_prompt("hello", _profile("Use a calm voice."))
+    prompt = assemble_prompt("hello", _profile("Use a distinctive voice."))
 
-    assert "Use a calm voice." in prompt
-    assert prompt.index("Use a calm voice.") < prompt.index("[USER REQUEST - user instruction]")
+    assert "Use a distinctive voice." in prompt
+    assert prompt.index("Use a distinctive voice.") < prompt.index("[USER REQUEST - user instruction]")
 
 
 def test_assemble_includes_working_memory_lines_when_provided():

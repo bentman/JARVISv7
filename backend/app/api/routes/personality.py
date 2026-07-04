@@ -21,9 +21,9 @@ def _summary(profile: PersonalityProfile) -> PersonalitySummary:
     return PersonalitySummary(
         profile_id=profile.profile_id,
         display_name=profile.display_name,
-        tone=profile.tone,
-        brevity=profile.brevity,
-        formality=profile.formality,
+        description=profile.description,
+        locale=profile.locale,
+        max_words_default=profile.style.max_words_default,
     )
 
 

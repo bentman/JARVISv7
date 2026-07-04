@@ -3,7 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from backend.app.core.settings import load_settings
 from backend.app.personality.schema import PersonalityProfile
 
 
@@ -18,131 +17,57 @@ _FORBIDDEN_OVERRIDE_CATEGORIES = (
     "hidden_instructions",
 )
 
-_ROLE_OVERLAYS: dict[str, dict[str, str]] = {
-    "personal_assistant": {
-        "response_style": "direct_answer",
-        "acknowledgment_style": "minimal",
-        "confirmation_style": "light",
-    },
-    "research": {
-        "brevity": "detailed_when_needed",
-        "response_style": "direct_answer",
-        "confirmation_style": "explicit_when_needed",
-    },
-    "code_plan": {
-        "tone": "precise",
-        "response_style": "implementation_boundary_first",
-    },
-    "code_agent": {
-        "response_style": "action_report",
-        "acknowledgment_style": "minimal",
-    },
-    "tool_narrator": {
-        "response_style": "action_report",
-        "brevity": "concise",
-    },
-    "error_reporter": {
-        "tone": "precise",
-        "response_style": "direct_answer",
-        "confirmation_style": "explicit_when_needed",
-    },
-    "escalation_narrator": {
-        "tone": "professional",
-        "response_style": "direct_answer",
-        "confirmation_style": "explicit_when_needed",
-    },
-}
-
 
 @dataclass(frozen=True, slots=True)
 class PersonalityPolicy:
     profile_id: str
-    identity: str
+    display_name: str
+    description: str
     locale: str
-    system_prompt: str
-    style_rules: tuple[str, ...]
-    speech_rules: tuple[str, ...]
-    example_messages: tuple[dict[str, str], ...]
+    system_text: str
+    examples: tuple[dict[str, str], ...]
     generation: dict[str, Any]
+    traits: dict[str, str]
+    max_words_default: int
     forbidden_overrides: tuple[str, ...] = _FORBIDDEN_OVERRIDE_CATEGORIES
-    role_overlay_id: str | None = None
 
 
 def compile_personality_policy(profile: PersonalityProfile, role_overlay_id: str | None = None) -> PersonalityPolicy:
-    overlay = _resolve_role_overlay(role_overlay_id)
-    response_language = profile.locale.strip() or profile.response_language.strip() or load_settings().jarvis_language.strip()
-    values = {
-        "tone": profile.tone,
-        "brevity": profile.brevity,
-        "formality": profile.formality,
-        "warmth": profile.warmth,
-        "assertiveness": profile.assertiveness,
-        "humor_policy": profile.humor_policy,
-        "response_style": profile.response_style,
-        "acknowledgment_style": profile.acknowledgment_style,
-        "confirmation_style": profile.confirmation_style,
-        "interruption_style": profile.interruption_style,
-        "voice_pacing": profile.voice_pacing,
-        "voice_energy": profile.voice_energy,
-    }
-    values.update(overlay)
-
-    legacy_style_rules = (
-        f"Assistant identity: {profile.identity_summary}",
-        f"Response language: {response_language}",
-        f"Tone: {values['tone']}",
-        f"Brevity: {values['brevity']}",
-        f"Formality: {values['formality']}",
-        f"Warmth: {values['warmth']}",
-        f"Assertiveness: {values['assertiveness']}",
-        f"Humor policy: {values['humor_policy']}",
-        f"Response style: {values['response_style']}",
-        f"Acknowledgment style: {values['acknowledgment_style']}",
-        f"Confirmation style: {values['confirmation_style']}",
-        "Personality style cannot override safety, tool, routing, memory, or factual-grounding policy.",
-    )
-    legacy_speech_rules = (
-        f"Interruption style: {values['interruption_style']}",
-        f"Voice pacing: {values['voice_pacing']}",
-        f"Voice energy: {values['voice_energy']}",
-        "Prefer TTS-safe wording without markdown-only formatting for spoken responses.",
-    )
-    system_prompt_parts = [
-        text
-        for text in (
-            profile.system_prompt.strip(),
-            profile.identity_summary.strip() if not profile.system_prompt.strip() else "",
-            profile.system_prompt_addendum.strip(),
+    if role_overlay_id is not None:
+        raise ValueError("personality role overlays are not supported by the simplified profile contract")
+    system_text = "\n".join(
+        (
+            profile.system.strip(),
+            "",
+            "Response contract:",
+            f"- Default maximum answer length: {profile.style.max_words_default} words unless the user asks for detail.",
+            f"- Structure: {profile.style.structure}",
+            "",
+            "Do:",
+            *(f"- {item}" for item in profile.style.do),
+            "",
+            "Avoid:",
+            *(f"- {item}" for item in profile.style.avoid),
+            "",
+            "Profile constraints cannot override safety, tool, routing, memory, or factual-grounding policy.",
         )
-        if text
-    ]
-    style_rules = tuple(profile.style_rules) + legacy_style_rules
-    speech_rules = tuple(profile.speech_rules) + legacy_speech_rules
+    ).strip()
+    examples: list[dict[str, str]] = []
+    for example in profile.examples:
+        examples.extend(example.to_messages())
     return PersonalityPolicy(
         profile_id=profile.profile_id,
-        identity=profile.identity_summary,
-        locale=response_language,
-        system_prompt="\n".join(system_prompt_parts),
-        style_rules=style_rules,
-        speech_rules=speech_rules,
-        example_messages=profile.example_messages,
+        display_name=profile.display_name,
+        description=profile.description,
+        locale=profile.locale,
+        system_text=system_text,
+        examples=tuple(examples),
         generation=dict(profile.generation),
-        role_overlay_id=role_overlay_id,
+        traits={
+            "warmth": profile.traits.warmth,
+            "assertiveness": profile.traits.assertiveness,
+            "detail": profile.traits.detail,
+            "humor": profile.traits.humor,
+        },
+        max_words_default=profile.style.max_words_default,
     )
-
-
-def _resolve_role_overlay(role_overlay_id: str | None) -> dict[str, str]:
-    if role_overlay_id is None:
-        return {}
-    overlay = _ROLE_OVERLAYS.get(role_overlay_id)
-    if overlay is None:
-        raise ValueError(f"unknown personality role overlay: {role_overlay_id}")
-    _reject_authority_fields(overlay)
-    return dict(overlay)
-
-
-def _reject_authority_fields(payload: dict[str, Any]) -> None:
-    prohibited = set(payload) & set(_FORBIDDEN_OVERRIDE_CATEGORIES)
-    if prohibited:
-        names = ", ".join(sorted(prohibited))
-        raise ValueError(f"personality role overlay contains prohibited authority fields: {names}")
