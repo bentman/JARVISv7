@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-04 06:47
+  - Summary: Implemented and User/Operator validated Slice Z.5 personality profile request-path correction. Structured personality fields now compile into role-separated local LLM payloads for llama.cpp and Ollama, profile load diagnostics are reported without breaking the profile list, and scalar rule-list YAML values are rejected instead of being coerced into character-by-character persona rules.
+  - Scope: `config/personality/`, `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/policy.py`, `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/prompt_chat_renderer.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/runtimes/llm/ollama_runtime.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`, `desktop/src/main.js`, focused backend/desktop tests.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality\test_personality.py backend\tests\unit\runtimes\llm\test_llm_runtime.py -q` PASS (`33 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py backend\tests\unit\api\test_routes.py -q` PASS (`95 passed`). `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`688 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`). Scalar rule-list correction follow-up: `backend\.venv\Scripts\python -m pytest backend\tests\unit\personality\test_personality.py -q` PASS (`19 passed`); adjacent API/LLM tests PASS (`71 passed`). User/Operator validated Z.5.
+
 - 2026-07-03 13:19
   - Summary: Validated Slice X.4 desktop readiness display and Wake-mode barge-in behavior after Operator visual confirmation. System State shows ready when the selected llama.cpp path is ready, Wake mode reports barge-in unsupported while wiring truth remains visible, and a desktop text turn completed successfully against the managed llama.cpp path.
   - Scope: Slice X.4 validation evidence only; `CHANGE_LOG.md`.
