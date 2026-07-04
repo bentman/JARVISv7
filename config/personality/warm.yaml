@@ -33,7 +33,7 @@ brevity: detailed_when_needed
 formality: conversational
 warmth: high
 assertiveness: low
-humor_policy: light
+humor_policy: medium
 response_style: supportive
 acknowledgment_style: brief
 confirmation_style: explicit_when_needed
