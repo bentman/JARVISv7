@@ -82,6 +82,17 @@ _BOOL_FLAGS: dict[str, tuple[str, str]] = {
     "warmup": ("--warmup", "--no-warmup"),
 }
 
+_TURN_ISOLATION_VALUE_FLAGS: tuple[tuple[str, str], ...] = (
+    ("cache_ram_mb", "0"),
+    ("parallel", "1"),
+)
+_TURN_ISOLATION_BOOL_FLAGS: tuple[tuple[str, bool], ...] = (
+    ("cont_batching", False),
+)
+_TURN_ISOLATION_KEYS = {
+    key for key, _value in (*_TURN_ISOLATION_VALUE_FLAGS, *_TURN_ISOLATION_BOOL_FLAGS)
+}
+
 
 class LocalLLMSidecarService:
     def __init__(
@@ -239,6 +250,8 @@ def build_llama_server_command(resolution: LLMServeProfileResolution) -> LocalLL
     ]
 
     for key, value in resolution.launch.items():
+        if key in _TURN_ISOLATION_KEYS:
+            continue
         if key in _VALUE_FLAGS:
             translated = _translate_value(key, value)
             if translated is None:
@@ -254,6 +267,11 @@ def build_llama_server_command(resolution: LLMServeProfileResolution) -> LocalLL
             argv.append(translated_flag)
             continue
         warnings.append(f"unsupported launch key: {key}")
+
+    for key, value in _TURN_ISOLATION_VALUE_FLAGS:
+        argv.extend([_VALUE_FLAGS[key], value])
+    for key, value in _TURN_ISOLATION_BOOL_FLAGS:
+        argv.append(_BOOL_FLAGS[key][0] if value else _BOOL_FLAGS[key][1])
 
     return LocalLLMSidecarCommand(
         argv=argv,

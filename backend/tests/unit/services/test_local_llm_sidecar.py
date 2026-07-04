@@ -121,10 +121,12 @@ def test_builds_windows_amd64_cpu_argv_without_launching(tmp_path: Path) -> None
         "f16",
         "--cache-type-v",
         "f16",
+        "--warmup",
+        "--cache-ram",
+        "0",
         "--parallel",
         "1",
-        "--cont-batching",
-        "--warmup",
+        "--no-cont-batching",
     ]
 
 
@@ -155,7 +157,9 @@ def test_builds_windows_arm64_cpu_argv(tmp_path: Path) -> None:
         "8080",
     ]
     assert "--cache-ram" in command.argv
-    assert command.argv[command.argv.index("--cache-ram") + 1] == "4096"
+    assert command.argv[command.argv.index("--cache-ram") + 1] == "0"
+    assert "--no-cont-batching" in command.argv
+    assert "--cont-batching" not in command.argv
 
 
 def test_builds_amd64_cuda_argv_when_files_exist(tmp_path: Path) -> None:
@@ -183,6 +187,9 @@ def test_builds_amd64_cuda_argv_when_files_exist(tmp_path: Path) -> None:
     assert "--split-mode" in command.argv
     assert "--main-gpu" in command.argv
     assert "--flash-attn" in command.argv
+    assert command.argv[command.argv.index("--cache-ram") + 1] == "0"
+    assert command.argv[command.argv.index("--parallel") + 1] == "1"
+    assert "--no-cont-batching" in command.argv
 
 
 def test_builds_arm64_adreno_opencl_argv_without_hardcoded_device(tmp_path: Path) -> None:
@@ -212,6 +219,32 @@ def test_builds_arm64_adreno_opencl_argv_without_hardcoded_device(tmp_path: Path
     assert "--gpu-layers" in command.argv
     assert command.argv[command.argv.index("--gpu-layers") + 1] == "auto"
     assert "--device" not in command.argv
+    assert command.argv[command.argv.index("--cache-ram") + 1] == "0"
+    assert command.argv[command.argv.index("--parallel") + 1] == "1"
+    assert "--no-cont-batching" in command.argv
+
+
+def test_managed_launch_isolation_overrides_profile_cache_and_slot_reuse(tmp_path: Path) -> None:
+    resolution = _resolution(
+        tmp_path,
+        launch={
+            "ctx_size": 4096,
+            "cache_ram_mb": 4096,
+            "parallel": 4,
+            "cont_batching": True,
+        },
+    )
+
+    command = build_llama_server_command(resolution)
+
+    assert command.ready is True
+    assert command.warnings == []
+    assert command.argv.count("--cache-ram") == 1
+    assert command.argv[command.argv.index("--cache-ram") + 1] == "0"
+    assert command.argv.count("--parallel") == 1
+    assert command.argv[command.argv.index("--parallel") + 1] == "1"
+    assert "--no-cont-batching" in command.argv
+    assert "--cont-batching" not in command.argv
 
 
 def test_arm64_qnn_missing_binary_closes_as_degraded(tmp_path: Path) -> None:

@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-04 15:47
+  - Summary: Fixed managed llama.cpp launch isolation so local assistant sidecars disable prompt-cache reuse and continuous batching across turns without changing serve-profile selection.
+  - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`.
+  - Host class(es): Windows ARM64 / arm64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`34 passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_startup.py backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm -q` PASS (`58 passed`). User/Operator validated desktop launch and running sidecar after restart.
+
 - 2026-07-04 11:11
   - Summary: Validated the personality trait behavior enhancement and profile README guidance. Personality traits now compile into active `Behavior traits:` prompt instructions, profile README guidance documents functional trait use, and live desktop validation confirmed profile switching produces visible response-style differences.
   - Scope: `backend/app/personality/policy.py`, `backend/tests/unit/personality/test_personality.py`, `config/personality/README.md`, `CHANGE_LOG.md`.
