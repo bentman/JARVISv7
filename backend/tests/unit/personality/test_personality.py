@@ -207,12 +207,29 @@ def test_compile_personality_policy_is_deterministic_and_strong():
     assert "Default maximum answer length: 170 words" in first.system_text
     assert "British spelling" in first.system_text
     assert "one dry aside" in first.system_text
+    assert "Behavior traits:" in first.system_text
+    assert "Warmth guidance:" in first.system_text
+    assert "Assertiveness guidance:" in first.system_text
+    assert "Detail guidance:" in first.system_text
+    assert "Humor guidance: Use at most one dry aside when it sharpens the answer; never force jokes." in first.system_text
     assert first.locale == "en_GB"
     assert first.examples
     assert first.generation["max_tokens"] == 280
     assert first.forbidden_overrides
     for legacy in ("Tone:", "Brevity:", "Warmth:", "Voice pacing:"):
         assert legacy not in first.system_text
+
+
+def test_compile_personality_policy_maps_profile_traits_to_behavior_instructions():
+    concise = compile_personality_policy(load_personality_profile("concise"))
+    warm = compile_personality_policy(load_personality_profile("warm"))
+    sage = compile_personality_policy(load_personality_profile("sage"))
+
+    assert "Warmth guidance: Use direct helpfulness with no extra warmth." in concise.system_text
+    assert "Humor guidance: Use no humor." in concise.system_text
+    assert "Warmth guidance: Use strongly warm and encouraging phrasing while staying truthful." in warm.system_text
+    assert "Detail guidance: Provide fuller context, tradeoffs, and reasoning when useful." in warm.system_text
+    assert "Humor guidance: Use humor more readily, but never at the expense of clarity." in sage.system_text
 
 
 def test_compile_personality_policy_rejects_role_overlay():
