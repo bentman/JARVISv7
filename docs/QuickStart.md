@@ -23,6 +23,16 @@ Optional local services:
 
 - Docker Desktop for Redis and SearXNG
 
+## Repository rules that matter
+
+- `pyproject.toml` is the Python dependency source of truth.
+- `backend\requirements.txt` is generated; do not edit it by hand.
+- Use `scripts\provision.py` for Python dependency installation.
+- Use `scripts\ensure_models.py` for configured model artifacts and llama.cpp runtime artifacts.
+- Prefer `scripts\bootstrap.py` for first setup because it runs provisioning, model/runtime acquisition, preflight, and profile validation in order.
+- Keep generated models, runtimes, caches, and reports out of source commits unless a slice explicitly says otherwise.
+- Record validation claims with exact command evidence.
+
 ## Clone
 
 ```powershell
@@ -37,13 +47,15 @@ Set-Location <REPO_ROOT_PATH>
 git pull
 ```
 
-## Shortest supported desktop path
+## Required desktop setup and launch
 
 Use this path for first setup and normal product-preview launch:
 
 ```text
 prepare shell -> create backend venv -> copy starter settings -> bootstrap -> install desktop deps -> launch desktop
 ```
+
+Do not skip bootstrap. It provisions host-specific Python extras, acquires configured model artifacts and current-host llama.cpp runtime artifacts, runs preflight, and validates the selected backend profile. The desktop expects this setup to exist before launch.
 
 ```powershell
 $env:PYTHONUTF8 = "1"
@@ -117,7 +129,7 @@ Verify installed Python requirements:
 .\backend\.venv\Scripts\python scripts\provision.py verify
 ```
 
-Verify selected model artifacts:
+Verify selected model artifacts and current-host llama.cpp runtime artifacts:
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
@@ -256,6 +268,17 @@ Then run the focused live test you need.
 
 Provisioning is hardware-aware. The setup path detects the current host and selects the appropriate Python extras and local runtime profile.
 
+QuickStart targets the current-host supported path first. CPU fallback is expected and valid when accelerator artifacts or evidence are unavailable.
+
+Hardware acceleration caveats:
+
+- AMD64 CPU and ARM64 CPU llama.cpp sidecars have pinned release zip sources and are part of normal setup.
+- AMD64 NVIDIA CUDA may be selected only when the host, provisioning extras, CUDA runtime artifacts, and preflight evidence support it.
+- AMD and Intel GPU llama.cpp paths are declared degraded or pending, not first-run QuickStart paths.
+- Windows ARM64 CPU is the default supported ARM64 local llama.cpp fallback path.
+- Windows ARM64 Adreno/OpenCL llama.cpp is build-required and not automatic from QuickStart.
+- Windows ARM64 QNN LLM sidecar is pending viability. Do not confuse it with the separate Windows ARM64 QNN Whisper STT path documented in `docs\jarvis-arm-whisper.md`.
+
 Useful checks:
 
 ```powershell
@@ -273,15 +296,6 @@ docs\jarvis-arm-whisper.md
 
 Use those only when working on Windows ARM64 Adreno OpenCL llama.cpp sidecar or Windows ARM64 Qualcomm QNN Whisper artifact paths.
 
-## Repository rules that matter
-
-- `pyproject.toml` is the Python dependency source of truth.
-- `backend\requirements.txt` is generated; do not edit it by hand.
-- Use `scripts\provision.py` for Python dependency installation.
-- Use `scripts\ensure_models.py` for configured model artifacts.
-- Keep generated models, runtimes, caches, and reports out of source commits unless a slice explicitly says otherwise.
-- Record validation claims with exact command evidence.
-
 ## Common fixes
 
 Python version rejected:
@@ -297,7 +311,7 @@ Provisioning failed:
 .\backend\.venv\Scripts\python scripts\provision.py install
 ```
 
-Models missing:
+Models or runtime sidecars missing:
 
 ```powershell
 .\backend\.venv\Scripts\python scripts\ensure_models.py
