@@ -1,42 +1,63 @@
 # SYSTEM_INVENTORY.md
-> Authoritative capability ledger. This is not a roadmap or config reference. 
-> Inventory entries must reflect only observable artifacts in this repository: files, directories, executable code, configuration, scripts, and explicit UI text. 
+> Authoritative capability ledger. This is not a roadmap or config reference.  
+> Inventory entries must reflect only observable artifacts in this repository:  
+>   files, directories, executable code, configuration, scripts, and explicit UI text. 
 > Do not include intent, design plans, or inferred behavior.
 
 ## Rules
-- One component entry = one capability or feature observed in the repository.
-- New capabilities go at the top under `## Inventory` and above `## Observed Consolidated Inventory`.
-- Corrections or clarifications go only below the `## Appendix` section.
-- Entries must include:
+- Write component entry for capability or feature group observed in the repository.
+- Ordering: Entries are maintained in descending chronological order (newest first, oldest last).
+- Append location: New entries must be added at the top directly under `## Inventory Entries`.
+- Corrections or clarifications go only below the `##  Appendix` section.
+- Each entry must include:
 
-- Capability: **Brief Descriptive Component Name** 
-  - Date/Time
-  - State: Planned, Implemented, Verified, Not Implemented
-  - Location: `Relative File Path(s)`
-  - Validation: Method &/or `Relative Script Path(s)`; include host class(es) (e.g., `Windows x64`, `Windows ARM64`)
-  - Notes: 
-    - Optional (3 lines max).
+- Timestamp: `YYYY-MM-DD HH:MM`
+  - State: Verified, Implemented, or Scaffold
+  - Host class(es): validated on (e.g., `Windows x64`, `Windows ARM64`, etc. as appropriate)
+  - Summary: description of codebase changed, 1–2 lines, past tense
+  - Location: (list location where capability can be found, 1-5 lines)
+    - List folders, files, areas
+  - Evidence: (list referenceable reproducable evidence as validation)
+    - Timestamp: List supporting `CHANGE_LOG.md` entries (by `Timestamp:` with brief descriptive `Summary:` excerpt)
+  - Notes: (list notes as appropriate - optional)
+    - List of notes
 
 ## States
-- Planned: intent only, not implemented
+- Verified: validated with evidence working
 - Implemented: code exists, not yet validated end-to-end
-- Verified: validated with evidence (command)
-- Not Implemented: capability is named only to mark a boundary; no implementation is claimed
+- Scaffold: put into place to mark a boundary of future capability; no implementation is claimed
 
 ---
 
-## Inventory
+## Inventory Entries
 
----
-
-## Appendix
-
----
-
-## Observed Consolidated Inventory
-
-- Capability: SYSTEM_INVENTORY established - 2026-04-22 14:20
+- Timestamp: 2026-07-05 10:37
   - State: Implemented
-  - Location: `SYSTEM_INVENTORY.md`
-  - Validation: `cat .\SYSTEM_INVENTORY.md -head 1` = `# SYSTEM_INVENTORY.md`
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Updated `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` to organize repo governance
+  - Location: 
+    - `CHANGE_LOG.md`
+    - `SYSTEM_INVENTORY.md`
+  - Evidence: 
+    - Timestamp: 2026-07-05 10:30 - Established `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` ...
   - Notes: 
+
+---
+
+## Inventory Appendix
+
+---
+
+## Consolidated Inventory History
+
+- Timestamp: 2026-04-22 14:25
+  - State: Implemented
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Established `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` as part of repo governance
+  - Location: 
+    - `CHANGE_LOG.md`
+    - `SYSTEM_INVENTORY.md`
+  - Evidence: 
+    - Timestamp: 2026-04-22 14:20 - Established `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` ...
+  - Notes: 
+
