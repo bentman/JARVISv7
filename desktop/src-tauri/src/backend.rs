@@ -75,6 +75,16 @@ impl BackendProcessManager {
         format!("http://{}:{}", self.host, self.port)
     }
 
+    pub fn startup_failure_payload(&self, failure: &str) -> String {
+        serde_json::to_string(&json!({
+            "failure": failure,
+            "diagnostics": self.diagnostics(),
+            "stdout_tail": tail_file(&self.stdout_log),
+            "stderr_tail": tail_file(&self.stderr_log),
+        }))
+        .unwrap_or_else(|_| failure.to_string())
+    }
+
     pub fn spawn_backend(&mut self) -> Result<BackendDiagnostics, String> {
         self.kill_backend();
         let diagnostics = self.diagnostics();

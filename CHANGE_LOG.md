@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-04 22:11
+  - Summary: Implemented and User/Operator approved Slice Z.6 desktop backend diagnostics. Backend startup failures now surface copyable Python/script/working-directory/endpoint/log-path facts and stdout/stderr tails in a dedicated Conversation-panel diagnostics detail.
+  - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/components/backend-diagnostics.js`, desktop static tests.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`). `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop -q` PASS (`32 passed`). `cargo check` from `desktop\src-tauri` PASS (`Finished dev profile`; Windows incremental compilation warning only). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+
 - 2026-07-04 15:47
   - Summary: Fixed managed llama.cpp launch isolation so local assistant sidecars disable prompt-cache reuse and continuous batching across turns without changing serve-profile selection.
   - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`.

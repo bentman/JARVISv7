@@ -30,6 +30,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/src/api-client.js",
         "desktop/src/main.js",
         "desktop/src/components/appearance-controls.js",
+        "desktop/src/components/backend-diagnostics.js",
         "desktop/src/components/settings-panel.js",
         "desktop/src/components/resident-voice.js",
         "desktop/src/components/service-status.js",
@@ -521,6 +522,10 @@ def test_j1_conversation_debug_is_collapsed_details_without_voice_capture_change
 
     assert "<details" in index_html
     assert "<summary>Conversation debug details</summary>" in index_html
+    assert "<summary>Backend diagnostics</summary>" in index_html
+    assert 'id="backend-diagnostics"' in index_html
+    assert index_html.index("<summary>Conversation debug details</summary>") < index_html.index("<summary>Backend diagnostics</summary>")
+    assert index_html.index("<summary>Backend diagnostics</summary>") < index_html.index("<summary>Degraded list detail</summary>")
     assert "<summary>Voice debug details</summary>" not in index_html
     assert 'id="voice-detail"' in index_html
     assert index_html.index("<details") < index_html.index('id="voice-detail"')
@@ -690,6 +695,10 @@ def test_j2_main_state_displays_flow_through_desktop_state_helper() -> None:
 
 def test_backend_startup_diagnostics_are_exposed() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    main_js = _read("desktop/src/main.js")
+    api_client = _read("desktop/src/api-client.js")
+    backend_diagnostics = _read("desktop/src/components/backend-diagnostics.js")
     for expected in [
         "python_path",
         "backend_script_path",
@@ -701,6 +710,24 @@ def test_backend_startup_diagnostics_are_exposed() -> None:
         "try_wait",
     ]:
         assert expected in backend_rs
+    for expected in ["startup_failure_payload", "stdout_tail", "stderr_tail", "tail_file"]:
+        assert expected in backend_rs
+    assert "startup_failure_payload(&err)" in lib_rs
+    assert "parseBackendStartupError" in api_client
+    assert "wrapped.diagnostics" in api_client
+    assert "error.diagnostics" in main_js
+    assert "renderBackendDiagnostics" in main_js
+    for expected in [
+        "python_path",
+        "backend_script_path",
+        "working_directory",
+        "endpoint",
+        "stdout_log",
+        "stderr_log",
+        "stdout_tail",
+        "stderr_tail",
+    ]:
+        assert expected in backend_diagnostics
 
 
 def test_j4_style_tokens_are_defined_in_single_token_section() -> None:

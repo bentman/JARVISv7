@@ -20,15 +20,20 @@ fn backend_base_url(state: &DesktopState) -> Result<String, String> {
 fn start_backend(state: State<'_, DesktopState>) -> Result<String, String> {
     let (base_url, diagnostics) = {
         let mut manager = state.backend.lock().map_err(|_| "backend manager lock poisoned".to_string())?;
-        let diagnostics = manager.spawn_backend()?;
+        let diagnostics = match manager.spawn_backend() {
+            Ok(diagnostics) => diagnostics,
+            Err(err) => return Err(manager.startup_failure_payload(&err)),
+        };
         (manager.base_url(), diagnostics)
     };
 
-    wait_healthy(&base_url, Duration::from_secs(30), || {
+    if let Err(err) = wait_healthy(&base_url, Duration::from_secs(30), || {
         let mut manager = state.backend.lock().map_err(|_| "backend manager lock poisoned".to_string())?;
         manager.exited_status()
-    })
-    .map_err(|err| format!("{err}\nstartup diagnostics: {}", serde_json::to_string_pretty(&diagnostics).unwrap_or_default()))?;
+    }) {
+        let manager = state.backend.lock().map_err(|_| "backend manager lock poisoned".to_string())?;
+        return Err(manager.startup_failure_payload(&err));
+    }
 
     let session = create_session(&base_url)?;
     {

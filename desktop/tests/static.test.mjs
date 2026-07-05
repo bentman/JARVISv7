@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { renderConversationDebug } from "../src/components/conversation-debug.js";
+import { renderBackendDiagnostics } from "../src/components/backend-diagnostics.js";
 import { collectDegradedConditions, selectedFamilyBlockers } from "../src/components/degraded-list.js";
 import { createDesktopState } from "../src/components/desktop-state.js";
 
@@ -8,6 +9,7 @@ const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
 const residentVoice = readFileSync(new URL("../src/components/resident-voice.js", import.meta.url), "utf8");
 const conversationDebug = readFileSync(new URL("../src/components/conversation-debug.js", import.meta.url), "utf8");
+const backendDiagnostics = readFileSync(new URL("../src/components/backend-diagnostics.js", import.meta.url), "utf8");
 const degradedList = readFileSync(new URL("../src/components/degraded-list.js", import.meta.url), "utf8");
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
@@ -49,9 +51,22 @@ assert.ok(index.includes("resident-voice-status"), "desktop must display residen
 assert.ok(index.includes("degraded-detail"), "desktop must include collapsed degraded detail surface");
 assert.ok(index.includes("Degraded list detail"), "desktop degraded detail surface must use the required title");
 assert.ok(index.includes("Conversation debug details"), "desktop must title the conversation debug surface correctly");
+assert.ok(index.includes("Backend diagnostics"), "desktop must include collapsed backend diagnostics surface");
+assert.ok(index.includes("backend-diagnostics"), "desktop must include backend diagnostics target element");
 assert.ok(!index.includes("Voice debug details"), "desktop must not keep the voice-only debug label");
-assert.ok(index.indexOf("Conversation debug details") < index.indexOf("Degraded list detail"), "desktop degraded detail must be directly after conversation debug details");
+assert.ok(index.indexOf("Conversation debug details") < index.indexOf("Backend diagnostics"), "backend diagnostics must follow conversation debug details");
+assert.ok(index.indexOf("Backend diagnostics") < index.indexOf("Degraded list detail"), "backend diagnostics must precede degraded list detail");
 assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
+assert.ok(main.includes("renderBackendDiagnostics"), "desktop must render backend diagnostics");
+assert.ok(main.includes("error.diagnostics"), "startup failures must not collapse only into String(error)");
+assert.ok(apiClient.includes("parseBackendStartupError"), "api client must normalize backend startup errors");
+assert.ok(apiClient.includes("wrapped.diagnostics"), "api client must attach startup diagnostics to thrown errors");
+assert.ok(lib.includes("startup_failure_payload"), "Tauri start_backend failures must return structured diagnostics");
+assert.ok(backend.includes("stdout_tail"), "backend diagnostics failure payload must include stdout tail");
+assert.ok(backend.includes("stderr_tail"), "backend diagnostics failure payload must include stderr tail");
+for (const token of ["python_path", "backend_script_path", "working_directory", "endpoint", "stdout_log", "stderr_log", "stdout_tail", "stderr_tail"]) {
+  assert.ok(backendDiagnostics.includes(token), `backend diagnostics renderer must include ${token}`);
+}
 assert.ok(main.includes("await refreshSessionStatus()"), "desktop text and voice flows must refresh session status");
 assert.ok(conversationDebug.includes("latest_turn"), "conversation debug must render latest-turn session status");
 assert.ok(conversationDebug.includes("artifact_path"), "conversation debug must render turn artifact path");
@@ -281,6 +296,38 @@ assert.deepEqual(
   ["family", "optional-service"],
   "selected-family blockers and optional service detail rows must remain distinct",
 );
+
+const backendDiagnosticsEl = { textContent: "" };
+renderBackendDiagnostics(
+  {
+    failure: "backend startup failed",
+    diagnostics: {
+      python_path: "repo\\backend\\.venv\\Scripts\\python.exe",
+      backend_script_path: "repo\\scripts\\run_backend.py",
+      working_directory: "repo",
+      host: "127.0.0.1",
+      port: 8765,
+      stdout_log: "repo\\reports\\backend_startup.log",
+      stderr_log: "repo\\reports\\backend_spawn_stderr.log",
+    },
+    stdout_tail: "stdout line",
+    stderr_tail: "stderr line",
+  },
+  backendDiagnosticsEl,
+);
+for (const expected of [
+  "failure: backend startup failed",
+  "python_path: repo\\backend\\.venv\\Scripts\\python.exe",
+  "backend_script_path: repo\\scripts\\run_backend.py",
+  "working_directory: repo",
+  "endpoint: 127.0.0.1:8765",
+  "stdout_log: repo\\reports\\backend_startup.log",
+  "stderr_log: repo\\reports\\backend_spawn_stderr.log",
+  "stdout_tail:\nstdout line",
+  "stderr_tail:\nstderr line",
+]) {
+  assert.ok(backendDiagnosticsEl.textContent.includes(expected), `backend diagnostics output must include ${expected}`);
+}
 
 const readyLlamaCppConditions = collectDegradedConditions({
   status: "ready",

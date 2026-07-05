@@ -1,5 +1,6 @@
 import { createApiClient } from "./api-client.js";
 import { applyStored } from "./components/appearance-controls.js";
+import { clearBackendDiagnostics, renderBackendDiagnostics } from "./components/backend-diagnostics.js";
 import { renderConversationDebug } from "./components/conversation-debug.js";
 import { renderDegradedList, selectedFamilyBlockers } from "./components/degraded-list.js";
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
@@ -34,6 +35,7 @@ const sendButton = document.querySelector("#send-button");
 const pttButton = document.querySelector("#ptt-button");
 const voiceStatusEl = document.querySelector("#voice-status");
 const voiceDetailEl = document.querySelector("#voice-detail");
+const backendDiagnosticsEl = document.querySelector("#backend-diagnostics");
 
 const invoke = window.__TAURI__?.core?.invoke;
 const api = createApiClient(invoke);
@@ -353,6 +355,7 @@ async function applyStoredPersonalityIfAvailable(profilePayload) {
 
 async function startDesktop() {
   clearError();
+  clearBackendDiagnostics(backendDiagnosticsEl);
   setState("STARTING");
   healthEl.textContent = "starting";
   sendButton.disabled = true;
@@ -367,6 +370,7 @@ async function startDesktop() {
 
   try {
     const startPayload = await api.startBackend();
+    renderBackendDiagnostics(startPayload.diagnostics, backendDiagnosticsEl);
     sessionEl.textContent = startPayload.session_id || "created";
     if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
     healthEl.textContent = "ok";
@@ -388,7 +392,8 @@ async function startDesktop() {
     inputEl.focus();
   } catch (error) {
     healthEl.textContent = "error";
-    showError(String(error), "BACKEND_UNAVAILABLE");
+    renderBackendDiagnostics(error.diagnostics || { failure: String(error) }, backendDiagnosticsEl);
+    showError(error.message || String(error), "BACKEND_UNAVAILABLE");
   }
 }
 
@@ -397,6 +402,7 @@ async function restartBackendForSettings() {
   setState("STARTING");
   healthEl.textContent = "starting";
   const startPayload = await api.startBackend();
+  renderBackendDiagnostics(startPayload.diagnostics, backendDiagnosticsEl);
   sessionEl.textContent = startPayload.session_id || "created";
   if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
   healthEl.textContent = "ok";
