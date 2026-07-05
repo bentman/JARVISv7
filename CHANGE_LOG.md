@@ -18,6 +18,12 @@
 
 ## Entries 
 
+- 2026-07-05 05:36
+  - Summary: Tuned llama-server launch profiles across the LLM catalog. CPU profiles now use explicit thread/batch/KV-cache settings, CUDA uses the balanced 8B profile with 8k context and full GPU offload, and degraded AMD/Intel/Adreno/QNN profiles carry narrower or explicit launch parameters while preserving sidecar turn isolation.
+  - Scope: `config/models/llm.yaml`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`.
+  - Host class(es): Windows AMD64 / amd64 validated.
+  - Evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_local_llm_sidecar.py backend\tests\unit\runtimes\llm\test_llm_serve_profiles.py -q` PASS (`34 passed`). `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+
 - 2026-07-04 22:11
   - Summary: Implemented and User/Operator approved Slice Z.6 desktop backend diagnostics. Backend startup failures now surface copyable Python/script/working-directory/endpoint/log-path facts and stdout/stderr tails in a dedicated Conversation-panel diagnostics detail.
   - Scope: `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/components/backend-diagnostics.js`, desktop static tests.

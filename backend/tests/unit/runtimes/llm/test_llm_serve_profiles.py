@@ -47,7 +47,13 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "base_url": "http://127.0.0.1:8080",
                         "launch": {
                             "ctx_size": 4096,
+                            "threads": 6,
+                            "threads_batch": 12,
+                            "batch_size": 512,
+                            "ubatch_size": 128,
                             "gpu_layers": 0,
+                            "cache_type_k": "q8_0",
+                            "cache_type_v": "q8_0",
                         },
                     },
                     "windows_arm64_cpu": {
@@ -65,7 +71,13 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "base_url": "http://127.0.0.1:8080",
                         "launch": {
                             "ctx_size": 4096,
+                            "threads": 4,
+                            "threads_batch": 8,
+                            "batch_size": 512,
+                            "ubatch_size": 128,
                             "gpu_layers": 0,
+                            "cache_type_k": "q4_0",
+                            "cache_type_v": "q4_0",
                         },
                     },
                     "windows_amd64_gpu_nvidia_cuda": {
@@ -82,8 +94,13 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "binary_path": str(tmp_path / "bin" / "amd64-cuda" / "llama-server.exe"),
                         "close_if_unavailable": "Degraded-accelerator-unavailable",
                         "launch": {
-                            "ctx_size": 4096,
-                            "gpu_layers": "auto",
+                            "ctx_size": 8192,
+                            "gpu_layers": "all",
+                            "split_mode": "layer",
+                            "main_gpu": 0,
+                            "flash_attn": "on",
+                            "batch_size": 2048,
+                            "ubatch_size": 512,
                         },
                     },
                     "windows_amd64_gpu_amd": {
@@ -174,7 +191,10 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "close_if_unavailable": "Degraded-opencl-build-required",
                         "launch": {
                             "ctx_size": 4096,
-                            "gpu_layers": "auto",
+                            "batch_size": 128,
+                            "ubatch_size": 32,
+                            "gpu_layers": "all",
+                            "flash_attn": "off",
                         },
                     },
                     "windows_arm64_npu_qualcomm_qnn": {
@@ -203,6 +223,8 @@ def _entry(tmp_path: Path) -> ModelEntry:
                         "launch": {
                             "ctx_size": 4096,
                             "device": "qnn",
+                            "batch_size": 128,
+                            "ubatch_size": 128,
                         },
                     },
                 },

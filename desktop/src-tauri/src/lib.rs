@@ -27,7 +27,7 @@ fn start_backend(state: State<'_, DesktopState>) -> Result<String, String> {
         (manager.base_url(), diagnostics)
     };
 
-    if let Err(err) = wait_healthy(&base_url, Duration::from_secs(30), || {
+    if let Err(err) = wait_healthy(&base_url, Duration::from_secs(90), || {
         let mut manager = state.backend.lock().map_err(|_| "backend manager lock poisoned".to_string())?;
         manager.exited_status()
     }) {

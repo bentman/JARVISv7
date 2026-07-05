@@ -73,13 +73,13 @@ def _resolution(
         if launch is not None
         else {
             "ctx_size": 4096,
-            "threads": "auto",
-            "threads_batch": "auto",
-            "batch_size": 1024,
-            "ubatch_size": 256,
+            "threads": 6,
+            "threads_batch": 12,
+            "batch_size": 512,
+            "ubatch_size": 128,
             "gpu_layers": 0,
-            "cache_type_k": "f16",
-            "cache_type_v": "f16",
+            "cache_type_k": "q8_0",
+            "cache_type_v": "q8_0",
             "parallel": 1,
             "cont_batching": True,
             "warmup": True,
@@ -108,19 +108,19 @@ def test_builds_windows_amd64_cpu_argv_without_launching(tmp_path: Path) -> None
         "--ctx-size",
         "4096",
         "--threads",
-        "-1",
+        "6",
         "--threads-batch",
-        "-1",
+        "12",
         "--batch-size",
-        "1024",
+        "512",
         "--ubatch-size",
-        "256",
+        "128",
         "--gpu-layers",
         "0",
         "--cache-type-k",
-        "f16",
+        "q8_0",
         "--cache-type-v",
-        "f16",
+        "q8_0",
         "--warmup",
         "--cache-ram",
         "0",
@@ -168,11 +168,13 @@ def test_builds_amd64_cuda_argv_when_files_exist(tmp_path: Path) -> None:
         profile_id="windows_amd64_cuda",
         accelerator="gpu.cuda",
         launch={
-            "ctx_size": 4096,
-            "gpu_layers": "auto",
+            "ctx_size": 8192,
+            "gpu_layers": "all",
             "split_mode": "layer",
             "main_gpu": 0,
-            "flash_attn": "auto",
+            "flash_attn": "on",
+            "batch_size": 2048,
+            "ubatch_size": 512,
             "cache_type_k": "f16",
             "cache_type_v": "f16",
             "cache_ram_mb": 8192,
@@ -182,11 +184,15 @@ def test_builds_amd64_cuda_argv_when_files_exist(tmp_path: Path) -> None:
     command = build_llama_server_command(resolution)
 
     assert command.ready is True
+    assert command.argv[command.argv.index("--ctx-size") + 1] == "8192"
     assert "--gpu-layers" in command.argv
-    assert command.argv[command.argv.index("--gpu-layers") + 1] == "auto"
+    assert command.argv[command.argv.index("--gpu-layers") + 1] == "all"
     assert "--split-mode" in command.argv
     assert "--main-gpu" in command.argv
     assert "--flash-attn" in command.argv
+    assert command.argv[command.argv.index("--flash-attn") + 1] == "on"
+    assert command.argv[command.argv.index("--batch-size") + 1] == "2048"
+    assert command.argv[command.argv.index("--ubatch-size") + 1] == "512"
     assert command.argv[command.argv.index("--cache-ram") + 1] == "0"
     assert command.argv[command.argv.index("--parallel") + 1] == "1"
     assert "--no-cont-batching" in command.argv
@@ -199,13 +205,10 @@ def test_builds_arm64_adreno_opencl_argv_without_hardcoded_device(tmp_path: Path
         accelerator="gpu.opencl.adreno",
         launch={
             "ctx_size": 4096,
-            "threads": "auto",
-            "threads_batch": "auto",
-            "batch_size": 2048,
-            "ubatch_size": 512,
-            "gpu_layers": "auto",
-            "cache_type_k": "f16",
-            "cache_type_v": "f16",
+            "batch_size": 128,
+            "ubatch_size": 32,
+            "gpu_layers": "all",
+            "flash_attn": "off",
             "cache_ram_mb": 4096,
             "parallel": 1,
             "cont_batching": True,
@@ -217,7 +220,10 @@ def test_builds_arm64_adreno_opencl_argv_without_hardcoded_device(tmp_path: Path
 
     assert command.ready is True
     assert "--gpu-layers" in command.argv
-    assert command.argv[command.argv.index("--gpu-layers") + 1] == "auto"
+    assert command.argv[command.argv.index("--gpu-layers") + 1] == "all"
+    assert command.argv[command.argv.index("--batch-size") + 1] == "128"
+    assert command.argv[command.argv.index("--ubatch-size") + 1] == "32"
+    assert command.argv[command.argv.index("--flash-attn") + 1] == "off"
     assert "--device" not in command.argv
     assert command.argv[command.argv.index("--cache-ram") + 1] == "0"
     assert command.argv[command.argv.index("--parallel") + 1] == "1"

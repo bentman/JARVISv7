@@ -118,13 +118,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 1024
-            ubatch_size: 256
+            threads: 6
+            threads_batch: 12
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q8_0
+            cache_type_v: q8_0
             parallel: 1
             cont_batching: true
             warmup: true
@@ -156,13 +156,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
+            threads: 4
+            threads_batch: 8
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -201,11 +201,13 @@ models:
           validation_status: declared-not-validated
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
-            gpu_layers: auto
+            ctx_size: 8192
+            gpu_layers: all
             split_mode: layer
             main_gpu: 0
-            flash_attn: auto
+            flash_attn: "on"
+            batch_size: 2048
+            ubatch_size: 512
             cache_type_k: f16
             cache_type_v: f16
             cache_ram_mb: 8192
@@ -237,7 +239,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_amd64_gpu_intel:
           profile_id: windows_amd64_gpu_intel
@@ -268,7 +271,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_arm64_npu_qualcomm_base:
           profile_id: windows_arm64_npu_qualcomm_base
@@ -301,7 +305,11 @@ models:
           validation_status: declared-degraded
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
+            ctx_size: 2048
+            threads: 4
+            gpu_layers: 0
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
@@ -345,13 +353,10 @@ models:
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
-            gpu_layers: auto
-            cache_type_k: f16
-            cache_type_v: f16
+            batch_size: 128
+            ubatch_size: 32
+            gpu_layers: all
+            flash_attn: "off"
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -391,6 +396,8 @@ models:
           launch:
             ctx_size: 4096
             device: qnn
+            batch_size: 128
+            ubatch_size: 128
             cache_ram_mb: 4096
 
   assistant-qwen3-0p6b-q8-diagnostic:
@@ -454,13 +461,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 1024
-            ubatch_size: 256
+            threads: 6
+            threads_batch: 12
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q8_0
+            cache_type_v: q8_0
             parallel: 1
             cont_batching: true
             warmup: true
@@ -492,13 +499,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
+            threads: 4
+            threads_batch: 8
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -537,11 +544,13 @@ models:
           validation_status: declared-not-validated
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
-            gpu_layers: auto
+            ctx_size: 8192
+            gpu_layers: all
             split_mode: layer
             main_gpu: 0
-            flash_attn: auto
+            flash_attn: "on"
+            batch_size: 2048
+            ubatch_size: 512
             cache_type_k: f16
             cache_type_v: f16
             cache_ram_mb: 8192
@@ -573,7 +582,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_amd64_gpu_intel:
           profile_id: windows_amd64_gpu_intel
@@ -604,7 +614,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_arm64_npu_qualcomm_base:
           profile_id: windows_arm64_npu_qualcomm_base
@@ -637,7 +648,11 @@ models:
           validation_status: declared-degraded
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
+            ctx_size: 2048
+            threads: 4
+            gpu_layers: 0
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
@@ -681,13 +696,10 @@ models:
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
-            gpu_layers: auto
-            cache_type_k: f16
-            cache_type_v: f16
+            batch_size: 128
+            ubatch_size: 32
+            gpu_layers: all
+            flash_attn: "off"
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -727,6 +739,8 @@ models:
           launch:
             ctx_size: 4096
             device: qnn
+            batch_size: 128
+            ubatch_size: 128
             cache_ram_mb: 4096
   assistant-qwen3-4b-q4-portable:
     family: llm
@@ -789,13 +803,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 1024
-            ubatch_size: 256
+            threads: 6
+            threads_batch: 12
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q8_0
+            cache_type_v: q8_0
             parallel: 1
             cont_batching: true
             warmup: true
@@ -827,13 +841,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
+            threads: 4
+            threads_batch: 8
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -872,11 +886,13 @@ models:
           validation_status: declared-not-validated
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
-            gpu_layers: auto
+            ctx_size: 8192
+            gpu_layers: all
             split_mode: layer
             main_gpu: 0
-            flash_attn: auto
+            flash_attn: "on"
+            batch_size: 2048
+            ubatch_size: 512
             cache_type_k: f16
             cache_type_v: f16
             cache_ram_mb: 8192
@@ -908,7 +924,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_amd64_gpu_intel:
           profile_id: windows_amd64_gpu_intel
@@ -939,7 +956,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_arm64_npu_qualcomm_base:
           profile_id: windows_arm64_npu_qualcomm_base
@@ -972,7 +990,11 @@ models:
           validation_status: declared-degraded
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
+            ctx_size: 2048
+            threads: 4
+            gpu_layers: 0
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
@@ -1016,13 +1038,10 @@ models:
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
-            gpu_layers: auto
-            cache_type_k: f16
-            cache_type_v: f16
+            batch_size: 128
+            ubatch_size: 32
+            gpu_layers: all
+            flash_attn: "off"
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -1062,6 +1081,8 @@ models:
           launch:
             ctx_size: 4096
             device: qnn
+            batch_size: 128
+            ubatch_size: 128
             cache_ram_mb: 4096
   assistant-qwen3-8b-q5-balanced:
     family: llm
@@ -1124,13 +1145,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 1024
-            ubatch_size: 256
+            threads: 6
+            threads_batch: 12
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q8_0
+            cache_type_v: q8_0
             parallel: 1
             cont_batching: true
             warmup: true
@@ -1162,13 +1183,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
+            threads: 4
+            threads_batch: 8
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -1207,11 +1228,13 @@ models:
           validation_status: declared-not-validated
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
-            gpu_layers: auto
+            ctx_size: 8192
+            gpu_layers: all
             split_mode: layer
             main_gpu: 0
-            flash_attn: auto
+            flash_attn: "on"
+            batch_size: 2048
+            ubatch_size: 512
             cache_type_k: f16
             cache_type_v: f16
             cache_ram_mb: 8192
@@ -1243,7 +1266,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_amd64_gpu_intel:
           profile_id: windows_amd64_gpu_intel
@@ -1274,7 +1298,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_arm64_npu_qualcomm_base:
           profile_id: windows_arm64_npu_qualcomm_base
@@ -1307,7 +1332,11 @@ models:
           validation_status: declared-degraded
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
+            ctx_size: 2048
+            threads: 4
+            gpu_layers: 0
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
@@ -1351,13 +1380,10 @@ models:
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
-            gpu_layers: auto
-            cache_type_k: f16
-            cache_type_v: f16
+            batch_size: 128
+            ubatch_size: 32
+            gpu_layers: all
+            flash_attn: "off"
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -1397,6 +1423,8 @@ models:
           launch:
             ctx_size: 4096
             device: qnn
+            batch_size: 128
+            ubatch_size: 128
             cache_ram_mb: 4096
   assistant-qwen3-14b-q4-quality:
     family: llm
@@ -1459,13 +1487,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 1024
-            ubatch_size: 256
+            threads: 6
+            threads_batch: 12
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q8_0
+            cache_type_v: q8_0
             parallel: 1
             cont_batching: true
             warmup: true
@@ -1497,13 +1525,13 @@ models:
           validation_status: declared-not-validated
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
+            threads: 4
+            threads_batch: 8
+            batch_size: 512
+            ubatch_size: 128
             gpu_layers: 0
-            cache_type_k: f16
-            cache_type_v: f16
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -1542,11 +1570,13 @@ models:
           validation_status: declared-not-validated
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
-            gpu_layers: auto
+            ctx_size: 8192
+            gpu_layers: all
             split_mode: layer
             main_gpu: 0
-            flash_attn: auto
+            flash_attn: "on"
+            batch_size: 2048
+            ubatch_size: 512
             cache_type_k: f16
             cache_type_v: f16
             cache_ram_mb: 8192
@@ -1578,7 +1608,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_amd64_gpu_intel:
           profile_id: windows_amd64_gpu_intel
@@ -1609,7 +1640,8 @@ models:
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
             ctx_size: 4096
-            gpu_layers: auto
+            gpu_layers: all
+            flash_attn: auto
             cache_ram_mb: 8192
         windows_arm64_npu_qualcomm_base:
           profile_id: windows_arm64_npu_qualcomm_base
@@ -1642,7 +1674,11 @@ models:
           validation_status: declared-degraded
           close_if_unavailable: Degraded-accelerator-unavailable
           launch:
-            ctx_size: 4096
+            ctx_size: 2048
+            threads: 4
+            gpu_layers: 0
+            cache_type_k: q4_0
+            cache_type_v: q4_0
             cache_ram_mb: 4096
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
@@ -1686,13 +1722,10 @@ models:
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
-            threads: auto
-            threads_batch: auto
-            batch_size: 2048
-            ubatch_size: 512
-            gpu_layers: auto
-            cache_type_k: f16
-            cache_type_v: f16
+            batch_size: 128
+            ubatch_size: 32
+            gpu_layers: all
+            flash_attn: "off"
             cache_ram_mb: 4096
             parallel: 1
             cont_batching: true
@@ -1732,4 +1765,6 @@ models:
           launch:
             ctx_size: 4096
             device: qnn
+            batch_size: 128
+            ubatch_size: 128
             cache_ram_mb: 4096
