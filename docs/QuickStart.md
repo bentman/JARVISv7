@@ -37,17 +37,13 @@ Set-Location <REPO_ROOT_PATH>
 git pull
 ```
 
-## Repo-run desktop preview
+## Shortest supported desktop path
 
-Use this path for the normal product-preview flow:
+Use this path for first setup and normal product-preview launch:
 
 ```text
-prepare shell -> create backend venv -> bootstrap -> install desktop deps -> launch desktop
+prepare shell -> create backend venv -> copy starter settings -> bootstrap -> install desktop deps -> launch desktop
 ```
-
-The desktop shell starts the backend, creates or resumes a session, loads readiness, starts the resident voice stream when available, and displays backend, readiness, service, wake, resident voice, and session state.
-
-### 1. Prepare PowerShell
 
 ```powershell
 $env:PYTHONUTF8 = "1"
@@ -57,29 +53,34 @@ $env:TMP = "$PWD\cache\temp"
 $env:TMPDIR = "$PWD\cache\temp"
 $env:PIP_CACHE_DIR = "$PWD\cache\pip"
 New-Item -ItemType Directory -Force $env:TEMP, $env:PIP_CACHE_DIR | Out-Null
-```
 
-### 2. Create the backend environment
-
-Prefer Python 3.13 when available:
-
-```powershell
 py -3.13 -m venv backend\.venv
 .\backend\.venv\Scripts\python -m pip install --upgrade pip
+
+Copy-Item .env.example .env
+
+.\backend\.venv\Scripts\python scripts\bootstrap.py
+
+npm --prefix desktop install
+npm --prefix desktop run dev
 ```
 
-Fallback if needed:
+Fallback if Python 3.13 is unavailable:
 
 ```powershell
 py -3.12 -m venv backend\.venv
 .\backend\.venv\Scripts\python -m pip install --upgrade pip
 ```
 
-### 3. Use starter settings
+Do not install Tauri globally for this repo. Use repo-local desktop package commands.
+
+The running desktop is the main product-preview surface. The desktop shell starts the backend, creates or resumes a session, loads readiness, starts the resident voice stream when available, and displays backend, readiness, service, wake, resident voice, session, error, and backend diagnostics state.
+
+## Starter settings
 
 JARVIS loads `.env` when present. If `.env` is missing, it falls back to `.env.example`.
 
-For first setup, leave `.env.example` defaults in place:
+For first setup, copy `.env.example` to `.env` and keep the starter defaults unless you are intentionally changing runtime policy:
 
 ```text
 USE_LOCAL_MODEL=true
@@ -91,33 +92,20 @@ USE_SEARXNG=false
 USE_DDGS=true
 ```
 
-Create `.env` only for local overrides:
-
-```powershell
-Copy-Item .env.example .env
-```
-
 Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override. A nonblank `LLM_MODEL_ID` wins over dev/prod policy selection.
 
-### 4. Bootstrap backend dependencies and models
+## After the desktop opens
 
-```powershell
-.\backend\.venv\Scripts\python scripts\bootstrap.py
-```
+Check the desktop surface before dropping to backend scripts:
 
-Bootstrap runs repo setup checkpoints in order. If it fails, fix the failed checkpoint instead of manually installing packages or models outside the repo commands.
+1. Backend / Health
+2. Readiness
+3. Services
+4. Backend diagnostics
+5. Conversation debug details
+6. Degraded list detail, only when visible
 
-### 5. Install desktop dependencies and launch
-
-```powershell
-npm --prefix desktop install
-npm --prefix desktop test
-npm --prefix desktop run dev
-```
-
-Do not install Tauri globally for this repo. Use repo-local desktop package commands.
-
-The running desktop is the main product-preview surface. Use its readiness, services, resident voice, wake, session, and error panels before dropping to backend scripts.
+Backend startup failures should show the Python path, backend script path, working directory, endpoint, log paths, and useful log tail output in the Backend diagnostics detail panel.
 
 ## Troubleshooting and focused checks
 
@@ -147,6 +135,12 @@ For a broader backend check:
 .\backend\.venv\Scripts\python scripts\validate_backend.py regression
 ```
 
+For the desktop static contract:
+
+```powershell
+npm --prefix desktop test
+```
+
 ## Optional local services
 
 Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
@@ -158,7 +152,7 @@ docker compose up --detach
 docker compose down
 ```
 
-## Use production local LLM mode
+## Production local LLM mode
 
 Starter mode uses `dev` and selects `assistant-small-q4`. Production mode uses the host/policy-selected Qwen3 catalog model.
 
@@ -185,7 +179,7 @@ $env:LLM_MODEL_MODE = "dev"
 
 Use `--all-llm` only when intentionally validating the full LLM catalog.
 
-## Backend and proving-host commands
+## Developer and diagnostic commands
 
 The desktop preview starts the backend for normal use. Run the backend directly only for API development or diagnosis:
 
@@ -223,6 +217,22 @@ Voice-only proving-host turn requires working local STT, TTS, and an audio input
 ```powershell
 .\backend\.venv\Scripts\python scripts\run_jarvis.py --voice-only --turns 1
 ```
+
+## Settings and advanced overrides
+
+Most first-run users should only use `.env` copied from `.env.example`.
+
+Advanced environment variables are defined and classified in `backend\app\core\settings.py`. That module loads `.env` first, falls back to `.env.example` when `.env` is missing, and maps environment variables into the backend `Settings` object.
+
+Use `backend\app\core\settings.py` as the source of truth for advanced override names and their categories:
+
+- primary settings: normal user-facing runtime policy such as `USE_LOCAL_MODEL`, `LLM_MODEL_MODE`, `LLM_MODEL_POLICY`, `USE_OLLAMA`, `OLLAMA_MODEL`, `USE_SEARXNG`, `USE_DDGS`, and `USE_TAVILY`;
+- advanced settings: paths, llama.cpp endpoint and artifact overrides, voice timing thresholds, and model directories;
+- services settings: Redis and SearXNG host/port values;
+- secret settings: API keys and access keys;
+- test-only settings: live-test gates.
+
+Do not add new `.env` keys unless code reads them through `backend\app\core\settings.py` or an adjacent settings path.
 
 ## Development validation
 
