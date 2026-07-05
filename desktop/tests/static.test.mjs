@@ -10,6 +10,7 @@ const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url),
 const residentVoice = readFileSync(new URL("../src/components/resident-voice.js", import.meta.url), "utf8");
 const conversationDebug = readFileSync(new URL("../src/components/conversation-debug.js", import.meta.url), "utf8");
 const backendDiagnostics = readFileSync(new URL("../src/components/backend-diagnostics.js", import.meta.url), "utf8");
+const desktopPolling = readFileSync(new URL("../src/components/desktop-polling.js", import.meta.url), "utf8");
 const degradedList = readFileSync(new URL("../src/components/degraded-list.js", import.meta.url), "utf8");
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
@@ -59,6 +60,38 @@ assert.ok(index.indexOf("Backend diagnostics") < index.indexOf("Degraded list de
 assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
 assert.ok(main.includes("renderBackendDiagnostics"), "desktop must render backend diagnostics");
 assert.ok(main.includes("error.diagnostics"), "startup failures must not collapse only into String(error)");
+assert.ok(desktopPolling.includes("let sessionPollTimer"), "desktop polling helper must own session interval handle");
+assert.ok(desktopPolling.includes("let residentVoicePollTimer"), "desktop polling helper must own resident voice interval handle");
+assert.ok(desktopPolling.includes("let wakePollTimer"), "desktop polling helper must own wake interval handle");
+for (const functionName of [
+  "startSessionPolling",
+  "stopSessionPolling",
+  "startResidentVoicePolling",
+  "stopResidentVoicePolling",
+  "startWakePolling",
+  "stopWakePolling",
+  "startAllPolling",
+  "stopAllPolling",
+]) {
+  assert.ok(desktopPolling.includes(functionName), `desktop polling helper must expose ${functionName}`);
+}
+assert.ok(main.includes('import { createDesktopPolling } from "./components/desktop-polling.js"'), "desktop main must import polling helper");
+assert.ok(main.includes("createDesktopPolling({"), "desktop main must create polling helper with refresh callbacks");
+assert.ok(main.includes("startAllPolling()"), "desktop main must start polling through helper");
+assert.ok(main.includes("stopAllPolling()"), "desktop main must stop polling through helper");
+for (const timerName of ["wakePollTimer", "sessionPollTimer", "residentVoicePollTimer"]) {
+  assert.ok(!main.includes(timerName), `desktop main must not own ${timerName}`);
+}
+assert.ok(main.includes("async function completeBackendStart(startPayload)"), "desktop main must define shared backend-start postlude helper");
+assert.equal(
+  [...main.matchAll(/await completeBackendStart\(startPayload\)/g)].length,
+  2,
+  "startDesktop and restartBackendForSettings must share backend-start postlude helper",
+);
+assert.ok(
+  main.indexOf("async function completeBackendStart") < main.indexOf("async function startDesktop"),
+  "backend-start postlude helper must be shared before startup functions use it",
+);
 assert.ok(apiClient.includes("parseBackendStartupError"), "api client must normalize backend startup errors");
 assert.ok(apiClient.includes("wrapped.diagnostics"), "api client must attach startup diagnostics to thrown errors");
 assert.ok(lib.includes("startup_failure_payload"), "Tauri start_backend failures must return structured diagnostics");

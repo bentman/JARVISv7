@@ -9,6 +9,7 @@ import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
+import { createDesktopPolling } from "./components/desktop-polling.js";
 
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
@@ -40,9 +41,6 @@ const backendDiagnosticsEl = document.querySelector("#backend-diagnostics");
 const invoke = window.__TAURI__?.core?.invoke;
 const api = createApiClient(invoke);
 let activePersonalityId = "default";
-let wakePollTimer = null;
-let sessionPollTimer = null;
-let residentVoicePollTimer = null;
 let desktopState = null;
 let personalitySelectionPending = false;
 const PERSONALITY_STORAGE_KEY = "jarvisv7_active_personality";
@@ -221,32 +219,6 @@ async function setResidentVoiceMode(mode) {
   return status;
 }
 
-function startSessionPolling() {
-  if (sessionPollTimer) window.clearInterval(sessionPollTimer);
-  sessionPollTimer = window.setInterval(() => {
-    refreshSessionStatus().catch(() => undefined);
-  }, 1000);
-}
-
-function stopSessionPolling() {
-  if (!sessionPollTimer) return;
-  window.clearInterval(sessionPollTimer);
-  sessionPollTimer = null;
-}
-
-function startResidentVoicePolling() {
-  if (residentVoicePollTimer) window.clearInterval(residentVoicePollTimer);
-  residentVoicePollTimer = window.setInterval(() => {
-    refreshResidentVoiceStatus().catch(() => undefined);
-  }, 1500);
-}
-
-function stopResidentVoicePolling() {
-  if (!residentVoicePollTimer) return;
-  window.clearInterval(residentVoicePollTimer);
-  residentVoicePollTimer = null;
-}
-
 async function refreshWakeStatus() {
   try {
     const status = await api.getWakeStatus();
@@ -276,19 +248,6 @@ async function refreshWakeStatus() {
     }
     return null;
   }
-}
-
-function startWakePolling() {
-  if (wakePollTimer) window.clearInterval(wakePollTimer);
-  wakePollTimer = window.setInterval(() => {
-    refreshWakeStatus().catch(() => undefined);
-  }, 1500);
-}
-
-function stopWakePolling() {
-  if (!wakePollTimer) return;
-  window.clearInterval(wakePollTimer);
-  wakePollTimer = null;
 }
 
 async function startWakeMonitorIfAvailable() {
@@ -353,6 +312,26 @@ async function applyStoredPersonalityIfAvailable(profilePayload) {
   return api.getPersonalityList();
 }
 
+const polling = createDesktopPolling({
+  refreshSessionStatus,
+  refreshResidentVoiceStatus,
+  refreshWakeStatus,
+});
+
+const { startAllPolling, stopAllPolling } = polling;
+
+async function completeBackendStart(startPayload) {
+  renderBackendDiagnostics(startPayload.diagnostics, backendDiagnosticsEl);
+  sessionEl.textContent = startPayload.session_id || "created";
+  if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
+  healthEl.textContent = "ok";
+  await ensureResidentVoiceStream();
+  await startWakeMonitorIfAvailable();
+  const readiness = await api.getReadiness();
+  renderReadiness(readiness);
+  startAllPolling();
+}
+
 async function startDesktop() {
   clearError();
   clearBackendDiagnostics(backendDiagnosticsEl);
@@ -370,18 +349,7 @@ async function startDesktop() {
 
   try {
     const startPayload = await api.startBackend();
-    renderBackendDiagnostics(startPayload.diagnostics, backendDiagnosticsEl);
-    sessionEl.textContent = startPayload.session_id || "created";
-    if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
-    healthEl.textContent = "ok";
-    await refreshSessionStatus();
-    await ensureResidentVoiceStream();
-    await startWakeMonitorIfAvailable();
-    const readiness = await api.getReadiness();
-    renderReadiness(readiness);
-    startWakePolling();
-    startSessionPolling();
-    startResidentVoicePolling();
+    await completeBackendStart(startPayload);
     let personalityPayload = await refreshPersonalityProfiles();
     personalityPayload = await applyStoredPersonalityIfAvailable(personalityPayload);
     personalityPayload = await refreshPersonalityProfiles();
@@ -402,17 +370,7 @@ async function restartBackendForSettings() {
   setState("STARTING");
   healthEl.textContent = "starting";
   const startPayload = await api.startBackend();
-  renderBackendDiagnostics(startPayload.diagnostics, backendDiagnosticsEl);
-  sessionEl.textContent = startPayload.session_id || "created";
-  if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
-  healthEl.textContent = "ok";
-  await ensureResidentVoiceStream();
-  await startWakeMonitorIfAvailable();
-  const readiness = await api.getReadiness();
-  renderReadiness(readiness);
-  startWakePolling();
-  startSessionPolling();
-  startResidentVoicePolling();
+  await completeBackendStart(startPayload);
 }
 
 function updateSettingsRestartRequired(required, details = {}) {
@@ -528,9 +486,7 @@ if (wakeToggleEl) {
 }
 
 window.addEventListener("beforeunload", () => {
-  stopWakePolling();
-  stopSessionPolling();
-  stopResidentVoicePolling();
+  stopAllPolling();
   api?.stopWakeMonitor().catch(() => undefined);
   api?.stopBackend().catch(() => undefined);
 });
