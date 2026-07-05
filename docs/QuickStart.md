@@ -11,7 +11,7 @@ Backend setup:
 - Windows PowerShell
 - Git
 - Python `>=3.11,<3.14` through the Windows `py` launcher
-- Internet access for dependency and model acquisition
+- Internet access for dependency, model, and runtime artifact acquisition
 
 Desktop shell:
 
@@ -22,16 +22,6 @@ Desktop shell:
 Optional local services:
 
 - Docker Desktop for Redis and SearXNG
-
-## Repository rules that matter
-
-- `pyproject.toml` is the Python dependency source of truth.
-- `backend\requirements.txt` is generated; do not edit it by hand.
-- Use `scripts\provision.py` for Python dependency installation.
-- Use `scripts\ensure_models.py` for configured model artifacts and llama.cpp runtime artifacts.
-- Prefer `scripts\bootstrap.py` for first setup because it runs provisioning, model/runtime acquisition, preflight, and profile validation in order.
-- Keep generated models, runtimes, caches, and reports out of source commits unless a slice explicitly says otherwise.
-- Record validation claims with exact command evidence.
 
 ## Clone
 
@@ -47,15 +37,79 @@ Set-Location <REPO_ROOT_PATH>
 git pull
 ```
 
-## Required desktop setup and launch
+## Repository rules that matter
 
-Use this path for first setup and normal product-preview launch:
+- `pyproject.toml` is the Python dependency source of truth.
+- `backend\requirements.txt` is generated; do not edit it by hand.
+- Use `backend\.venv\Scripts\python` for repo Python commands after the venv exists.
+- Use `scripts\provision.py` for Python dependency installation.
+- Use `scripts\ensure_models.py` for configured model artifacts and llama.cpp runtime artifacts.
+- Prefer `scripts\bootstrap.py` for first setup because it runs provisioning, model/runtime acquisition, preflight, and profile validation in order.
+- Use `npm --prefix desktop ...` for desktop commands. Do not install Tauri globally for this repo.
+- Keep generated models, runtimes, caches, and reports out of source commits unless a slice explicitly says otherwise.
+
+## What must be true before desktop launch
+
+The desktop launches the repo-local backend with `backend\.venv\Scripts\python.exe` and `scripts\run_backend.py`. A successful desktop launch expects the backend venv, Python dependencies, selected models, and selected llama.cpp runtime artifacts to already exist.
+
+Do not skip bootstrap on a new host. `scripts\bootstrap.py` runs the required setup checkpoints in order:
 
 ```text
-prepare shell -> create backend venv -> copy starter settings -> bootstrap -> install desktop deps -> launch desktop
+profile -> provision -> ensure_models -> preflight -> validate_profile
 ```
 
-Do not skip bootstrap. It provisions host-specific Python extras, acquires configured model artifacts and current-host llama.cpp runtime artifacts, runs preflight, and validates the selected backend profile. The desktop expects this setup to exist before launch.
+If bootstrap fails, fix the failed checkpoint instead of manually installing packages, models, or runtime sidecars outside repo commands.
+
+## Starter settings
+
+JARVIS loads `.env` when present. If `.env` is missing, it falls back to `.env.example`.
+
+For first setup, copy `.env.example` to `.env` and keep the starter defaults unless you are intentionally changing runtime policy:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Starter defaults:
+
+```text
+USE_LOCAL_MODEL=true
+LLM_MODEL_MODE=dev
+LLM_MODEL_POLICY=auto
+LLM_MODEL_ID=
+USE_OLLAMA=false
+USE_SEARXNG=false
+USE_DDGS=true
+```
+
+Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override. A nonblank `LLM_MODEL_ID` wins over dev/prod policy selection.
+
+## Hardware and runtime expectations
+
+QuickStart targets the current-host supported path first. CPU fallback is expected and valid when accelerator artifacts or evidence are unavailable.
+
+Expected first-run behavior by host path:
+
+- Windows AMD64 CPU: normal CPU fallback path with pinned llama.cpp runtime acquisition.
+- Windows ARM64 CPU: normal ARM64 CPU fallback path with pinned llama.cpp runtime acquisition.
+- Windows AMD64 NVIDIA CUDA: selected only when host profiling, Python extras, CUDA runtime artifacts, and preflight evidence support it.
+- AMD and Intel GPU llama.cpp paths: declared degraded or pending; not first-run QuickStart paths.
+- Windows ARM64 Adreno/OpenCL llama.cpp: build-required; not automatic from QuickStart.
+- Windows ARM64 QNN LLM sidecar: pending viability. Do not confuse it with the separate Windows ARM64 QNN Whisper STT path documented in `docs\jarvis-arm-whisper.md`.
+
+Useful hardware checks before or after setup:
+
+```powershell
+.\backend\.venv\Scripts\python scripts\provision.py explain
+.\backend\.venv\Scripts\python scripts\provision.py dry-run
+.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
+```
+
+## Required desktop setup and launch
+
+Run this block for first setup and normal product-preview launch.
+
+Use Python 3.13 when available:
 
 ```powershell
 $env:PYTHONUTF8 = "1"
@@ -77,34 +131,14 @@ npm --prefix desktop install
 npm --prefix desktop run dev
 ```
 
-Fallback if Python 3.13 is unavailable:
+If Python 3.13 is unavailable, use Python 3.12 for the venv creation step:
 
 ```powershell
 py -3.12 -m venv backend\.venv
 .\backend\.venv\Scripts\python -m pip install --upgrade pip
 ```
 
-Do not install Tauri globally for this repo. Use repo-local desktop package commands.
-
-The running desktop is the main product-preview surface. The desktop shell starts the backend, creates or resumes a session, loads readiness, starts the resident voice stream when available, and displays backend, readiness, service, wake, resident voice, session, error, and backend diagnostics state.
-
-## Starter settings
-
-JARVIS loads `.env` when present. If `.env` is missing, it falls back to `.env.example`.
-
-For first setup, copy `.env.example` to `.env` and keep the starter defaults unless you are intentionally changing runtime policy:
-
-```text
-USE_LOCAL_MODEL=true
-LLM_MODEL_MODE=dev
-LLM_MODEL_POLICY=auto
-LLM_MODEL_ID=
-USE_OLLAMA=false
-USE_SEARXNG=false
-USE_DDGS=true
-```
-
-Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override. A nonblank `LLM_MODEL_ID` wins over dev/prod policy selection.
+The running desktop is the main product-preview surface. It starts the backend, creates or resumes a session, loads readiness, starts the resident voice stream when available, and displays backend, readiness, service, wake, resident voice, session, error, and backend diagnostics state.
 
 ## After the desktop opens
 
@@ -191,6 +225,22 @@ $env:LLM_MODEL_MODE = "dev"
 
 Use `--all-llm` only when intentionally validating the full LLM catalog.
 
+## Settings and advanced overrides
+
+Most first-run users should only use `.env` copied from `.env.example`.
+
+Advanced environment variables are defined and classified in `backend\app\core\settings.py`. That module loads `.env` first, falls back to `.env.example` when `.env` is missing, and maps environment variables into the backend `Settings` object.
+
+Use `backend\app\core\settings.py` as the source of truth for advanced override names and their categories:
+
+- primary settings: normal user-facing runtime policy such as `USE_LOCAL_MODEL`, `LLM_MODEL_MODE`, `LLM_MODEL_POLICY`, `USE_OLLAMA`, `OLLAMA_MODEL`, `USE_SEARXNG`, `USE_DDGS`, and `USE_TAVILY`;
+- advanced settings: paths, llama.cpp endpoint and artifact overrides, voice timing thresholds, and model directories;
+- services settings: Redis and SearXNG host/port values;
+- secret settings: API keys and access keys;
+- test-only settings: live-test gates.
+
+Do not add new `.env` keys unless code reads them through `backend\app\core\settings.py` or an adjacent settings path.
+
 ## Developer and diagnostic commands
 
 The desktop preview starts the backend for normal use. Run the backend directly only for API development or diagnosis:
@@ -230,22 +280,6 @@ Voice-only proving-host turn requires working local STT, TTS, and an audio input
 .\backend\.venv\Scripts\python scripts\run_jarvis.py --voice-only --turns 1
 ```
 
-## Settings and advanced overrides
-
-Most first-run users should only use `.env` copied from `.env.example`.
-
-Advanced environment variables are defined and classified in `backend\app\core\settings.py`. That module loads `.env` first, falls back to `.env.example` when `.env` is missing, and maps environment variables into the backend `Settings` object.
-
-Use `backend\app\core\settings.py` as the source of truth for advanced override names and their categories:
-
-- primary settings: normal user-facing runtime policy such as `USE_LOCAL_MODEL`, `LLM_MODEL_MODE`, `LLM_MODEL_POLICY`, `USE_OLLAMA`, `OLLAMA_MODEL`, `USE_SEARXNG`, `USE_DDGS`, and `USE_TAVILY`;
-- advanced settings: paths, llama.cpp endpoint and artifact overrides, voice timing thresholds, and model directories;
-- services settings: Redis and SearXNG host/port values;
-- secret settings: API keys and access keys;
-- test-only settings: live-test gates.
-
-Do not add new `.env` keys unless code reads them through `backend\app\core\settings.py` or an adjacent settings path.
-
 ## Development validation
 
 ```powershell
@@ -264,37 +298,14 @@ $env:JARVISV7_LIVE_TESTS = "1"
 
 Then run the focused live test you need.
 
-## Hardware and model notes
+## Native/runtime helper docs
 
-Provisioning is hardware-aware. The setup path detects the current host and selects the appropriate Python extras and local runtime profile.
-
-QuickStart targets the current-host supported path first. CPU fallback is expected and valid when accelerator artifacts or evidence are unavailable.
-
-Hardware acceleration caveats:
-
-- AMD64 CPU and ARM64 CPU llama.cpp sidecars have pinned release zip sources and are part of normal setup.
-- AMD64 NVIDIA CUDA may be selected only when the host, provisioning extras, CUDA runtime artifacts, and preflight evidence support it.
-- AMD and Intel GPU llama.cpp paths are declared degraded or pending, not first-run QuickStart paths.
-- Windows ARM64 CPU is the default supported ARM64 local llama.cpp fallback path.
-- Windows ARM64 Adreno/OpenCL llama.cpp is build-required and not automatic from QuickStart.
-- Windows ARM64 QNN LLM sidecar is pending viability. Do not confuse it with the separate Windows ARM64 QNN Whisper STT path documented in `docs\jarvis-arm-whisper.md`.
-
-Useful checks:
-
-```powershell
-.\backend\.venv\Scripts\python scripts\provision.py explain
-.\backend\.venv\Scripts\python scripts\provision.py dry-run
-.\backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only
-```
-
-Optional native/runtime paths have separate helper docs:
+Use these only when working on staged native/runtime paths:
 
 ```text
 docs\jarvis-arm-llamacpp.md
 docs\jarvis-arm-whisper.md
 ```
-
-Use those only when working on Windows ARM64 Adreno OpenCL llama.cpp sidecar or Windows ARM64 Qualcomm QNN Whisper artifact paths.
 
 ## Common fixes
 
