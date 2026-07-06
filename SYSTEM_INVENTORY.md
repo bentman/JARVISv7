@@ -1,221 +1,398 @@
 # SYSTEM_INVENTORY.md
-> Authoritative capability ledger. This is not a roadmap or config reference. 
-> Inventory entries must reflect only observable artifacts in this repository: files, directories, executable code, configuration, scripts, and explicit UI text. 
+> Authoritative capability ledger. This is not a roadmap or config reference.  
+> Inventory entries must reflect only observable artifacts in this repository:  
+>   files, directories, executable code, configuration, scripts, and explicit UI text. 
 > Do not include intent, design plans, or inferred behavior.
 
 ## Rules
-- One component entry = one capability or feature observed in the repository.
-- New capabilities go at the top under `## Inventory` and above `## Observed Initial Inventory`.
-- Corrections or clarifications go only below the `## Appendix` section.
-- Entries must include:
+- Write component entry for capability or feature group observed in the repository.
+- Ordering: Entries are maintained in descending chronological order (newest first, oldest last).
+- Append location: New entries must be added at the top directly under `## Inventory Entries`.
+- Corrections or clarifications go only below the `## Inventory Appendix` section.
+- Each entry must include:
 
-- Capability: **Brief Descriptive Component Name** 
-  - Date/Time
-  - State: Planned, Implemented, Verified, Not Implemented
-  - Location: `Relative File Path(s)`
-  - Validation: Method &/or `Relative Script Path(s)`; include host class(es) (e.g., `Windows x64`, `Windows ARM64`)
-  - Notes: 
-    - Optional (3 lines max).
+- Timestamp: `YYYY-MM-DD HH:MM`
+  - State: Verified, Implemented, or Scaffold
+  - Host class(es): validated on (e.g., `Windows x64`, `Windows ARM64`, etc. as appropriate)
+  - Summary: description of codebase changed, 1–2 lines, past tense
+  - Location: (list location where capability can be found, 1-5 lines)
+    - List folders, files, areas
+  - Evidence: (list referenceable reproducable evidence as validation)
+    - Timestamp: List supporting `CHANGE_LOG.md` entries (by `Timestamp:` with brief descriptive `Summary:` excerpt)
+  - Notes: (list notes as appropriate - optional)
+    - List of notes
 
 ## States
-- Planned: intent only, not implemented
+- Verified: validated with evidence working
 - Implemented: code exists, not yet validated end-to-end
-- Verified: validated with evidence (command)
-- Not Implemented: capability is named only to mark a boundary; no implementation is claimed
+- Scaffold: put into place to mark a boundary of future capability; no implementation is claimed
 
 ---
 
-## Inventory
+## Inventory Entries
 
-- Capability: Slice Z.5B personality simplification and runtime profile instruction - 2026-07-04 10:35
-  - State: Verified
-  - Location: `config/personality/`, `backend/app/personality/`, `backend/app/cognition/`, `backend/app/conversation/`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/runtimes/llm/ollama_runtime.py`, `backend/app/api/routes/personality.py`, `backend/app/api/routes/task.py`, `backend/app/api/schemas/personality.py`, `backend/app/api/schemas/task.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/services/session_service.py`, `desktop/src/main.js`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`, `backend/tests/unit/api/test_routes.py`, `desktop/tests/static.test.mjs`, `docs/20260704_slice-z5b.md`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 / amd64 implementation and User/Operator evidence recorded in `CHANGE_LOG.md` entry `2026-07-04 09:54`: focused personality tests PASS (`16 passed`), adjacent backend tests PASS (`88 passed`), follow-up backend/desktop guard tests PASS, desktop static PASS, unit validator PASS (`694 passed, 1 skipped`), and User/Operator live desktop validation confirmed five profiles produced different response styles. Windows ARM64 / arm64 automated evidence on 2026-07-04: personality tests PASS (`16 passed`), adjacent backend tests PASS (`88 passed, 1 warning`), desktop static PASS, profile PASS (`arch=arm64`, readiness `ready`, `tokens=21`), and unit validator PASS (`695 passed, 1 warning`; fingerprint `arch=arm64`, readiness `ready`, `tokens=21`).
-  - Notes: Records strong profile-specific system instructions, generation defaults, role-separated llama.cpp/Ollama payload behavior, profile-neutral application prompt, and description/locale/default-word profile display. ARM64 manual desktop profile eval was not rerun in this validation-only pass.
-
-- Capability: Slice Z.4 desktop readiness and status UI enhancements - 2026-07-03 13:19
-  - State: Verified
-  - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/desktop-state.js`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/resident-voice.js`, `desktop/src/components/conversation-debug.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 / amd64 evidence recorded in `CHANGE_LOG.md` entry `2026-07-03 13:19`: `npm --prefix desktop test` PASS (`desktop static voice checks passed`), desktop static contract PASS (`32 passed`), focused resident voice/API tests PASS (`73 passed`), and `cargo check` PASS with a Windows incremental-cache warning only. User/Operator manually validated the UI on both Windows AMD64 and Windows ARM64.
-  - Notes: Records desktop UI truth for compact readiness rows, selected-family-driven System State, text-label Turn Status, collapsed Conversation/Degraded detail surfaces, optional service labeling, and Wake-mode barge-in display (`barge-in false`, `barge-in-wired true`). This entry does not claim managed local LLM sidecar/startup changes or runtime-selection policy changes.
-
-- Capability: Slice Z.1 startup context cleanup - 2026-07-02 10:14
-  - State: Verified
-  - Location: `backend/app/services/startup_context.py`, `backend/app/api/app.py`, `scripts/bootstrap.py`, `scripts/run_backend.py`, `scripts/run_jarvis.py`, `scripts/validate_backend.py`, `backend/tests/unit/services/test_startup_context.py`, `backend/tests/unit/scripts/test_bootstrap_script.py`, `backend/tests/unit/scripts/test_run_backend_script.py`, `backend/tests/unit/scripts/test_run_jarvis_script.py`, `backend/tests/unit/scripts/test_validate_backend_script.py`, `backend/tests/unit/api/test_routes.py`, `docs/20260702_slice-z1.md`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 / amd64 evidence recorded in `CHANGE_LOG.md` entry `2026-07-02 09:48`: focused Slice Z.1 tests PASS (`74 passed`), validate-backend script tests PASS (`10 passed`), and unit validator PASS (`681 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`). Windows ARM64 / arm64 evidence on 2026-07-02: focused Slice Z.1 tests PASS (`71 passed, 1 warning`), profile PASS (`arch=arm64`, readiness `ready`, `tokens=21`), and unit validator PASS (`682 passed, 1 warning`; fingerprint `arch=arm64`, readiness `ready`, `tokens=21`).
-  - Notes: Centralizes profile, provisioning extras, preflight, readiness map, and startup readiness summaries in the backend service helper. API runtime/service construction and proving-host engine behavior remain in their existing owners.
-
-- Capability: Slice X local LLM tier activation - 2026-07-01 10:25 UTC
-  - State: Verified
-  - Location: `.env.example`, `config/models/llm.yaml`, `backend/app/core/settings.py`, `backend/app/models/llm_selection.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/routing/runtime_selector.py`, `backend/app/api/routes/config.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `scripts/ensure_models.py`, `scripts/bootstrap.py`, `desktop/src/components/settings-panel.js`, related backend/desktop tests, `docs/20260630_slice-x.md`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 / amd64 evidence recorded in `CHANGE_LOG.md` entry `2026-07-01 05:11`: focused Slice X tests PASS (`143 passed`), desktop static PASS, bootstrap dry-run PASS, dev verify-only PASS, prod dry-run/acquire/verify PASS, prod live local-turn PASS (`1 passed`), profile PASS, unit PASS (`670 passed, 1 skipped`), and regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260701051618-regression.txt`). Windows ARM64 / arm64 evidence on 2026-07-01: focused Slice X tests PASS (`143 passed, 1 warning`), desktop static PASS, bootstrap dry-run PASS (`5/5` checkpoints), explicit dev verify-only PASS with `assistant-small-q4`, explicit prod dry-run PASS with `assistant-qwen3-4b-q4-portable`, prod acquire PASS (`Qwen3-4B-Q4_K_M.gguf` acquired; selected profile `windows_arm64_gpu_qualcomm_adreno_opencl` ready), prod verify-only PASS with the Qwen3 portable model present, prod live local-turn PASS (`1 passed in 17.72s`), profile PASS (`arch=arm64`, readiness `ready`), unit PASS (`671 passed, 1 warning`), and regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260701102538-regression.txt`).
-  - Notes: Adds `LLM_MODEL_MODE` with dev/prod selection, explicit Qwen3 production catalog entries, mode-aware readiness/setup/runtime metadata, and Operator metadata-driven rendering. NPU/QNN LLM acceleration is not claimed.
-
-- Capability: Slice W2 settings grouping and default correction close-out - 2026-07-01 00:46 UTC
-  - State: Verified
-  - Location: `.env.example`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `desktop/src/components/settings-panel.js`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `desktop/tests/static.test.mjs`, `docs/20260630_slice-w2.md`
-  - Validation: Windows ARM64 / arm64 evidence on 2026-07-01: focused Slice W2 tests PASS (`backend\.venv\Scripts\python -m pytest backend\tests\unit\core\test_settings.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q`, `102 passed, 1 warning`); desktop static PASS (`npm --prefix desktop test`, `desktop static voice checks passed`); profile PASS (`arch=arm64`, readiness `ready`, `ep:QNNExecutionProvider`, `opencl:adreno`); unit PASS (`665 passed, 1 warning`); regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260701004648-regression.txt`).
-  - Notes: Records the verified correction state where local llama.cpp and local Ollama settings remain separately grouped, starter defaults are settings-backed, and desktop rendering remains metadata-driven. No new runtime architecture, model artifact, or setup workflow is claimed.
-
-- Capability: Slice W environment and Operator settings posture cleanup - 2026-06-30 11:42
-  - State: Verified
-  - Location: `.env.example`, `docker-compose.yml`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `scripts/ensure_models.py`, `backend/app/services/local_llm_startup.py`, `desktop/src/components/settings-panel.js`, `docs/QuickStart.md`, `backend/tests/unit/core/test_settings.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `desktop/tests/static.test.mjs`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-30 11:06`: settings tests PASS (`19 passed`), focused local-model/settings tests PASS (`41 passed`), focused settings/API/desktop tests PASS (`100 passed`), `npm --prefix desktop test` PASS, selected LLM verify-only PASS, bootstrap dry-run PASS, profile PASS, unit PASS (`661 passed, 1 skipped`), and regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260630160556-regression.txt`). Windows ARM64 evidence on 2026-06-30: `.env` matched `.env.example` by SHA256; focused Slice W tests PASS (`123 passed, 1 warning`) after test isolation correction; `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with selection `policy=auto`, `model=assistant-small-q4`, selected profile `windows_arm64_gpu_qualcomm_adreno_opencl`; `backend\.venv\Scripts\python scripts\bootstrap.py --dry-run` PASS (`5/5` checkpoints); profile PASS (`arch=arm64`, readiness `ready`); unit PASS (`663 passed, 1 warning`); regression PASS (`153 passed, 5 deselected`, report `reports\validation\20260630164228-regression.txt`); `npm --prefix desktop test` PASS.
-  - Notes: Records safe starter `.env.example` posture, settings-owned defaults/classification, derived local fetch/managed llama.cpp behavior when explicit overrides are absent, SearXNG port/default alignment, and primary-vs-advanced Operator settings posture. Advanced overrides remain supported; no new settings registry, setup workflow, model artifact, or runtime architecture is claimed.
-
-- Capability: Slice V model selection policy and setup simplification - 2026-06-30 09:25
-  - State: Verified
-  - Location: `config/models/llm.yaml`, `backend/app/models/llm_selection.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/routing/runtime_selector.py`, `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `scripts/ensure_models.py`, `scripts/bootstrap.py`, `desktop/src/components/settings-panel.js`, `backend/tests/unit/models/test_llm_selection.py`, `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-30 08:52`: focused Slice V tests PASS (`79 passed`, `23 passed`, `125 passed`), selected/all LLM verify-only PASS, bootstrap dry-run PASS, profile PASS, unit PASS (`656 passed, 1 skipped`), regression PASS (`152 passed, 5 deselected`), and `npm --prefix desktop test` PASS. Windows ARM64 evidence on 2026-06-30: focused Slice V tests PASS (`111 passed, 1 warning`); `backend\.venv\Scripts\python scripts\ensure_models.py --family llm --verify-only` PASS with selection `policy=auto`, `model=assistant-small-q4`, selected profile `windows_arm64_gpu_qualcomm_adreno_opencl`; profile PASS (`arch=arm64`, readiness `ready`); unit PASS (`657 passed, 1 warning`); regression PASS (`152 passed, 5 deselected`, report `reports\validation\20260630142442-regression.txt`); `npm --prefix desktop test` PASS; LLM runtime CPU validation SKIP (`4 skipped, 43 deselected`) because `JARVISV7_LIVE_TESTS` was not set.
-  - Notes: Adds a policy-aware catalog selector before serve-profile resolution, selection-aware LLM artifact verification, readiness selection truth, and a curated Operator model policy control. All Slice V roles still resolve to the existing `assistant-small-q4`; no Qwen/Gemma/vision model capability or new runtime architecture is claimed.
-
-- Capability: Slice U side-by-side Qualcomm QNN STT runtime - 2026-06-28 23:19
-  - State: Verified
-  - Location: `backend/app/hardware/qnn_provider.py`, `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/stt/stt_runtime.py`, `config/models/stt.yaml`, `backend/tests/unit/hardware/test_qnn_provider.py`, `backend/tests/unit/runtimes/stt/test_stt_runtime.py`, `backend/tests/runtime/hardware/test_qnn_gate_live.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `CHANGE_LOG.md`
-  - Validation: Windows ARM64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-28 18:06`: `whisper-qualcomm-qnn` staged side-by-side, QNN profile PASS with `ep:QNNExecutionProvider` and `dll:QnnHtp`, model verification PASS, live QNN hardware gate PASS (`3 passed`), live QNN STT transcript PASS (`1 passed, 3 deselected`), unit PASS (`642 passed, 1 warning`), and regression PASS (`150 passed, 5 deselected`). Windows AMD64 validation on 2026-06-28: `backend\.venv\Scripts\python scripts\validate_backend.py profile` PASS with `qnn_available=false`; focused U4 unit tests PASS (`26 passed, 1 skipped`); QNN live gate SKIP (`3 skipped`); STT runtime validator SKIP without live gate (`2 skipped, 45 deselected`); unit PASS (`641 passed, 1 skipped`); regression PASS (`150 passed, 5 deselected`, report `reports\validation\20260628231558-regression.txt`).
-  - Notes: ARM64 QNN STT uses side-by-side `whisper-qualcomm-qnn` and ONNX Runtime EP-device session initialization. AMD64 does not select QNN and no AMD64 QNN execution is claimed.
-
-- Capability: Slice T resident shared-stream voice layer - 2026-06-26 10:51
-  - State: Verified
-  - Location: `backend/app/services/audio_stream.py`, `backend/app/services/utterance_segmenter.py`, `backend/app/services/resident_voice_invocation.py`, `backend/app/services/wake_monitor.py`, `backend/app/conversation/engine.py`, `backend/app/conversation/realtime/session.py`, `backend/app/runtimes/stt/barge_in.py`, `backend/app/runtimes/tts/playback.py`, `backend/app/api/app.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`, `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/components/resident-voice.js`, `backend/tests/unit/services/test_audio_stream.py`, `backend/tests/unit/services/test_utterance_segmenter.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/services/test_wake_monitor.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/voice/test_resident_audio_activation_live.py`, `backend/tests/runtime/voice/test_resident_audio_live.py`, `backend/tests/runtime/turn/test_barge_in_live.py`, `backend/tests/runtime/turn/test_turn_control_live.py`, `backend/tests/runtime/desktop/test_resident_voice_desktop_live.py`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 evidence recorded in `CHANGE_LOG.md` entries `2026-06-25 14:45`, `2026-06-25 19:18`, `2026-06-25 19:34`, `2026-06-26 07:09`, and `2026-06-26 10:51`: shared-stream PTT/wake live proof PASS (`3 passed`), live barge-in follow-up PASS (`1 passed`), live hands-free follow-up PASS (`1 passed`), desktop resident voice live proof PASS (`1 passed in 25.88s`), focused API lifecycle PASS (`49 passed`), and backend unit validator PASS (`632 passed, 1 skipped`, fingerprint `arch=amd64`). Windows ARM64 evidence recorded in `CHANGE_LOG.md` entries `2026-06-26 07:49`, `2026-06-26 10:00`, and `2026-06-26 10:03`: T.9-T.13 focused tests plus unit/regression PASS, operator live resident audio/wake/barge-in/hands-free/desktop proof PASS, and T.14-T.17 focused non-operator tests PASS.
-  - Notes: Verified scope is explicit desktop/backend resident voice over a shared microphone stream with energy VAD, wake/PTT, barge-in follow-up, hands-free follow-up, bounded continuous follow-up windows, and truthful status. No echo cancellation, overlapped-speech robustness, browser microphone transport, Silero VAD, or hidden always-listening default is claimed.
-
-- Capability: Slice S repo-owned local LLM runtime artifact acquisition - 2026-06-24 07:48
-  - State: Verified
-  - Location: `20260618_slice-s.md`, `config/models/llm.yaml`, `scripts/ensure_models.py`, `backend/app/models/llm_profiles.py`, `backend/app/hardware/preflight.py`, `backend/app/hardware/readiness.py`, `backend/app/api/routes/readiness.py`, `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`, `backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/hardware/test_llm_serve_profile_resolution.py`, `docs/jarvis-arm-llamacpp.md`, `CHANGE_LOG.md`
-  - Validation: Slice S.0-S.8 evidence is recorded in `CHANGE_LOG.md` entries from `2026-06-18 13:11` through `2026-06-20 08:23`: CPU llama.cpp runtime artifact acquisition validated on Windows AMD64 and Windows ARM64; AMD64 CUDA acquisition/live sidecar validated on RTX 3060; AMD/Intel GPU profiles remain skipped as `SKIP-source-pending`; Qualcomm NPU/QNN/Hexagon profiles remain skipped as `SKIP-no-viable-binary`; ARM64 Adreno OpenCL was live-validated from a staged/end-user-buildable sidecar. S.9 execution on Windows AMD64 passed `backend\.venv\Scripts\python scripts\validate_backend.py unit` (`577 passed, 1 skipped`), `backend\.venv\Scripts\python scripts\validate_backend.py regression` (`142 passed, 4 deselected`, report `reports\validation\20260624124727-regression.txt`), `node desktop\tests\static.test.mjs`, and `git diff --check`.
-  - Notes: This supersedes the older Group R local llama.cpp artifact state with repo-owned CPU artifact acquisition and AMD64 CUDA acquisition truth. ARM64 Adreno OpenCL is verified as staged/end-user-buildable, not repo-owned binary acquisition. Qualcomm QNN/Hexagon and non-CUDA AMD/Intel GPU local LLM acceleration are not implemented beyond explicit degraded metadata.
-
-- Capability: Group R managed local llama.cpp LLM runtime - 2026-06-18 04:36
-  - State: Verified
-  - Location: `config/models/llm.yaml`, `.env.example`, `backend/app/core/settings.py`, `backend/app/models/llm_profiles.py`, `backend/app/services/local_llm_sidecar.py`, `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/local_runtime.py`, `backend/app/routing/runtime_selector.py`, `backend/app/api/app.py`, `backend/app/api/routes/config.py`, `scripts/ensure_models.py`, `scripts/run_jarvis.py`, `backend/tests/unit/runtimes/llm/`, `backend/tests/unit/services/test_local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/runtime/voice/test_llm_llama_cpp_live.py`, `backend/tests/runtime/voice/test_llm_ollama_live.py`, `backend/tests/runtime/turn/test_continuity_retrieval_live.py`, `backend/tests/runtime/turn/test_turn_control_live.py`, `backend/tests/runtime/hardware/test_llm_serve_profile_resolution.py`, `CHANGE_LOG.md`
-  - Validation: Windows AMD64 evidence recorded in `CHANGE_LOG.md` entries `2026-06-17 22:20` and `2026-06-18 04:29`: selected GGUF present, `windows-amd64-cpu\llama-server.exe` present, live llama.cpp LLM tests PASS (`3 passed`), live local turn PASS (`1 passed`), managed app proof PASS with `llm_selected runtime=llama.cpp`, focused API lifecycle PASS (`36 passed`), backend unit PASS (`545 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`121 passed, 4 deselected`, report `reports\validation\20260618042927-regression.txt`). Windows ARM64 evidence recorded in `CHANGE_LOG.md` entries `2026-06-17 21:24` and `2026-06-18 04:22`: selected GGUF present, `windows-arm64-cpu\llama-server.exe` present, live llama.cpp/Ollama LLM tests PASS (`3 passed`), live local turn PASS (`1 passed`), backend unit PASS (`546 passed`, fingerprint `arch=arm64`), and regression PASS (`121 passed, 4 deselected`, report `reports\validation\20260618042139-regression.txt`).
-  - Notes: Adds one catalog/profile/sidecar/HTTP-runtime/selector path for managed local llama.cpp, with Ollama remaining fallback. CPU-only local llama.cpp is live-proven on AMD64 and ARM64. AMD64 CUDA and ARM64 QNN are explicit skipped/degraded states because viable sidecar artifacts/live accelerator completion were not proven.
-
-- Capability: Group P spec-first agent catalog and Agent Creator boundary - 2026-06-15 10:14
-  - State: Verified
-  - Location: `backend/app/agents/specs.py`, `backend/app/agents/creator.py`, `backend/app/agents/messages.py`, `backend/app/agents/roles.py`, `backend/app/agents/ledger.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `config/agents/specs/`, `config/prompts/agents/agent_creator.md`, `backend/tests/unit/agents/test_specs.py`, `backend/tests/unit/agents/test_creator.py`, `backend/tests/unit/agents/test_messages.py`, `backend/tests/unit/agents/test_roles.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entries `2026-06-15 10:14`: focused agent/API tests PASS (`59 passed`), validator script test PASS (`10 passed`), backend unit validator PASS (`492 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`116 passed, 4 deselected`, report `reports\validation\20260615151428-regression.txt`).
-  - Notes: Adds a validated `JarvisAgentSpec` catalog, deterministic spec-only Agent Creator, durable disabled specs for agent_creator/planner/executor/critic/curator/learner, spec-aware status truth, and spec lifecycle ledger records; no autonomous/background execution, model/tool calls, turn-engine integration, training/deployment, semantic/vector memory, or desktop UI behavior is claimed.
-
-- Capability: Group O dry-run agent roles and read-only trace diagnostics - 2026-06-15 08:14
-  - State: Verified
-  - Location: `backend/app/agents/planner.py`, `backend/app/agents/executor.py`, `backend/app/agents/critic.py`, `backend/app/agents/curator.py`, `backend/app/agents/learner.py`, `backend/app/agents/trace.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `backend/tests/unit/agents/test_planner.py`, `backend/tests/unit/agents/test_executor.py`, `backend/tests/unit/agents/test_critic.py`, `backend/tests/unit/agents/test_curator.py`, `backend/tests/unit/agents/test_learner.py`, `backend/tests/unit/api/test_routes.py`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-15 08:14`: focused agent unit tests PASS (`20 passed`), API route tests PASS (`32 passed`), conversation engine tests PASS (`42 passed`), backend unit validator PASS (`485 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`116 passed, 4 deselected`, report `reports\validation\20260615131359-regression.txt`).
-  - Notes: Adds explicit dry-run planner/executor/critic/curator/learner helpers and read-only trace lookup; no hidden/background execution, turn-engine integration, model routing, training, deployment, or desktop UI behavior is claimed.
-
-- Capability: Group O minimum truthful agent boundary - 2026-06-15 08:14
-  - State: Verified
-  - Location: `backend/app/agents/__init__.py`, `backend/app/agents/messages.py`, `backend/app/agents/roles.py`, `backend/app/agents/ledger.py`, `backend/app/agents/policy.py`, `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`, `config/app/policies.yaml`, `config/agents/roles.yaml`, `config/prompts/agents/`, `backend/tests/unit/agents/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/conversation/test_engine.py`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-15 07:43`: focused O.1-O.3 tests PASS (`12 passed`), API route tests PASS (`31 passed`), conversation engine tests PASS (`42 passed`), backend unit validator PASS (`476 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`116 passed, 4 deselected`, report `reports\validation\20260615124133-regression.txt`). Windows ARM64 / Qualcomm QNN evidence recorded in `CHANGE_LOG.md` entry `2026-06-15 08:01`: focused O.1-O.3 tests PASS (`12 passed`), API route tests PASS (`31 passed, 1 warning`), conversation engine tests PASS (`42 passed`), backend unit validator PASS (`477 passed, 1 warning`, fingerprint `arch=arm64`), and regression PASS (`116 passed, 4 deselected`, report `reports\validation\20260615130021-regression.txt`).
-  - Notes: Agent boundary is disabled by default, truthfully reports allowed roles/tools, and persists local ledger records; no planner/executor/critic runtime behavior, tool-using agent behavior, hidden/background execution, or turn behavior change is claimed by this boundary entry.
-
-- Capability: Group N conversation continuity and session memory boundary - 2026-06-14 10:32
-  - State: Verified
-  - Location: `backend/app/artifacts/session_artifact.py`, `backend/app/artifacts/session_timeline.py`, `backend/app/artifacts/storage.py`, `backend/app/conversation/continuity.py`, `backend/app/conversation/continuity_policy.py`, `backend/app/conversation/session_manager.py`, `backend/app/conversation/engine.py`, `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_renderer.py`, `backend/app/cognition/prompt_assembler.py`, `backend/tests/unit/artifacts/test_turn_artifact.py`, `backend/tests/unit/conversation/test_session_manager.py`, `backend/tests/unit/conversation/test_continuity_policy.py`, `backend/tests/unit/conversation/test_engine.py`, `backend/tests/unit/cognition/test_prompt_assembler.py`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-14 10:32`: focused continuity/session/prompt/engine/artifact tests PASS (`76 passed` total across focused commands), backend unit validator PASS (`461 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`115 passed, 4 deselected`, report `reports\validation\20260614153204-regression.txt`).
-  - Notes: Adds deterministic session timeline artifacts, bounded continuity packets, deterministic follow-up/interruption policy, trusted session-continuity prompt segment ordering, and conservative closeout metadata; semantic/vector memory and agents remain not implemented here.
-
-- Capability: Group M realtime conversation session boundary - 2026-06-13 18:21
-  - State: Verified
-  - Location: `backend/app/conversation/realtime/__init__.py`, `backend/app/conversation/realtime/events.py`, `backend/app/conversation/realtime/ledger.py`, `backend/app/conversation/realtime/session.py`, `backend/app/conversation/realtime/turn_taking.py`, `backend/app/conversation/realtime/interruption.py`, `backend/app/conversation/realtime/response_queue.py`, `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-13 18:21`: realtime unit tests PASS (`8 passed`), resident voice tests PASS (`8 passed`), session service tests PASS (`13 passed`), backend unit validator PASS (`450 passed, 1 skipped`, fingerprint `arch=amd64`), and regression PASS (`115 passed, 4 deselected`, report `reports\validation\20260613232131-regression.txt`). Windows ARM64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-14 06:30`: focused M.6 tests PASS (`29 passed`), backend unit validator PASS (`451 passed, 1 warning`, fingerprint `arch=arm64`, readiness `ready; tokens=18`), and regression PASS (`115 passed, 4 deselected`, report `reports\validation\20260614112929-regression.txt`).
-  - Notes: Adds typed realtime events, append-only in-memory event ledger, non-streaming response/interruption boundary helpers, and a realtime voice invocation coordinator used by resident wake/PTT invocation; committed turn execution remains owned by `TurnEngine`.
-
-- Capability: Slice L personality policy envelope - 2026-06-12 11:46
-  - State: Verified
-  - Location: `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, `backend/app/personality/adapter.py`, `backend/app/personality/policy.py`, `config/personality/default.yaml`, `config/personality/concise.yaml`, `config/personality/warm.yaml`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_renderer.py`, `backend/app/cognition/style_guard.py`, `backend/app/conversation/engine.py`, `backend/app/runtimes/llm/base.py`, `backend/app/api/routes/personality.py`, `backend/app/api/schemas/personality.py`, `backend/tests/unit/personality/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-12 11:21`: focused L.6 suites PASS (`148 passed`), turn runtime CPU PASS (`9 passed, 2 skipped, 24 deselected`, fingerprint `arch=amd64`), and regression PASS (`115 passed, 4 deselected`). Windows ARM64 evidence recorded in `CHANGE_LOG.md` entry `2026-06-12 11:46`: profile PASS (`arch=arm64`, QNN extras, readiness `ready; tokens=18`), focused L.6 suites PASS (`148 passed`), live turn runtime CPU PASS with `JARVISV7_LIVE_TESTS=1` (`10 passed, 1 skipped, 24 deselected`), and regression PASS (`115 passed, 4 deselected`, report `reports\validation\20260612164435-regression.txt`).
-  - Notes: Personality profiles are structured and validated; personality compiles to style-only policy; prompts render through provenance-aware envelope segments; existing flat LLM runtimes remain compatible; tool/retrieved/user content is fenced as untrusted context; deterministic style guarding applies bounded text/voice presentation cleanup without changing tool authority, runtime selection, safety policy, or orchestration state.
-
-- Capability: Slice K+ desktop/operator cleanup and ARM64 QNN voice validation - 2026-05-30 06:58
-  - State: Verified
-  - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/settings-panel.js`, `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `backend/app/api/service_status.py`, `backend/app/services/wake_monitor.py`, `backend/app/services/voice_service.py`, `backend/app/tools/search/search_tool.py`, `pyproject.toml`, `scripts/provision.py`, `backend/app/hardware/provisioning.py`, `backend/app/hardware/preflight.py`, `backend/app/hardware/qnn_provider.py`, `CHANGE_LOG.md`
-  - Validation: Windows ARM64 / Qualcomm QNN evidence recorded in committed `CHANGE_LOG.md` entry at commit `cdf81476474fb9e3e4ec4cfb33b2848f072d0ea4`, plus Slice K+ entries in `CHANGE_LOG.md`: focused QNN provider tests PASS (`33 passed`), provision verify PASS, profile PASS (`ready; tokens=18`), regression PASS (`115 passed, 4 deselected`), QNN hardware live gate PASS (`2 passed`), QNN STT live fixture PASS (`1 passed`), and User desktop live proof PASS with wake monitoring active, wake detection incremented, resident voice turn completed from `source: wake`, transcript/response populated, and no visible failure reason.
-  - Notes: Extends Slice K with three-pane layout/readability cleanup, readiness/sidebar refinements, settings access fix, SearXNG/service-status corrections, search provider escalation repair, and wake/operator panel surfacing. ARM64 voice path validated as STT `onnx-whisper / qnn`, TTS `kokoro-onnx / cpu`, Wake `openwakeword / cpu`; QNN provider surface uses `onnxruntime-qnn==1.24.3` as the sole ORT runtime distribution with readiness proven through built-in `onnxruntime`.
-
-- Capability: Slice K operator controls/settings UX - 2026-05-26 21:45
-  - State: Verified
-  - Location: `desktop/src/components/settings-panel.js`, `desktop/src/components/service-status.js`, `desktop/src/components/appearance-controls.js`, `desktop/src/main.js`, `desktop/src/index.html`, `backend/app/api/routes/config.py`, `backend/app/api/schemas/config.py`, `backend/app/api/service_status.py`, `backend/app/api/routes/readiness.py`, `backend/app/api/schemas/readiness.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
-  - Validation: Windows ARM64 evidence recorded in `CHANGE_LOG.md` K.1-K.4 entries. Windows x64 regression evidence: `backend\.venv\Scripts\python scripts\validate_backend.py regression` PASS (`105 passed, 4 deselected`), report `reports\validation\20260527024302-regression.txt`.
-  - Notes: Slice K added personality metadata display for Tone/Brevity/Formality without changing personality runtime behavior; allowlisted `/config/operator` read/write against existing `.env` with masked secrets and no `TAVILY_API_KEY` exposure; backend-field-driven settings panel with restart-required UX using existing backend lifecycle commands; additive Redis/SearXNG readiness service status rendered in the desktop sidebar; and localStorage-backed appearance controls for font size, density, and accent preferences. No cloud escalation, new Tauri commands, service start/stop controls, or semantic state-token overrides were added.
-
-- Capability: Slice J runtime/readiness UX and desktop interaction surfacing - 2026-05-26 11:42
-  - State: Verified
-  - Location: `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`, `desktop/src/components/readiness-panel.js`, `desktop/src/components/degraded-list.js`, `desktop/src/components/state-label.js`, `desktop/src/components/wake-indicator.js`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `docs/windows-arm64-fresh-clone-setup.md`, `CHANGE_LOG.md`
-  - Validation: Windows x64 evidence recorded in `CHANGE_LOG.md` (`2026-05-22 07:54`, `2026-05-22 08:20`, `2026-05-22 09:10`, `2026-05-22 10:01`, `2026-05-22 18:27`, `2026-05-22 18:45`): desktop static contract progressed through `15 passed`, `17 passed`, `19 passed`, `23 passed`, and `24 passed`; regression remained PASS at `104 passed, 4 deselected`; x64 manual desktop smoke passed after retry with click-start / click-stop PTT and STT→LLM→TTS. Windows ARM64 evidence recorded in `CHANGE_LOG.md` (`2026-05-26 11:31`, `2026-05-26 11:42`): desktop static contract PASS (`24 passed in 0.11s`); regression PASS (`105 passed, 4 deselected in 1.09s`); desktop app built/launched as `target\debug\jarvisv7-desktop.exe`; User initial ARM64 visual smoke OK.
-  - Notes: Slice J surfaces existing backend data with no backend schema/routes or Tauri command additions; HTT proof behavior was replaced by click-start/click-stop PTT; active Ollama with local-runtime unavailable renders degraded, not hard-failed, while preserving backend reason/degraded listing; J.5 rendering was not executed because no safe local renderer/sanitizer approach was approved; ARM64 voice/transcription was not manually checked in final visual smoke, while x64 manual evidence proved STT→LLM→TTS for the new PTT path.
-
-- Capability: Slice I hardware path normalization and live mic/audio interaction matrix - 2026-05-13 15:07
-  - State: Verified
-  - Location: `backend/app/hardware/readiness.py`, `config/hardware/notes.md`, `backend/app/api/schemas/voice.py`, `backend/app/api/routes/voice.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `20260513_slice-i.md`, `20260513_slice-i3.md`, `CHANGE_LOG.md`
-  - Validation: Windows x64 and Windows ARM64 evidence recorded in `CHANGE_LOG.md` (`2026-05-13 14:21`, `2026-05-13 14:31`, `2026-05-13 14:44`, `2026-05-13 14:57`): I.1 ARM64 normalization PASS with unit/regression/runtime evidence; I.2 x64 normalization PASS with unit/regression/runtime evidence; I.3 x64 live mic/audio matrix PASS (`runtime --families turn --devices cuda: 1 passed, 32 deselected`), and I.3 ARM64 follow-up PASS (`runtime --families turn --devices qnn: 1 passed, 34 deselected`; `runtime --families turn --devices cpu: 10 passed, 1 skipped, 24 deselected`) with regression remaining PASS (`104 passed, 4 deselected`) on both host classes.
-  - Notes: Slice I closed with deterministic host-specific acceleration/readiness normalization plus `/task/voice` STT-device observability and host-gated live turn matrix coverage.
-
-- Capability: Slice H voice acceleration matrix and live turn gates - 2026-05-13 09:10
-  - State: Verified
-  - Location: `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `reports/validation/h8-voice-acceleration-matrix-current-host.txt`, `CHANGE_LOG.md`
-  - Validation: Windows x64 and Windows ARM64 evidence recorded in `CHANGE_LOG.md` (`2026-05-13 09:01`): x64 H.8 live turn matrix PASS, x64 H.8 acceleration matrix PASS, and x64 regression PASS; ARM64 H.8 live turn matrix PASS (`1 passed in 17.45s`), ARM64 H.8 acceleration matrix PASS (`1 passed in 1.88s`), and ARM64 regression PASS (`104 passed, 4 deselected`).
-  - Notes: H.8 superseded the prior B.5 voice-family matrix gate with a Slice H voice acceleration matrix plus live full-turn validation surface.
-
-- Capability: Slice G cross-session episodic retrieval and cached recall foundation - 2026-05-02 22:10
-  - State: Verified
-  - Location: `backend/app/memory/episodic.py`, `backend/app/memory/retrieval.py`, `backend/app/memory/write_policy.py`, `backend/app/conversation/engine.py`, `backend/app/cognition/prompt_assembler.py`, `backend/tests/unit/memory/`, `backend/tests/runtime/turn/test_continuity_retrieval_live.py`, `backend/tests/runtime/services/test_redis_retrieval_cache_live.py`
-  - Validation: G.1 validated on Windows x64 and Windows ARM64 with memory unit `17 passed`, engine unit `31 passed`, unit validator `306 passed`, regression `96 passed`, and live G.1 retrieval subset `2 passed, 1 deselected`; G.2 validated on Windows x64 and Windows ARM64 with prompt assembler unit `6 passed`, engine unit `35 passed`, unit validator `313 passed`, regression `96 passed`, and live retrieval suite `3 passed`; G.3 validated on Windows x64 and Windows ARM64 with retrieval unit `13 passed`, unit validator `322 passed`, regression `96 passed`, and live Redis cached retrieval `2 passed`; Redis cache miss/hit behavior and Redis-stopped disk-fallback behavior were proven, and Redis was restored healthy after stopped-fallback tests.
-  - Slice G added a disk-backed episodic memory write/read substrate, explicit episodic write-policy controls, post-turn episodic writes from the turn lifecycle, recency/keyword retrieval, additive retrieved-context injection into prompt assembly, retrieval provenance recording in `TurnArtifact.retrieved_memory_refs`, and Redis-backed retrieval-cache acceleration with fail-closed fallback to direct episodic disk retrieval.
-  - Notes: Durable memory authority remains disk-backed episodic entries under `data/memory/episodic/`, not Redis; Redis is retrieval acceleration only and fails closed to disk-backed retrieval; retrieval is recency+keyword only. Semantic/vector memory is not implemented; the semantic memory boundary owns that capability. Retrieval is not a tool-execution capability; no API/schema/route changes, desktop/text-shell rendering changes, tool-executor behavior changes, hardware acceleration behavior, agent behavior, autonomous memory decisions, new packages, new providers, new runtimes, or new services were introduced.
-
-- Capability: Slice F deterministic tool execution and result presentation foundation - 2026-05-03 18:03
-  - State: Verified
-  - Location: `backend/app/cognition/executor.py`, `backend/app/tools/`, `backend/app/api/schemas/tools.py`, `backend/app/api/schemas/task.py`, `backend/app/api/schemas/voice.py`, `backend/app/api/routes/task.py`, `backend/app/api/routes/voice.py`, `scripts/run_jarvis.py`, `desktop/src/main.js`, `backend/tests/runtime/turn/test_acting_live.py`
-  - Validation: F.1 validated on Windows x64 and Windows ARM64 with executor unit `4 passed`, conversation engine unit `29 passed`, unit validator `277 passed`, and regression `95 passed`; F.2 validated on Windows x64 and Windows ARM64 with tools/full unit `289 passed` and regression `95 passed`; F.3 validated on Windows x64 and Windows ARM64 with unit `292 passed` and regression `96 passed`; missed live ACTING/tool gate recovered on Windows x64 in `backend/tests/runtime/turn/test_acting_live.py` using explicit deterministic `tool_name="time"` dispatch, where the live turn reached ACTING and invoked the registered `time` tool, and both result evidence plus persisted artifact evidence captured tool invocation metadata.
-  - Slice F added deterministic ACTING lifecycle wiring through explicit `tool_name` dispatch, the cognition executor surface, a bounded tool registry and first tool set, read-only sandboxed filesystem access, an internet-search tool adapter over the existing Slice E internet-search runtime, additive tool-call metadata propagation through task/voice API responses, and text/desktop shell presentation of tool-call metadata.
-  - Notes: Tool invocation is deterministic and explicit with no LLM-driven tool selection or model-side function calling; `filesystem.read` is read-only and sandboxed under `data/tool_sandbox/`; internet search remains an adapter over existing Slice E runtime/provider boundaries with no Slice E boundary changes; shell/API changes are presentation-only and do not invoke tools; no Group G memory retrieval, Group I agent behavior, autonomous agents, write tools, filesystem search/indexing, new providers, new packages, new runtimes, or new services were introduced.
-
-- Capability: Slice E local service substrate foundation - 2026-05-01 01:19
-  - State: Verified
-  - Location: `docker-compose.yml`, `.env.example`, `config/search/searxng/`, `config/search/ddgs/`, `config/search/tavily/`, `config/models/search.yaml`, `backend/app/cache/`, `backend/app/runtimes/internetsearch/`, `backend/app/routing/runtime_selector.py`, `backend/app/core/settings.py`, `backend/tests/runtime/services/`
-  - Validation: Existing Slice E evidence recorded in `CHANGE_LOG.md` E.1 through E.5 entries (Windows x64 and Windows ARM64): regression `95 passed` on both host classes; Redis and SearXNG Docker substrate healthy on both host classes; live Redis cache roundtrip proven; live SearXNG, DDGS, and Tavily search evidence proven as recorded; Docker SKIP-no-docker is not the active state because both host classes have Docker-backed validation evidence.
-  - Slice E established a repo-owned, `.env`-driven Redis/SearXNG local service substrate, one injectable Redis-backed `CacheManager`, and one fail-closed internet-search runtime interface with SearXNG primary, DDGS fallback, Tavily policy-gated tertiary, and a null/empty-results path when providers are unavailable or error.
-  - Notes: This is substrate/runtime capability for retrieval, tool, memory, and acceleration consumers; no user-facing tool behavior is claimed. No retrieval, tool orchestration, hardware acceleration, or agent runtime behavior is included in this capability entry.
-
-- Capability: Slice D durable application surface - 2026-04-30 11:13
-  - State: Verified
-  - Location: `desktop/`, `backend/app/api/`, `backend/app/services/`, `backend/app/personality/`, `backend/tests/runtime/desktop/`
-  - Validation: Windows x64 and Windows ARM64 evidence recorded in `CHANGE_LOG.md` D.1 through D.5 entries, including D.2 desktop inventory-linked evidence and the `2026-04-30 11:12` live-evidence closeout delta. Verified capability includes backend FastAPI shell contract, durable npm/Tauri desktop host, backend child lifecycle through `scripts/run_backend.py`, resident session continuity, wake status and deterministic wake detection, selectable personality profiles and presence UI, and runtime desktop live evidence for D.3/D.4.
-  - Notes:
-
-- Capability: Slice D.2 durable desktop host - 2026-04-29 10:30
-  - State: Verified
-  - Location: `desktop/`, `backend/tests/unit/desktop/`
-  - Validation: Windows x64 and Windows ARM64 D.2 evidence recorded in `CHANGE_LOG.md`: `2026-04-29 05:32` Windows x64 desktop progress validation, `2026-04-29 06:00` Windows ARM64 desktop progress validation, and `2026-04-29 10:15` D.2 closeout delta. npm/Tauri desktop host validated on both host classes; backend starts through `scripts/run_backend.py`; readiness/runtime display, text turn, tray lifecycle menu, and HTT voice path through `/task/voice` validated; regression remained green on both host classes.
-  - Notes: HTT is a proof path, not the durable PTT interaction. The desktop shell boundary owns click-start/click-stop PTT semantics. Browser capture/WAV path worked, but idealized 16 kHz PCM/downsample quality is not claimed. No resident loop, wake integration, tools/agents, routing policy, WebSockets, audio streaming, or shell-side playback is claimed.
-
-- Capability: Slice C canonical turn/session engine and proving host - 2026-04-28 06:04
-  - State: Verified
-  - Location: `backend/app/conversation/`, `backend/app/cognition/`, `backend/app/personality/`, `backend/app/services/`, `backend/app/artifacts/`, `backend/app/memory/`, `backend/app/runtimes/stt/barge_in.py`, `backend/app/runtimes/tts/playback.py`, `config/personality/default.yaml`, `scripts/run_jarvis.py`, `backend/tests/unit/conversation/`, `backend/tests/unit/cognition/`, `backend/tests/unit/personality/`, `backend/tests/unit/services/`, `backend/tests/unit/artifacts/`, `backend/tests/unit/memory/`, `backend/tests/unit/scripts/test_run_jarvis_script.py`, `backend/tests/integration/services/test_two_turn_session.py`, `backend/tests/runtime/turn/`
-  - Validation: Windows x64 and Windows ARM64 Slice C evidence recorded in `CHANGE_LOG.md`: C.1 x64 at `2026-04-26 21:17`, C.1 ARM64 turn evidence at `2026-04-27 05:36`, and C.2 through C.6 validated on both host classes. Latest C.6 closeout evidence includes focused script unit `11 passed`, unit validator `182 passed`, and regression `74 passed` on both host classes; C.3 integration validator `3 passed`, C.4 runtime validator `5 passed, 3 deselected`, and C.5 runtime validator `5 passed, 4 deselected` on both host classes.
-  - Notes: Voice/text turns share one engine with session continuity, canonical artifacts, bounded working memory, deterministic interruption, and a diagnostic proving host. No physical audio-output validation, full acoustic microphone barge-in, durable desktop/API/resident shell, episodic memory, tools, agents, or routing/policy implementation is claimed. QNN STT inference is not claimed by this entry; the hardware acceleration boundary owns QNN runtime validation. llama.cpp is not wired as a verified runtime; the local LLM runtime boundary owns wiring and validation. No desktop shell, retrieval, tool orchestration, hardware acceleration, agent runtime, or personality policy implementation is claimed.
-
-- Capability: Slice B cross-platform voice runtime foundation - 2026-04-26 19:45
-  - State: Verified
-  - Location: `backend/app/runtimes/stt/`, `backend/app/runtimes/tts/`, `backend/app/runtimes/llm/`, `backend/app/runtimes/wake/`, `backend/app/routing/runtime_selector.py`, `backend/app/models/catalog.py`, `config/models/`, `config/app/policies.yaml`, `backend/tests/runtime/voice/`, `backend/tests/unit/runtimes/`, `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`, `scripts/ensure_models.py`, `scripts/validate_backend.py`
-  - Validation: Windows x64 and Windows ARM64 B.0-B.5 validation recorded in `CHANGE_LOG.md`; B.5 matrix validation recorded in `CHANGE_LOG.md` entry `2026-04-26 19:45`; x64 matrix artifact `reports/validation/b5-acceleration-matrix-current-host.txt`; x64 regression artifact `reports/validation/20260427004353-regression.txt`; ARM64 B.5 matrix state recorded in `CHANGE_LOG.md` entry `2026-04-26 19:45`.
-  - Notes: STT, TTS, LLM, and Wake runtime families exist with device-parameterized runtime surfaces. CPU voice paths and the voice-family matrix are validated on Windows x64 and Windows ARM64. QNN remains definition-only in this entry; the hardware acceleration boundary owns STT inference validation. llama.cpp is not wired as a verified runtime; the local LLM runtime boundary owns wiring and validation. No conversation/session, desktop shell, service substrate, tool orchestration, semantic memory, hardware acceleration, or agent runtime implementation is claimed.
-
-- Capability: Slice A hardware/provisioning/readiness foundation - 2026-04-24 17:16
-  - State: Verified
-  - Location: `backend/app/hardware/`, `backend/app/core/capabilities.py`, `scripts/provision.py`, `scripts/validate_backend.py`, `backend/tests/unit/hardware/`, `backend/tests/unit/scripts/`, `reports/diagnostics/`, `reports/validation/`
-  - Validation: Windows x64 manual provisioning/profile/regression PASS; Windows ARM64 manual provisioning/profile/regression PASS; ARM64 A.6 regression PASS with `61 passed`
-  - Notes: Covers A.1 profiler/capability flags, A.2 provisioning resolver/install path, A.3 preflight/readiness evidence, A.4 validation/report harness, A.5 x64/ARM64 clean-host validation proof, and A.6 QNN structural metadata/readiness definition only. QNN is not executable at Slice A; `import:onnxruntime-qnn` is present on ARM64; `ep:QNNExecutionProvider:MISSING` and `dll:QnnHtp:MISSING` are expected/not-proven states; STT readiness remains CPU-selected with the H.2-named QNN inference pending reason. No Group B runtime/model/voice-loop work, no STT/TTS/LLM/wake runtime execution, and no durable desktop/product surface were introduced. Codex temp/pytest cleanup failures remain tooling-context only, not repo acceptance evidence.
-
-- Capability: SYSTEM_INVENTORY established - 2026-04-22 14:20
+- Timestamp: 2026-07-05 10:37
   - State: Implemented
-  - Location: `SYSTEM_INVENTORY.md`
-  - Validation: `cat .\SYSTEM_INVENTORY.md -head 1` = `# SYSTEM_INVENTORY.md`
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Updated repo governance ledgers for consolidation organization.
+  - Location:
+    - `CHANGE_LOG.md`
+    - `SYSTEM_INVENTORY.md`
+  - Evidence:
+    - Timestamp: 2026-07-05 10:30 - Updated `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` to organize repo governance.
+  - Notes:
+    - Governance documentation organization only; no runtime capability changed.
+
+---
+
+## Inventory Appendix
+
+---
+
+## Consolidated Inventory History
+
+- Timestamp: 2026-07-04 10:35
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice Z startup truth, desktop readiness/status polish, diagnostics, and personality request-path/profile behavior.
+  - Location:
+    - `backend/app/services/startup_context.py`, `backend/app/api/`, `scripts/`
+    - `config/personality/`, `backend/app/personality/`, `backend/app/cognition/`
+    - `backend/app/conversation/`, `backend/app/runtimes/llm/`
+    - `desktop/src/`, `backend/tests/`, `desktop/tests/`
+  - Evidence:
+    - Timestamp: 2026-07-04 22:11 - Completed Slice Z desktop/startup/personality/debug polish through Z.6.
+  - Notes:
+    - Slice Z is presentation, startup-truth, diagnostics, and personality polish; new model artifacts, accelerator capability, agent execution, memory behavior, and provisioning workflows were not included.
+
+- Timestamp: 2026-07-01 10:25 UTC
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice X local LLM tier activation with dev/prod model mode and Qwen3 production catalog selection.
+  - Location:
+    - `.env.example`, `config/models/llm.yaml`
+    - `backend/app/models/`, `backend/app/services/local_llm_startup.py`
+    - `backend/app/runtimes/llm/`, `backend/app/routing/`
+    - `backend/app/api/`, `scripts/`, `desktop/src/components/settings-panel.js`
+  - Evidence:
+    - Timestamp: 2026-07-03 13:19 - Completed Slice X local LLM tier activation and desktop readiness/status validation.
+  - Notes:
+    - Reused existing catalog/settings/selection/readiness paths; NPU/QNN LLM acceleration was not claimed.
+
+- Timestamp: 2026-07-01 00:46 UTC
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice W safe environment defaults and Operator settings posture.
+  - Location:
+    - `.env.example`, `docker-compose.yml`
+    - `backend/app/core/settings.py`, `backend/app/api/routes/config.py`
+    - `scripts/ensure_models.py`, `backend/app/services/local_llm_startup.py`
+    - `desktop/src/components/settings-panel.js`, `docs/QuickStart.md`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-06-30 15:51 - Completed Slice W settings posture cleanup and corrective W2 cleanup.
+  - Notes:
+    - Settings posture cleanup only; new model artifacts, accelerator claims, runtime architecture, and setup workflows were not included.
+
+- Timestamp: 2026-06-30 09:25
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice V model-selection policy, selected-LLM setup, and Operator model policy control.
+  - Location:
+    - `config/models/llm.yaml`, `backend/app/models/`
+    - `backend/app/services/local_llm_startup.py`, `backend/app/runtimes/llm/`
+    - `backend/app/routing/`, `backend/app/api/`, `scripts/`
+    - `desktop/src/components/settings-panel.js`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-06-30 08:52 - Completed Slice V model selection policy and setup simplification.
+  - Notes:
+    - Selection resolves through existing `assistant-small-q4` roles; no Qwen/Gemma/vision model capability or new runtime architecture was claimed.
+
+- Timestamp: 2026-06-28 23:19
+  - State: Verified
+  - Host class(es): Windows ARM64 / arm64 validated, with Windows AMD64 / amd64 non-selection validation
+  - Summary: Established Slice U side-by-side Qualcomm QNN Whisper STT runtime path.
+  - Location:
+    - `backend/app/hardware/qnn_provider.py`
+    - `backend/app/runtimes/stt/`, `config/models/stt.yaml`
+    - `backend/tests/unit/hardware/`, `backend/tests/unit/runtimes/stt/`
+    - `backend/tests/runtime/hardware/`, `backend/tests/runtime/acceleration_matrix/`
+  - Evidence:
+    - Timestamp: 2026-06-30 05:44 - Completed Slice U Qualcomm QNN Whisper integration and staged resident voice stabilization.
+  - Notes:
+    - ARM64 QNN STT uses side-by-side `whisper-qualcomm-qnn` and ONNX Runtime EP-device initialization; AMD64 QNN execution was not claimed.
+
+- Timestamp: 2026-06-26 10:51
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice T resident shared-stream voice layer with wake/PTT, VAD, barge-in follow-up, and desktop controls.
+  - Location:
+    - `backend/app/services/`
+    - `backend/app/conversation/`, `backend/app/runtimes/stt/`, `backend/app/runtimes/tts/`
+    - `backend/app/api/`, `desktop/src/`
+    - `backend/tests/unit/`, `backend/tests/runtime/`, `desktop/tests/`
+  - Evidence:
+    - Timestamp: 2026-06-26 10:51 - Completed Slice T resident full-duplex voice foundation and corrective closeout.
+  - Notes:
+    - Verified shared microphone stream behavior; echo cancellation, overlapped-speech robustness, browser microphone transport, Silero VAD, and hidden always-listening default were not claimed.
+
+- Timestamp: 2026-06-24 07:48
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice S repo-owned local llama.cpp runtime artifact and acceleration-profile acquisition framework.
+  - Location:
+    - `config/models/llm.yaml`, `scripts/ensure_models.py`
+    - `backend/app/models/llm_profiles.py`
+    - `backend/app/hardware/`, `backend/app/api/routes/readiness.py`
+    - `backend/tests/`, `docs/jarvis-arm-llamacpp.md`
+  - Evidence:
+    - Timestamp: 2026-06-24 07:48 - Completed Slice S local llama.cpp runtime artifact and acceleration-profile acquisition framework ...
+  - Notes:
+    - Supersedes older Group R artifact state with repo-owned CPU and AMD64 CUDA acquisition truth; ARM64 Adreno OpenCL remains staged/end-user-buildable, and QNN/Hexagon local LLM acceleration remains unimplemented.
+
+- Timestamp: 2026-06-18 04:36
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Group R managed local llama.cpp LLM runtime, sidecar lifecycle, and local-first runtime selection path.
+  - Location:
+    - `config/models/llm.yaml`, `.env.example`
+    - `backend/app/services/local_llm_sidecar.py`, `backend/app/services/local_llm_startup.py`
+    - `backend/app/runtimes/llm/`, `backend/app/routing/`
+    - `backend/app/api/`, `scripts/ensure_models.py`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-06-18 04:59 - Completed Slice R managed local LLM sidecar/runtime path through the current repo state ...
+  - Notes:
+    - CPU-only local llama.cpp was live-proven on AMD64 and ARM64; Ollama remains fallback. CUDA and QNN local llama.cpp live completion were not claimed by this entry.
+
+- Timestamp: 2026-06-15 10:14
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Established Group P spec-first agent catalog and deterministic Agent Creator boundary.
+  - Location:
+    - `backend/app/agents/`
+    - `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`
+    - `config/agents/specs/`, `config/prompts/agents/`
+    - `backend/tests/unit/agents/`, `backend/tests/unit/api/`
+  - Evidence:
+    - Timestamp: 2026-06-15 10:14 - Completed Slice P spec-first agent correction ...
+  - Notes:
+    - Agent Creator writes validated disabled specs only; autonomous/background execution, turn-engine integration, model/tool calls, training/deployment, and desktop UI behavior were not included.
+
+- Timestamp: 2026-06-15 08:14
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / Qualcomm QNN validated
+  - Summary: Established Group O truthful default-disabled dry-run agent boundary and read-only trace diagnostics.
+  - Location:
+    - `backend/app/agents/`
+    - `backend/app/api/routes/agents.py`, `backend/app/api/schemas/agents.py`
+    - `config/app/policies.yaml`, `config/agents/`, `config/prompts/agents/`
+    - `backend/tests/unit/agents/`, `backend/tests/unit/api/`
+  - Evidence:
+    - Timestamp: 2026-06-15 08:14 - Completed Slice O truthful dry-run agent boundary ...
+  - Notes:
+    - Agent surfaces are explicit, read-only or dry-run, and default-disabled; hidden/background execution, model routing, training/deployment, desktop UI, and normal conversation behavior changes were not included.
+
+- Timestamp: 2026-06-14 10:32
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Established Group N conversation continuity and session memory boundary.
+  - Location:
+    - `backend/app/artifacts/`
+    - `backend/app/conversation/`
+    - `backend/app/cognition/`
+    - `backend/tests/unit/artifacts/`, `backend/tests/unit/conversation/`, `backend/tests/unit/cognition/`
+  - Evidence:
+    - Timestamp: 2026-06-15 05:08 - Completed Slice N conversation continuity and session memory boundary ...
+  - Notes:
+    - Adds deterministic session timelines, bounded continuity packets, prompt ordering, and conservative closeout metadata; semantic/vector memory and agents remained outside this boundary.
+
+- Timestamp: 2026-06-13 18:21
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Group M realtime conversation session boundary for resident wake/PTT invocation events.
+  - Location:
+    - `backend/app/conversation/realtime/`
+    - `backend/app/services/resident_voice_invocation.py`
+    - `backend/tests/unit/conversation/realtime/`, `backend/tests/unit/services/`
+  - Evidence:
+    - Timestamp: 2026-06-15 05:08 - Completed Slice M realtime conversation session boundary ...
+  - Notes:
+    - Realtime coordination records ordered events and delegates committed turns to `TurnEngine`; committed turn execution authority was not moved.
+
+- Timestamp: 2026-06-12 11:46
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice L structured personality policy envelope and provenance-aware prompt rendering.
+  - Location:
+    - `backend/app/personality/`, `config/personality/`
+    - `backend/app/cognition/`
+    - `backend/app/conversation/`, `backend/app/runtimes/llm/`
+    - `backend/app/api/`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-06-15 05:08 - Completed Slice L personality policy envelope ...
+  - Notes:
+    - Personality compiles to style policy and prompt envelopes; tool authority, runtime selection, safety policy, and orchestration state were not changed.
+
+- Timestamp: 2026-05-30 06:58
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / Qualcomm QNN validated
+  - Summary: Established Slice K operator desktop/settings UX, service readiness surfacing, wake controls, and ARM64 QNN voice validation.
+  - Location:
+    - `desktop/src/`, `desktop/src-tauri/src/`
+    - `backend/app/api/`, `backend/app/services/`
+    - `backend/app/hardware/`, `backend/app/tools/search/`
+    - `scripts/provision.py`, `pyproject.toml`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-05-29 07:40 - Completed Slice K operator desktop/readiness/wake surface work ...
+    - Timestamp: 2026-06-12 14:41 - Completed Slice H voice acceleration normalization and live evidence ...
+  - Notes:
+    - Consolidates K and K+ inventory state; ARM64 voice path was validated as STT QNN, TTS CPU, and Wake CPU. New agent behavior and service start/stop controls were not included.
+
+- Timestamp: 2026-05-26 11:42
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice J desktop readiness, degraded-state, wake/PTT, and interaction-state surfacing.
+  - Location:
+    - `desktop/src/`
+    - `desktop/src/components/`
+    - `backend/tests/unit/desktop/`
+    - `docs/windows-arm64-fresh-clone-setup.md`
+  - Evidence:
+    - Timestamp: 2026-05-22 18:45 - Completed Slice J desktop readiness and interaction polish ...
+  - Notes:
+    - Slice J surfaced existing backend data in the desktop shell; backend schemas/routes, Tauri commands, dependency/provisioning, and runtime selection were not changed.
+
+- Timestamp: 2026-05-13 15:07
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice I host-specific acceleration/readiness normalization and live voice interaction matrix coverage.
+  - Location:
+    - `backend/app/hardware/readiness.py`
+    - `backend/app/api/routes/voice.py`, `backend/app/api/schemas/voice.py`
+    - `backend/tests/runtime/acceleration_matrix/`
+    - `config/hardware/notes.md`
+  - Evidence:
+    - Timestamp: 2026-05-13 14:57 - Completed Slice I acceleration sequence normalization and live user-interaction matrix extension ...
+  - Notes:
+    - Slice I added STT-device observability and host-gated live turn matrix proof; runtime-family dispatch changes were not included.
+
+- Timestamp: 2026-05-13 09:10
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice H voice acceleration matrix and live full-turn validation gates.
+  - Location:
+    - `backend/tests/runtime/acceleration_matrix/`
+    - `reports/validation/`
+  - Evidence:
+    - Timestamp: 2026-06-12 14:41 - Completed Slice H voice acceleration normalization and live evidence ...
+  - Notes:
+    - CPU STT remained fallback; accelerated STT proof covered x64 CUDA and ARM64 QNN, while DirectML and accelerated TTS remained not wired.
+
+- Timestamp: 2026-05-03 18:03
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice F deterministic tool execution, tool metadata, and result presentation foundation.
+  - Location:
+    - `backend/app/cognition/`
+    - `backend/app/tools/`
+    - `backend/app/api/`, `scripts/run_jarvis.py`, `desktop/src/`
+    - `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-05-02 18:03 - Completed Slice F deterministic tool execution and rendering surface ...
+  - Notes:
+    - Tool invocation is explicit through `tool_name`; LLM-driven tool selection, autonomous agents, write tools, and new runtime/provider surfaces were not included.
+
+- Timestamp: 2026-05-02 22:10
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice G disk-backed episodic memory, retrieval, prompt context injection, and Redis retrieval-cache acceleration.
+  - Location:
+    - `backend/app/memory/`
+    - `backend/app/conversation/`, `backend/app/cognition/`
+    - `backend/tests/unit/memory/`, `backend/tests/runtime/`
+  - Evidence:
+    - Timestamp: 2026-05-02 22:10 - Completed Slice G episodic memory and retrieval substrate ...
+  - Notes:
+    - Durable memory authority remains disk-backed episodic entries; Redis is cache acceleration only. Semantic/vector memory, API/desktop rendering, and tool-executor behavior were not included.
+
+- Timestamp: 2026-05-01 01:19
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice E local service substrate, Redis cache layer, and fail-closed internet-search runtime.
+  - Location:
+    - `docker-compose.yml`, `.env.example`
+    - `config/search/`, `config/models/search.yaml`
+    - `backend/app/cache/`, `backend/app/runtimes/internetsearch/`
+    - `backend/app/routing/`, `backend/app/core/settings.py`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-05-01 01:05 - Completed Slice E infrastructure and internet-search substrate ...
+  - Notes:
+    - This is substrate/runtime capability for later consumers; user-facing tool behavior, retrieval orchestration, hardware acceleration, and agent runtime behavior were not included.
+
+- Timestamp: 2026-04-30 11:13
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice D durable backend API and desktop application surface.
+  - Location:
+    - `desktop/`
+    - `backend/app/api/`
+    - `backend/app/services/`
+    - `backend/app/personality/`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-04-30 11:12 - Completed Slice D durable application surface ...
+  - Notes:
+    - Consolidates D.2 desktop host and later Slice D surface work; durable desktop/backend shell was added, while tools, agents, and resident shared-stream voice were not included.
+
+- Timestamp: 2026-04-28 06:04
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice C canonical turn/session engine, artifacts, working memory, interruption behavior, and proving host.
+  - Location:
+    - `backend/app/conversation/`, `backend/app/cognition/`
+    - `backend/app/artifacts/`, `backend/app/memory/`
+    - `backend/app/personality/`, `backend/app/services/`
+    - `scripts/run_jarvis.py`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-04-28 06:04 - Completed Slice C canonical turn/session engine and proving-host foundation ...
+  - Notes:
+    - Voice and text share one turn engine; durable desktop/API shell, episodic memory, tools, agents, hardware acceleration, and verified llama.cpp runtime wiring were not included.
+
+- Timestamp: 2026-04-26 19:45
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice B cross-platform voice runtime families, model catalog/acquisition, and runtime validation gates.
+  - Location:
+    - `backend/app/runtimes/`
+    - `backend/app/models/`, `config/models/`
+    - `backend/app/routing/`, `config/app/policies.yaml`
+    - `scripts/ensure_models.py`, `scripts/validate_backend.py`, `backend/tests/`
+  - Evidence:
+    - Timestamp: 2026-04-26 19:45 - Completed Slice B cross-platform voice runtime foundation ...
+  - Notes:
+    - STT, TTS, LLM, and Wake runtime families were device-parameterized and CPU-validated; QNN STT execution, conversation/session, desktop shell, service substrate, tools, and agents were not included.
+
+- Timestamp: 2026-04-24 17:16
+  - State: Verified
+  - Host class(es): Windows x64 / amd64 and Windows ARM64 / arm64 validated
+  - Summary: Established Slice A hardware profiling, provisioning, readiness, validation, and metadata-only QNN foundation.
+  - Location:
+    - `backend/app/core/`
+    - `backend/app/hardware/`
+    - `scripts/provision.py`, `scripts/validate_backend.py`, `scripts/bootstrap.py`, `scripts/ensure_models.py`
+    - `backend/tests/`
+    - `reports/diagnostics/`, `reports/validation/`
+  - Evidence:
+    - Timestamp: 2026-04-24 17:16 - Completed Slice A hardware, provisioning, readiness, validation, and QNN structural foundation ...
+  - Notes:
+    - Slice A established hardware/provisioning/readiness authority only; runtime/model/voice execution and durable desktop surface were not included.
+
+- Timestamp: 2026-04-22 14:25
+  - State: Implemented
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Established `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` as part of repo governance
+  - Location: 
+    - `CHANGE_LOG.md`
+    - `SYSTEM_INVENTORY.md`
+  - Evidence: 
+    - Timestamp: 2026-04-22 14:20 - Established `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` ...
   - Notes: 
 
----
-
-## Appendix
