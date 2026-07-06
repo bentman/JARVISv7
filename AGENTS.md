@@ -135,9 +135,9 @@ Naming conventions for approved helper artifacts:
 
 ## 7. CHANGE_LOG and SYSTEM_INVENTORY
 
-`CHANGE_LOG.md` is append-only. Add entries only after validation evidence exists. Never rewrite old entries; append a corrective entry when needed.
+`CHANGE_LOG.md` records completed codebase changes after objective completion and validation evidence. Add new entries only at the top directly under `## Change Entries`. Corrections or clarifications go only below `## Change Appendix`. Do not edit, reorder, or delete past entries.
 
-`SYSTEM_INVENTORY.md` is the capability truth ledger. Record only observable artifacts and verified/implemented states. Do not promote capability state without evidence. Corrections belong under its appendix unless the file's own instructions say otherwise.
+`SYSTEM_INVENTORY.md` is the observable capability ledger. Record only capability or feature groups observed in repository artifacts. Add new entries only at the top directly under `## Inventory Entries`. Corrections or clarifications go only below `## Inventory Appendix`. Do not promote capability state without evidence.
 
 ## 8. Git safety
 
