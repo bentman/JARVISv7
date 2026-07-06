@@ -1,6 +1,6 @@
 # CHANGE_LOG.md
 > No edits/reorders/deletes of past entries.
-> If an entry is wrong, append a corrective entry in `## Appendix`.
+> If an entry is wrong, append a corrective entry in `## Change Appendix`.
 
 ## Rules
 - Write an entry for codebase change only after objective is complete and supported by evidence.
