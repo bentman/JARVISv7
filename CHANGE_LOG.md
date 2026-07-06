@@ -23,6 +23,35 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-06 18:32
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.1 safe resident voice default and operator layout. Resident voice now starts in PTT-only mode, desktop startup no longer auto-starts Wake, and Resident Voice renders above Wake.
+  - Scope:
+    - `backend/app/services/resident_voice_invocation.py`
+    - `backend/tests/unit/api/test_routes.py`
+    - `backend/tests/unit/services/test_resident_voice_modes.py`
+    - `backend/tests/unit/services/test_resident_voice_invocation.py`
+    - `desktop/src/main.js`, `desktop/src/components/resident-voice.js`, `desktop/src/index.html`
+    - `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_modes.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\api\test_routes.py::test_readiness_returns_family_readiness backend\tests\unit\api\test_routes.py::test_resident_voice_status_reports_configured_stream_and_vad backend\tests\unit\api\test_routes.py::test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`72 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - Wake remains available through explicit resident mode selection or the Wake toggle; AA.1 did not edit `docs\20260706_slice-aa.md`.
+
+- Timestamp: 2026-07-06 14:51
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.0 baseline stabilization by correcting backend desktop static-contract coverage to match the current desktop polling helper boundary.
+  - Scope:
+    - `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - AA.0 made no runtime behavior changes and did not edit `docs\20260706_slice-aa.md`; baseline is ready to proceed to the next approved sub-slice.
+
 - Timestamp: 2026-07-05 10:30
   - Host class(es): Windows x64 / amd64 validated
   - Summary: Updated `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` to organize repo governance
@@ -709,4 +738,3 @@
     - `CHANGE_LOG.md`
   - Validation:
     - `cat .\CHANGE_LOG.md -head 1` produced `# CHANGE_LOG.md`.
-

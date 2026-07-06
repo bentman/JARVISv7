@@ -400,7 +400,7 @@ def test_readiness_returns_family_readiness() -> None:
     assert response.status_code == 200
     assert payload["profile_id"] == "profile-test"
     assert set(payload["families"]) == {"stt", "tts", "llm", "wake"}
-    assert payload["resident_audio"]["mode"] == "ptt+wake"
+    assert payload["resident_audio"]["mode"] == "ptt-only"
     assert payload["resident_audio"]["stream_present"] is False
     assert payload["resident_audio"]["vad_configured"] is False
     assert payload["families"]["stt"]["runtime"] == "fake-stt"
@@ -951,7 +951,7 @@ def test_resident_voice_status_reports_configured_stream_and_vad() -> None:
     payload = response.json()
 
     assert response.status_code == 200
-    assert payload["mode"] == "ptt+wake"
+    assert payload["mode"] == "ptt-only"
     assert payload["available"] is False
     assert payload["degraded_reasons"] == ["resident audio stream is stopped"]
     assert payload["stream"] == {
@@ -987,7 +987,7 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert started_payload["available"] is True
     assert started_payload["stream_running"] is True
     assert started_payload["degraded_reasons"] == []
-    assert started_payload["mode"] == "ptt+wake"
+    assert started_payload["mode"] == "ptt-only"
     assert started_payload["barge_in_supported"] is False
     assert started_payload["barge_in_wired"] is True
     assert started_payload["stream"]["running"] is True

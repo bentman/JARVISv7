@@ -232,6 +232,7 @@ def test_wake_capable_mode_fails_visibly_when_required_stream_is_stopped(tmp_pat
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
     )
+    resident.set_mode("ptt+wake")
 
     resident.ptt()
 

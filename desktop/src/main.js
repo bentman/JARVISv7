@@ -326,7 +326,6 @@ async function completeBackendStart(startPayload) {
   if (turnCountEl) turnCountEl.textContent = String(startPayload.turn_count ?? 0);
   healthEl.textContent = "ok";
   await ensureResidentVoiceStream();
-  await startWakeMonitorIfAvailable();
   const readiness = await api.getReadiness();
   renderReadiness(readiness);
   startAllPolling();

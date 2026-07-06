@@ -46,6 +46,7 @@ assert.ok(index.includes("wake-indicator"), "desktop must display wake status");
 assert.ok(index.includes("wake-toggle"), "desktop must expose wake toggle");
 assert.ok(index.includes("resident-mode"), "desktop must expose resident voice mode control");
 assert.ok(index.includes("ptt-only"), "desktop must include PTT-only resident mode");
+assert.ok(index.indexOf("resident-voice-panel") < index.indexOf("wake-monitor-panel"), "Resident Voice must render above Wake in the operator panel");
 assert.ok(index.includes("hands-free"), "desktop must include hands-free resident mode");
 assert.ok(index.includes("continuous"), "desktop must include continuous resident mode");
 assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
@@ -113,8 +114,18 @@ assert.ok(
   "desktop must fetch readiness after resident stream startup settles",
 );
 assert.ok(
-  main.indexOf("await startWakeMonitorIfAvailable()") < main.indexOf("const readiness = await api.getReadiness()"),
-  "desktop must fetch readiness after wake startup status settles",
+  main.indexOf("async function completeBackendStart") < main.indexOf("const readiness = await api.getReadiness()"),
+  "desktop backend-start postlude must own readiness fetch",
+);
+assert.ok(
+  main.indexOf("await startWakeMonitorIfAvailable()") > main.indexOf("async function setResidentVoiceMode"),
+  "desktop must start wake only through explicit resident mode selection",
+);
+assert.ok(
+  !main
+    .slice(main.indexOf("async function completeBackendStart"), main.indexOf("const readiness = await api.getReadiness()"))
+    .includes("await startWakeMonitorIfAvailable()"),
+  "desktop backend startup must not automatically start wake monitoring",
 );
 assert.ok(degradedList.includes("closest(\"details\")"), "degraded detail renderer must control its collapsed details container");
 assert.ok(degradedList.includes("optional-service"), "degraded detail must label optional services separately");

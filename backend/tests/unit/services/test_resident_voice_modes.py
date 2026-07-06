@@ -78,10 +78,10 @@ def _resident(calls: list[tuple[np.ndarray, int]], tmp_path: Path) -> tuple[Resi
     return resident, stream
 
 
-def test_resident_voice_mode_defaults_to_ptt_wake() -> None:
+def test_resident_voice_mode_defaults_to_ptt_only() -> None:
     service = _bare_service()
 
-    assert service.mode() == "ptt+wake"
+    assert service.mode() == "ptt-only"
     assert service.follow_up_status().continuous_active is False
 
 

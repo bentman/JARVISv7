@@ -66,7 +66,7 @@ class ResidentVoiceInvocationService:
         self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
         self._last_realtime_events: tuple[RealtimeEvent, ...] = ()
-        self._mode = "ptt+wake"
+        self._mode = "ptt-only"
         self._follow_up_listening = False
         self._follow_up_source: str | None = None
         self._continuous_active = False

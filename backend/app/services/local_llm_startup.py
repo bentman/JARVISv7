@@ -89,7 +89,7 @@ def prepare_managed_local_llm(
                 degraded_reason=status.degraded_reason or status.last_error or "managed llama.cpp sidecar did not start",
             )
 
-        ready, reason = probe(resolution.base_url, 45.0)
+        ready, reason = probe(resolution.base_url, 90.0)
         if not ready:
             sidecar.stop()
             return ManagedLocalLLMStartup(
@@ -104,7 +104,7 @@ def prepare_managed_local_llm(
         status = sidecar.restart(resolution)
         if not status.running:
             return status
-        ready, _reason = probe(resolution.base_url, 45.0)
+        ready, _reason = probe(resolution.base_url, 90.0)
         if not ready:
             sidecar.stop()
         return sidecar.status()
@@ -132,7 +132,7 @@ def prepare_managed_local_llm(
     )
 
 
-def wait_for_llama_cpp_ready(base_url: str, timeout_seconds: float = 45.0) -> tuple[bool, str]:
+def wait_for_llama_cpp_ready(base_url: str, timeout_seconds: float = 90.0) -> tuple[bool, str]:
     deadline = time.monotonic() + timeout_seconds
     last_reason = "not probed"
     url = base_url.rstrip("/")

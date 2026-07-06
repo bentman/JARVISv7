@@ -34,6 +34,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/src/components/settings-panel.js",
         "desktop/src/components/resident-voice.js",
         "desktop/src/components/service-status.js",
+        "desktop/src/components/desktop-polling.js",
         "desktop/src/style.css",
         "desktop/src-tauri/Cargo.toml",
         "desktop/src-tauri/build.rs",
@@ -100,6 +101,7 @@ def test_desktop_displays_resident_session_status() -> None:
     main_js = _read("desktop/src/main.js")
     api_client = _read("desktop/src/api-client.js")
     resident_voice = _read("desktop/src/components/resident-voice.js")
+    desktop_polling = _read("desktop/src/components/desktop-polling.js")
     index_html = _read("desktop/src/index.html")
     assert "get_session_status" in backend_rs
     assert "/session/status" in backend_rs
@@ -112,8 +114,11 @@ def test_desktop_displays_resident_session_status() -> None:
     assert 'invoke("invoke_resident_ptt")' in api_client
     assert "./api-client.js" in main_js
     assert "./components/resident-voice.js" in main_js
+    assert "./components/desktop-polling.js" in main_js
     assert "refreshSessionStatus" in main_js
-    assert "startSessionPolling" in main_js
+    assert "createDesktopPolling({" in main_js
+    assert "startAllPolling()" in main_js
+    assert "startSessionPolling" in desktop_polling
     assert "residentVoice.renderResidentVoiceStatus" in main_js
     assert "function renderResidentVoiceStatus(status)" in resident_voice
     assert "function appendResidentVoiceCompletion(status)" in resident_voice
@@ -130,6 +135,7 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     api_client = _read("desktop/src/api-client.js")
     index_html = _read("desktop/src/index.html")
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
+    desktop_polling = _read("desktop/src/components/desktop-polling.js")
     assert "get_wake_status" in backend_rs
     assert "/status/wake" in backend_rs
     assert "start_wake_monitor" in backend_rs
@@ -148,14 +154,18 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert 'invoke("toggle_wake_monitor")' in api_client
     assert "refreshWakeStatus" in main_js
     assert "startWakeMonitorIfAvailable" in main_js
-    assert "startWakePolling" in main_js
-    assert "stopWakePolling" in main_js
+    assert "createDesktopPolling({" in main_js
+    assert "startAllPolling()" in main_js
+    assert "stopAllPolling()" in main_js
+    assert "startWakePolling" in desktop_polling
+    assert "stopWakePolling" in desktop_polling
     assert "./components/wake-indicator.js" in main_js
     assert "renderWakeStatus(status, wakeIndicatorEl)" in main_js
     assert "PTT-only fallback" in main_js
     assert 'id="wake-indicator"' in index_html
     assert 'id="wake-toggle"' in index_html
-    assert index_html.index('class="panel operator-panel"') < index_html.index('class="panel-section wake-monitor-panel"')
+    assert index_html.index('class="panel operator-panel"') < index_html.index('class="panel-section resident-voice-panel"')
+    assert index_html.index('class="panel-section resident-voice-panel"') < index_html.index('class="panel-section wake-monitor-panel"')
     assert index_html.index('class="panel status-panel"') < index_html.index("<h2>Personality</h2>") < index_html.index('class="panel conversation-panel"')
     assert "wake-detail" not in index_html
     assert "export function renderWakeStatus" in wake_indicator
@@ -584,6 +594,7 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     index_html = _read("desktop/src/index.html")
     style_css = _read("desktop/src/style.css")
     wake_indicator = _read("desktop/src/components/wake-indicator.js")
+    desktop_polling = _read("desktop/src/components/desktop-polling.js")
 
     for command in ["start_wake_monitor", "stop_wake_monitor", "toggle_wake_monitor"]:
         assert command in backend_rs
@@ -594,13 +605,21 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     assert 'invoke("stop_wake_monitor")' in api_client
     assert 'invoke("toggle_wake_monitor")' in api_client
     assert "startWakeMonitorIfAvailable" in main_js
-    assert "startWakePolling" in main_js
-    assert "window.setInterval" in main_js
-    assert "stopWakePolling" in main_js
+    assert main_js.index("async function setResidentVoiceMode") < main_js.index("await startWakeMonitorIfAvailable()")
+    assert main_js.index("async function completeBackendStart") < main_js.index("const readiness = await api.getReadiness()")
+    complete_backend_start = main_js[
+        main_js.index("async function completeBackendStart") : main_js.index("const readiness = await api.getReadiness()")
+    ]
+    assert "await startWakeMonitorIfAvailable()" not in complete_backend_start
+    assert "createDesktopPolling({" in main_js
+    assert "startWakePolling" in desktop_polling
+    assert "window.setInterval" in desktop_polling
+    assert "stopWakePolling" in desktop_polling
     assert 'wakeToggleEl.addEventListener("click"' in main_js
     assert 'id="wake-toggle"' in index_html
     assert 'id="wake-indicator"' in index_html
-    assert index_html.index('class="panel operator-panel"') < index_html.index('class="panel-section wake-monitor-panel"')
+    assert index_html.index('class="panel operator-panel"') < index_html.index('class="panel-section resident-voice-panel"')
+    assert index_html.index('class="panel-section resident-voice-panel"') < index_html.index('class="panel-section wake-monitor-panel"')
     assert index_html.index('class="panel status-panel"') < index_html.index("<h2>Personality</h2>") < index_html.index('class="panel conversation-panel"')
     assert "dataset.active" in wake_indicator
     assert "detection_count" in wake_indicator

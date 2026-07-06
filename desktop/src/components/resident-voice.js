@@ -29,7 +29,7 @@ export function createResidentVoicePresenter(options) {
 
   function setModeControl(status) {
     if (!residentModeEl) return;
-    const mode = status.mode || "ptt+wake";
+    const mode = status.mode || "ptt-only";
     const options = [
       ["ptt-only", true],
       ["ptt+wake", true],
@@ -41,11 +41,11 @@ export function createResidentVoicePresenter(options) {
       const option = document.createElement("option");
       option.value = value;
       option.textContent = modeLabels[value] || value;
-      option.selected = value === mode || (mode === "ptt+wake" && value === "ptt+wake");
+      option.selected = value === mode || (mode === "ptt-only" && value === "ptt-only");
       option.disabled = value !== mode && !available;
       residentModeEl.appendChild(option);
     }
-    residentModeEl.value = modeLabels[mode] ? mode : "ptt+wake";
+    residentModeEl.value = modeLabels[mode] ? mode : "ptt-only";
     residentModeEl.disabled = !status.ptt_supported;
     residentModeEl.title = status.ptt_supported ? "Resident voice mode" : "Resident voice mode is unavailable.";
   }
