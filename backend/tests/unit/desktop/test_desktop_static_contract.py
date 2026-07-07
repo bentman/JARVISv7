@@ -428,7 +428,8 @@ def test_k4b_layout_css_defines_three_region_scrollable_shell() -> None:
     assert "@media (max-width: 820px)" in style_css
     assert "font-size: calc(var(--text-lg) + 0.12rem);" in style_css
     assert ".operator-header {\n  border-bottom: 1px solid var(--color-border);" in style_css
-    assert ".operator-actions {\n  border-top: 1px solid var(--color-border);" in style_css
+    assert ".operator-actions {\n  padding-top: var(--space-3);" in style_css
+    assert ".operator-actions {\n  border-top: 1px solid var(--color-border);" not in style_css
 
 
 def test_k4b_conversation_message_rendering_uses_dom_text_apis() -> None:
@@ -613,6 +614,16 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     assert 'invoke("toggle_wake_monitor")' in api_client
     assert "startWakeMonitorIfAvailable" in main_js
     assert main_js.index("async function setResidentVoiceMode") < main_js.index("await startWakeMonitorIfAvailable()")
+    assert "/status/resident-voice/tts-voice" in backend_rs
+    assert "set_resident_voice_tts_voice" in lib_rs
+    assert 'invoke("set_resident_voice_tts_voice"' in api_client
+    assert 'id="resident-tts-voice"' in index_html
+    assert "Voice Selector" in index_html
+    assert "renderResidentTtsVoiceSelector" in main_js
+    assert "setResidentTtsVoice" in main_js
+    assert "tts_supported_voices" in main_js
+    assert "tts_voice_restart_required" in main_js
+    assert "settingsRestartRequiredEl.hidden = false" in main_js
     assert main_js.index("async function completeBackendStart") < main_js.index("const readiness = await api.getReadiness()")
     complete_backend_start = main_js[
         main_js.index("async function completeBackendStart") : main_js.index("const readiness = await api.getReadiness()")

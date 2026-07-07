@@ -92,6 +92,11 @@
           </div>
           <section class="panel-section resident-voice-panel">
             <h2>Resident Voice</h2>
+            <label class="selector-label" for="resident-tts-voice">Voice Selector</label>
+            <select id="resident-tts-voice" disabled>
+              <option value="">unavailable</option>
+            </select>
+            <p id="resident-tts-voice-hint" class="resident-voice-hint">Runtime changes apply after restart.</p>
             <label class="selector-label" for="resident-mode">Mode</label>
             <select id="resident-mode" disabled>
               <option value="ptt-only">PTT-only</option>

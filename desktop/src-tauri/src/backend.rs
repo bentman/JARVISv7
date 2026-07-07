@@ -253,6 +253,20 @@ pub fn set_resident_voice_mode(base_url: &str, mode: &str) -> Result<String, Str
     Ok(body)
 }
 
+pub fn set_resident_voice_tts_voice(base_url: &str, voice: &str) -> Result<String, String> {
+    let response = Client::new()
+        .put(format!("{base_url}/status/resident-voice/tts-voice"))
+        .json(&json!({"voice": voice}))
+        .send()
+        .map_err(|err| format!("PUT /status/resident-voice/tts-voice failed: {err}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|err| format!("PUT /status/resident-voice/tts-voice body read failed: {err}"))?;
+    if !status.is_success() {
+        return Err(format!("PUT /status/resident-voice/tts-voice returned {status}: {body}"));
+    }
+    Ok(body)
+}
+
 fn post_resident_voice_action(base_url: &str, path: &str) -> Result<String, String> {
     let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();

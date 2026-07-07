@@ -50,6 +50,7 @@ export function createApiClient(invoke) {
     stopWakeMonitor: () => invoke("stop_wake_monitor"),
     toggleWakeMonitor: async () => parseJson(await invoke("toggle_wake_monitor")),
     setResidentVoiceMode: async (mode) => parseJson(await invoke("set_resident_voice_mode", { mode })),
+    setResidentVoiceTtsVoice: async (voice) => parseJson(await invoke("set_resident_voice_tts_voice", { voice })),
     getPersonalityList: async () => parseJson(await invoke("get_personality_list")),
     selectPersonality: async (profileId) => parseJson(await invoke("select_personality", { profileId })),
     getOperatorConfig: async () => parseJson(await invoke("get_operator_config")),

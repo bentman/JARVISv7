@@ -30,6 +30,10 @@ class ResidentVoiceModeRequest(BaseModel):
     mode: str
 
 
+class ResidentVoiceTTSVoiceRequest(BaseModel):
+    voice: str
+
+
 class ResidentVoiceStatusResponse(BaseModel):
     mode: str
     available: bool
@@ -51,3 +55,7 @@ class ResidentVoiceStatusResponse(BaseModel):
     follow_up_listening: bool = False
     follow_up_source: str | None = None
     continuous_active: bool = False
+    tts_voice: str | None = None
+    tts_supported_voices: list[str] = []
+    tts_voice_restart_required: bool = True
+    tts_voice_model: str | None = None

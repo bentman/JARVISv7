@@ -23,6 +23,38 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 07:50
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Corrected AA.7 Resident Voice selector layout. Voice Selector now matches Mode control width/theme, the restart-required hint carries the separator below it, and the duplicate Settings separator was removed.
+  - Scope:
+    - `desktop/src/style.css`
+    - `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Validation:
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`).
+
+- Timestamp: 2026-07-07 07:30
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.7 voice selector surface. Resident Voice now shows a backend/config-owned TTS voice selector constrained by `config/models/tts.yaml` supported voices, with voice changes marked restart-required.
+  - Scope:
+    - `config/models/tts.yaml`
+    - `backend/app/runtimes/tts/tts_runtime.py`
+    - `backend/app/api/routes/status.py`
+    - `backend/app/api/schemas/status.py`
+    - `desktop/src-tauri/src/backend.rs`
+    - `desktop/src-tauri/src/lib.rs`
+    - `desktop/src/api-client.js`
+    - `desktop/src/index.html`
+    - `desktop/src/main.js`
+    - `desktop/src/style.css`
+    - Focused backend API/static/TTS tests and desktop static tests.
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\runtimes\tts\test_tts_runtime.py -q` PASS (`106 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`710 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - AA.7 does not claim voice quality or stability improvement; selected voice changes are restart-required because active TTS runtimes are constructed from catalog config.
+
 - Timestamp: 2026-07-07 06:26
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Completed Slice AA.6 hands-free, barge-in, and wake reintegration. False barge-in no-speech turns now recover to idle, app barge-in detection requires consecutive speech chunks, and Wake mode remains wake+PTT with wake auto-start preserved.

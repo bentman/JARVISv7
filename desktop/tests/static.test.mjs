@@ -41,10 +41,13 @@ assert.ok(apiClient.includes('invoke("get_wake_status")'), "desktop API client m
 assert.ok(apiClient.includes('invoke("get_resident_voice_status")'), "desktop API client must invoke get_resident_voice_status");
 assert.ok(apiClient.includes('invoke("start_resident_voice_stream")'), "desktop API client must invoke start_resident_voice_stream");
 assert.ok(apiClient.includes('invoke("set_resident_voice_mode"'), "desktop API client must invoke set_resident_voice_mode");
+assert.ok(apiClient.includes('invoke("set_resident_voice_tts_voice"'), "desktop API client must invoke set_resident_voice_tts_voice");
 assert.ok(desktopSource.includes("PTT-only fallback"), "desktop must display PTT-only fallback state");
 assert.ok(index.includes("wake-indicator"), "desktop must display wake status");
 assert.ok(index.includes("wake-toggle"), "desktop must expose wake toggle");
 assert.ok(index.includes("resident-mode"), "desktop must expose resident voice mode control");
+assert.ok(index.includes("resident-tts-voice"), "desktop must expose resident voice selector");
+assert.ok(index.includes("Voice Selector"), "desktop must label resident voice selector");
 assert.ok(index.includes("ptt-only"), "desktop must include PTT-only resident mode");
 assert.ok(index.indexOf("resident-voice-panel") < index.indexOf("wake-monitor-panel"), "Resident Voice must render above Wake in the operator panel");
 assert.ok(index.includes("hands-free"), "desktop must include hands-free resident mode");
@@ -140,6 +143,11 @@ assert.ok(residentVoice.includes("latestTurn?.turn_id"), "resident voice complet
 assert.ok(conversationDebug.includes("currentFailureWithoutTurn"), "conversation debug must show current capture failures ahead of stale latest-turn data");
 assert.ok(main.includes("ensureResidentVoiceStream"), "desktop must start resident stream before resident wake/mode proof");
 assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resident mode mutation");
+assert.ok(main.includes("setResidentTtsVoice"), "desktop must call backend resident TTS voice mutation");
+assert.ok(main.includes("renderResidentTtsVoiceSelector"), "desktop must render TTS voice options from backend status");
+assert.ok(main.includes("tts_supported_voices"), "desktop voice selector must use backend-supported voice options");
+assert.ok(main.includes("tts_voice_restart_required"), "desktop voice selector must render restart-required truth");
+assert.ok(!main.includes("af_bella"), "desktop must not hardcode TTS voice options");
 assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");
 assert.ok(desktopSource.includes("stream_present"), "desktop must keep flat resident stream fallback fields");
 assert.ok(desktopSource.includes("degraded_reasons"), "desktop must render resident degraded reasons");

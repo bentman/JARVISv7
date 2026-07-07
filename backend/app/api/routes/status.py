@@ -6,8 +6,10 @@ from backend.app.api.schemas.status import (
     ResidentVoiceModeRequest,
     ResidentVoiceStatusResponse,
     ResidentVoiceStreamStatus,
+    ResidentVoiceTTSVoiceRequest,
     WakeStatusResponse,
 )
+from backend.app.runtimes.tts.tts_runtime import set_tts_voice, tts_voice_config
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
@@ -77,6 +79,18 @@ def set_resident_voice_mode(
     return build_resident_voice_status(state)
 
 
+@router.put("/status/resident-voice/tts-voice", response_model=ResidentVoiceStatusResponse)
+def set_resident_voice_tts_voice(
+    request: ResidentVoiceTTSVoiceRequest,
+    state: ApiState = Depends(get_api_state),
+) -> ResidentVoiceStatusResponse:
+    try:
+        set_tts_voice(request.voice)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return build_resident_voice_status(state)
+
+
 def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
     stream = state.resident_audio_stream
     stream_status = stream.status() if stream is not None else None
@@ -106,6 +120,7 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         and getattr(state.engine, "interruption_audio_chunks", None) is not None
     )
     barge_in_supported = barge_in_wired and mode in {"hands-free", "continuous"}
+    tts_voice = _tts_voice_response()
     return ResidentVoiceStatusResponse(
         mode=mode,
         available=state.resident_voice is not None
@@ -138,6 +153,10 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         follow_up_listening=follow_up.listening if follow_up is not None else False,
         follow_up_source=follow_up.source if follow_up is not None else None,
         continuous_active=follow_up.continuous_active if follow_up is not None else False,
+        tts_voice=str(tts_voice.get("voice") or "") or None,
+        tts_supported_voices=list(tts_voice.get("supported_voices") or []),
+        tts_voice_restart_required=bool(tts_voice.get("restart_required", True)),
+        tts_voice_model=str(tts_voice.get("model") or "") or None,
     )
 
 
@@ -155,3 +174,10 @@ def _wake_response(status) -> WakeStatusResponse:
         last_score=status.last_score,
         threshold=status.threshold,
     )
+
+
+def _tts_voice_response() -> dict[str, object]:
+    try:
+        return tts_voice_config()
+    except Exception:
+        return {"voice": None, "supported_voices": [], "restart_required": True, "model": None}

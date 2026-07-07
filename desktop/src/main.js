@@ -17,6 +17,8 @@ const turnCountEl = document.querySelector("#session-turn-count");
 const wakeIndicatorEl = document.querySelector("#wake-indicator");
 const wakeToggleEl = document.querySelector("#wake-toggle");
 const residentModeEl = document.querySelector("#resident-mode");
+const residentTtsVoiceEl = document.querySelector("#resident-tts-voice");
+const residentTtsVoiceHintEl = document.querySelector("#resident-tts-voice-hint");
 const residentStatusEl = document.querySelector("#resident-voice-status");
 const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
@@ -178,6 +180,7 @@ async function refreshResidentVoiceStatus() {
   try {
     const status = await api.getResidentVoiceStatus();
     residentVoice.renderResidentModeStatus(status);
+    renderResidentTtsVoiceSelector(status);
     return status;
   } catch (error) {
     residentVoice.renderResidentModeStatus({
@@ -189,8 +192,48 @@ async function refreshResidentVoiceStatus() {
       degraded_reasons: [`resident voice status unavailable: ${String(error)}`],
       stream: { present: false, running: false, subscribers: 0, buffer_chunks: 0, dropped_chunks: 0, last_error: null },
     });
+    renderResidentTtsVoiceSelector({ tts_voice: "", tts_supported_voices: [], tts_voice_restart_required: true });
     return null;
   }
+}
+
+function renderResidentTtsVoiceSelector(status) {
+  if (!residentTtsVoiceEl) return;
+  const voices = Array.isArray(status.tts_supported_voices) ? status.tts_supported_voices : [];
+  const currentVoice = status.tts_voice || "";
+  residentTtsVoiceEl.replaceChildren();
+  if (voices.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = currentVoice || "unavailable";
+    residentTtsVoiceEl.appendChild(option);
+    residentTtsVoiceEl.disabled = true;
+  } else {
+    for (const voice of voices) {
+      const option = document.createElement("option");
+      option.value = voice;
+      option.textContent = voice;
+      option.selected = voice === currentVoice;
+      residentTtsVoiceEl.appendChild(option);
+    }
+    residentTtsVoiceEl.value = voices.includes(currentVoice) ? currentVoice : voices[0];
+    residentTtsVoiceEl.disabled = false;
+  }
+  if (residentTtsVoiceHintEl) {
+    residentTtsVoiceHintEl.textContent = status.tts_voice_restart_required === false ? "Voice changes apply immediately." : "Runtime changes apply after restart.";
+  }
+}
+
+async function setResidentTtsVoice(voice) {
+  if (!api?.setResidentVoiceTtsVoice) return null;
+  clearError();
+  const status = await api.setResidentVoiceTtsVoice(voice);
+  residentVoice.renderResidentModeStatus(status);
+  renderResidentTtsVoiceSelector(status);
+  if (status.tts_voice_restart_required !== false && settingsRestartRequiredEl) {
+    settingsRestartRequiredEl.hidden = false;
+  }
+  return status;
 }
 
 async function ensureResidentVoiceStream() {
@@ -199,6 +242,7 @@ async function ensureResidentVoiceStream() {
   if (current?.stream?.running || current?.stream_running) return current;
   const started = await api.startResidentVoiceStream();
   residentVoice.renderResidentModeStatus(started);
+  renderResidentTtsVoiceSelector(started);
   return started;
 }
 
@@ -210,6 +254,7 @@ async function setResidentVoiceMode(mode) {
   }
   const status = await api.setResidentVoiceMode(mode);
   residentVoice.renderResidentModeStatus(status);
+  renderResidentTtsVoiceSelector(status);
   if (mode === "ptt+wake") {
     await startWakeMonitorIfAvailable();
   } else {
@@ -455,6 +500,12 @@ if (residentModeEl) {
       showError(String(error));
       refreshResidentVoiceStatus().catch(() => undefined);
     });
+  });
+}
+
+if (residentTtsVoiceEl) {
+  residentTtsVoiceEl.addEventListener("change", () => {
+    setResidentTtsVoice(residentTtsVoiceEl.value).catch((error) => showError(String(error)));
   });
 }
 
