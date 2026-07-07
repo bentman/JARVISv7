@@ -26,6 +26,8 @@ class LatestTurnStatus:
     raw_audio_path: str | None = None
     artifact_path: str | None = None
     runtime_context: dict[str, str] | None = None
+    phase_durations_ms: dict[str, float] | None = None
+    failure_phase: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +43,7 @@ class SessionStatus:
     tts_output_device: str | None = None
     latest_turn: LatestTurnStatus | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
+    failure_phase: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +81,7 @@ class SessionService:
         self._invocation_source: str | None = None
         self._tts_output_device: str | None = None
         self._voice_capture_diagnostics: dict[str, object] | None = None
+        self._failure_phase: str | None = None
         self._wake_status_store = WakeStatusStore(
             provider="openwakeword",
             available=False,
@@ -117,6 +121,7 @@ class SessionService:
         self._active = True
         self._state = "IDLE"
         self._failure_reason = None
+        self._failure_phase = None
         self._invocation_source = None
         return self.status()
 
@@ -140,6 +145,7 @@ class SessionService:
             tts_output_device=self._tts_output_device,
             latest_turn=self._latest_turn_status(),
             voice_capture_diagnostics=self._voice_capture_diagnostics,
+            failure_phase=self._failure_phase,
         )
 
     def _latest_turn_status(self) -> LatestTurnStatus | None:
@@ -164,6 +170,8 @@ class SessionService:
             raw_audio_path=latest.raw_audio_path,
             artifact_path=str(artifact_path),
             runtime_context=dict(latest.runtime_context),
+            phase_durations_ms=dict(latest.phase_durations_ms),
+            failure_phase=latest.failure_phase,
         )
 
     def is_session_active(self) -> bool:
@@ -178,6 +186,7 @@ class SessionService:
     def begin_voice_invocation(self, source: str) -> SessionStatus:
         self._state = ConversationState.LISTENING.value
         self._failure_reason = None
+        self._failure_phase = None
         self._invocation_source = source
         self._voice_capture_diagnostics = None
         return self.status()
@@ -192,6 +201,7 @@ class SessionService:
         self._last_transcript = result.transcript
         self._last_response = result.response_text
         self._failure_reason = result.failure_reason
+        self._failure_phase = getattr(result, "failure_phase", None)
         self._tts_output_device = getattr(result, "tts_output_device", None)
         self._state = (state or result.final_state).value
         if self._state != ConversationState.FAILED.value:
@@ -200,6 +210,7 @@ class SessionService:
 
     def fail_voice_invocation(self, reason: str) -> SessionStatus:
         self._failure_reason = reason
+        self._failure_phase = "capture" if self._voice_capture_diagnostics is not None else "turn-state"
         self._state = ConversationState.FAILED.value
         return self.status()
 

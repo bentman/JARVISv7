@@ -60,6 +60,9 @@ def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tm
     ]
     assert service.status().state == "IDLE"
     assert service.status().last_transcript == "hello"
+    assert service.status().voice_capture_diagnostics is not None
+    assert service.status().voice_capture_diagnostics["reason"] == "capture-complete"
+    assert "capture_ms" in service.status().voice_capture_diagnostics
     assert RealtimeEventType.REASONING not in session.ledger.event_types()
 
 

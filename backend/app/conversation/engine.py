@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import time
 import wave
 from dataclasses import dataclass, field
 from typing import Any, Iterable
@@ -48,6 +49,8 @@ class TurnResult:
     raw_audio_path: str | None = None
     active_personality_profile_id: str = "unknown"
     profile_epoch: int = 0
+    phase_durations_ms: dict[str, float] = field(default_factory=dict)
+    failure_phase: str | None = None
 
 
 class TurnEngine:
@@ -107,11 +110,17 @@ class TurnEngine:
         tool_input: dict[str, object] | None = None,
     ) -> TurnResult:
         context = self._create_context("voice")
+        voice_turn_started_at = time.perf_counter()
+        phase_durations_ms: dict[str, float] = {}
         raw_audio_path = self._persist_voice_audio(context, audio, sample_rate)
         try:
             context.advance(ConversationState.LISTENING)
             context.advance(ConversationState.TRANSCRIBING)
-            transcript = self.stt.transcribe(np.asarray(audio, dtype=np.float32), sample_rate)
+            stt_started_at = time.perf_counter()
+            try:
+                transcript = self.stt.transcribe(np.asarray(audio, dtype=np.float32), sample_rate)
+            finally:
+                phase_durations_ms["stt_ms"] = _elapsed_ms(stt_started_at)
             if not transcript.strip():
                 return self._fail(
                     context,
@@ -119,6 +128,8 @@ class TurnEngine:
                     response_text=None,
                     reason="STT returned empty transcript",
                     raw_audio_path=raw_audio_path,
+                    phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                    failure_phase="stt",
                 )
             return self._run_reasoning_path(
                 context,
@@ -127,9 +138,19 @@ class TurnEngine:
                 tool_name=tool_name,
                 tool_input=tool_input,
                 raw_audio_path=raw_audio_path,
+                phase_durations_ms=phase_durations_ms,
+                voice_turn_started_at=voice_turn_started_at,
             )
         except Exception as exc:
-            return self._fail(context, transcript=None, response_text=None, reason=str(exc), raw_audio_path=raw_audio_path)
+            return self._fail(
+                context,
+                transcript=None,
+                response_text=None,
+                reason=str(exc),
+                raw_audio_path=raw_audio_path,
+                phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                failure_phase=_failure_phase_for_state(context.state),
+            )
 
     def _run_reasoning_path(
         self,
@@ -140,7 +161,10 @@ class TurnEngine:
         tool_name: str | None = None,
         tool_input: dict[str, object] | None = None,
         raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
     ) -> TurnResult:
+        phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         try:
             context.advance(ConversationState.REASONING)
             continuity_packet = self.session_manager.build_continuity_packet(latest_text=transcript) if self.session_manager else None
@@ -188,9 +212,22 @@ class TurnEngine:
             )
 
             prompt = render_flat_prompt(prompt_envelope)
-            response = bound_single_turn_response(self.llm.generate_envelope(prompt_envelope))
+            llm_started_at = time.perf_counter()
+            try:
+                response = bound_single_turn_response(self.llm.generate_envelope(prompt_envelope))
+            finally:
+                if voice_turn_started_at is not None:
+                    phase_durations_ms["llm_ms"] = _elapsed_ms(llm_started_at)
             if not response.strip():
-                return self._fail(context, transcript=transcript, response_text=response, reason="LLM returned empty response")
+                return self._fail(
+                    context,
+                    transcript=transcript,
+                    response_text=response,
+                    reason="LLM returned empty response",
+                    raw_audio_path=raw_audio_path,
+                    phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                    failure_phase="llm" if voice_turn_started_at is not None else _failure_phase_for_state(context.state),
+                )
             context.advance(ConversationState.RESPONDING)
             response = apply_personality_style_guard(
                 response,
@@ -207,6 +244,8 @@ class TurnEngine:
                     tool_results=tool_results,
                     retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
                     raw_audio_path=raw_audio_path,
+                    phase_durations_ms=phase_durations_ms,
+                    voice_turn_started_at=voice_turn_started_at,
                 )
             context.advance(ConversationState.IDLE)
             result = TurnResult(
@@ -220,6 +259,7 @@ class TurnEngine:
                 raw_audio_path=raw_audio_path,
                 active_personality_profile_id=self.personality.profile_id,
                 profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+                phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
             )
             self._record_artifact(
                 context,
@@ -229,7 +269,15 @@ class TurnEngine:
             )
             return result
         except Exception as exc:
-            return self._fail(context, transcript=transcript, response_text=None, reason=str(exc))
+            return self._fail(
+                context,
+                transcript=transcript,
+                response_text=None,
+                reason=str(exc),
+                raw_audio_path=raw_audio_path,
+                phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                failure_phase=_failure_phase_for_state(context.state),
+            )
 
     def _speak_or_degrade(
         self,
@@ -241,7 +289,10 @@ class TurnEngine:
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
     ) -> TurnResult:
+        phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         if not self.tts.is_available():
             context.advance(ConversationState.IDLE)
             result = TurnResult(
@@ -257,6 +308,7 @@ class TurnEngine:
                 raw_audio_path=raw_audio_path,
                 active_personality_profile_id=self.personality.profile_id,
                 profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+                phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
             )
             self._record_artifact(
                 context,
@@ -266,8 +318,13 @@ class TurnEngine:
             )
             return result
 
-        audio = self.tts.synthesize(response_text)
-        sample_rate = self.tts.sample_rate()
+        tts_started_at = time.perf_counter()
+        try:
+            audio = self.tts.synthesize(response_text)
+            sample_rate = self.tts.sample_rate()
+        finally:
+            if voice_turn_started_at is not None:
+                phase_durations_ms["tts_synth_ms"] = _elapsed_ms(tts_started_at)
         context.advance(ConversationState.SPEAKING)
         if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
             return self._play_with_interruption_monitor(
@@ -279,8 +336,15 @@ class TurnEngine:
                 audio=audio,
                 sample_rate=sample_rate,
                 raw_audio_path=raw_audio_path,
+                phase_durations_ms=phase_durations_ms,
+                voice_turn_started_at=voice_turn_started_at,
             )
-        self.playback_api.play(audio, sample_rate)
+        playback_started_at = time.perf_counter()
+        try:
+            self.playback_api.play(audio, sample_rate)
+        finally:
+            if voice_turn_started_at is not None:
+                phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
         tts_output_device = getattr(self.playback_api, "last_output_device", lambda: None)()
         context.advance(ConversationState.IDLE)
         result = TurnResult(
@@ -293,6 +357,7 @@ class TurnEngine:
             raw_audio_path=raw_audio_path,
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+            phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
         )
         self._record_artifact(
             context,
@@ -314,9 +379,13 @@ class TurnEngine:
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
     ) -> TurnResult:
+        phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         assert self.barge_in_detector is not None
         self.barge_in_detector.reset()
+        playback_started_at = time.perf_counter()
         self.playback_api.start(audio, sample_rate)
         chunks = iter(self.interruption_audio_chunks or [])
         while self._playback_is_playing():
@@ -335,6 +404,8 @@ class TurnEngine:
                 context.advance(ConversationState.INTERRUPTED)
                 context.advance(ConversationState.RECOVERING)
                 context.advance(ConversationState.IDLE)
+                if voice_turn_started_at is not None:
+                    phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
                 result = TurnResult(
                     turn_id=context.turn_id,
                     session_id=context.session_id,
@@ -348,6 +419,7 @@ class TurnEngine:
                     raw_audio_path=raw_audio_path,
                     active_personality_profile_id=self.personality.profile_id,
                     profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+                    phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
                 )
                 self._record_artifact(
                     context,
@@ -358,6 +430,8 @@ class TurnEngine:
                 return result
 
         context.advance(ConversationState.IDLE)
+        if voice_turn_started_at is not None:
+            phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
         result = TurnResult(
             turn_id=context.turn_id,
             session_id=context.session_id,
@@ -369,6 +443,7 @@ class TurnEngine:
             raw_audio_path=raw_audio_path,
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+            phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
         )
         self._record_artifact(
             context,
@@ -392,6 +467,8 @@ class TurnEngine:
         response_text: str | None,
         reason: str,
         raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        failure_phase: str | None = None,
     ) -> TurnResult:
         if context.state != ConversationState.FAILED:
             context.advance(ConversationState.FAILED)
@@ -405,6 +482,8 @@ class TurnEngine:
             raw_audio_path=raw_audio_path,
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+            phase_durations_ms=phase_durations_ms or {},
+            failure_phase=failure_phase,
         )
         self._record_artifact(context, result, final_prompt_text=None)
         return result
@@ -451,6 +530,8 @@ class TurnEngine:
             tools_invoked=[str(call["tool_name"]) for call in result.tool_calls if isinstance(call.get("tool_name"), str)],
             agent_trace={"tool_calls": result.tool_calls, "tool_results": result.tool_results} if result.tool_calls else None,
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
+            phase_durations_ms=dict(result.phase_durations_ms),
+            failure_phase=result.failure_phase,
         )
         self.session_manager.record_turn_artifact(artifact)
         if self.episodic is not None:
@@ -549,3 +630,29 @@ def _runtime_device_label(runtime: object) -> str:
         label = re.sub(r"([a-z0-9])([A-Z])", r"\1-\2", first_pass).lower()
     device = getattr(runtime, "device", None)
     return f"{label}/{device or 'unknown'}"
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return round(max(0.0, (time.perf_counter() - started_at) * 1000.0), 3)
+
+
+def _voice_phase_durations(phase_durations_ms: dict[str, float], voice_turn_started_at: float | None) -> dict[str, float]:
+    if voice_turn_started_at is None:
+        return {}
+    durations = dict(phase_durations_ms)
+    durations["total_voice_turn_ms"] = _elapsed_ms(voice_turn_started_at)
+    return durations
+
+
+def _failure_phase_for_state(state: ConversationState) -> str:
+    if state == ConversationState.LISTENING:
+        return "capture"
+    if state == ConversationState.TRANSCRIBING:
+        return "stt"
+    if state in {ConversationState.REASONING, ConversationState.ACTING}:
+        return "llm"
+    if state == ConversationState.RESPONDING:
+        return "tts"
+    if state == ConversationState.SPEAKING:
+        return "playback"
+    return "turn-state"

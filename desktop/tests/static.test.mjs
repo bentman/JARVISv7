@@ -105,6 +105,9 @@ assert.ok(main.includes("await refreshSessionStatus()"), "desktop text and voice
 assert.ok(conversationDebug.includes("latest_turn"), "conversation debug must render latest-turn session status");
 assert.ok(conversationDebug.includes("artifact_path"), "conversation debug must render turn artifact path");
 assert.ok(conversationDebug.includes("runtime_context"), "conversation debug must render runtime context");
+assert.ok(conversationDebug.includes("phase_durations_ms"), "conversation debug must render latest-turn phase timing");
+assert.ok(conversationDebug.includes("failure_phase"), "conversation debug must render failure phase");
+assert.ok(conversationDebug.includes("raw_audio_path"), "conversation debug must render raw audio replay path");
 assert.ok(conversationDebug.includes("degraded_reason"), "conversation debug must render compact degraded reason");
 assert.ok(!conversationDebug.includes("last_transcript"), "conversation debug must not duplicate transcript text");
 assert.ok(!conversationDebug.includes("last_response"), "conversation debug must not duplicate assistant response text");

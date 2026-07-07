@@ -246,6 +246,10 @@ def test_voice_turn_calls_stt_then_llm():
     assert result.final_state == ConversationState.IDLE
     assert result.tts_degraded is True
     assert result.tts_degraded_reason == "TTS runtime is unavailable"
+    assert "stt_ms" in result.phase_durations_ms
+    assert "llm_ms" in result.phase_durations_ms
+    assert "total_voice_turn_ms" in result.phase_durations_ms
+    assert result.failure_phase is None
 
 
 def test_llm_continuation_markers_are_trimmed_before_response_and_tts(monkeypatch: pytest.MonkeyPatch):
@@ -274,13 +278,17 @@ def test_turn_engine_closes_to_failed_on_stt_error():
 
     assert result.final_state == ConversationState.FAILED
     assert result.failure_reason == "stt failed"
+    assert result.failure_phase == "stt"
+    assert "stt_ms" in result.phase_durations_ms
 
 
 def test_turn_engine_closes_to_failed_on_llm_error():
-    result = _engine(llm=FakeLLM(error=RuntimeError("llm failed"))).run_text_turn("hello")
+    result = _engine(llm=FakeLLM(error=RuntimeError("llm failed"))).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
     assert result.final_state == ConversationState.FAILED
     assert result.failure_reason == "llm failed"
+    assert result.failure_phase == "llm"
+    assert "llm_ms" in result.phase_durations_ms
 
 
 def test_acting_state_entered_when_tool_requested():
@@ -387,6 +395,8 @@ def test_voice_turn_records_tts_output_device_from_playback_api():
 
     assert result.final_state == ConversationState.IDLE
     assert result.tts_output_device == "7: USB headset"
+    assert "tts_synth_ms" in result.phase_durations_ms
+    assert "playback_ms" in result.phase_durations_ms
 
 
 def test_speaking_state_skipped_when_tts_unavailable(monkeypatch: pytest.MonkeyPatch):
@@ -458,10 +468,12 @@ def test_tts_or_playback_error_closes_to_failed(monkeypatch: pytest.MonkeyPatch,
         tts = FakeTTS(available=True, error=RuntimeError("tts failed"))
         monkeypatch.setattr("backend.app.conversation.engine.playback.play", lambda audio, sample_rate: None)
         expected = "tts failed"
+        expected_phase = "tts"
     elif failure_kind == "sample_rate":
         tts = SampleRateErrorTTS(available=True)
         monkeypatch.setattr("backend.app.conversation.engine.playback.play", lambda audio, sample_rate: None)
         expected = "sample rate failed"
+        expected_phase = "tts"
     else:
         tts = FakeTTS(available=True)
 
@@ -470,11 +482,13 @@ def test_tts_or_playback_error_closes_to_failed(monkeypatch: pytest.MonkeyPatch,
 
         monkeypatch.setattr("backend.app.conversation.engine.playback.play", fail_play)
         expected = "playback failed"
+        expected_phase = "playback"
 
     result = _engine(tts=tts).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
     assert result.final_state == ConversationState.FAILED
     assert result.failure_reason == expected
+    assert result.failure_phase == expected_phase
 
 
 def test_engine_without_session_manager_preserves_artifact_free_behavior():
@@ -586,6 +600,8 @@ def test_voice_failure_artifact_preserves_raw_audio_path(tmp_path: Path) -> None
     assert artifact.raw_audio_path is not None
     assert Path(artifact.raw_audio_path).exists()
     assert Path(artifact.raw_audio_path).suffix == ".wav"
+    assert artifact.failure_phase == "stt"
+    assert "stt_ms" in artifact.phase_durations_ms
 
 
 def test_engine_calls_episodic_write_after_artifact_write_when_injected(tmp_path: Path) -> None:

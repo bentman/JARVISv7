@@ -11,6 +11,7 @@ TURN_ARTIFACT_FIELDS: tuple[str, ...] = (
     "agent_trace", "reasoning_trace_metadata", "response_text", "audio_output_path",
     "interruption_events", "final_state", "failure_reason", "tts_degraded",
     "tts_degraded_reason", "tts_output_device", "runtime_context", "phase_timestamps",
+    "phase_durations_ms", "failure_phase",
 )
 
 
@@ -40,6 +41,8 @@ class TurnArtifact:
     tts_output_device: str | None = None
     runtime_context: dict[str, str] = field(default_factory=dict)
     phase_timestamps: dict[str, str] = field(default_factory=dict)
+    phase_durations_ms: dict[str, float] = field(default_factory=dict)
+    failure_phase: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)

@@ -529,6 +529,7 @@ def test_j1_readiness_components_and_containers_exist() -> None:
 def test_j1_conversation_debug_is_collapsed_details_without_voice_capture_change() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")
+    conversation_debug = _read("desktop/src/components/conversation-debug.js")
 
     assert "<details" in index_html
     assert "<summary>Conversation debug details</summary>" in index_html
@@ -540,6 +541,8 @@ def test_j1_conversation_debug_is_collapsed_details_without_voice_capture_change
     assert 'id="voice-detail"' in index_html
     assert index_html.index("<details") < index_html.index('id="voice-detail"')
     assert "renderConversationDebug(status, voiceDetailEl)" in main_js
+    for token in ["phase_durations_ms", "failure_phase", "raw_audio_path", "voice_capture_diagnostics"]:
+        assert token in conversation_debug
     assert 'pttButton.addEventListener("click"' in main_js
     assert 'pttButton.addEventListener("pointerdown"' not in main_js
     assert 'pttButton.addEventListener("pointerup"' not in main_js

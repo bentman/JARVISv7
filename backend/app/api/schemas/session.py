@@ -24,6 +24,8 @@ class LatestTurnSummary(BaseModel):
     raw_audio_path: str | None = None
     artifact_path: str | None = None
     runtime_context: dict[str, str] | None = None
+    phase_durations_ms: dict[str, float] | None = None
+    failure_phase: str | None = None
 
 
 class SessionStatusResponse(BaseModel):
@@ -38,6 +40,7 @@ class SessionStatusResponse(BaseModel):
     tts_output_device: str | None = None
     latest_turn: LatestTurnSummary | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
+    failure_phase: str | None = None
 
 
 class CloseSessionRequest(BaseModel):

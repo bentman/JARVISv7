@@ -19,6 +19,7 @@ def _turn_artifact() -> TurnArtifact:
         final_state="IDLE",
         runtime_context={"llm": "fake"},
         phase_timestamps={"IDLE": "2026-04-27T00:00:00+00:00"},
+        phase_durations_ms={"llm_ms": 12.5},
     )
 
 
@@ -29,6 +30,8 @@ def test_turn_artifact_serializes_to_json():
     assert payload["session_id"] == "session-1"
     assert payload["runtime_context"] == {"llm": "fake"}
     assert payload["phase_timestamps"]["IDLE"].endswith("+00:00")
+    assert payload["phase_durations_ms"] == {"llm_ms": 12.5}
+    assert payload["failure_phase"] is None
 
 
 def test_turn_artifact_roundtrips_via_storage(tmp_path):
@@ -77,6 +80,8 @@ def test_turn_schema_fields_unchanged():
         "tts_output_device",
         "runtime_context",
         "phase_timestamps",
+        "phase_durations_ms",
+        "failure_phase",
     )
 
 

@@ -72,6 +72,8 @@ def _session_status_response(status) -> SessionStatusResponse:
             raw_audio_path=status.latest_turn.raw_audio_path,
             artifact_path=status.latest_turn.artifact_path,
             runtime_context=status.latest_turn.runtime_context,
+            phase_durations_ms=status.latest_turn.phase_durations_ms,
+            failure_phase=status.latest_turn.failure_phase,
         )
     return SessionStatusResponse(
         session_id=status.session_id,
@@ -85,4 +87,5 @@ def _session_status_response(status) -> SessionStatusResponse:
         tts_output_device=status.tts_output_device,
         latest_turn=latest_turn,
         voice_capture_diagnostics=status.voice_capture_diagnostics,
+        failure_phase=status.failure_phase,
     )

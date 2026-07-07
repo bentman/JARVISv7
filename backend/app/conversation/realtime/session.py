@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+import time
 from typing import Protocol
 
 import numpy as np
@@ -58,7 +59,17 @@ class RealtimeConversationSession:
         try:
             if not has_committable_audio(audio, sample_rate):
                 self.ledger.append(RealtimeEventType.AUDIO_CAPTURE_STARTED, source=source, state=ConversationState.LISTENING)
+                capture_started_at = time.perf_counter()
                 audio, sample_rate = audio_capture()
+                self._session_service.record_voice_capture_diagnostics(
+                    source=source,
+                    stage="capture",
+                    diagnostics={
+                        "reason": "capture-complete",
+                        "capture_ms": _elapsed_ms(capture_started_at),
+                        **_audio_metadata(audio, sample_rate),
+                    },
+                )
             self.ledger.append(
                 RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
                 source=source,
@@ -129,3 +140,7 @@ def _audio_metadata(audio: np.ndarray, sample_rate: int | None) -> dict[str, flo
         "rms": rms,
         "peak": peak,
     }
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return round(max(0.0, (time.perf_counter() - started_at) * 1000.0), 3)

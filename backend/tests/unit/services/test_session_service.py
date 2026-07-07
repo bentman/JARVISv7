@@ -47,6 +47,9 @@ class _FakeLLM:
     def generate(self, prompt: str, **kwargs: object) -> str:
         return f"response to {prompt}"
 
+    def generate_envelope(self, envelope, **kwargs: object) -> str:
+        return self.generate(str(envelope), **kwargs)
+
 
 class _FakeWakeRuntime:
     def __init__(self, *, available: bool = True, detections: list[bool] | None = None, error: Exception | None = None) -> None:
@@ -161,7 +164,13 @@ def test_status_reports_voice_latest_turn_runtime_context(tmp_path: Path) -> Non
     assert status.latest_turn.runtime_context == {
         "stt": "fake-stt/cpu",
         "llm": "fake-llm",
+        "tts": "fake-tts/cpu",
     }
+    assert status.latest_turn.phase_durations_ms is not None
+    assert "stt_ms" in status.latest_turn.phase_durations_ms
+    assert "llm_ms" in status.latest_turn.phase_durations_ms
+    assert "total_voice_turn_ms" in status.latest_turn.phase_durations_ms
+    assert status.latest_turn.failure_phase is None
 
 
 def test_status_reports_tts_degraded_artifact_turn(tmp_path: Path) -> None:
@@ -177,6 +186,7 @@ def test_status_reports_tts_degraded_artifact_turn(tmp_path: Path) -> None:
             tts_degraded=True,
             tts_degraded_reason="TTS runtime is unavailable",
             runtime_context={"stt": "fake-stt/cpu", "llm": "fake-llm", "tts": "fake-tts/cpu"},
+            phase_durations_ms={"stt_ms": 1.0, "llm_ms": 2.0, "total_voice_turn_ms": 3.0},
         )
     )
 
@@ -190,6 +200,7 @@ def test_status_reports_tts_degraded_artifact_turn(tmp_path: Path) -> None:
         "llm": "fake-llm",
         "tts": "fake-tts/cpu",
     }
+    assert status.latest_turn.phase_durations_ms == {"stt_ms": 1.0, "llm_ms": 2.0, "total_voice_turn_ms": 3.0}
 
 
 def test_pre_engine_voice_failure_uses_live_status_without_latest_turn(tmp_path: Path) -> None:
@@ -209,6 +220,7 @@ def test_pre_engine_voice_failure_uses_live_status_without_latest_turn(tmp_path:
     assert status.latest_turn is None
     assert status.voice_capture_diagnostics is not None
     assert status.voice_capture_diagnostics["speech_started"] is False
+    assert status.failure_phase == "capture"
 
 
 def test_status_reports_failed_artifact_turn(tmp_path: Path) -> None:
@@ -223,6 +235,7 @@ def test_status_reports_failed_artifact_turn(tmp_path: Path) -> None:
             final_state="FAILED",
             failure_reason="llm failed",
             runtime_context={"llm": "fake-llm"},
+            failure_phase="llm",
         )
     )
 
@@ -232,6 +245,7 @@ def test_status_reports_failed_artifact_turn(tmp_path: Path) -> None:
     assert status.latest_turn.turn_id == "failed-turn"
     assert status.latest_turn.final_state == "FAILED"
     assert status.latest_turn.failure_reason == "llm failed"
+    assert status.latest_turn.failure_phase == "llm"
     assert status.latest_turn.runtime_context == {"llm": "fake-llm"}
 
 
