@@ -83,7 +83,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         personality=state.personality,
         session_manager=manager,
         cache_manager=state.cache_manager,
-        barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2),
+        barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
     )
 

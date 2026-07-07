@@ -493,6 +493,22 @@ def test_barge_in_detector_requires_minimum_speech_duration_with_vad() -> None:
     assert detector.detect(np.ones(10, dtype=np.float32)) is True
 
 
+def test_barge_in_detector_requires_consecutive_speech_chunks_when_configured() -> None:
+    detector = BargeInDetector(
+        energy_threshold=0.02,
+        guard_time_s=0.0,
+        min_speech_s=0.0,
+        min_speech_chunks=2,
+        sample_rate=1000,
+        time_source=lambda: 1.0,
+    )
+
+    assert detector.detect(np.full(10, 0.1, dtype=np.float32)) is False
+    assert detector.detect(np.full(10, 0.0, dtype=np.float32)) is False
+    assert detector.detect(np.full(10, 0.1, dtype=np.float32)) is False
+    assert detector.detect(np.full(10, 0.1, dtype=np.float32)) is True
+
+
 def test_barge_in_detector_resets_speech_accumulator_on_non_speech() -> None:
     class SequencedVAD:
         def __init__(self) -> None:

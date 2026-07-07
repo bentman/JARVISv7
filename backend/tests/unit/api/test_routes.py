@@ -1066,6 +1066,19 @@ def test_resident_voice_mode_endpoint_sets_visible_mode_and_stops_wake_for_ptt_o
     assert client.get("/status/wake").json()["active"] is False
 
 
+def test_resident_voice_wake_mode_keeps_wake_plus_ptt_available() -> None:
+    client = _client()
+
+    response = client.put("/status/resident-voice/mode", json={"mode": "ptt+wake"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["mode"] == "ptt+wake"
+    assert payload["ptt_supported"] is True
+    assert payload["wake_supported"] is True
+    assert payload["barge_in_supported"] is False
+
+
 def test_resident_voice_status_reconciles_ptt_only_with_active_wake() -> None:
     client = _client()
     state = client.app.state.jarvis_state

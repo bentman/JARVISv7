@@ -23,6 +23,21 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 06:26
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.6 hands-free, barge-in, and wake reintegration. False barge-in no-speech turns now recover to idle, app barge-in detection requires consecutive speech chunks, and Wake mode remains wake+PTT with wake auto-start preserved.
+  - Scope:
+    - `backend/app/conversation/realtime/session.py`
+    - `backend/app/runtimes/stt/barge_in.py`
+    - `backend/app/api/app.py`
+    - Focused backend realtime/resident/wake/barge-in/API/static tests and desktop static tests.
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\services\test_resident_voice_modes.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\runtimes\stt\test_stt_runtime.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`155 passed, 1 skipped`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`709 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - Resident Voice modes remain `PTT-only` and `Wake` with barge-in disabled, and `Hands-free` and `Continuous` with barge-in enabled when wired.
+
 - Timestamp: 2026-07-07 05:47
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Completed Slice AA.5 endpointing and VAD stabilization. Resident utterance endpointing now uses adaptive pre-speech noise floor evidence and a speech-start debounce while preserving pre-roll, no-speech, max-duration, stream-ended, too-short, and silence endpoint reasons.

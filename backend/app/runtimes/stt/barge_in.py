@@ -14,6 +14,7 @@ class BargeInDetector:
         energy_threshold: float = 0.02,
         guard_time_s: float = 0.5,
         min_speech_s: float = 0.2,
+        min_speech_chunks: int = 1,
         sample_rate: int = 16000,
         vad: VADRuntime | None = None,
         time_source: Callable[[], float] | None = None,
@@ -21,15 +22,18 @@ class BargeInDetector:
         self.energy_threshold = energy_threshold
         self.guard_time_s = guard_time_s
         self.min_speech_s = min_speech_s
+        self.min_speech_chunks = max(1, min_speech_chunks)
         self.sample_rate = sample_rate
         self.vad = vad
         self._time_source = time_source
         self._started_at: float | None = None
         self._speech_samples = 0
+        self._speech_chunks = 0
 
     def reset(self) -> None:
         self._started_at = self._now()
         self._speech_samples = 0
+        self._speech_chunks = 0
 
     def detect(self, audio_chunk: np.ndarray) -> bool:
         samples = np.asarray(audio_chunk, dtype=np.float32)
@@ -44,9 +48,11 @@ class BargeInDetector:
             speech = rms >= self.energy_threshold
         if not speech:
             self._speech_samples = 0
+            self._speech_chunks = 0
             return False
         self._speech_samples += int(samples.size)
-        return self._speech_samples >= int(self.min_speech_s * self.sample_rate)
+        self._speech_chunks += 1
+        return self._speech_samples >= int(self.min_speech_s * self.sample_rate) and self._speech_chunks >= self.min_speech_chunks
 
     def _now(self) -> float:
         if self._time_source is not None:

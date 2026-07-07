@@ -184,6 +184,39 @@ def test_realtime_wake_empty_transcript_maps_no_speech_failure(tmp_path: Path) -
     assert session.ledger.event_types()[-1] == RealtimeEventType.SESSION_FAILED
 
 
+def test_realtime_barge_in_empty_transcript_recovers_to_idle(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    engine = _FakeEngine(
+        TurnResult(
+            turn_id="turn-false-barge",
+            session_id="session-realtime",
+            transcript="",
+            response_text=None,
+            final_state=ConversationState.FAILED,
+            failure_reason="STT returned empty transcript",
+            failure_phase="stt",
+        )
+    )
+    session = RealtimeConversationSession(
+        session_service=service,
+        engine_provider=lambda: engine,  # type: ignore[return-value]
+    )
+
+    result = session.run_voice_invocation(
+        source="barge_in",
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.failure_reason is None
+    assert service.status().state == "IDLE"
+    assert service.status().failure_reason is None
+    assert session.ledger.event_types()[-2:] == [
+        RealtimeEventType.TURN_COMPLETED,
+        RealtimeEventType.SESSION_IDLE,
+    ]
+
+
 def test_realtime_capture_failure_records_failed_status_and_event(tmp_path: Path) -> None:
     service = _service(tmp_path)
     session = RealtimeConversationSession(

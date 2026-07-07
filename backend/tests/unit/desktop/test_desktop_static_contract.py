@@ -154,6 +154,8 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert 'invoke("toggle_wake_monitor")' in api_client
     assert "refreshWakeStatus" in main_js
     assert "startWakeMonitorIfAvailable" in main_js
+    assert 'if (mode === "ptt+wake")' in main_js
+    assert "await startWakeMonitorIfAvailable()" in main_js
     assert "createDesktopPolling({" in main_js
     assert "startAllPolling()" in main_js
     assert "stopAllPolling()" in main_js

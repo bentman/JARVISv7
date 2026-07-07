@@ -89,12 +89,28 @@ class RealtimeConversationSession:
             result = self._run_engine_with_live_status(audio, sample_rate)
             if source == "wake" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
                 result = replace(result, failure_reason=WAKE_NO_SPEECH_REASON)
+            if source == "barge_in" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
+                result = self._recover_false_barge_in(result)
+                return result
             self._record_result(source, result)
             return result
         except Exception as exc:
             self._session_service.fail_voice_invocation(str(exc))
             self.ledger.append(RealtimeEventType.SESSION_FAILED, source=source, state=ConversationState.FAILED, metadata={"reason": str(exc)})
             raise
+
+    def _recover_false_barge_in(self, result: TurnResult) -> TurnResult:
+        recovered = replace(result, final_state=ConversationState.IDLE, failure_reason=None, failure_phase=None)
+        self._session_service.complete_voice_invocation(recovered, state=ConversationState.IDLE)
+        self.ledger.append(
+            RealtimeEventType.TURN_COMPLETED,
+            source="barge_in",
+            turn_id=recovered.turn_id,
+            state=ConversationState.IDLE,
+            metadata={"reason": "false-barge-in-no-speech"},
+        )
+        self.ledger.append(RealtimeEventType.SESSION_IDLE, source="barge_in", turn_id=recovered.turn_id, state=ConversationState.IDLE)
+        return recovered
 
     def _record_result(self, source: str, result: TurnResult) -> None:
         if result.failure_reason:
