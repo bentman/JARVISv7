@@ -20,6 +20,7 @@ def test_segmenter_detects_speech_start_and_silence_end() -> None:
         vad=EnergyVADRuntime(speech_rms_threshold=0.05),
         sample_rate=16000,
         pre_roll_s=0.00025,
+        speech_start_s=0.0005,
         min_speech_s=0.0005,
         silence_end_s=0.0005,
         no_speech_timeout_s=1.0,
@@ -57,6 +58,7 @@ def test_segmenter_reports_too_short_when_stream_ends_before_minimum_duration() 
         vad=EnergyVADRuntime(speech_rms_threshold=0.05),
         sample_rate=16000,
         min_speech_s=0.001,
+        speech_start_s=0.00025,
     )
 
     result = segmenter.capture([_chunk(0.2, 1)])
@@ -71,6 +73,7 @@ def test_segmenter_stops_at_max_duration() -> None:
         vad=EnergyVADRuntime(speech_rms_threshold=0.05),
         sample_rate=16000,
         max_duration_s=0.00075,
+        speech_start_s=0.00025,
         min_speech_s=0.0,
         silence_end_s=1.0,
     )
@@ -88,6 +91,7 @@ def test_segmenter_includes_bounded_pre_roll_before_speech() -> None:
         vad=EnergyVADRuntime(speech_rms_threshold=0.05),
         sample_rate=16000,
         pre_roll_s=0.0005,
+        speech_start_s=0.00025,
         min_speech_s=0.00025,
         silence_end_s=0.00025,
     )
@@ -121,6 +125,7 @@ def test_segmenter_fixture_tolerates_operator_delay_with_resident_timeout() -> N
     segmenter = UtteranceSegmenter(
         vad=EnergyVADRuntime(),
         sample_rate=sample_rate,
+        speech_start_s=0.08,
         no_speech_timeout_s=5.0,
         silence_end_s=0.5,
     )
@@ -131,3 +136,100 @@ def test_segmenter_fixture_tolerates_operator_delay_with_resident_timeout() -> N
     assert result.reason == "silence"
     assert result.diagnostics.speech_chunks > 0
     assert result.diagnostics.peak > 0.1
+
+
+def test_segmenter_accepts_quiet_speech_above_calibrated_threshold() -> None:
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.02),
+        sample_rate=16000,
+        pre_roll_s=0.00025,
+        speech_start_s=0.0005,
+        min_speech_s=0.0005,
+        silence_end_s=0.0005,
+        noise_floor_multiplier=3.0,
+        noise_floor_margin=0.002,
+    )
+
+    result = segmenter.capture([_chunk(0.004, 1), _chunk(0.025, 2), _chunk(0.025, 3), _chunk(0.0, 4), _chunk(0.0, 5)])
+
+    assert result.speech_started is True
+    assert result.reason == "silence"
+    assert result.speech_chunks == 2
+    assert result.diagnostics.noise_floor_rms < result.diagnostics.effective_speech_threshold
+
+
+def test_segmenter_rejects_background_noise_below_adaptive_threshold() -> None:
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.015),
+        sample_rate=16000,
+        speech_start_s=0.0005,
+        no_speech_timeout_s=0.001,
+        noise_floor_multiplier=3.0,
+        noise_floor_margin=0.003,
+    )
+
+    result = segmenter.capture([_chunk(0.012, 1), _chunk(0.018, 2), _chunk(0.018, 3), _chunk(0.018, 4)])
+
+    assert result.speech_started is False
+    assert result.reason == "no-speech"
+    assert result.speech_chunks == 0
+    assert result.diagnostics.effective_speech_threshold > 0.018
+
+
+def test_segmenter_debounces_single_background_spike_before_speech_start() -> None:
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=16000,
+        speech_start_s=0.0005,
+        no_speech_timeout_s=0.001,
+    )
+
+    result = segmenter.capture([_chunk(0.0, 1), _chunk(0.2, 2), _chunk(0.0, 3), _chunk(0.0, 4)])
+
+    assert result.speech_started is False
+    assert result.reason == "no-speech"
+    assert result.speech_chunks == 0
+
+
+def test_segmenter_keeps_brief_hesitation_inside_utterance() -> None:
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=16000,
+        speech_start_s=0.0005,
+        min_speech_s=0.0005,
+        silence_end_s=0.00075,
+    )
+
+    result = segmenter.capture(
+        [
+            _chunk(0.2, 1),
+            _chunk(0.2, 2),
+            _chunk(0.0, 3),
+            _chunk(0.2, 4),
+            _chunk(0.2, 5),
+            _chunk(0.0, 6),
+            _chunk(0.0, 7),
+            _chunk(0.0, 8),
+        ]
+    )
+
+    assert result.speech_started is True
+    assert result.reason == "silence"
+    assert result.speech_chunks == 4
+    assert result.audio.shape == (32,)
+
+
+def test_segmenter_reports_stream_ended_after_confirmed_speech_without_endpoint() -> None:
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=16000,
+        speech_start_s=0.0005,
+        min_speech_s=0.0005,
+        silence_end_s=1.0,
+    )
+
+    result = segmenter.capture([_chunk(0.2, 1), _chunk(0.2, 2)])
+
+    assert result.speech_started is True
+    assert result.reason == "stream-ended"
+    assert result.speech_chunks == 2

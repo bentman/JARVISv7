@@ -25,6 +25,13 @@ EngineProvider = Callable[[], TurnEngine]
 
 EMPTY_TRANSCRIPT_REASON = "STT returned empty transcript"
 WAKE_NO_SPEECH_REASON = "No speech detected after wake"
+LIVE_STATUS_PHASES = {
+    ConversationState.TRANSCRIBING,
+    ConversationState.REASONING,
+    ConversationState.ACTING,
+    ConversationState.RESPONDING,
+    ConversationState.SPEAKING,
+}
 
 
 class RealtimeConversationSession:
@@ -79,7 +86,7 @@ class RealtimeConversationSession:
             self.ledger.append(RealtimeEventType.USER_TURN_COMMITTED, source=source)
             self._session_service.mark_voice_transient_state(ConversationState.TRANSCRIBING)
             self.ledger.append(RealtimeEventType.TRANSCRIBING, source=source, state=ConversationState.TRANSCRIBING)
-            result = self._engine_provider().run_voice_turn(audio, sample_rate)
+            result = self._run_engine_with_live_status(audio, sample_rate)
             if source == "wake" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
                 result = replace(result, failure_reason=WAKE_NO_SPEECH_REASON)
             self._record_result(source, result)
@@ -125,6 +132,19 @@ class RealtimeConversationSession:
         self._session_service.complete_voice_invocation(result, state=result.final_state)
         self.ledger.append(RealtimeEventType.TURN_COMPLETED, source=source, turn_id=result.turn_id, state=result.final_state)
         self.ledger.append(RealtimeEventType.SESSION_IDLE, source=source, turn_id=result.turn_id, state=ConversationState.IDLE)
+
+    def _run_engine_with_live_status(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+        engine = self._engine_provider()
+        previous_observer = getattr(engine, "phase_observer", None)
+        setattr(engine, "phase_observer", self._observe_live_phase)
+        try:
+            return engine.run_voice_turn(audio, sample_rate)
+        finally:
+            setattr(engine, "phase_observer", previous_observer)
+
+    def _observe_live_phase(self, state: ConversationState) -> None:
+        if state in LIVE_STATUS_PHASES:
+            self._session_service.mark_voice_transient_state(state)
 
 
 def _audio_metadata(audio: np.ndarray, sample_rate: int | None) -> dict[str, float | int | str | None]:

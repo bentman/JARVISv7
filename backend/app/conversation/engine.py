@@ -18,7 +18,7 @@ from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
-from backend.app.conversation.turn_manager import TurnContext
+from backend.app.conversation.turn_manager import PhaseObserver, TurnContext
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
@@ -87,6 +87,7 @@ class TurnEngine:
         self.episodic = episodic
         self.cache_manager = cache_manager
         self.retrieval = RetrievalManager()
+        self.phase_observer: PhaseObserver | None = None
 
     def run_text_turn(self, text: str, *, tool_name: str | None = None, tool_input: dict[str, object] | None = None) -> TurnResult:
         transcript = text.strip()
@@ -492,11 +493,11 @@ class TurnEngine:
         if self.session_manager is not None:
             if modality not in {"voice", "text"}:
                 raise ValueError("modality must be voice or text")
-            return self.session_manager.create_turn_context(modality)  # type: ignore[arg-type]
+            return self.session_manager.create_turn_context(modality, phase_observer=self.phase_observer)  # type: ignore[arg-type]
         if modality == "voice":
-            return TurnContext(session_id=self.session_id, modality="voice")
+            return TurnContext(session_id=self.session_id, modality="voice", phase_observer=self.phase_observer)
         if modality == "text":
-            return TurnContext(session_id=self.session_id, modality="text")
+            return TurnContext(session_id=self.session_id, modality="text", phase_observer=self.phase_observer)
         raise ValueError("modality must be voice or text")
 
     def _record_artifact(

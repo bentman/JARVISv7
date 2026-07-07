@@ -28,9 +28,18 @@ def test_turn_context_advance_records_timestamp():
 
     context.advance(ConversationState.REASONING)
 
-
     assert context.state == ConversationState.REASONING
     assert ConversationState.REASONING.value in context.phase_timestamps
+
+
+def test_turn_context_advance_notifies_phase_observer():
+    observed: list[ConversationState] = []
+    context = TurnContext(session_id="session", modality="text", phase_observer=observed.append)
+
+    context.advance(ConversationState.REASONING)
+    context.advance(ConversationState.RESPONDING)
+
+    assert observed == [ConversationState.REASONING, ConversationState.RESPONDING]
 
 
 def test_turn_context_advance_rejects_invalid_transition():

@@ -14,7 +14,7 @@ from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.continuity import ContinuityPacket, ContinuityPacketBuilder
 from backend.app.conversation.continuity_policy import ContinuityPolicyInput, decide_continuity
 from backend.app.conversation.states import ConversationState
-from backend.app.conversation.turn_manager import TurnContext, utc_now
+from backend.app.conversation.turn_manager import PhaseObserver, TurnContext, utc_now
 from backend.app.core.paths import DATA_DIR
 from backend.app.memory.working import WorkingMemory
 from backend.app.memory.write_policy import WritePolicy
@@ -42,8 +42,13 @@ class SessionManager:
             self.timeline = SessionTimeline(session_id=self.session_id)
             self.timeline.append("session_started", timestamp=self.started_at, state=ConversationState.IDLE.value)
 
-    def create_turn_context(self, modality: Literal["voice", "text"]) -> TurnContext:
-        return TurnContext(session_id=self.session_id, modality=modality)
+    def create_turn_context(
+        self,
+        modality: Literal["voice", "text"],
+        *,
+        phase_observer: PhaseObserver | None = None,
+    ) -> TurnContext:
+        return TurnContext(session_id=self.session_id, modality=modality, phase_observer=phase_observer)
 
     def get_working_context(self, policy: WritePolicy) -> list[str]:
         self._apply_policy_capacity(policy)

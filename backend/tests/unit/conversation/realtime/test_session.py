@@ -15,6 +15,7 @@ class _FakeEngine:
     def __init__(self, result: TurnResult | None = None) -> None:
         self.calls: list[tuple[np.ndarray, int]] = []
         self.result = result
+        self.phase_observer = None
 
     def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
         self.calls.append((audio, sample_rate))
@@ -27,6 +28,24 @@ class _FakeEngine:
             response_text="response",
             final_state=ConversationState.IDLE,
         )
+
+
+class _PhaseReportingEngine(_FakeEngine):
+    def __init__(self, service) -> None:
+        super().__init__()
+        self.service = service
+        self.status_samples: list[str] = []
+
+    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+        assert self.phase_observer is not None
+        for state in [
+            ConversationState.REASONING,
+            ConversationState.RESPONDING,
+            ConversationState.SPEAKING,
+        ]:
+            self.phase_observer(state)
+            self.status_samples.append(self.service.status().state)
+        return super().run_voice_turn(audio, sample_rate)
 
 
 def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tmp_path: Path) -> None:
@@ -64,6 +83,23 @@ def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tm
     assert service.status().voice_capture_diagnostics["reason"] == "capture-complete"
     assert "capture_ms" in service.status().voice_capture_diagnostics
     assert RealtimeEventType.REASONING not in session.ledger.event_types()
+
+
+def test_realtime_voice_invocation_publishes_live_engine_phase_status(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    engine = _PhaseReportingEngine(service)
+    session = RealtimeConversationSession(
+        session_service=service,
+        engine_provider=lambda: engine,  # type: ignore[return-value]
+    )
+
+    session.run_voice_invocation(
+        source="ptt",
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+
+    assert engine.status_samples == ["REASONING", "RESPONDING", "SPEAKING"]
+    assert service.status().state == "IDLE"
 
 
 def test_realtime_degraded_tts_response_does_not_record_speech_events(tmp_path: Path) -> None:

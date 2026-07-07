@@ -303,9 +303,12 @@ def test_engine_is_bound_to_active_session_manager(tmp_path: Path) -> None:
 def test_voice_transient_state_marker_accepts_only_realtime_snapshot_phases(tmp_path: Path) -> None:
     service = _service(tmp_path)
 
-    status = service.mark_voice_transient_state(ConversationState.RESPONDING)
+    status = service.mark_voice_transient_state(ConversationState.REASONING)
 
-    assert status.state == "RESPONDING"
+    assert status.state == "REASONING"
+    assert service.mark_voice_transient_state(ConversationState.ACTING).state == "ACTING"
+    assert service.mark_voice_transient_state(ConversationState.RESPONDING).state == "RESPONDING"
+    assert service.mark_voice_transient_state(ConversationState.SPEAKING).state == "SPEAKING"
     try:
         service.mark_voice_transient_state(ConversationState.IDLE)
     except ValueError as exc:

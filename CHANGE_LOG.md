@@ -23,6 +23,46 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 05:47
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.5 endpointing and VAD stabilization. Resident utterance endpointing now uses adaptive pre-speech noise floor evidence and a speech-start debounce while preserving pre-roll, no-speech, max-duration, stream-ended, too-short, and silence endpoint reasons.
+  - Scope:
+    - `backend/app/services/utterance_segmenter.py`
+    - `backend/tests/unit/services/test_utterance_segmenter.py`
+    - `backend/tests/unit/services/test_resident_voice_invocation.py`
+    - `backend/tests/unit/services/test_resident_voice_modes.py`
+    - `backend/tests/unit/services/test_wake_monitor.py`
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_resident_voice_modes.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\services\test_utterance_segmenter.py backend\tests\unit\runtimes\vad\test_vad_runtime.py -q` PASS (`52 passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`706 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - AA.5 did not add a model VAD dependency or expand wake/hands-free behavior.
+
+- Timestamp: 2026-07-07 05:39
+  - Host class(es): Windows AMD64 / amd64 user smoke
+  - Summary: Added AA.4 post-implementation smoke evidence. The desktop app launched and resident voice functions were reported working after the turn phase/status truth change.
+  - Scope:
+    - `CHANGE_LOG.md`
+  - Validation:
+    - User smoke observation: app launches and functions.
+
+- Timestamp: 2026-07-06 20:46
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.4 turn phase/status truth. Voice turn phase advances now publish live resident session status for reasoning, acting, responding, and speaking while preserving terminal completion/failure handling.
+  - Scope:
+    - `backend/app/conversation/turn_manager.py`
+    - `backend/app/conversation/session_manager.py`
+    - `backend/app/conversation/engine.py`
+    - `backend/app/conversation/realtime/session.py`
+    - `backend/app/services/session_service.py`
+    - Focused backend conversation/session tests and desktop static contract validation.
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_states.py backend\tests\unit\conversation\test_engine.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\services\test_session_service.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`109 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`701 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - Engine observer coverage uses `backend/tests/fixtures/hello_world.wav` as the voice input fixture while keeping runtime collaborators deterministic.
+
 - Timestamp: 2026-07-06 20:34
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Completed Slice AA.3 PTT-only turn hardening. PTT now returns a fresh listening status immediately, clears stale voice completion fields at invocation start, and keeps no-speech failures recoverable without duplicate desktop conversation output.

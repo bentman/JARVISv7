@@ -50,6 +50,7 @@ def _segmenter() -> UtteranceSegmenter:
         vad=EnergyVADRuntime(speech_rms_threshold=0.05),
         sample_rate=16000,
         pre_roll_s=0.00025,
+        speech_start_s=0.0005,
         min_speech_s=0.0005,
         silence_end_s=0.0005,
         no_speech_timeout_s=0.0005,

@@ -56,6 +56,8 @@ class SessionCloseResult:
 class SessionService:
     _VOICE_TRANSIENT_STATES: ClassVar[set[ConversationState]] = {
         ConversationState.TRANSCRIBING,
+        ConversationState.REASONING,
+        ConversationState.ACTING,
         ConversationState.RESPONDING,
         ConversationState.SPEAKING,
     }

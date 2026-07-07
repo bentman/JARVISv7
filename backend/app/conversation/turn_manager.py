@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Literal
@@ -12,6 +13,9 @@ def utc_now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+PhaseObserver = Callable[[ConversationState], None]
+
+
 @dataclass(slots=True)
 class TurnContext:
     session_id: str
@@ -20,6 +24,7 @@ class TurnContext:
     state: ConversationState = ConversationState.IDLE
     started_at: datetime = field(default_factory=utc_now)
     phase_timestamps: dict[str, datetime] = field(default_factory=dict)
+    phase_observer: PhaseObserver | None = None
 
     def __post_init__(self) -> None:
         self.phase_timestamps.setdefault(self.state.value, self.started_at)
@@ -28,3 +33,5 @@ class TurnContext:
         validate_transition(self.state, new_state)
         self.state = new_state
         self.phase_timestamps[new_state.value] = utc_now()
+        if self.phase_observer is not None:
+            self.phase_observer(new_state)

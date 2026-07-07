@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import wave
 
 import numpy as np
 import pytest
@@ -209,6 +210,15 @@ def _engine(
     )
 
 
+def _fixture_audio(name: str) -> tuple[np.ndarray, int]:
+    path = Path("backend/tests/fixtures") / name
+    with wave.open(str(path), "rb") as wav_file:
+        sample_rate = wav_file.getframerate()
+        frames = wav_file.readframes(wav_file.getnframes())
+        samples = np.frombuffer(frames, dtype="<i2").astype(np.float32) / 32768.0
+    return samples, sample_rate
+
+
 def test_text_turn_returns_response_for_known_prompt():
     llm = FakeLLM(response="hello")
     result = _engine(llm=llm).run_text_turn("hello world")
@@ -219,6 +229,25 @@ def test_text_turn_returns_response_for_known_prompt():
     assert result.failure_reason is None
     assert "User: hello world" in llm.prompts[0]
     assert llm.prompts[0].endswith("Assistant:")
+
+
+def test_voice_turn_phase_observer_reports_live_phases_with_fixture_audio() -> None:
+    observed: list[ConversationState] = []
+    engine = _engine(tts=FakeTTS(available=True), playback_api=FakePlayback())
+    engine.phase_observer = observed.append
+    audio, sample_rate = _fixture_audio("hello_world.wav")
+
+    result = engine.run_voice_turn(audio, sample_rate)
+
+    assert result.final_state == ConversationState.IDLE
+    assert observed == [
+        ConversationState.LISTENING,
+        ConversationState.TRANSCRIBING,
+        ConversationState.REASONING,
+        ConversationState.RESPONDING,
+        ConversationState.SPEAKING,
+        ConversationState.IDLE,
+    ]
 
 
 def test_personality_guidance_is_applied_as_trusted_persona_prompt_segment():
