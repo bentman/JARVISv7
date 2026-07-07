@@ -23,6 +23,40 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-06 20:34
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.3 PTT-only turn hardening. PTT now returns a fresh listening status immediately, clears stale voice completion fields at invocation start, and keeps no-speech failures recoverable without duplicate desktop conversation output.
+  - Scope:
+    - `backend/app/services/resident_voice_invocation.py`
+    - `backend/app/services/session_service.py`
+    - `desktop/src/components/resident-voice.js`
+    - `desktop/src/components/conversation-debug.js`
+    - Focused backend resident/session/API/static tests and desktop static tests.
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_session_service.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`133 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`698 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - AA.3 kept the existing click-once PTT capture-until-endpoint behavior and did not introduce Wake dependency or click-to-commit behavior.
+
+- Timestamp: 2026-07-06 19:40
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed Slice AA.2 diagnostics and replay evidence. Voice turns now expose phase durations, failure phase, capture timing, raw audio replay path, and compact desktop debug evidence.
+  - Scope:
+    - `backend/app/conversation/engine.py`
+    - `backend/app/conversation/realtime/session.py`
+    - `backend/app/services/session_service.py`
+    - `backend/app/artifacts/turn_artifact.py`
+    - `backend/app/api/routes/session.py`, `backend/app/api/schemas/session.py`
+    - `desktop/src/components/conversation-debug.js`
+    - Focused artifact/conversation/session/API/static backend tests and desktop static tests.
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\services\test_session_service.py backend\tests\unit\api\test_routes.py backend\tests\unit\artifacts\test_turn_artifact.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`163 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - AA.2 added diagnostics only; it preserved existing raw audio storage paths and did not change endpointing or model/runtime behavior.
+
 - Timestamp: 2026-07-06 18:32
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Completed Slice AA.1 safe resident voice default and operator layout. Resident voice now starts in PTT-only mode, desktop startup no longer auto-starts Wake, and Resident Voice renders above Wake.

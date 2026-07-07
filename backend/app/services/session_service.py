@@ -185,9 +185,12 @@ class SessionService:
 
     def begin_voice_invocation(self, source: str) -> SessionStatus:
         self._state = ConversationState.LISTENING.value
+        self._last_transcript = None
+        self._last_response = None
         self._failure_reason = None
         self._failure_phase = None
         self._invocation_source = source
+        self._tts_output_device = None
         self._voice_capture_diagnostics = None
         return self.status()
 

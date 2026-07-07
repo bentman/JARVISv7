@@ -75,7 +75,10 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
     )
 
     queued = resident.ptt()
-    assert queued.invocation_source in {None, "ptt"}
+    assert queued.state == "LISTENING"
+    assert queued.invocation_source == "ptt"
+    assert queued.last_transcript is None
+    assert queued.last_response is None
 
     _wait_for(lambda: service.status().last_transcript == "resident transcript")
     status = service.status()
@@ -102,6 +105,44 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
         RealtimeEventType.TURN_COMPLETED,
         RealtimeEventType.SESSION_IDLE,
     ]
+
+
+def test_ptt_no_speech_after_success_does_not_reuse_stale_completion(tmp_path: Path) -> None:
+    calls: list[tuple[np.ndarray, int]] = []
+    service = _service(tmp_path)
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, buffer_chunks=1, chunk_source_factory=_blocking_source)
+    stream.start()
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
+        resident_stream=stream,
+        utterance_segmenter=_segmenter(),
+    )
+
+    resident.ptt()
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    _wait_for(lambda: service.status().last_transcript == "resident transcript")
+
+    queued = resident.ptt()
+    assert queued.state == "LISTENING"
+    assert queued.last_transcript is None
+    assert queued.last_response is None
+    _wait_for(lambda: stream.status().subscribers == 1)
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    stream.publish_for_test(np.zeros(4, dtype=np.float32))
+    _wait_for(lambda: service.status().state == "FAILED")
+    stream.stop()
+
+    status = service.status()
+    assert status.failure_reason == "No speech detected during PTT"
+    assert status.last_transcript is None
+    assert status.last_response is None
+    assert len(calls) == 1
 
 
 def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path: Path) -> None:

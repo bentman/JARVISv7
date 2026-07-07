@@ -543,6 +543,7 @@ def test_j1_conversation_debug_is_collapsed_details_without_voice_capture_change
     assert "renderConversationDebug(status, voiceDetailEl)" in main_js
     for token in ["phase_durations_ms", "failure_phase", "raw_audio_path", "voice_capture_diagnostics"]:
         assert token in conversation_debug
+    assert "currentFailureWithoutTurn" in conversation_debug
     assert 'pttButton.addEventListener("click"' in main_js
     assert 'pttButton.addEventListener("pointerdown"' not in main_js
     assert 'pttButton.addEventListener("pointerup"' not in main_js
@@ -564,6 +565,7 @@ def test_j3b_ptt_button_uses_click_start_click_stop_contract() -> None:
     assert 'pttButton.addEventListener("pointerup"' not in main_js
     assert 'pttButton.addEventListener("pointercancel"' not in main_js
     assert "setCaptureState" in resident_voice
+    assert "latestTurn?.turn_id" in resident_voice
     for capture_state in ["idle", "processing"]:
         assert capture_state in resident_voice
     assert "recording" not in main_js

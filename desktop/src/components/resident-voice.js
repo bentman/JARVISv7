@@ -113,12 +113,16 @@ export function createResidentVoicePresenter(options) {
 
   function appendResidentVoiceCompletion(status) {
     if (!status.last_transcript && !status.last_response && !status.failure_reason) return;
-    const key = [
-      status.invocation_source ?? "",
-      status.last_transcript ?? "",
-      status.last_response ?? "",
-      status.failure_reason ?? "",
-    ].join("|");
+    const latestTurn = status.latest_turn;
+    const key = latestTurn?.turn_id
+      ? [latestTurn.turn_id, latestTurn.final_state ?? "", latestTurn.failure_reason ?? ""].join("|")
+      : [
+          status.invocation_source ?? "",
+          status.state ?? "",
+          status.last_transcript ?? "",
+          status.last_response ?? "",
+          status.failure_reason ?? "",
+        ].join("|");
     if (key === lastRenderedResidentTurnKey) return;
     lastRenderedResidentTurnKey = key;
     if (status.last_transcript) appendMessage("user", status.last_transcript);

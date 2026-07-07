@@ -87,7 +87,10 @@ class ResidentVoiceInvocationService:
         return self._session_service.status()
 
     def ptt(self) -> SessionStatus:
-        return self.enqueue("ptt")
+        status = self._session_service.begin_voice_invocation("ptt")
+        self._queue.put(ResidentInvocationRequest(source="ptt"))
+        self._ensure_worker()
+        return status
 
     def status(self) -> SessionStatus:
         return self._session_service.status()

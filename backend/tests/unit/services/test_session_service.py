@@ -223,6 +223,24 @@ def test_pre_engine_voice_failure_uses_live_status_without_latest_turn(tmp_path:
     assert status.failure_phase == "capture"
 
 
+def test_begin_voice_invocation_clears_stale_completion_fields(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    result = service.engine().run_voice_turn(np.ones(160, dtype=np.float32), 16000)
+    service.complete_voice_invocation(result)
+    assert service.status().last_transcript is not None
+    assert service.status().last_response is not None
+    assert result.failure_reason is None
+
+    status = service.begin_voice_invocation("ptt")
+
+    assert status.state == "LISTENING"
+    assert status.invocation_source == "ptt"
+    assert status.last_transcript is None
+    assert status.last_response is None
+    assert status.failure_reason is None
+    assert status.tts_output_device is None
+
+
 def test_status_reports_failed_artifact_turn(tmp_path: Path) -> None:
     service = _service(tmp_path)
     session_id = service.status().session_id

@@ -136,6 +136,8 @@ assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barg
 assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
 assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
 assert.ok(desktopSource.includes("continuous-active"), "desktop must render resident continuous active status");
+assert.ok(residentVoice.includes("latestTurn?.turn_id"), "resident voice completion dedupe must prefer latest-turn identity");
+assert.ok(conversationDebug.includes("currentFailureWithoutTurn"), "conversation debug must show current capture failures ahead of stale latest-turn data");
 assert.ok(main.includes("ensureResidentVoiceStream"), "desktop must start resident stream before resident wake/mode proof");
 assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resident mode mutation");
 assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");

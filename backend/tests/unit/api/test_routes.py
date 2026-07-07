@@ -660,6 +660,10 @@ def test_session_ptt_queues_resident_voice_invocation() -> None:
     response = client.post("/session/ptt")
 
     assert response.status_code == 200
+    assert response.json()["state"] == "LISTENING"
+    assert response.json()["invocation_source"] == "ptt"
+    assert response.json()["last_transcript"] is None
+    assert response.json()["last_response"] is None
     deadline = time.monotonic() + 1.0
     payload = {}
     while time.monotonic() < deadline:

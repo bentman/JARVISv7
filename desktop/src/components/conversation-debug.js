@@ -46,7 +46,9 @@ export function renderConversationDebug(status, detailEl) {
 
   pushLine(lines, "state", status?.state || "unknown");
 
-  if (latestTurn) {
+  const currentFailureWithoutTurn = status?.state === "FAILED" && status?.failure_reason && status?.failure_phase;
+
+  if (latestTurn && !currentFailureWithoutTurn) {
     const source =
       latestTurn.input_modality === "voice" && status?.invocation_source
         ? status.invocation_source
