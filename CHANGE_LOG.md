@@ -23,6 +23,25 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-08 07:15
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Resolved eager model warmup for STT, TTS, and Wake monitor, implemented robust port reclamation and zombie process reap logic, optimized dynamic/adaptive session polling, and synchronized resident voice unit tests.
+  - Scope:
+    - `backend/app/runtimes/stt/onnx_whisper_runtime.py`, `backend/app/runtimes/tts/kokoro_onnx_runtime.py`
+    - `backend/app/runtimes/wake/base.py`, `backend/app/runtimes/wake/openwakeword_runtime.py`
+    - `backend/app/services/wake_monitor.py`, `backend/app/services/local_llm_sidecar.py`
+    - `backend/app/api/app.py`, `desktop/src-tauri/src/backend.rs`
+    - `desktop/src/components/desktop-polling.js`
+    - `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/api/test_routes.py`
+  - Validation:
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (`716 passed, 1 skipped`)
+    - `npm --prefix desktop test` PASS
+    - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` PASS
+  - Notes:
+    - Added `warmup` implementation for Whisper and Kokoro runtimes, called eagerly during API startup context initialization.
+    - Integrated automatic process/port cleanup using `psutil` on sidecar start/stop, and using `netstat`/`taskkill` on Tauri backend manager spawn.
+    - Polling interval dynamically scales to 100ms during active/transient conversation phases and falls back to 1000ms when idle.
+
 - Timestamp: 2026-07-07 22:20
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Corrected llama.cpp sidecar endpoint adoption and lifecycle state. `LocalLLMSidecarService.start()` now adopts an already-healthy configured endpoint instead of spawning duplicate `llama-server.exe` processes, and adopted endpoints remain observable through status probes while `stop()` clears adoption state without reaping externally owned processes.

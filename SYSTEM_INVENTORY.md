@@ -31,6 +31,21 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-08 07:15
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Eager model warmup for STT, TTS, and Wake runtimes, robust llama-server and Python port reclamation, Rust sidecar launcher cleanup, adaptive session polling, and synchronized resident voice unit testing.
+  - Location:
+    - `backend/app/runtimes/stt/`, `backend/app/runtimes/tts/`, `backend/app/runtimes/wake/`
+    - `backend/app/services/`, `backend/app/api/`
+    - `desktop/src-tauri/src/`, `desktop/src/components/`
+  - Evidence:
+    - Timestamp: 2026-07-08 07:15 - Resolved eager model warmup for STT, TTS, and Wake monitor, implemented robust port reclamation and zombie process reap logic, optimized dynamic/adaptive session polling, and synchronized resident voice unit tests.
+  - Notes:
+    - Warmups eagerly load model weights during system initialization to eliminate first-use inference spikes.
+    - Port reclamation force-kills any matching process occupying required ports (8765 and llama-server ports) before launch.
+    - Desktop session polling dynamically increases to 100ms when active/transient phases are detected and drops back to 1000ms.
+
 - Timestamp: 2026-07-07 20:35
   - State: Verified
   - Host class(es): Windows AMD64 / amd64 validated

@@ -30,6 +30,9 @@ class _FakeSTT:
     device = "cpu"
     model_path = Path("models/stt/fake")
 
+    def warmup(self) -> None:
+        pass
+
     def runtime_name(self) -> str:
         return "fake-stt"
 
@@ -43,6 +46,9 @@ class _FakeSTT:
 class _FakeTTS:
     device = "cpu"
     model_path = Path("models/tts/fake")
+
+    def warmup(self) -> None:
+        pass
 
     def runtime_name(self) -> str:
         return "fake-tts"

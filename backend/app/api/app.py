@@ -103,7 +103,9 @@ def build_startup_state() -> ApiState:
     readiness = startup.readiness
     personality = load_default_personality()
     stt = select_stt_runtime(preflight, profile)
+    stt.warmup()
     tts = select_tts_runtime(preflight, profile)
+    tts.warmup()
     local_llm = prepare_managed_local_llm(profile, preflight, flags=report.flags)
     llm, llm_trace = select_llm(_load_runtime_policy(), preflight, profile, local=local_llm.runtime)
     session_manager = SessionManager()
@@ -152,6 +154,7 @@ def build_startup_state() -> ApiState:
         before_invocation=state.wake_monitor.pause_for_voice_invocation,
         after_invocation=state.wake_monitor.resume_after_voice_invocation,
     )
+    state.wake_monitor.warmup()
     return state
 
 

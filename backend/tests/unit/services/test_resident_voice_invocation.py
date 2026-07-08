@@ -376,6 +376,7 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
 
     resident.enqueue("ptt", np.ones(8, dtype=np.float32), 16000)
     _wait_for(lambda: len(calls) == 1)
+    _wait_for(lambda: stream.status().subscribers > 0)
     stream.publish_for_test(np.zeros(4, dtype=np.float32))
     stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
     stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))

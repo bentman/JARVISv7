@@ -24,3 +24,7 @@ class STTBase(ABC):
     @abstractmethod
     def is_available(self) -> bool:
         raise NotImplementedError
+
+    def warmup(self) -> None:
+        """Pre-load model weights and warm up execution providers."""
+        pass

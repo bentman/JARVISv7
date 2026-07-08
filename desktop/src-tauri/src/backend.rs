@@ -138,6 +138,9 @@ impl BackendProcessManager {
             let _ = child.kill();
             let _ = child.wait();
         }
+        if let Some(pid) = find_pid_by_port(self.port) {
+            kill_process_by_pid(pid);
+        }
     }
 
     pub fn exited_status(&mut self) -> Result<Option<String>, String> {
@@ -369,4 +372,39 @@ fn tail_file(path: &PathBuf) -> String {
     let mut lines = content.lines().rev().take(20).collect::<Vec<_>>();
     lines.reverse();
     lines.join("\n")
+}
+
+fn find_pid_by_port(port: u16) -> Option<u32> {
+    #[cfg(windows)]
+    {
+        if let Ok(output) = Command::new("cmd")
+            .args(&["/c", &format!("netstat -ano | findstr :{}", port)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+        {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 5 {
+                    let local_addr = parts[1];
+                    if local_addr.contains(&format!(":{}", port)) {
+                        if let Ok(pid) = parts[parts.len() - 1].parse::<u32>() {
+                            return Some(pid);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn kill_process_by_pid(pid: u32) {
+    #[cfg(windows)]
+    {
+        let mut command = Command::new("taskkill");
+        command.args(&["/F", "/PID", &pid.to_string()]);
+        command.creation_flags(CREATE_NO_WINDOW);
+        let _ = command.status();
+    }
 }

@@ -68,6 +68,16 @@ class WakeMonitorService:
     def status(self) -> WakeMonitorStatus:
         return self._session_service.wake_status()
 
+    def warmup(self) -> None:
+        """Eagerly initialize and warm up the wake word runtime."""
+        with self._lock:
+            if self._runtime is None:
+                try:
+                    self._runtime = self._runtime_factory()
+                    self._runtime.warmup()
+                except Exception:
+                    pass
+
     def start(self) -> WakeMonitorStatus:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
@@ -77,7 +87,9 @@ class WakeMonitorService:
                     "resident audio stream is stopped; start resident voice stream before wake monitoring"
                 )
             try:
-                runtime = self._runtime_factory()
+                if self._runtime is None:
+                    self._runtime = self._runtime_factory()
+                runtime = self._runtime
                 available = runtime.is_available()
             except Exception as exc:
                 return self._session_service.record_wake_error(exc, reason="wake runtime initialization failed; PTT-only fallback is active")

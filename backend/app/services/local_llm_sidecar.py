@@ -174,6 +174,14 @@ class LocalLLMSidecarService:
                 health_reason=endpoint_reason,
             )
 
+        # Port reclamation on start
+        try:
+            _, port = _host_port(resolution.base_url)
+            binary_name = resolution.binary_path.name if resolution.binary_path else "llama-server"
+            _reap_processes_on_port(port, binary_name, self._stop_timeout_seconds)
+        except Exception:
+            pass
+
         try:
             process = self._process_factory(list(command.argv))
         except Exception as exc:
@@ -211,6 +219,19 @@ class LocalLLMSidecarService:
             binary_path = None
         if binary_path is not None:
             self._process_reaper(binary_path, self._stop_timeout_seconds)
+
+        # Port reclamation on stop
+        port = None
+        if self._last_resolution is not None:
+            try:
+                _, port = _host_port(self._last_resolution.base_url)
+            except Exception:
+                pass
+        if port is not None:
+            binary_path = self._last_binary_path()
+            binary_name = binary_path.name if binary_path else "llama-server"
+            _reap_processes_on_port(port, binary_name, self._stop_timeout_seconds)
+
         self._process = None
         self._clear_adoption()
         self._restart_required = False
@@ -370,6 +391,46 @@ def _reap_processes_for_binary(binary_path: Path, timeout_seconds: float) -> Non
             continue
         if _process_matches_binary(process, resolved_binary):
             matches.append(process)
+
+    if not matches:
+        return
+
+    for process in matches:
+        try:
+            process.terminate()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    gone, alive = psutil.wait_procs(matches, timeout=timeout_seconds)
+    del gone
+    for process in alive:
+        try:
+            process.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    psutil.wait_procs(alive, timeout=timeout_seconds)
+
+
+def _reap_processes_on_port(port: int, binary_name: str, timeout_seconds: float) -> None:
+    matches: list[psutil.Process] = []
+    current_pid = psutil.Process().pid
+    for process in psutil.process_iter(["pid", "name"]):
+        if process.info.get("pid") == current_pid:
+            continue
+        name = process.info.get("name")
+        if not name:
+            continue
+        proc_name_norm = name.lower().removesuffix(".exe")
+        bin_name_norm = binary_name.lower().removesuffix(".exe")
+        if proc_name_norm != bin_name_norm:
+            continue
+        try:
+            conns = process.connections(kind="inet")
+            for conn in conns:
+                if conn.laddr and conn.laddr.port == port:
+                    matches.append(process)
+                    break
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
 
     if not matches:
         return

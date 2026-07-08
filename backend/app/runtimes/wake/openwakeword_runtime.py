@@ -58,6 +58,11 @@ class OpenWakeWordRuntime(WakeBase):
             )
         return self._model
 
+    def warmup(self) -> None:
+        """Pre-load model weights and warm up execution providers."""
+        if self.is_available():
+            self._load_model()
+
     def detect(self, audio_chunk: np.ndarray) -> bool:
         audio = np.asarray(audio_chunk, dtype=np.int16).reshape(-1)
         model = self._load_model()

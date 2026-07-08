@@ -62,9 +62,15 @@ class KokoroOnnxRuntime(TTSBase):
                     raise RuntimeError(
                         f"{PROVIDER_OVERRIDE_MISSING_REASON}: kokoro_onnx.Kokoro does not expose providers override"
                     )
-
-            self._model = Kokoro(str(self.onnx_path), str(self.voices_path))
+                self._model = Kokoro(str(self.onnx_path), str(self.voices_path), providers=[provider_name])
+            else:
+                self._model = Kokoro(str(self.onnx_path), str(self.voices_path))
         return self._model
+
+    def warmup(self) -> None:
+        """Pre-load model weights and warm up execution providers."""
+        if self.is_available():
+            self._load_model()
 
     def synthesize(self, text: str) -> np.ndarray:
         audio, sample_rate = self._load_model().create(text, voice=self.voice)

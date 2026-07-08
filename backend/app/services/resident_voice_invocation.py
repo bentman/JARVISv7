@@ -226,7 +226,7 @@ class ResidentVoiceInvocationService:
         subscriber = self._resident_stream.subscribe(include_buffer=request.source == "ptt")
         try:
             capture_started = time.monotonic()
-            segment = self._utterance_segmenter.capture(_subscriber_chunks(subscriber))
+            segment = self._utterance_segmenter.capture(_subscriber_chunks(subscriber, self._resident_stream))
             capture_ms = (time.monotonic() - capture_started) * 1000.0
         finally:
             self._resident_stream.unsubscribe(subscriber)
@@ -282,9 +282,12 @@ class ResidentVoiceInvocationService:
         self.enqueue(source, request.audio, request.sample_rate)
 
 
-def _subscriber_chunks(subscriber: queue.Queue[AudioChunk]) -> Iterable[AudioChunk]:
-    while True:
-        yield subscriber.get(timeout=0.1)
+def _subscriber_chunks(subscriber: queue.Queue[AudioChunk], resident_stream: ResidentAudioStream) -> Iterable[AudioChunk]:
+    while resident_stream.status().running:
+        try:
+            yield subscriber.get(timeout=0.5)
+        except queue.Empty:
+            break
 
 
 def _capture_diagnostics_with_timing(diagnostics: dict[str, object], capture_ms: float) -> dict[str, object]:

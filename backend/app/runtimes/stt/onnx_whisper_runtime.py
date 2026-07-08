@@ -51,6 +51,11 @@ class OnnxWhisperRuntime(STTBase):
             )
         return self._model
 
+    def warmup(self) -> None:
+        """Pre-load model weights and warm up execution providers."""
+        if self.is_available():
+            self._load_model()
+
     def is_available(self) -> bool:
         if self.device == "qnn":
             return False
@@ -174,6 +179,13 @@ class QnnWhisperRuntime(STTBase):
         except FileNotFoundError:
             return False
         return True
+
+    def warmup(self) -> None:
+        """Pre-load model weights and warm up execution providers."""
+        if self.is_available():
+            self._ensure_preprocessors()
+            self._load_encoder_session()
+            self._load_decoder_session()
 
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if not self.is_available():
