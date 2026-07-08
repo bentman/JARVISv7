@@ -978,36 +978,12 @@ def test_resident_voice_status_reports_configured_stream_and_vad() -> None:
     assert payload["barge_in_wired"] is False
     assert payload["tts_voice"] == "bf_isabella"
     assert "bf_isabella" in payload["tts_supported_voices"]
-    assert payload["tts_voice_restart_required"] is True
+    assert payload["tts_voice_restart_required"] is False
 
 
-def test_resident_voice_tts_voice_endpoint_validates_backend_supported_voice(monkeypatch) -> None:
-    from backend.app.api.routes import status as status_routes
-
-    selected: list[str] = []
-
-    def fake_set_voice(voice: str) -> dict[str, object]:
-        if voice != "af_bella":
-            raise ValueError(f"unsupported tts voice: {voice}")
-        selected.append(voice)
-        return {
-            "model": "kokoro-v1.0-onnx",
-            "voice": voice,
-            "supported_voices": ["af_bella", "bf_isabella"],
-            "restart_required": True,
-        }
-
-    monkeypatch.setattr(status_routes, "set_tts_voice", fake_set_voice)
-    monkeypatch.setattr(
-        status_routes,
-        "tts_voice_config",
-        lambda: {
-            "model": "kokoro-v1.0-onnx",
-            "voice": selected[-1] if selected else "bf_isabella",
-            "supported_voices": ["af_bella", "bf_isabella"],
-            "restart_required": True,
-        },
-    )
+def test_resident_voice_tts_voice_endpoint_applies_runtime_voice_without_rewriting_yaml() -> None:
+    config_path = Path("config/models/tts.yaml")
+    before = config_path.read_text(encoding="utf-8")
     client = _client()
 
     accepted = client.put("/status/resident-voice/tts-voice", json={"voice": "af_bella"})
@@ -1015,10 +991,12 @@ def test_resident_voice_tts_voice_endpoint_validates_backend_supported_voice(mon
 
     assert accepted.status_code == 200
     assert accepted.json()["tts_voice"] == "af_bella"
-    assert accepted.json()["tts_supported_voices"] == ["af_bella", "bf_isabella"]
-    assert accepted.json()["tts_voice_restart_required"] is True
+    assert "af_bella" in accepted.json()["tts_supported_voices"]
+    assert accepted.json()["tts_voice_restart_required"] is False
+    assert getattr(client.app.state.jarvis_state.tts, "voice") == "af_bella"
     assert rejected.status_code == 400
     assert "unsupported tts voice" in rejected.json()["detail"]
+    assert config_path.read_text(encoding="utf-8") == before
 
 
 def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> None:

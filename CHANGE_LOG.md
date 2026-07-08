@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 19:44
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Corrected AA.7 TTS voice selector persistence. Resident Voice now keeps `config/models/tts.yaml` as the backend source for supported voices and baseline voice, while desktop selections persist locally and apply to the active TTS runtime without rewriting YAML.
+  - Scope:
+    - `backend/app/runtimes/tts/tts_runtime.py`, `backend/app/api/routes/status.py`, `desktop/src/main.js`, `desktop/src/index.html`
+    - Focused TTS runtime, API, desktop static contract, and desktop static tests.
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\tts\test_tts_runtime.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`107 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`711 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+  - Notes:
+    - Invalid cached desktop voices are cleared when backend-supported voices no longer contain them.
+
 - Timestamp: 2026-07-07 07:50
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Corrected AA.7 Resident Voice selector layout. Voice Selector now matches Mode control width/theme, the restart-required hint carries the separator below it, and the duplicate Settings separator was removed.

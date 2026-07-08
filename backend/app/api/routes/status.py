@@ -9,7 +9,7 @@ from backend.app.api.schemas.status import (
     ResidentVoiceTTSVoiceRequest,
     WakeStatusResponse,
 )
-from backend.app.runtimes.tts.tts_runtime import set_tts_voice, tts_voice_config
+from backend.app.runtimes.tts.tts_runtime import tts_voice_config, validate_tts_voice
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
@@ -85,9 +85,10 @@ def set_resident_voice_tts_voice(
     state: ApiState = Depends(get_api_state),
 ) -> ResidentVoiceStatusResponse:
     try:
-        set_tts_voice(request.voice)
+        voice = validate_tts_voice(request.voice)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    _apply_tts_voice(state, voice)
     return build_resident_voice_status(state)
 
 
@@ -120,7 +121,7 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         and getattr(state.engine, "interruption_audio_chunks", None) is not None
     )
     barge_in_supported = barge_in_wired and mode in {"hands-free", "continuous"}
-    tts_voice = _tts_voice_response()
+    tts_voice = _tts_voice_response(state)
     return ResidentVoiceStatusResponse(
         mode=mode,
         available=state.resident_voice is not None
@@ -176,8 +177,18 @@ def _wake_response(status) -> WakeStatusResponse:
     )
 
 
-def _tts_voice_response() -> dict[str, object]:
+def _apply_tts_voice(state: ApiState, voice: str) -> None:
+    runtimes = [state.tts, getattr(state.engine, "tts", None), getattr(state.session_service.engine(), "tts", None)]
+    seen: set[int] = set()
+    for runtime in runtimes:
+        if runtime is None or id(runtime) in seen:
+            continue
+        seen.add(id(runtime))
+        setattr(runtime, "voice", voice)
+
+
+def _tts_voice_response(state: ApiState) -> dict[str, object]:
     try:
-        return tts_voice_config()
+        return tts_voice_config(active_voice=getattr(state.tts, "voice", None))
     except Exception:
-        return {"voice": None, "supported_voices": [], "restart_required": True, "model": None}
+        return {"voice": None, "supported_voices": [], "restart_required": False, "model": None}

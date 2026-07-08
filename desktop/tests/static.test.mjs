@@ -146,7 +146,10 @@ assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resi
 assert.ok(main.includes("setResidentTtsVoice"), "desktop must call backend resident TTS voice mutation");
 assert.ok(main.includes("renderResidentTtsVoiceSelector"), "desktop must render TTS voice options from backend status");
 assert.ok(main.includes("tts_supported_voices"), "desktop voice selector must use backend-supported voice options");
-assert.ok(main.includes("tts_voice_restart_required"), "desktop voice selector must render restart-required truth");
+assert.ok(main.includes("jarvisv7_active_tts_voice"), "desktop voice selector must persist the selected voice locally");
+assert.ok(main.includes("applyStoredTtsVoiceIfAvailable"), "desktop voice selector must restore a valid cached voice");
+assert.ok(main.includes("removeItem(TTS_VOICE_STORAGE_KEY"), "desktop voice selector must clear invalid cached voices");
+assert.ok(index.includes("Selected voice is saved locally and applies to runtime."), "desktop voice hint must describe local runtime persistence");
 assert.ok(!main.includes("af_bella"), "desktop must not hardcode TTS voice options");
 assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");
 assert.ok(desktopSource.includes("stream_present"), "desktop must keep flat resident stream fallback fields");

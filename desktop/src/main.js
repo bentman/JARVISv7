@@ -46,6 +46,8 @@ let activePersonalityId = "default";
 let desktopState = null;
 let personalitySelectionPending = false;
 const PERSONALITY_STORAGE_KEY = "jarvisv7_active_personality";
+const TTS_VOICE_STORAGE_KEY = "jarvisv7_active_tts_voice";
+let ttsVoicePreferenceRestored = false;
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -178,7 +180,8 @@ async function refreshSessionStatus() {
 async function refreshResidentVoiceStatus() {
   if (!api?.getResidentVoiceStatus) return null;
   try {
-    const status = await api.getResidentVoiceStatus();
+    let status = await api.getResidentVoiceStatus();
+    status = await applyStoredTtsVoiceIfAvailable(status);
     residentVoice.renderResidentModeStatus(status);
     renderResidentTtsVoiceSelector(status);
     return status;
@@ -192,7 +195,7 @@ async function refreshResidentVoiceStatus() {
       degraded_reasons: [`resident voice status unavailable: ${String(error)}`],
       stream: { present: false, running: false, subscribers: 0, buffer_chunks: 0, dropped_chunks: 0, last_error: null },
     });
-    renderResidentTtsVoiceSelector({ tts_voice: "", tts_supported_voices: [], tts_voice_restart_required: true });
+    renderResidentTtsVoiceSelector({ tts_voice: "", tts_supported_voices: [], tts_voice_restart_required: false });
     return null;
   }
 }
@@ -220,20 +223,34 @@ function renderResidentTtsVoiceSelector(status) {
     residentTtsVoiceEl.disabled = false;
   }
   if (residentTtsVoiceHintEl) {
-    residentTtsVoiceHintEl.textContent = status.tts_voice_restart_required === false ? "Voice changes apply immediately." : "Runtime changes apply after restart.";
+    residentTtsVoiceHintEl.textContent = "Selected voice is saved locally and applies to runtime.";
   }
 }
 
-async function setResidentTtsVoice(voice) {
+async function setResidentTtsVoice(voice, options = {}) {
   if (!api?.setResidentVoiceTtsVoice) return null;
   clearError();
   const status = await api.setResidentVoiceTtsVoice(voice);
   residentVoice.renderResidentModeStatus(status);
   renderResidentTtsVoiceSelector(status);
-  if (status.tts_voice_restart_required !== false && settingsRestartRequiredEl) {
-    settingsRestartRequiredEl.hidden = false;
+  if (options.persist !== false && status.tts_voice) {
+    window.localStorage?.setItem(TTS_VOICE_STORAGE_KEY, status.tts_voice);
   }
   return status;
+}
+
+async function applyStoredTtsVoiceIfAvailable(status) {
+  if (ttsVoicePreferenceRestored) return status;
+  ttsVoicePreferenceRestored = true;
+  const storedVoice = window.localStorage?.getItem(TTS_VOICE_STORAGE_KEY);
+  if (!storedVoice) return status;
+  const voices = Array.isArray(status.tts_supported_voices) ? status.tts_supported_voices : [];
+  if (!voices.includes(storedVoice)) {
+    window.localStorage?.removeItem(TTS_VOICE_STORAGE_KEY);
+    return status;
+  }
+  if (storedVoice === status.tts_voice) return status;
+  return (await setResidentTtsVoice(storedVoice, { persist: false })) || status;
 }
 
 async function ensureResidentVoiceStream() {

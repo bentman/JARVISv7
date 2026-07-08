@@ -11,7 +11,7 @@ from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.tts.kokoro_onnx_runtime import KOKORO_SAMPLE_RATE, KokoroOnnxRuntime
 from backend.app.runtimes.tts.playback import describe_output_device, is_playing, stop
-from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime, select_tts_runtime
+from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime, select_tts_runtime, validate_tts_voice
 
 
 def test_selector_returns_cpu_runtime_when_readiness_says_cpu():
@@ -119,6 +119,17 @@ def test_selector_uses_configured_yaml_voice_for_kokoro_runtime():
 
     assert isinstance(runtime, KokoroOnnxRuntime)
     assert runtime.voice == "bf_isabella"
+
+
+def test_validate_tts_voice_uses_supported_config_without_rewriting_yaml():
+    config_path = Path("config/models/tts.yaml")
+    before = config_path.read_text(encoding="utf-8")
+
+    assert validate_tts_voice("af_bella") == "af_bella"
+    with pytest.raises(ValueError, match="unsupported tts voice"):
+        validate_tts_voice("not_a_voice")
+
+    assert config_path.read_text(encoding="utf-8") == before
 
 
 def test_kokoro_runtime_is_unavailable_when_model_files_missing(tmp_path):
