@@ -56,7 +56,12 @@ class KokoroOnnxRuntime(TTSBase):
             import onnxruntime as rt
 
             provider_name = _provider_for_device(self.device)
-            if provider_name is not None:
+            if provider_name == "QNNExecutionProvider":
+                from backend.app.hardware.qnn_provider import create_qnn_session
+
+                session, _ = create_qnn_session(self.onnx_path, disable_cpu_fallback=False)
+                self._model = Kokoro.from_session(session, str(self.voices_path))
+            elif provider_name is not None:
                 providers = [provider_name]
                 if provider_name != "CPUExecutionProvider":
                     providers.append("CPUExecutionProvider")

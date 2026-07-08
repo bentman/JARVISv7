@@ -9,7 +9,12 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.memory.write_policy import WritePolicy
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts.base import TTSBase
@@ -60,10 +65,27 @@ def _personality() -> PersonalityProfile:
     return PersonalityProfile(
         profile_id="test",
         display_name="JARVIS",
-        tone="professional",
-        brevity="concise",
-        formality="semi-formal",
-        system_prompt_addendum="",
+        description="Balanced assistant.",
+        locale="en",
+        system="Answer directly.",
+        style=PersonalityStyle(
+            max_words_default=120,
+            structure="Answer first.",
+            do=("Lead with the answer.",),
+            avoid=("Filler.",),
+        ),
+        traits=PersonalityTraits(
+            warmth="medium", assertiveness="medium", detail="medium", humor="light"
+        ),
+        examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+        generation={
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 120,
+            "stop": ["\nUser:", "\nAssistant:"],
+        },
     )
 
 

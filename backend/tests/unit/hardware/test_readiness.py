@@ -155,3 +155,33 @@ def test_readiness_reason_strings_cite_evidence_tokens_verbatim() -> None:
     assert selected_device == "directml"
     assert ready is True
     assert "ep:DmlExecutionProvider" in reason
+
+
+def test_tts_readiness_selects_qnn_when_qnn_ep_proven() -> None:
+    selected_device, ready, reason = derive_tts_device_readiness(
+        _preflight("import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"),
+        _profile(
+            os_name="windows",
+            arch="arm64",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+    )
+
+    assert (selected_device, ready) == ("qnn", True)
+    assert "qnn prerequisites proven" in reason
+
+
+def test_tts_readiness_falls_back_to_cpu_when_qnn_ep_missing_on_npu() -> None:
+    selected_device, ready, reason = derive_tts_device_readiness(
+        _preflight("import:kokoro_onnx"),
+        _profile(
+            os_name="windows",
+            arch="arm64",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+    )
+
+    assert (selected_device, ready) == ("cpu", True)
+    assert "provider-override-missing" in reason

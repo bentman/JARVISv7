@@ -11,7 +11,12 @@ from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 from backend.app.services.session_service import SessionService
 
 
@@ -43,9 +48,27 @@ class _Engine:
     personality = PersonalityProfile(
         profile_id="default",
         display_name="JARVIS",
-        tone="professional",
-        brevity="concise",
-        formality="semi-formal",
+        description="Balanced assistant.",
+        locale="en",
+        system="Answer directly.",
+        style=PersonalityStyle(
+            max_words_default=120,
+            structure="Answer first.",
+            do=("Lead with the answer.",),
+            avoid=("Filler.",),
+        ),
+        traits=PersonalityTraits(
+            warmth="medium", assertiveness="medium", detail="medium", humor="light"
+        ),
+        examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+        generation={
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "top_k": 40,
+            "repeat_penalty": 1.08,
+            "max_tokens": 120,
+            "stop": ["\nUser:", "\nAssistant:"],
+        },
     )
 
     def run_text_turn(self, text: str) -> TurnResult:
@@ -76,9 +99,27 @@ def _client() -> TestClient:
         personality=PersonalityProfile(
             profile_id="default",
             display_name="JARVIS",
-            tone="professional",
-            brevity="concise",
-            formality="semi-formal",
+            description="Balanced assistant.",
+            locale="en",
+            system="Answer directly.",
+            style=PersonalityStyle(
+                max_words_default=120,
+                structure="Answer first.",
+                do=("Lead with the answer.",),
+                avoid=("Filler.",),
+            ),
+            traits=PersonalityTraits(
+                warmth="medium", assertiveness="medium", detail="medium", humor="light"
+            ),
+            examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+            generation={
+                "temperature": 0.5,
+                "top_p": 0.9,
+                "top_k": 40,
+                "repeat_penalty": 1.08,
+                "max_tokens": 120,
+                "stop": ["\nUser:", "\nAssistant:"],
+            },
         ),
         stt=runtime,  # type: ignore[arg-type]
         tts=runtime,  # type: ignore[arg-type]
@@ -141,9 +182,27 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
             personality=PersonalityProfile(
                 profile_id="default",
                 display_name="JARVIS",
-                tone="professional",
-                brevity="concise",
-                formality="semi-formal",
+                description="Balanced assistant.",
+                locale="en",
+                system="Answer directly.",
+                style=PersonalityStyle(
+                    max_words_default=120,
+                    structure="Answer first.",
+                    do=("Lead with the answer.",),
+                    avoid=("Filler.",),
+                ),
+                traits=PersonalityTraits(
+                    warmth="medium", assertiveness="medium", detail="medium", humor="light"
+                ),
+                examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+                generation={
+                    "temperature": 0.5,
+                    "top_p": 0.9,
+                    "top_k": 40,
+                    "repeat_penalty": 1.08,
+                    "max_tokens": 120,
+                    "stop": ["\nUser:", "\nAssistant:"],
+                },
             ),
             session_manager=session_manager,
         )
@@ -154,7 +213,31 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
         extras=["dev"],
         preflight=PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={}),
         readiness={"stt": ("cpu", True, "stt ready"), "tts": ("cpu", False, "tts unavailable"), "llm": ("cpu", True, "llm ready"), "wake": ("cpu", False, "wake unavailable")},
-        personality=PersonalityProfile(profile_id="default", display_name="JARVIS", tone="professional", brevity="concise", formality="semi-formal"),
+        personality=PersonalityProfile(
+            profile_id="default",
+            display_name="JARVIS",
+            description="Balanced assistant.",
+            locale="en",
+            system="Answer directly.",
+            style=PersonalityStyle(
+                max_words_default=120,
+                structure="Answer first.",
+                do=("Lead with the answer.",),
+                avoid=("Filler.",),
+            ),
+            traits=PersonalityTraits(
+                warmth="medium", assertiveness="medium", detail="medium", humor="light"
+            ),
+            examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+            generation={
+                "temperature": 0.5,
+                "top_p": 0.9,
+                "top_k": 40,
+                "repeat_penalty": 1.08,
+                "max_tokens": 120,
+                "stop": ["\nUser:", "\nAssistant:"],
+            },
+        ),
         stt=runtime,  # type: ignore[arg-type]
         tts=runtime,  # type: ignore[arg-type]
         llm=runtime,  # type: ignore[arg-type]

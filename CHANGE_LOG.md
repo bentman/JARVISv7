@@ -23,6 +23,36 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-08 10:58
+  - Host class(es): Windows ARM64 / arm64 validated
+  - Summary: Implemented Qualcomm QNN NPU acceleration support for Kokoro TTS runtime.
+  - Scope:
+    - `backend/app/hardware/readiness.py`
+    - `backend/app/runtimes/tts/kokoro_onnx_runtime.py`
+    - `backend/tests/unit/hardware/test_readiness.py`
+    - `backend/tests/unit/runtimes/tts/test_tts_runtime.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/hardware/test_readiness.py` PASS (`13 passed`)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/tts/test_tts_runtime.py` PASS (`21 passed`)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (`720 passed`)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (`155 passed`)
+    - `backend/.venv/Scripts/python -c "from backend.app.services.startup_context import load_startup_context; print(load_startup_context().readiness['tts'])"` returns `('qnn', True, 'qnn prerequisites proven; selecting qnn')`
+  - Notes:
+    - Uses custom InferenceSession creation via the `create_qnn_session` utility with `disable_cpu_fallback=False` for QNN device profile.
+
+- Timestamp: 2026-07-08 09:57
+  - Host class(es): Windows ARM64 / arm64 validated
+  - Summary: Aligned integration test suites to match the current PersonalityProfile schema.
+  - Scope:
+    - `backend/tests/integration/api/test_headless_client.py`
+    - `backend/tests/integration/services/test_two_turn_session.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/integration/api/test_headless_client.py` PASS (`5 passed`)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/integration/services/test_two_turn_session.py` PASS (`3 passed`)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py integration` PASS (`8 passed`)
+  - Notes:
+    - Resolves TypeError schema mismatch (tone, brevity, formality) in mock PersonalityProfile instantiations.
+
 - Timestamp: 2026-07-08 07:52
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Implemented custom ONNX InferenceSession instantiation for Kokoro TTS runtime, enabling CUDA and DirectML hardware acceleration.

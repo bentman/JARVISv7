@@ -109,6 +109,51 @@ def test_kokoro_runtime_uses_custom_session_for_accelerated_device(monkeypatch, 
     assert from_session_calls[0][1] == str(model_path / "voices-v1.0.bin")
 
 
+def test_kokoro_runtime_uses_custom_session_for_qnn_device(monkeypatch, tmp_path):
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    (model_path / "kokoro-v1.0.onnx").write_text("x", encoding="utf-8")
+    (model_path / "voices-v1.0.bin").write_text("x", encoding="utf-8")
+
+    qnn_session_calls = []
+    from_session_calls = []
+
+    class FakeSession:
+        pass
+
+    def fake_create_qnn_session(path, disable_cpu_fallback):
+        qnn_session_calls.append((path, disable_cpu_fallback))
+        return FakeSession(), "qnn-init"
+
+    class FakeKokoro:
+        def __init__(self, model_path, voices_path):
+            pass
+
+        @classmethod
+        def from_session(cls, session, voices_path):
+            from_session_calls.append((session, voices_path))
+            instance = cls.__new__(cls)
+            instance.sess = session
+            return instance
+
+        def create(self, text, *, voice):
+            return np.ones(4, dtype=np.float32), 24000
+
+    import sys
+    monkeypatch.setattr("backend.app.hardware.qnn_provider.create_qnn_session", fake_create_qnn_session)
+    monkeypatch.setitem(sys.modules, "kokoro_onnx", SimpleNamespace(Kokoro=FakeKokoro))
+
+    runtime = KokoroOnnxRuntime(device="qnn", model_path=model_path)
+    audio = runtime.synthesize("hello world")
+
+    assert audio.shape == (4,)
+    assert len(qnn_session_calls) == 1
+    assert qnn_session_calls[0] == (model_path / "kokoro-v1.0.onnx", False)
+    assert len(from_session_calls) == 1
+    assert isinstance(from_session_calls[0][0], FakeSession)
+    assert from_session_calls[0][1] == str(model_path / "voices-v1.0.bin")
+
+
 def test_kokoro_runtime_uses_kokoro_helper(monkeypatch, tmp_path):
     model_path = tmp_path / "model"
     model_path.mkdir()

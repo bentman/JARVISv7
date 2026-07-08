@@ -73,8 +73,18 @@ def derive_tts_device_readiness(
     ):
         return ("directml", True, "ep:DmlExecutionProvider proven; selecting directml")
 
-    # QNN on ARM64 boundary preserved: fail closed to CPU
+    # QNN on ARM64 Activation:
     if profile.npu_available and profile.npu_vendor == "qualcomm":
+        qnn_tokens_present = all(
+            _has_token(preflight, token)
+            for token in (
+                "import:onnxruntime-qnn",
+                "ep:QNNExecutionProvider",
+                "dll:QnnHtp",
+            )
+        )
+        if qnn_tokens_present:
+            return ("qnn", True, "qnn prerequisites proven; selecting qnn")
         return ("cpu", True, "provider-override-missing: QNNExecutionProvider unavailable to kokoro_onnx (boundary preserved)")
 
     if _has_token(preflight, "import:kokoro_onnx"):

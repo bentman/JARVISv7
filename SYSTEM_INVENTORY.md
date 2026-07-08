@@ -31,6 +31,18 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-08 10:59
+  - State: Verified
+  - Host class(es): Windows ARM64 / arm64 validated
+  - Summary: Qualcomm QNN NPU acceleration for Kokoro TTS runtime, leveraging create_qnn_session with disable_cpu_fallback=False.
+  - Location:
+    - `backend/app/runtimes/tts/kokoro_onnx_runtime.py`
+    - `backend/app/hardware/readiness.py`
+  - Evidence:
+    - Timestamp: 2026-07-08 10:58 - Implemented Qualcomm QNN NPU acceleration support for Kokoro TTS runtime.
+  - Notes:
+    - Automatically resolves "qnn" device target and provisions session with HTP acceleration on Snapdragon platforms.
+
 - Timestamp: 2026-07-08 07:52
   - State: Verified
   - Host class(es): Windows AMD64 / amd64 validated
