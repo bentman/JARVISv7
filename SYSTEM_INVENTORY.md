@@ -31,6 +31,19 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-08 07:52
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Custom ONNX InferenceSession instantiation for Kokoro TTS runtime, enabling CUDA and DirectML hardware acceleration.
+  - Location:
+    - `backend/app/runtimes/tts/kokoro_onnx_runtime.py`
+    - `backend/app/hardware/readiness.py`
+  - Evidence:
+    - Timestamp: 2026-07-08 07:52 - Implemented custom ONNX InferenceSession instantiation for Kokoro TTS runtime, enabling CUDA and DirectML hardware acceleration.
+  - Notes:
+    - Bypasses the default `kokoro-onnx` constructor limitation by loading an InferenceSession manually with the target EP and using `Kokoro.from_session`.
+    - Updates `derive_tts_device_readiness` to allow `"cuda"` or `"directml"` based on hardware profile and preflight tokens, while preserving QNN CPU-fallback boundary.
+
 - Timestamp: 2026-07-08 07:15
   - State: Verified
   - Host class(es): Windows AMD64 / amd64 validated

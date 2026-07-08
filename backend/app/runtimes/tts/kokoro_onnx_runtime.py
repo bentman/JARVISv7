@@ -53,16 +53,15 @@ class KokoroOnnxRuntime(TTSBase):
             if not self.is_available():
                 raise RuntimeError(f"TTS model files are unavailable at {self.model_path}")
             from kokoro_onnx import Kokoro
-            import inspect
+            import onnxruntime as rt
 
             provider_name = _provider_for_device(self.device)
             if provider_name is not None:
-                signature = inspect.signature(Kokoro.__init__)
-                if "providers" not in signature.parameters:
-                    raise RuntimeError(
-                        f"{PROVIDER_OVERRIDE_MISSING_REASON}: kokoro_onnx.Kokoro does not expose providers override"
-                    )
-                self._model = Kokoro(str(self.onnx_path), str(self.voices_path), providers=[provider_name])
+                providers = [provider_name]
+                if provider_name != "CPUExecutionProvider":
+                    providers.append("CPUExecutionProvider")
+                session = rt.InferenceSession(str(self.onnx_path), providers=providers)
+                self._model = Kokoro.from_session(session, str(self.voices_path))
             else:
                 self._model = Kokoro(str(self.onnx_path), str(self.voices_path))
         return self._model

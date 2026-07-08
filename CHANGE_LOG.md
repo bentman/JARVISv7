@@ -23,6 +23,20 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-08 07:52
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Implemented custom ONNX InferenceSession instantiation for Kokoro TTS runtime, enabling CUDA and DirectML hardware acceleration.
+  - Scope:
+    - `backend/app/runtimes/tts/kokoro_onnx_runtime.py`, `backend/app/hardware/readiness.py`
+    - `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/unit/hardware/test_readiness.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/tts/test_tts_runtime.py backend/tests/unit/hardware/test_readiness.py` PASS (`31 passed`)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (`716 passed, 1 skipped`)
+    - `backend/.venv/Scripts/python -c "from backend.app.services.startup_context import load_startup_context; print(load_startup_context().readiness['tts'])"` returns `('cuda', True, 'ep:CUDAExecutionProvider proven; selecting cuda')`
+  - Notes:
+    - Bypasses the default `kokoro-onnx` constructor limitation by loading an InferenceSession manually with the target EP and using `Kokoro.from_session`.
+    - Updates `derive_tts_device_readiness` to allow `"cuda"` or `"directml"` based on hardware profile and preflight tokens, while preserving QNN CPU-fallback boundary.
+
 - Timestamp: 2026-07-08 07:15
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Resolved eager model warmup for STT, TTS, and Wake monitor, implemented robust port reclamation and zombie process reap logic, optimized dynamic/adaptive session polling, and synchronized resident voice unit tests.

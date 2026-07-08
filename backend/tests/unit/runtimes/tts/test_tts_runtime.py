@@ -68,16 +68,45 @@ def test_tts_device_slot_accepts_qnn_string():
     assert runtime.device == "qnn"
 
 
-def test_kokoro_runtime_reports_provider_override_missing_for_accelerated_device(tmp_path):
+def test_kokoro_runtime_uses_custom_session_for_accelerated_device(monkeypatch, tmp_path):
     model_path = tmp_path / "model"
     model_path.mkdir()
     (model_path / "kokoro-v1.0.onnx").write_text("x", encoding="utf-8")
     (model_path / "voices-v1.0.bin").write_text("x", encoding="utf-8")
 
-    runtime = KokoroOnnxRuntime(device="cuda", model_path=model_path)
+    session_calls = []
+    from_session_calls = []
 
-    with pytest.raises(RuntimeError, match="provider-override-missing"):
-        runtime.synthesize("hello world")
+    class FakeSession:
+        def __init__(self, path, providers):
+            session_calls.append((path, providers))
+
+    class FakeKokoro:
+        def __init__(self, model_path, voices_path):
+            pass
+
+        @classmethod
+        def from_session(cls, session, voices_path):
+            from_session_calls.append((session, voices_path))
+            instance = cls.__new__(cls)
+            instance.sess = session
+            return instance
+
+        def create(self, text, *, voice):
+            return np.ones(4, dtype=np.float32), 24000
+
+    import sys
+    monkeypatch.setitem(sys.modules, "onnxruntime", SimpleNamespace(InferenceSession=FakeSession))
+    monkeypatch.setitem(sys.modules, "kokoro_onnx", SimpleNamespace(Kokoro=FakeKokoro))
+
+    runtime = KokoroOnnxRuntime(device="cuda", model_path=model_path)
+    audio = runtime.synthesize("hello world")
+
+    assert audio.shape == (4,)
+    assert len(session_calls) == 1
+    assert session_calls[0] == (str(model_path / "kokoro-v1.0.onnx"), ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    assert len(from_session_calls) == 1
+    assert from_session_calls[0][1] == str(model_path / "voices-v1.0.bin")
 
 
 def test_kokoro_runtime_uses_kokoro_helper(monkeypatch, tmp_path):

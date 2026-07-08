@@ -59,25 +59,23 @@ def derive_tts_device_readiness(
     preflight: PreflightResult,
     profile: HardwareProfile,
 ) -> tuple[str, bool, str]:
-    # H.7 rationale: kokoro_onnx runtime does not expose provider override; fail closed to CPU.
     if (
         profile.gpu_vendor == "nvidia"
         and profile.cuda_available
         and _has_token(preflight, "ep:CUDAExecutionProvider")
     ):
-        return ("cpu", True, "provider-override-missing: CUDAExecutionProvider unavailable to kokoro_onnx")
+        return ("cuda", True, "ep:CUDAExecutionProvider proven; selecting cuda")
 
-    # H.7 rationale applies to DirectML as well.
     if (
         profile.os_name == "windows"
         and profile.gpu_available
         and _has_token(preflight, "ep:DmlExecutionProvider")
     ):
-        return ("cpu", True, "provider-override-missing: DmlExecutionProvider unavailable to kokoro_onnx")
+        return ("directml", True, "ep:DmlExecutionProvider proven; selecting directml")
 
-    # H.7 rationale applies to QNN on ARM64 as well.
+    # QNN on ARM64 boundary preserved: fail closed to CPU
     if profile.npu_available and profile.npu_vendor == "qualcomm":
-        return ("cpu", True, "provider-override-missing: QNNExecutionProvider unavailable to kokoro_onnx")
+        return ("cpu", True, "provider-override-missing: QNNExecutionProvider unavailable to kokoro_onnx (boundary preserved)")
 
     if _has_token(preflight, "import:kokoro_onnx"):
         return ("cpu", True, _reason_for_cpu("import:kokoro_onnx", "cpu"))
