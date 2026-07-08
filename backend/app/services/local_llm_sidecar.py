@@ -113,6 +113,8 @@ class LocalLLMSidecarService:
         self._last_command: LocalLLMSidecarCommand | None = None
         self._last_error: str | None = None
         self._restart_required = False
+        self._adopted_endpoint_base_url: str | None = None
+        self._adopted_endpoint_reason: str | None = None
 
     def status(self) -> LocalLLMSidecarStatus:
         running = self._is_running()
@@ -124,6 +126,9 @@ class LocalLLMSidecarService:
             except Exception as exc:
                 health_ready = False
                 health_reason = str(exc)
+        if not running and self._adopted_endpoint_base_url is not None:
+            health_ready, health_reason = self._probe_adopted_endpoint()
+            running = bool(health_ready)
         state = _status_state(running, self._restart_required, self._last_error)
         return self._status(
             state=state,
@@ -135,6 +140,7 @@ class LocalLLMSidecarService:
     def start(self, resolution: LLMServeProfileResolution) -> LocalLLMSidecarStatus:
         command = build_llama_server_command(resolution)
         if not command.ready:
+            self._clear_adoption()
             self._last_resolution = resolution
             self._last_command = command
             self._last_error = command.degraded_reason
@@ -144,6 +150,7 @@ class LocalLLMSidecarService:
         if self._is_running():
             if self._same_running_target(resolution):
                 return self.status()
+            self._clear_adoption()
             self._restart_required = True
             self._last_error = "restart-required"
             return self._status(state="restart-required", running=True, restart_required=True)
@@ -157,17 +164,20 @@ class LocalLLMSidecarService:
             self._last_command = command
             self._last_error = None
             self._restart_required = False
+            self._adopted_endpoint_base_url = base_url
+            self._adopted_endpoint_reason = endpoint_reason
             # Return status with running=True but no managed process
             return self._status(
                 state="running",
                 running=True,
                 health_ready=True,
-                health_reason=f"adopted existing endpoint at {base_url}",
+                health_reason=endpoint_reason,
             )
 
         try:
             process = self._process_factory(list(command.argv))
         except Exception as exc:
+            self._clear_adoption()
             self._process = None
             self._last_resolution = resolution
             self._last_command = command
@@ -175,6 +185,7 @@ class LocalLLMSidecarService:
             self._restart_required = False
             return self._status(state="degraded", running=False)
 
+        self._clear_adoption()
         self._process = process
         self._last_resolution = resolution
         self._last_command = command
@@ -194,10 +205,14 @@ class LocalLLMSidecarService:
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=self._stop_timeout_seconds)
-        binary_path = self._last_binary_path()
+        if process is not None:
+            binary_path = self._last_binary_path()
+        else:
+            binary_path = None
         if binary_path is not None:
             self._process_reaper(binary_path, self._stop_timeout_seconds)
         self._process = None
+        self._clear_adoption()
         self._restart_required = False
         return self._status(state="stopped", running=False)
 
@@ -207,6 +222,20 @@ class LocalLLMSidecarService:
 
     def _is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
+
+    def _clear_adoption(self) -> None:
+        self._adopted_endpoint_base_url = None
+        self._adopted_endpoint_reason = None
+
+    def _probe_adopted_endpoint(self) -> tuple[bool, str]:
+        if self._adopted_endpoint_base_url is None:
+            return False, "no adopted endpoint"
+        if self._health_probe is not None:
+            try:
+                return self._health_probe(self._adopted_endpoint_base_url)
+            except Exception as exc:
+                return False, str(exc)
+        return _probe_endpoint_healthy(self._adopted_endpoint_base_url)
 
     def _same_running_target(self, resolution: LLMServeProfileResolution) -> bool:
         if self._last_resolution is None:

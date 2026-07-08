@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 22:20
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Corrected llama.cpp sidecar endpoint adoption and lifecycle state. `LocalLLMSidecarService.start()` now adopts an already-healthy configured endpoint instead of spawning duplicate `llama-server.exe` processes, and adopted endpoints remain observable through status probes while `stop()` clears adoption state without reaping externally owned processes.
+  - Scope:
+    - `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`
+  - Validation:
+    - Endpoint adoption guard evidence: `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/services/test_local_llm_sidecar.py -q` PASS (`24 passed`); `scripts/validate_backend.py unit` PASS (`713 passed, 1 skipped`).
+    - Adopted endpoint lifecycle evidence: `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/services/test_local_llm_sidecar.py -q` PASS (`27 passed`); `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe scripts/validate_backend.py unit` PASS (`716 passed, 1 skipped`).
+  - Notes:
+    - Adoption is conservative: endpoint must respond to `/health` or `/v1/models` with a valid payload.
+    - Adopted endpoint state is explicit and separate from managed process ownership.
+    - `status()` probes adopted endpoints for truthful running/stopped state; `stop()` only invokes the process reaper when a managed process handle exists.
+
 - Timestamp: 2026-07-07 22:03
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Strengthened humor trait guidance in personality policy to make dry/snarky humor visible for `jarvis` profile and clarified humor application context for `medium`/`high` traits.
@@ -39,19 +52,6 @@
     - Dry humor now permits "slightly snarky observation" bounded by clarity/risk.
     - No schema, runtime, or prompt architecture changes.
 
-- Timestamp: 2026-07-07 21:35
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Added endpoint adoption guard to `LocalLLMSidecarService.start()` to prevent duplicate `llama-server.exe` spawns when the configured endpoint is already healthy.
-  - Scope:
-    - `backend/app/services/local_llm_sidecar.py`
-    - `backend/tests/unit/services/test_local_llm_sidecar.py`
-  - Validation:
-    - `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/services/test_local_llm_sidecar.py -q` PASS (`24 passed`).
-    - `scripts/validate_backend.py unit` PASS (`713 passed, 1 skipped`).
-  - Notes:
-    - Adoption is conservative: endpoint must respond to `/health` or `/v1/models` with valid payload.
-    - No process ownership change for already-running sidecars; stop() only affects processes it launched.
-
 - Timestamp: 2026-07-07 20:35
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Added `capture_ms` timing to streamed Resident Voice PTT capture diagnostics. Streamed speech and no-speech captures now report elapsed capture time alongside existing endpointing diagnostics.
@@ -65,142 +65,47 @@
 
 - Timestamp: 2026-07-07 20:24
   - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Corrected AA.7 TTS voice cache restore after in-app backend restart. The settings restart path now resets the one-shot voice restore guard before the backend-start postlude, allowing the cached local TTS voice to reapply to the recreated runtime.
+  - Summary: Corrected AA.7 Resident Voice TTS selector behavior and layout. The selector matches the Mode control presentation, uses backend/config-supported voice options from `config/models/tts.yaml`, persists the selected voice locally, applies it to the active TTS runtime without rewriting YAML, and reapplies the cached voice after in-app backend restarts.
   - Scope:
-    - `desktop/src/main.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+    - Backend/runtime/API: `backend/app/runtimes/tts/tts_runtime.py`, `backend/app/api/routes/status.py`
+    - Desktop/UI: `desktop/src/main.js`, `desktop/src/index.html`, `desktop/src/style.css`
+    - Tests: `backend/tests/unit/runtimes/tts/test_tts_runtime.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`, `desktop/tests/static.test.mjs`
   - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\api\test_routes.py backend\tests\unit\runtimes\tts\test_tts_runtime.py -q` PASS (`107 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - Layout correction evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`); `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`).
+    - Local persistence/no-YAML-write evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\tts\test_tts_runtime.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`107 passed`); `npm --prefix desktop test` PASS (`desktop static voice checks passed`); `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`711 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+    - In-app backend restart restore evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\api\test_routes.py backend\tests\unit\runtimes\tts\test_tts_runtime.py -q` PASS (`107 passed`); `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
   - Notes:
-    - The existing localStorage TTS voice preference path is reused; YAML persistence behavior was not changed.
-
-- Timestamp: 2026-07-07 19:44
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Corrected AA.7 TTS voice selector persistence. Resident Voice now keeps `config/models/tts.yaml` as the backend source for supported voices and baseline voice, while desktop selections persist locally and apply to the active TTS runtime without rewriting YAML.
-  - Scope:
-    - `backend/app/runtimes/tts/tts_runtime.py`, `backend/app/api/routes/status.py`, `desktop/src/main.js`, `desktop/src/index.html`
-    - Focused TTS runtime, API, desktop static contract, and desktop static tests.
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\runtimes\tts\test_tts_runtime.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`107 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`711 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
+    - The existing localStorage TTS voice preference path is reused.
     - Invalid cached desktop voices are cleared when backend-supported voices no longer contain them.
-
-- Timestamp: 2026-07-07 07:50
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Corrected AA.7 Resident Voice selector layout. Voice Selector now matches Mode control width/theme, the restart-required hint carries the separator below it, and the duplicate Settings separator was removed.
-  - Scope:
-    - `desktop/src/style.css`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
-  - Validation:
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`).
+    - `config/models/tts.yaml` remains the source for supported voices and baseline voice; desktop voice selection does not rewrite YAML.
 
 - Timestamp: 2026-07-07 07:30
   - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.7 voice selector surface. Resident Voice now shows a backend/config-owned TTS voice selector constrained by `config/models/tts.yaml` supported voices, with voice changes marked restart-required. AA.7 does not claim voice quality or stability improvement.
+  - Summary: Completed Slice AA resident voice stabilization and operator-surface work through AA.7.
+    - AA.0 stabilized the desktop static-contract baseline for the current polling helper boundary.
+    - AA.1 made PTT-only the safe default, kept Wake available through explicit controls, stopped desktop startup from auto-starting Wake, and placed Resident Voice above Wake in the operator panel.
+    - AA.2 added voice-turn diagnostics and replay evidence: phase durations, failure phase, capture timing, raw audio replay path, and compact desktop debug display.
+    - AA.3 hardened PTT-only turns by returning fresh listening status, clearing stale voice completion fields at invocation start, and keeping no-speech failures recoverable without duplicate desktop conversation output.
+    - AA.4 published live resident session status for reasoning, acting, responding, and speaking while preserving terminal completion/failure handling.
+    - AA.5 stabilized resident utterance endpointing with adaptive pre-speech noise-floor evidence and speech-start debounce while preserving endpoint reasons.
+    - AA.6 reintegrated hands-free, barge-in, and Wake behavior: false barge-in no-speech turns recover to idle, app barge-in detection requires consecutive speech chunks, and Wake mode remains wake+PTT with wake auto-start preserved.
+    - AA.7 added the Resident Voice TTS voice selector surface backed by backend/config-supported voices and constrained by `config/models/tts.yaml`.
   - Scope:
-    - `config/models/tts.yaml`, `backend/app/runtimes/tts/tts_runtime.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`, `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`, `desktop/src/api-client.js`, `desktop/src/index.html`, `desktop/src/main.js`, `desktop/src/style.css`
-    - Focused backend API/static/TTS tests and desktop static tests.
+    - Resident voice services, session status, realtime voice turn handling, utterance segmentation, barge-in detection, Wake/resident mode integration, TTS voice status/API surface, and desktop Resident Voice/operator/debug UI.
+    - Backend areas: `backend/app/services/`, `backend/app/conversation/`, `backend/app/runtimes/stt/`, `backend/app/runtimes/tts/`, `backend/app/api/`, `backend/app/artifacts/`, and related unit/static tests.
+    - Desktop areas: `desktop/src/main.js`, `desktop/src/components/`, `desktop/src/index.html`, `desktop/src/style.css`, `desktop/src-tauri/src/`, `desktop/src/api-client.js`, and desktop static tests.
+    - Config touched for AA.7 voice options: `config/models/tts.yaml`.
   - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\runtimes\tts\test_tts_runtime.py -q` PASS (`106 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`710 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
+    - AA.0-AA.7 focused backend and desktop suites all passed as recorded in the original sub-slice entries, including desktop static validation after each desktop-affecting slice.
+    - Final AA.7 closeout evidence: `backend\.venv\Scripts\python -m pytest backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\runtimes\tts\test_tts_runtime.py -q` PASS (`106 passed`).
+    - Final AA.7 desktop evidence: `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+    - Final AA.7 backend validator evidence: `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`710 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
   - Notes:
-    - Selected voice changes are restart-required because active TTS runtimes are constructed from catalog config.
-
-- Timestamp: 2026-07-07 06:26
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.6 hands-free, barge-in, and wake reintegration. False barge-in no-speech turns now recover to idle, app barge-in detection requires consecutive speech chunks, and Wake mode remains wake+PTT with wake auto-start preserved.
-  - Scope:
-    - `backend/app/conversation/realtime/session.py`, `backend/app/runtimes/stt/barge_in.py`, `backend/app/api/app.py`
-    - Focused backend realtime/resident/wake/barge-in/API/static tests and desktop static tests.
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\services\test_resident_voice_modes.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\runtimes\stt\test_stt_runtime.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`155 passed, 1 skipped`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`709 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
-    - Resident Voice modes remain `PTT-only` and `Wake` with barge-in disabled, and `Hands-free` and `Continuous` with barge-in enabled when wired.
-
-- Timestamp: 2026-07-07 05:47
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.5 endpointing and VAD stabilization. Resident utterance endpointing now uses adaptive pre-speech noise floor evidence and a speech-start debounce while preserving pre-roll, no-speech, max-duration, stream-ended, too-short, and silence endpoint reasons.
-  - Scope:
-    - `backend/app/services/utterance_segmenter.py`, `backend/tests/unit/services/test_utterance_segmenter.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`, `backend/tests/unit/services/test_resident_voice_modes.py`
-    - `backend/tests/unit/services/test_wake_monitor.py`,
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_resident_voice_modes.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\services\test_utterance_segmenter.py backend\tests\unit\runtimes\vad\test_vad_runtime.py -q` PASS (`52 passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`706 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
+    - AA.2 diagnostics preserved existing raw audio storage paths and did not change endpointing or model/runtime behavior.
+    - AA.3 kept click-once PTT capture-until-endpoint behavior and did not introduce Wake dependency or click-to-commit behavior.
+    - AA.4 engine observer coverage used `backend/tests/fixtures/hello_world.wav` as the voice input fixture with deterministic runtime collaborators.
     - AA.5 did not add a model VAD dependency or expand wake/hands-free behavior.
-
-- Timestamp: 2026-07-06 20:46
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.4 turn phase/status truth. Voice turn phase advances now publish live resident session status for reasoning, acting, responding, and speaking while preserving terminal completion/failure handling.
-  - Scope:
-    - `backend/app/conversation/turn_manager.py`, `backend/app/conversation/session_manager.py`, `backend/app/conversation/engine.py`, `backend/app/conversation/realtime/session.py`, `backend/app/services/session_service.py`
-    - Focused backend conversation/session tests and desktop static contract validation.
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_states.py backend\tests\unit\conversation\test_engine.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\services\test_session_service.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`109 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`701 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
-    - Engine observer coverage uses `backend/tests/fixtures/hello_world.wav` as the voice input fixture while keeping runtime collaborators deterministic.
-
-- Timestamp: 2026-07-06 20:34
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.3 PTT-only turn hardening. PTT now returns a fresh listening status immediately, clears stale voice completion fields at invocation start, and keeps no-speech failures recoverable without duplicate desktop conversation output.
-  - Scope:
-    - `backend/app/services/resident_voice_invocation.py`
-    - `backend/app/services/session_service.py`
-    - `desktop/src/components/resident-voice.js`
-    - `desktop/src/components/conversation-debug.js`
-    - Focused backend resident/session/API/static tests and desktop static tests.
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_session_service.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\api\test_routes.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`133 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`698 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
-    - AA.3 kept the existing click-once PTT capture-until-endpoint behavior and did not introduce Wake dependency or click-to-commit behavior.
-
-- Timestamp: 2026-07-06 19:40
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.2 diagnostics and replay evidence. Voice turns now expose phase durations, failure phase, capture timing, raw audio replay path, and compact desktop debug evidence.
-  - Scope:
-    - `backend/app/conversation/engine.py`, `backend/app/conversation/realtime/session.py`, `backend/app/services/session_service.py`, `backend/app/artifacts/turn_artifact.py`, `backend/app/api/routes/session.py`, `backend/app/api/schemas/session.py`, `desktop/src/components/conversation-debug.js`
-    - Focused artifact/conversation/session/API/static backend tests and desktop static tests.
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\conversation\test_engine.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\services\test_session_service.py backend\tests\unit\api\test_routes.py backend\tests\unit\artifacts\test_turn_artifact.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`163 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
-    - AA.2 added diagnostics only; it preserved existing raw audio storage paths and did not change endpointing or model/runtime behavior.
-
-- Timestamp: 2026-07-06 18:32
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.1 safe resident voice default and operator layout. Resident voice now starts in PTT-only mode, desktop startup no longer auto-starts Wake, and Resident Voice renders above Wake.
-  - Scope:
-    - `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/services/test_resident_voice_modes.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`
-    - `desktop/src/main.js`, `desktop/src/components/resident-voice.js`, `desktop/src/index.html`
-    - `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_modes.py backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\services\test_wake_monitor.py backend\tests\unit\api\test_routes.py::test_readiness_returns_family_readiness backend\tests\unit\api\test_routes.py::test_resident_voice_status_reports_configured_stream_and_vad backend\tests\unit\api\test_routes.py::test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`72 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
-    - Wake remains available through explicit resident mode selection or the Wake toggle; AA.1 did not edit `docs\20260706_slice-aa.md`.
-
-- Timestamp: 2026-07-06 14:51
-  - Host class(es): Windows AMD64 / amd64 validated
-  - Summary: Completed Slice AA.0 baseline stabilization by correcting backend desktop static-contract coverage to match the current desktop polling helper boundary.
-  - Scope:
-    - `backend/tests/unit/desktop/test_desktop_static_contract.py`
-  - Validation:
-    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`).
-    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
-    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`696 passed, 1 skipped`; fingerprint `arch=amd64`, readiness `ready`, `tokens=13`).
-  - Notes:
-    - AA.0 made no runtime behavior changes and did not edit `docs\20260706_slice-aa.md`; baseline is ready to proceed to the next approved sub-slice.
+    - Resident Voice modes remained `PTT-only` and `Wake` with barge-in disabled, and `Hands-free` and `Continuous` with barge-in enabled when wired.
 
 - Timestamp: 2026-07-05 10:30
   - Host class(es): Windows x64 / amd64 validated

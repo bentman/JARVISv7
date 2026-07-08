@@ -45,6 +45,14 @@ def _write_file(path: Path, content: bytes = b"x") -> Path:
     return path
 
 
+@pytest.fixture(autouse=True)
+def _default_unhealthy_endpoint_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        lambda base_url: (False, f"endpoint unavailable:{base_url}"),
+    )
+
+
 def _resolution(
     tmp_path: Path,
     *,
@@ -562,8 +570,97 @@ def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(
     assert status.running is True
     assert status.pid is None  # No managed process
     assert status.health_ready is True
+    assert status.health_reason is not None
     assert "adopted existing endpoint" in status.health_reason
     assert len(calls) == 0  # No spawn occurred
+
+
+def test_endpoint_adoption_status_remains_running_while_endpoint_is_healthy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    calls: list[list[str]] = []
+    health_checks: list[str] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),
+        health_probe=lambda base_url: health_checks.append(base_url) or (True, f"healthy:{base_url}"),
+    )
+
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        lambda base_url: (True, f"adopted existing endpoint at {base_url}"),
+    )
+    resolution = _resolution(tmp_path, base_url="http://127.0.0.1:18080")
+
+    started = service.start(resolution)
+    status = service.status()
+
+    assert started.running is True
+    assert started.pid is None
+    assert status.state == "running"
+    assert status.running is True
+    assert status.pid is None
+    assert status.health_ready is True
+    assert status.health_reason == "healthy:http://127.0.0.1:18080"
+    assert health_checks == ["http://127.0.0.1:18080"]
+    assert calls == []
+
+
+def test_endpoint_adoption_status_reports_stopped_when_endpoint_becomes_unhealthy(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: _FakeProcess(),
+        health_probe=lambda base_url: (False, f"unhealthy:{base_url}"),
+    )
+
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        lambda base_url: (True, f"adopted existing endpoint at {base_url}"),
+    )
+    resolution = _resolution(tmp_path, base_url="http://127.0.0.1:18080")
+
+    started = service.start(resolution)
+    status = service.status()
+
+    assert started.running is True
+    assert status.state == "stopped"
+    assert status.running is False
+    assert status.health_ready is False
+    assert status.health_reason == "unhealthy:http://127.0.0.1:18080"
+
+
+def test_endpoint_adoption_stop_clears_adoption_without_reaping_external_processes(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    spawned: list[list[str]] = []
+    reaped: list[Path] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: spawned.append(argv) or _FakeProcess(),
+        health_probe=lambda base_url: (True, f"healthy:{base_url}"),
+        process_reaper=lambda path, timeout: reaped.append(path),
+    )
+
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        lambda base_url: (True, f"adopted existing endpoint at {base_url}"),
+    )
+    resolution = _resolution(tmp_path)
+
+    started = service.start(resolution)
+    stopped = service.stop()
+    after_stop = service.status()
+
+    assert started.running is True
+    assert started.pid is None
+    assert stopped.state == "stopped"
+    assert stopped.running is False
+    assert after_stop.state == "stopped"
+    assert after_stop.running is False
+    assert spawned == []
+    assert reaped == []
 
 
 def test_endpoint_adoption_spawns_when_endpoint_unhealthy(
