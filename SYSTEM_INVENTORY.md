@@ -31,6 +31,21 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-07 20:35
+  - State: Verified
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Established Slice AA resident voice stabilization and conversation-flow improvements: PTT-only startup posture, explicit Wake/operator controls, voice-turn diagnostics, live phase/status reporting, hardened PTT no-speech recovery, stabilized endpointing, and config-backed TTS voice selection.
+  - Location:
+    - `backend/app/services/`, `backend/app/conversation/`, `backend/app/runtimes/stt/`, `backend/app/runtimes/tts/`
+    - `backend/app/api/`, `backend/app/artifacts/`, `config/models/tts.yaml`
+    - `desktop/src/`, `desktop/src/components/`, `desktop/tests/`
+  - Evidence:
+    - Timestamp: 2026-07-07 07:30 - Completed Slice AA resident voice stabilization and operator-surface work through AA.7.
+    - Timestamp: 2026-07-07 20:24 - Corrected AA.7 Resident Voice TTS selector behavior and layout.
+    - Timestamp: 2026-07-07 20:35 - Added `capture_ms` timing to streamed Resident Voice PTT capture diagnostics.
+  - Notes:
+    - No new model VAD dependency, accelerator capability, hidden always-listening default, or autonomous agent behavior is claimed.
+
 - Timestamp: 2026-07-05 10:37
   - State: Implemented
   - Host class(es): Windows x64 / amd64 validated
@@ -395,4 +410,3 @@
   - Evidence: 
     - Timestamp: 2026-04-22 14:20 - Established `CHANGE_LOG.md`, `SYSTEM_INVENTORY.md` ...
   - Notes: 
-
