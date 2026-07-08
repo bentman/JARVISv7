@@ -533,3 +533,61 @@ def test_lifecycle_status_delegates_health_probe_when_running(tmp_path: Path) ->
 
     assert status.health_ready is True
     assert status.health_reason == "healthy:http://127.0.0.1:18080"
+
+
+def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """When endpoint is already healthy, start() adopts without spawning a process."""
+    calls: list[list[str]] = []
+
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),
+    )
+
+    # Mock the endpoint probe to return healthy
+    def fake_probe(base_url: str) -> tuple[bool, str]:
+        return True, f"adopted existing endpoint at {base_url}"
+
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        fake_probe,
+    )
+
+    resolution = _resolution(tmp_path)
+    status = service.start(resolution)
+
+    # Should report running but no process spawned
+    assert status.state == "running"
+    assert status.running is True
+    assert status.pid is None  # No managed process
+    assert status.health_ready is True
+    assert "adopted existing endpoint" in status.health_reason
+    assert len(calls) == 0  # No spawn occurred
+
+
+def test_endpoint_adoption_spawns_when_endpoint_unhealthy(
+    monkeypatch, tmp_path: Path
+) -> None:
+    """When endpoint is not healthy, start() spawns a new process as normal."""
+    calls: list[list[str]] = []
+
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=4321),
+    )
+
+    # Mock the endpoint probe to return unhealthy
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        lambda base_url: (False, "endpoint unreachable"),
+    )
+
+    resolution = _resolution(tmp_path)
+    status = service.start(resolution)
+
+    # Should spawn and report running with pid
+    assert status.state == "running"
+    assert status.running is True
+    assert status.pid == 4321
+    assert len(calls) == 1  # Spawn occurred
+    assert calls[0][0].endswith("llama-server.exe")

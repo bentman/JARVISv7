@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Protocol
 from urllib.parse import urlparse
 
+import httpx
 import psutil
 
 from backend.app.models.llm_profiles import LLMServeProfileResolution
@@ -147,6 +148,23 @@ class LocalLLMSidecarService:
             self._last_error = "restart-required"
             return self._status(state="restart-required", running=True, restart_required=True)
 
+        # Check if endpoint is already served by an existing llama-server process
+        base_url = resolution.base_url.rstrip("/")
+        endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url)
+        if endpoint_ready:
+            # Endpoint is already healthy - adopt it without spawning
+            self._last_resolution = resolution
+            self._last_command = command
+            self._last_error = None
+            self._restart_required = False
+            # Return status with running=True but no managed process
+            return self._status(
+                state="running",
+                running=True,
+                health_ready=True,
+                health_reason=f"adopted existing endpoint at {base_url}",
+            )
+
         try:
             process = self._process_factory(list(command.argv))
         except Exception as exc:
@@ -230,6 +248,34 @@ class LocalLLMSidecarService:
             health_reason=health_reason,
             restart_required=self._restart_required if restart_required is None else restart_required,
         )
+
+
+def _probe_endpoint_healthy(base_url: str) -> tuple[bool, str]:
+    """Probe if the llama.cpp endpoint is already healthy.
+
+    Returns (True, reason) if endpoint responds to /health or /v1/models.
+    Returns (False, reason) if endpoint is unreachable or unhealthy.
+    This is a non-blocking single-probe check (no retry loop).
+    """
+    url = base_url.rstrip("/")
+    try:
+        # Try /health first (quickest check)
+        health = httpx.get(f"{url}/health", timeout=1.0)
+        health.raise_for_status()
+        return True, f"endpoint healthy at {base_url}"
+    except Exception:
+        pass
+
+    try:
+        # Try /v1/models as fallback
+        models = httpx.get(f"{url}/v1/models", timeout=1.0)
+        models.raise_for_status()
+        payload = models.json()
+        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+            return True, f"endpoint healthy at {base_url}"
+        return False, "endpoint returned invalid /v1/models payload"
+    except Exception as exc:
+        return False, f"endpoint unreachable: {exc}"
 
 
 def build_llama_server_command(resolution: LLMServeProfileResolution) -> LocalLLMSidecarCommand:

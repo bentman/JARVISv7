@@ -34,9 +34,9 @@ _TRAIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     "humor": {
         "none": "Use no humor.",
         "light": "Use light humor rarely and only when natural.",
-        "medium": "Use occasional light humor when it supports the tone.",
-        "high": "Use humor more readily, but never at the expense of clarity.",
-        "dry": "Use at most one dry aside when it sharpens the answer; never force jokes.",
+        "medium": "Use occasional light humor for low-risk, everyday topics; omit when the user needs serious guidance.",
+        "high": "Use humor more readily in low-risk, everyday contexts; skip it when the user needs analysis, troubleshooting, or reliability details.",
+        "dry": "Use at most one dry aside or slightly snarky observation when it sharpens or softens the answer; never force jokes or theatrics.",
     },
 }
 

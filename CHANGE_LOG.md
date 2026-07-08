@@ -23,6 +23,35 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 22:03
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Strengthened humor trait guidance in personality policy to make dry/snarky humor visible for `jarvis` profile and clarified humor application context for `medium`/`high` traits.
+  - Scope:
+    - `backend/app/personality/policy.py` - improved humor guidance strings
+    - `config/personality/warm.yaml` - added gentle humor example
+    - `config/personality/sage.yaml` - changed "Jokes when the user needs analysis." to "Forced humor in serious contexts."
+    - `backend/tests/unit/personality/test_personality.py` - updated expected humor guidance strings
+  - Validation:
+    - `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/personality/test_personality.py -v` PASS (`15 passed`).
+    - `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe scripts/validate_backend.py unit` PASS (`713 passed, 1 skipped`).
+  - Notes:
+    - Humor guidance now explicitly applies "in low-risk, everyday contexts" for medium/high.
+    - Dry humor now permits "slightly snarky observation" bounded by clarity/risk.
+    - No schema, runtime, or prompt architecture changes.
+
+- Timestamp: 2026-07-07 21:35
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Added endpoint adoption guard to `LocalLLMSidecarService.start()` to prevent duplicate `llama-server.exe` spawns when the configured endpoint is already healthy.
+  - Scope:
+    - `backend/app/services/local_llm_sidecar.py`
+    - `backend/tests/unit/services/test_local_llm_sidecar.py`
+  - Validation:
+    - `e:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7\backend\.venv\Scripts\python.exe -m pytest backend/tests/unit/services/test_local_llm_sidecar.py -q` PASS (`24 passed`).
+    - `scripts/validate_backend.py unit` PASS (`713 passed, 1 skipped`).
+  - Notes:
+    - Adoption is conservative: endpoint must respond to `/health` or `/v1/models` with valid payload.
+    - No process ownership change for already-running sidecars; stop() only affects processes it launched.
+
 - Timestamp: 2026-07-07 20:35
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Added `capture_ms` timing to streamed Resident Voice PTT capture diagnostics. Streamed speech and no-speech captures now report elapsed capture time alongside existing endpointing diagnostics.

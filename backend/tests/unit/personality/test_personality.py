@@ -211,7 +211,7 @@ def test_compile_personality_policy_is_deterministic_and_strong():
     assert "Warmth guidance:" in first.system_text
     assert "Assertiveness guidance:" in first.system_text
     assert "Detail guidance:" in first.system_text
-    assert "Humor guidance: Use at most one dry aside when it sharpens the answer; never force jokes." in first.system_text
+    assert "Humor guidance: Use at most one dry aside or slightly snarky observation when it sharpens or softens the answer; never force jokes or theatrics." in first.system_text
     assert first.locale == "en_GB"
     assert first.examples
     assert first.generation["max_tokens"] == 280
@@ -229,7 +229,7 @@ def test_compile_personality_policy_maps_profile_traits_to_behavior_instructions
     assert "Humor guidance: Use no humor." in concise.system_text
     assert "Warmth guidance: Use strongly warm and encouraging phrasing while staying truthful." in warm.system_text
     assert "Detail guidance: Provide fuller context, tradeoffs, and reasoning when useful." in warm.system_text
-    assert "Humor guidance: Use humor more readily, but never at the expense of clarity." in sage.system_text
+    assert "Humor guidance: Use humor more readily in low-risk, everyday contexts; skip it when the user needs analysis, troubleshooting, or reliability details." in sage.system_text
 
 
 def test_compile_personality_policy_rejects_role_overlay():
