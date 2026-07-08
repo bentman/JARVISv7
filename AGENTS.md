@@ -60,7 +60,7 @@ Default behavior:
 
 Programming principles:
 
-- Existing Patterns First: reinforce existing patterns before adding new structure. If no pattern exists, propose the smallest consistent extension.
+- Prefer use/re-use/modify existing files/patterns/tests over add/create new. Existing Patterns First: reinforce existing patterns before adding new structure. If no pattern exists, propose the smallest consistent extension.
 - KISS: keep implementations simple, direct, and easy to follow. Avoid clever abstractions, unnecessary indirection, and speculative generalization.
 - YAGNI: add only what the approved task requires. Do not build future capabilities, alternate modes, or convenience layers unless they are explicitly requested.
 - DRY: reuse shared logic and utilities. Avoid duplicating logic, command paths, configuration rules, or validation behavior.
