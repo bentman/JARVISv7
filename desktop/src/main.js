@@ -47,7 +47,9 @@ let desktopState = null;
 let personalitySelectionPending = false;
 const PERSONALITY_STORAGE_KEY = "jarvisv7_active_personality";
 const TTS_VOICE_STORAGE_KEY = "jarvisv7_active_tts_voice";
+const RESIDENT_VOICE_MODE_STORAGE_KEY = "jarvisv7_active_resident_voice_mode";
 let ttsVoicePreferenceRestored = false;
+let residentVoiceModePreferenceRestored = false;
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -181,6 +183,7 @@ async function refreshResidentVoiceStatus() {
   if (!api?.getResidentVoiceStatus) return null;
   try {
     let status = await api.getResidentVoiceStatus();
+    status = await applyStoredResidentVoiceModeIfAvailable(status);
     status = await applyStoredTtsVoiceIfAvailable(status);
     residentVoice.renderResidentModeStatus(status);
     renderResidentTtsVoiceSelector(status);
@@ -239,6 +242,22 @@ async function setResidentTtsVoice(voice, options = {}) {
   return status;
 }
 
+async function applyStoredResidentVoiceModeIfAvailable(status) {
+  if (residentVoiceModePreferenceRestored) return status;
+  residentVoiceModePreferenceRestored = true;
+  let storedMode = window.localStorage?.getItem(RESIDENT_VOICE_MODE_STORAGE_KEY);
+  if (storedMode === null) {
+    storedMode = "ptt+wake";
+  }
+  const modes = ["ptt-only", "ptt+wake", "hands-free", "continuous"];
+  if (!modes.includes(storedMode)) {
+    window.localStorage?.removeItem(RESIDENT_VOICE_MODE_STORAGE_KEY);
+    return status;
+  }
+  if (storedMode === status.mode) return status;
+  return (await setResidentVoiceMode(storedMode, { persist: false })) || status;
+}
+
 async function applyStoredTtsVoiceIfAvailable(status) {
   if (ttsVoicePreferenceRestored) return status;
   ttsVoicePreferenceRestored = true;
@@ -263,7 +282,7 @@ async function ensureResidentVoiceStream() {
   return started;
 }
 
-async function setResidentVoiceMode(mode) {
+async function setResidentVoiceMode(mode, options = {}) {
   if (!api?.setResidentVoiceMode) return null;
   clearError();
   if (mode !== "ptt-only") {
@@ -272,6 +291,9 @@ async function setResidentVoiceMode(mode) {
   const status = await api.setResidentVoiceMode(mode);
   residentVoice.renderResidentModeStatus(status);
   renderResidentTtsVoiceSelector(status);
+  if (options.persist !== false && status.mode) {
+    window.localStorage?.setItem(RESIDENT_VOICE_MODE_STORAGE_KEY, status.mode);
+  }
   if (mode === "ptt+wake") {
     await startWakeMonitorIfAvailable();
   } else {
@@ -431,6 +453,7 @@ async function restartBackendForSettings() {
   setState("STARTING");
   healthEl.textContent = "starting";
   ttsVoicePreferenceRestored = false;
+  residentVoiceModePreferenceRestored = false;
   const startPayload = await api.startBackend();
   await completeBackendStart(startPayload);
 }

@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-08 13:40
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented configuration-backed default resident voice mode and auto-startup posture for resident stream and wake monitor at boot.
+  - Scope:
+    - `backend/app/core/settings.py`, `backend/app/api/app.py`
+    - `backend/tests/unit/services/test_startup_posture.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_startup_posture.py -v` (3 passed)
+  - Notes:
+    - Aligns with the Tauri Operator view out-of-the-box via existing status polling endpoints.
+
 - Timestamp: 2026-07-08 10:58
   - Host class(es): Windows ARM64 / arm64 validated
   - Summary: Implemented Qualcomm QNN NPU acceleration support for Kokoro TTS runtime.
@@ -184,6 +195,19 @@
 ---
 
 ## Change Appendix
+
+- Timestamp: 2026-07-08 13:52
+  - Host class(es): Windows x64 validated
+  - Summary: Reverted backend default setting and configuration file changes to prevent environment sprawl. Persisted and restored the resident voice mode preference on the Tauri desktop frontend via local storage.
+  - Scope:
+    - `backend/app/core/settings.py` (reverted)
+    - `backend/app/api/app.py` (reverted)
+    - `.env.example` (reverted)
+    - `backend/tests/unit/services/test_startup_posture.py` (deleted)
+    - `desktop/src/main.js`
+  - Validation:
+    - Run command `npm --prefix desktop test` (passed)
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_resident_voice_modes.py -v` (6 passed)
 
 ---
 

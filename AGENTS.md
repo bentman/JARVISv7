@@ -18,19 +18,22 @@ Use this order for repository truth:
 
 Do not infer completion from intent docs. `SYSTEM_INVENTORY.md` records observable capability state. `CHANGE_LOG.md` records completed work after validation evidence exists. If files conflict with observed behavior, report the conflict and propose the smallest correction.
 
-## 2. Environment contract
+Before touching config or dependencies:
 
-Run from the repo root unless a scoped file says otherwise.
+- `pyproject.toml` is the only source of truth for Python dependencies.
+- `backend/requirements.txt` is generated from `pyproject.toml` by `scripts/provision.py lock` for the base extra only. Never hand-edit it.
+- Approved dependency changes must go through the correct `pyproject.toml` dependency group or hardware extra, then `scripts/provision.py`; direct `pip install` is not repository evidence.
+- `.env` overrides `.env.example` key-by-key. Never edit `.env.example` for local/operator changes; copy it to `.env` and change `.env`.
+- `backend/app/core/settings.py` classifies settings through `SETTING_ENV_CLASSIFICATION`.
+- Prefer `primary` settings for normal operator changes. Touch `advanced`, `derived`, `services`, `secret`, `compatibility`, or `test-only` settings only when the task requires it.
+- Do not add new environment variables, dependency groups, setup paths, or storage roots unless they are the narrowest approved solution.
 
 Python:
 
 - Use `backend/.venv/Scripts/python` for all repo Python commands.
 - Never install Python packages globally.
-- `pyproject.toml` is the dependency source of truth.
-- `backend/requirements.txt` is generated; never edit it by hand.
 - Use `scripts/provision.py` for dependency install/verify/lock/explain.
 - Prefer `scripts/bootstrap.py` for new-host setup.
-- If a dependency is required for approved work, declare it in the proposal, add it to the correct `pyproject.toml` dependency group or hardware extra, then re-provision before using it.
 - Use `>=` by default for dependency versions; use `==` only with a documented reason.
 - Keep runtime-specific ML packages out of base dependencies; use hardware extras.
 - If `backend/.venv` is broken or inconsistent, stop and report minimal repair steps before continuing.

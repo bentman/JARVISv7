@@ -31,6 +31,16 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-08 13:40
+  - State: Verified
+  - Host class(es): Windows x64 validated
+  - Summary: Configuration-backed default resident voice mode and auto-startup posture for the resident audio stream and wake monitor at backend initialization.
+  - Location:
+    - `backend/app/core/settings.py`
+    - `backend/app/api/app.py`
+  - Evidence:
+    - Timestamp: 2026-07-08 13:40 - Implemented configuration-backed default resident voice mode and auto-startup posture for resident stream and wake monitor at boot.
+
 - Timestamp: 2026-07-08 10:59
   - State: Verified
   - Host class(es): Windows ARM64 / arm64 validated
@@ -101,6 +111,15 @@
 ---
 
 ## Inventory Appendix
+
+- Timestamp: 2026-07-08 13:52
+  - State: Verified
+  - Host class(es): Windows x64 validated
+  - Summary: Local storage-backed resident voice mode persistence and restoration on startup and backend restart on the Tauri desktop frontend.
+  - Location:
+    - `desktop/src/main.js`
+  - Evidence:
+    - Timestamp: 2026-07-08 13:52 - Reverted backend default setting and configuration file changes to prevent environment sprawl. Persisted and restored the resident voice mode preference on the Tauri desktop frontend via local storage.
 
 ---
 
