@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 20:24
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Corrected AA.7 TTS voice cache restore after in-app backend restart. The settings restart path now resets the one-shot voice restore guard before the backend-start postlude, allowing the cached local TTS voice to reapply to the recreated runtime.
+  - Scope:
+    - `desktop/src/main.js`, `desktop/tests/static.test.mjs`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py backend\tests\unit\api\test_routes.py backend\tests\unit\runtimes\tts\test_tts_runtime.py -q` PASS (`107 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+  - Notes:
+    - The existing localStorage TTS voice preference path is reused; YAML persistence behavior was not changed.
+
 - Timestamp: 2026-07-07 19:44
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Corrected AA.7 TTS voice selector persistence. Resident Voice now keeps `config/models/tts.yaml` as the backend source for supported voices and baseline voice, while desktop selections persist locally and apply to the active TTS runtime without rewriting YAML.

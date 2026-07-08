@@ -626,6 +626,11 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     assert "applyStoredTtsVoiceIfAvailable" in main_js
     assert "window.localStorage?.setItem(TTS_VOICE_STORAGE_KEY" in main_js
     assert "window.localStorage?.removeItem(TTS_VOICE_STORAGE_KEY" in main_js
+    settings_restart = main_js[
+        main_js.index("async function restartBackendForSettings") : main_js.index("function updateSettingsRestartRequired")
+    ]
+    assert "ttsVoicePreferenceRestored = false" in settings_restart
+    assert settings_restart.index("ttsVoicePreferenceRestored = false") < settings_restart.index("await completeBackendStart(startPayload)")
     assert "Selected voice is saved locally and applies to runtime." in index_html
     assert main_js.index("async function completeBackendStart") < main_js.index("const readiness = await api.getReadiness()")
     complete_backend_start = main_js[

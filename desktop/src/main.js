@@ -430,6 +430,7 @@ async function restartBackendForSettings() {
   await api.stopBackend();
   setState("STARTING");
   healthEl.textContent = "starting";
+  ttsVoicePreferenceRestored = false;
   const startPayload = await api.startBackend();
   await completeBackendStart(startPayload);
 }

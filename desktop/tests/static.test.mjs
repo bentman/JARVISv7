@@ -149,6 +149,12 @@ assert.ok(main.includes("tts_supported_voices"), "desktop voice selector must us
 assert.ok(main.includes("jarvisv7_active_tts_voice"), "desktop voice selector must persist the selected voice locally");
 assert.ok(main.includes("applyStoredTtsVoiceIfAvailable"), "desktop voice selector must restore a valid cached voice");
 assert.ok(main.includes("removeItem(TTS_VOICE_STORAGE_KEY"), "desktop voice selector must clear invalid cached voices");
+const settingsRestartPath = main.slice(main.indexOf("async function restartBackendForSettings"), main.indexOf("function updateSettingsRestartRequired"));
+assert.ok(settingsRestartPath.includes("ttsVoicePreferenceRestored = false"), "desktop settings restart must reset TTS voice restore guard");
+assert.ok(
+  settingsRestartPath.indexOf("ttsVoicePreferenceRestored = false") < settingsRestartPath.indexOf("await completeBackendStart(startPayload)"),
+  "desktop settings restart must reset TTS voice guard before backend-start postlude",
+);
 assert.ok(index.includes("Selected voice is saved locally and applies to runtime."), "desktop voice hint must describe local runtime persistence");
 assert.ok(!main.includes("af_bella"), "desktop must not hardcode TTS voice options");
 assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");
