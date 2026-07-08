@@ -180,6 +180,8 @@ def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path:
     assert diagnostics["stage"] == "segment"
     assert diagnostics["reason"] == "silence"
     assert diagnostics["speech_chunks"] == 2
+    assert isinstance(diagnostics["capture_ms"], int | float)
+    assert diagnostics["capture_ms"] >= 0
 
 
 def test_ptt_uses_resident_stream_buffer_for_manual_pre_roll(tmp_path: Path) -> None:
@@ -241,6 +243,8 @@ def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_pat
     assert status.voice_capture_diagnostics is not None
     assert status.voice_capture_diagnostics["reason"] == "no-speech"
     assert status.voice_capture_diagnostics["speech_chunks"] == 0
+    assert isinstance(status.voice_capture_diagnostics["capture_ms"], int | float)
+    assert status.voice_capture_diagnostics["capture_ms"] >= 0
 
 
 def test_ptt_only_mode_falls_back_to_blocking_capture_when_stream_is_stopped(tmp_path: Path) -> None:

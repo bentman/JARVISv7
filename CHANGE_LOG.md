@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-07 20:35
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Added `capture_ms` timing to streamed Resident Voice PTT capture diagnostics. Streamed speech and no-speech captures now report elapsed capture time alongside existing endpointing diagnostics.
+  - Scope:
+    - `backend/app/services/resident_voice_invocation.py`, `backend/tests/unit/services/test_resident_voice_invocation.py`
+  - Validation:
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_resident_voice_invocation.py backend\tests\unit\conversation\realtime\test_session.py backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`62 passed`).
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`).
+  - Notes:
+    - Desktop UI, YAML/TTS voice persistence, Wake behavior, and turn-engine timing were unchanged.
+
 - Timestamp: 2026-07-07 20:24
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Corrected AA.7 TTS voice cache restore after in-app backend restart. The settings restart path now resets the one-shot voice restore guard before the backend-start postlude, allowing the cached local TTS voice to reapply to the recreated runtime.

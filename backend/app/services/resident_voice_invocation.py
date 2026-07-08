@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import queue
 import threading
+import time
 from collections.abc import Callable, Iterable
 from contextlib import suppress
 from dataclasses import dataclass
@@ -224,21 +225,24 @@ class ResidentVoiceInvocationService:
 
         subscriber = self._resident_stream.subscribe(include_buffer=request.source == "ptt")
         try:
+            capture_started = time.monotonic()
             segment = self._utterance_segmenter.capture(_subscriber_chunks(subscriber))
+            capture_ms = (time.monotonic() - capture_started) * 1000.0
         finally:
             self._resident_stream.unsubscribe(subscriber)
+        diagnostics = _capture_diagnostics_with_timing(segment.diagnostics.as_dict(), capture_ms)
         if not segment.speech_started or segment.audio.size == 0:
             return ResidentInvocationRequest(
                 source=request.source,
                 audio=np.array([], dtype=np.float32),
                 sample_rate=segment.sample_rate,
-                capture_diagnostics=segment.diagnostics.as_dict(),
+                capture_diagnostics=diagnostics,
             )
         return ResidentInvocationRequest(
             source=request.source,
             audio=segment.audio,
             sample_rate=segment.sample_rate,
-            capture_diagnostics=segment.diagnostics.as_dict(),
+            capture_diagnostics=diagnostics,
         )
 
     def _record_capture_diagnostics(self, request: ResidentInvocationRequest) -> None:
@@ -281,6 +285,10 @@ class ResidentVoiceInvocationService:
 def _subscriber_chunks(subscriber: queue.Queue[AudioChunk]) -> Iterable[AudioChunk]:
     while True:
         yield subscriber.get(timeout=0.1)
+
+
+def _capture_diagnostics_with_timing(diagnostics: dict[str, object], capture_ms: float) -> dict[str, object]:
+    return {**diagnostics, "capture_ms": max(0.0, capture_ms)}
 
 
 def default_utterance_segmenter() -> UtteranceSegmenter:
