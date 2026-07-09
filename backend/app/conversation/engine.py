@@ -18,8 +18,6 @@ from dataclasses import dataclass, field
 from typing import Any, Iterable
 from uuid import uuid4
 
-import numpy as np
-
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
