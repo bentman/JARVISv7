@@ -174,3 +174,18 @@ def test_null_wake_runtime_detect_always_returns_false():
 
     assert not runtime.is_available()
     assert runtime.detect(np.ones(WAKE_CHUNK_SAMPLES, dtype=np.int16)) is False
+
+
+def test_openwakeword_runtime_reset_clears_model_history(tmp_path):
+    class MockModel:
+        def __init__(self):
+            self.reset_called = False
+        def reset(self):
+            self.reset_called = True
+
+    runtime = OpenWakeWordRuntime(model_path=tmp_path)
+    mock_model = MockModel()
+    runtime._model = mock_model
+
+    runtime.reset()
+    assert mock_model.reset_called is True

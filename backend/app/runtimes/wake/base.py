@@ -24,3 +24,7 @@ class WakeBase(ABC):
     def warmup(self) -> None:
         """Pre-load model weights and warm up execution providers."""
         pass
+
+    def reset(self) -> None:
+        """Reset the internal state of the wake word model (e.g. buffers, prediction history)."""
+        pass

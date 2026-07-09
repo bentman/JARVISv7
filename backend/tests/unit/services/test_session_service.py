@@ -108,7 +108,7 @@ def _personality(profile_id: str = "default", display_name: str = "Morgan") -> P
     )
 
 
-def _service(tmp_path: Path) -> SessionService:
+def _service(tmp_path: Path, semantic_memory=None) -> SessionService:
     manager = SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
 
     def factory(new_manager: SessionManager) -> TurnEngine:
@@ -116,7 +116,12 @@ def _service(tmp_path: Path) -> SessionService:
         new_manager.sessions_base_dir = tmp_path / "sessions"
         return _engine(new_manager)
 
-    return SessionService(session_manager=manager, engine=_engine(manager), engine_factory=factory)
+    return SessionService(
+        session_manager=manager,
+        engine=_engine(manager),
+        engine_factory=factory,
+        semantic_memory=semantic_memory,
+    )
 
 
 def test_start_session_creates_active_session_id(tmp_path: Path) -> None:
@@ -419,3 +424,96 @@ def test_start_and_stop_wake_monitor_updates_status_without_readiness_change(tmp
     assert stopped.enabled is False
     assert stopped.monitoring is False
     assert stopped.reason == "wake monitoring stopped; manual PTT is active"
+
+
+def test_semantic_consolidation_governed_by_policy(tmp_path: Path) -> None:
+    from backend.app.memory.semantic import SemanticMemory
+    from backend.app.memory.write_policy import WritePolicy
+
+    db_path = tmp_path / "semantic.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    service = _service(tmp_path, semantic_memory=semantic)
+
+    # Enable semantic memory consolidation in policy
+    policy = WritePolicy(
+        write_to_semantic_memory=True,
+        semantic_consolidate_on_close=True,
+        semantic_min_text_length=5,
+    )
+    service.engine().write_policy = policy
+
+    # Add some turn artifacts
+    session_id = service.status().session_id
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-1",
+            session_id=session_id,
+            input_modality="text",
+            final_state="completed",
+            transcript="hello standard transcript",
+            response_text="The quick brown fox response text",
+        )
+    )
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-2",
+            session_id=session_id,
+            input_modality="text",
+            final_state="completed",
+            transcript="tst",  # under min_text_length (5)
+            response_text="sho",  # under min_text_length (5)
+        )
+    )
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-failed",
+            session_id=session_id,
+            input_modality="text",
+            final_state="FAILED",
+            failure_reason="simulated failure",
+            transcript="failed turn transcript",
+            response_text="failed turn response",
+        )
+    )
+
+    # End session to trigger consolidation
+    service.end_session(session_id)
+
+    # Read entries back
+    res = semantic.search_lexical("fox")
+    assert len(res) == 1
+    assert res[0].text == "The quick brown fox response text"
+    assert res[0].source_field == "response_text"
+
+    # Verify that failed turn was skipped
+    assert len(semantic.search_lexical("failed")) == 0
+    # Verify that short turn was skipped
+    assert len(semantic.search_lexical("short")) == 0
+
+
+def test_semantic_consolidation_disabled_by_default(tmp_path: Path) -> None:
+    from backend.app.memory.semantic import SemanticMemory
+
+    db_path = tmp_path / "semantic.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    service = _service(tmp_path, semantic_memory=semantic)
+    session_id = service.status().session_id
+
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-1",
+            session_id=session_id,
+            input_modality="text",
+            final_state="completed",
+            transcript="hello standard transcript",
+            response_text="The quick brown fox response text",
+        )
+    )
+
+    # Close session with default policy (write_to_semantic_memory=False)
+    service.end_session(session_id)
+
+    # Should not write anything to database
+    assert len(semantic.search_lexical("fox")) == 0

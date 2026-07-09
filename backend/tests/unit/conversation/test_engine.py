@@ -150,7 +150,7 @@ class FakeRetrieval:
         self.error = error
         self.calls: list[tuple[str | None, int, object | None]] = []
 
-    def retrieve(self, query: str | None, n: int = 3, cache_manager: object | None = None, episodic: object | None = None):
+    def retrieve(self, query: str | None, n: int = 3, cache_manager: object | None = None, episodic: object | None = None, semantic: object | None = None):
         self.calls.append((query, n, episodic))
         if self.error is not None:
             raise self.error

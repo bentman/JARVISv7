@@ -14,6 +14,17 @@ from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.style_guard import apply_personality_style_guard
 from backend.app.cognition.executor import ToolExecutor, ToolResult
+from dataclasses import dataclass, field
+from typing import Any, Iterable
+from uuid import uuid4
+
+import numpy as np
+
+from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
+from backend.app.cognition.prompt_renderer import render_flat_prompt
+from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
+from backend.app.cognition.style_guard import apply_personality_style_guard
+from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
@@ -21,6 +32,7 @@ from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import PhaseObserver, TurnContext
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
+from backend.app.memory.semantic import SemanticMemory
 from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
 from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
@@ -71,6 +83,7 @@ class TurnEngine:
         tool_registry: Any | None = None,
         episodic: EpisodicMemory | None = None,
         cache_manager: CacheManager | None = None,
+        semantic: SemanticMemory | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -86,6 +99,7 @@ class TurnEngine:
         self.tool_registry = tool_registry
         self.episodic = episodic
         self.cache_manager = cache_manager
+        self.semantic = semantic
         self.retrieval = RetrievalManager()
         self.phase_observer: PhaseObserver | None = None
 
@@ -184,13 +198,14 @@ class TurnEngine:
                 else None
             )
             retrieved_context: list[RetrievedFact] = []
-            if self.episodic is not None:
+            if self.episodic is not None or self.semantic is not None:
                 try:
                     retrieved_context = self.retrieval.retrieve(
                         query=transcript,
                         n=3,
                         cache_manager=self.cache_manager,
                         episodic=self.episodic,
+                        semantic=self.semantic,
                     )
                 except Exception:
                     retrieved_context = []

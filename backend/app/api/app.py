@@ -12,6 +12,7 @@ from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
+from backend.app.memory.semantic import SemanticMemory
 from backend.app.core.paths import CONFIG_DIR
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import load_default_personality
@@ -63,6 +64,7 @@ class ApiState:
     resident_voice: ResidentVoiceInvocationService | None = None
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
+    semantic_memory: SemanticMemory | None = None
 
 
 def _load_runtime_policy(path=DEFAULT_POLICY_PATH) -> dict[str, object]:
@@ -83,6 +85,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         personality=state.personality,
         session_manager=manager,
         cache_manager=state.cache_manager,
+        semantic=state.semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
     )
@@ -110,6 +113,7 @@ def build_startup_state() -> ApiState:
     llm, llm_trace = select_llm(_load_runtime_policy(), preflight, profile, local=local_llm.runtime)
     session_manager = SessionManager()
     cache_manager = CacheManager()
+    semantic_memory = SemanticMemory()
     state = ApiState(
         report=report,
         profile=profile,
@@ -130,12 +134,14 @@ def build_startup_state() -> ApiState:
         utterance_segmenter=default_utterance_segmenter(),
         llm_trace=llm_trace,
         local_llm_sidecar=local_llm.sidecar,
+        semantic_memory=semantic_memory,
     )
     state.engine = build_engine(state, session_manager)
     state.session_service = SessionService(
         session_manager=session_manager,
         engine=state.engine,
         engine_factory=lambda manager: bind_session(state, manager),
+        semantic_memory=semantic_memory,
     )
     state.resident_voice = ResidentVoiceInvocationService(
         session_service=state.session_service,

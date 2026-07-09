@@ -79,3 +79,7 @@ class OpenWakeWordRuntime(WakeBase):
         self.last_score = max_score
         self.last_prediction_keys = tuple(sorted(prediction_keys))
         return max_score >= self.threshold
+
+    def reset(self) -> None:
+        if self._model is not None:
+            self._model.reset()

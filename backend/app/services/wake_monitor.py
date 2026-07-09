@@ -95,6 +95,11 @@ class WakeMonitorService:
                 return self._session_service.record_wake_error(exc, reason="wake runtime initialization failed; PTT-only fallback is active")
             if not available:
                 return self._session_service.record_wake_unavailable()
+            if hasattr(runtime, "reset"):
+                try:
+                    runtime.reset()
+                except Exception:
+                    pass
             self._stop_event.clear()
             self._runtime = runtime
             self._session_service.start_wake_monitor(provider=self._provider, available=True, reason="wake monitoring active")

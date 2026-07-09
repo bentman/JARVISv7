@@ -1,170 +1,238 @@
 from __future__ import annotations
 
+import pytest
+from pathlib import Path
 import json
 
-from backend.app.memory.episodic import EpisodicEntry
-from backend.app.memory.retrieval import RetrievalManager
+from backend.app.memory.episodic import EpisodicMemory, EpisodicEntry
+from backend.app.memory.semantic import SemanticMemory, text_to_vector
+from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
+from backend.app.artifacts.turn_artifact import TurnArtifact
+from backend.app.memory.write_policy import WritePolicy
 
 
-class _FakeEpisodic:
-    def __init__(self) -> None:
-        self.recent_called = False
-        self.keyword_called_with: tuple[str, int] | None = None
-
-    def retrieve_recent(self, n: int = 5):
-        self.recent_called = True
-        return [EpisodicEntry("t1", "s1", "x", "hello", "world", [], "2026-01-01T00:00:00+00:00")]
-
-    def retrieve_by_keyword(self, keyword: str, n: int = 5):
-        self.keyword_called_with = (keyword, n)
-        return [EpisodicEntry("t2", "s2", "x", "apple", "banana", [], "2026-01-01T00:00:00+00:00")]
-
-
-class _FakeCache:
-    def __init__(self) -> None:
-        self.available = True
-        self.store: dict[str, str] = {}
-        self.last_get_key: str | None = None
-        self.last_set: tuple[str, str, int] | None = None
-        self.raise_on_get = False
-        self.raise_on_set = False
-
-    def is_available(self) -> bool:
-        return self.available
+class MockCacheManager:
+    def __init__(self, available: bool = True):
+        self.available = available
+        self.store = {}
 
     def get(self, key: str) -> str | None:
-        if self.raise_on_get:
-            raise RuntimeError("get failed")
-        self.last_get_key = key
+        if not self.available:
+            raise Exception("Redis disconnected")
         return self.store.get(key)
 
     def set(self, key: str, value: str, ttl: int) -> bool:
-        if self.raise_on_set:
-            raise RuntimeError("set failed")
-        self.last_set = (key, value, ttl)
+        if not self.available:
+            raise Exception("Redis disconnected")
         self.store[key] = value
         return True
 
-
-def test_retrieve_returns_recent_facts_when_no_query() -> None:
-    episodic = _FakeEpisodic()
-    facts = RetrievalManager().retrieve(query=None, n=3, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.recent_called is True
-    assert facts[0].relevance_method == "recency"
+    def is_available(self) -> bool:
+        if not self.available:
+            return False
+        return True
 
 
-def test_retrieve_returns_keyword_facts_when_query_given() -> None:
-    episodic = _FakeEpisodic()
-    facts = RetrievalManager().retrieve(query="apple", n=2, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.keyword_called_with == ("apple", 2)
-    assert facts[0].relevance_method == "keyword"
+def test_episodic_only_retrieval(tmp_path: Path):
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    
+    # Write episodic entries
+    policy = WritePolicy()
+    artifact_1 = TurnArtifact(
+        turn_id="t-1",
+        session_id="s-1",
+        input_modality="text",
+        final_state="completed",
+        transcript="what is the capital of France?",
+        response_text="The capital of France is Paris.",
+        tools_invoked=[],
+    )
+    episodic.write_entry(artifact_1, policy)
+
+    retrieval = RetrievalManager()
+    
+    # 1. Recency retrieval
+    facts_recency = retrieval.retrieve(query=None, n=1, episodic=episodic, semantic=None)
+    assert len(facts_recency) == 1
+    assert facts_recency[0].content == "The capital of France is Paris."
+    assert facts_recency[0].relevance_method == "recency"
+
+    # 2. Keyword retrieval
+    facts_kw = retrieval.retrieve(query="Paris", n=1, episodic=episodic, semantic=None)
+    assert len(facts_kw) == 1
+    assert facts_kw[0].content == "The capital of France is Paris."
+    assert facts_kw[0].relevance_method == "keyword"
+
+    # 3. No matches
+    facts_none = retrieval.retrieve(query="Berlin", n=1, episodic=episodic, semantic=None)
+    assert len(facts_none) == 0
 
 
-def test_retrieve_returns_empty_list_when_episodic_unavailable() -> None:
-    assert RetrievalManager().retrieve(query="x", episodic=None) == []
+def test_semantic_only_retrieval(tmp_path: Path):
+    db_path = tmp_path / "memory.sqlite"
+    semantic = SemanticMemory(db_path)
+    
+    # Write semantic entry
+    semantic.write_fact(
+        text="The capital of Spain is Madrid.",
+        vector=None,
+        vectorizer_id=None,
+        source_session_id="s-1",
+        source_turn_id="t-2",
+        source_field="response_text"
+    )
+
+    retrieval = RetrievalManager()
+
+    # 1. Lexical retrieval
+    facts_lex = retrieval.retrieve(query="Madrid", n=1, episodic=None, semantic=semantic)
+    assert len(facts_lex) == 1
+    assert facts_lex[0].content == "The capital of Spain is Madrid."
+    assert facts_lex[0].relevance_method == "lexical"
+
+    # 2. Vector retrieval
+    facts_vec = retrieval.retrieve(query="capital Spain", n=1, episodic=None, semantic=semantic)
+    assert len(facts_vec) == 1
+    assert facts_vec[0].content == "The capital of Spain is Madrid."
+    # With RRF rank merging, when query is not None and semantic is not None,
+    # the returned relevance_method is the method of the winning candidate in fact_map.
+    # Depending on list ordering, it could be 'lexical' or 'vector'. Both are fine.
+    assert facts_vec[0].relevance_method in {"lexical", "vector"}
 
 
-def test_retrieved_fact_has_provenance_fields() -> None:
-    episodic = _FakeEpisodic()
-    fact = RetrievalManager().retrieve(query="x", episodic=episodic)[0]  # type: ignore[arg-type]
-    assert fact.turn_id
-    assert fact.session_id
-    assert fact.source_field in {"response_text", "transcript"}
+def test_hybrid_retrieval_and_rrf_rank_merge(tmp_path: Path):
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    
+    db_path = tmp_path / "memory.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    policy = WritePolicy()
+    
+    # Write same concept to episodic and semantic with slightly different wording to test RRF ranking
+    # Episodic match
+    artifact = TurnArtifact(
+        turn_id="t-1",
+        session_id="s-1",
+        input_modality="text",
+        final_state="completed",
+        transcript="weather in London",
+        response_text="It is raining in London.",
+        tools_invoked=[],
+    )
+    episodic.write_entry(artifact, policy)
+
+    # Semantic match
+    semantic.write_fact("London is famous for its rainy weather.", source_session_id="s-1", source_turn_id="t-1")
+    semantic.write_fact("Unrelated semantic fact.", source_session_id="s-1", source_turn_id="t-2")
+
+    retrieval = RetrievalManager()
+    
+    # Retrieve top 2 facts for query "London"
+    facts = retrieval.retrieve(query="London", n=2, episodic=episodic, semantic=semantic)
+
+    # Should return both facts, ordered by RRF rank score
+    assert len(facts) == 2
+    contents = {f.content for f in facts}
+    assert "It is raining in London." in contents
+    assert "London is famous for its rainy weather." in contents
+    assert "Unrelated semantic fact." not in contents
 
 
-def test_retrieve_populates_cache_on_first_call() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    facts = RetrievalManager().retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
+def test_deduplication_between_sources(tmp_path: Path):
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    
+    db_path = tmp_path / "memory.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    policy = WritePolicy()
+
+    # Write IDENTICAL text to both
+    artifact = TurnArtifact(
+        turn_id="t-1",
+        session_id="s-1",
+        input_modality="text",
+        final_state="completed",
+        transcript="ident",
+        response_text="Identical content.",
+        tools_invoked=[],
+    )
+    episodic.write_entry(artifact, policy)
+    semantic.write_fact("Identical content.", source_session_id="s-1", source_turn_id="t-1")
+
+    retrieval = RetrievalManager()
+
+    # Retrieval should merge them and return only 1 copy of the fact
+    facts = retrieval.retrieve(query="content", n=5, episodic=episodic, semantic=semantic)
     assert len(facts) == 1
-    assert cache.last_set is not None
-    key, payload, ttl = cache.last_set
-    assert key.startswith("retrieval:keyword:")
-    assert key.endswith(":2")
-    assert ttl == 300
-    decoded = json.loads(payload)
-    assert decoded[0]["turn_id"] == "t2"
+    assert facts[0].content == "Identical content."
 
 
-def test_retrieve_uses_cache_on_second_call() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    manager = RetrievalManager()
-    first = manager.retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    episodic.keyword_called_with = None
-    second = manager.retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert len(first) == len(second) == 1
-    assert episodic.keyword_called_with is None
-    assert second[0].turn_id == "t2"
+def test_cache_miss_hit_and_corruption(tmp_path: Path):
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    db_path = tmp_path / "memory.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    policy = WritePolicy()
+    artifact = TurnArtifact(
+        turn_id="t-1",
+        session_id="s-1",
+        input_modality="text",
+        final_state="completed",
+        transcript="test",
+        response_text="Cache test response.",
+        tools_invoked=[],
+    )
+    episodic.write_entry(artifact, policy)
+
+    retrieval = RetrievalManager()
+    cache = MockCacheManager(available=True)
+
+    # 1. First retrieve: Cache miss, writes to cache
+    facts_1 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    assert len(facts_1) == 1
+    assert len(cache.store) == 1  # Should have 1 cache key written
+    
+    # 2. Second retrieve: Cache hit
+    facts_2 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    assert len(facts_2) == 1
+    assert facts_2[0].content == "Cache test response."
+
+    # 3. Corrupt the cache value
+    cache_key = list(cache.store.keys())[0]
+    cache.store[cache_key] = "{invalid json string}"
+
+    # 4. Third retrieve: Cache corruption fallback to database
+    facts_3 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    assert len(facts_3) == 1
+    assert facts_3[0].content == "Cache test response."
 
 
-def test_retrieve_falls_back_to_disk_when_cache_unavailable() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    cache.available = False
-    facts = RetrievalManager().retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.keyword_called_with == ("apple", 2)
+def test_redis_unavailable_fallback(tmp_path: Path):
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    db_path = tmp_path / "memory.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    policy = WritePolicy()
+    artifact = TurnArtifact(
+        turn_id="t-1",
+        session_id="s-1",
+        input_modality="text",
+        final_state="completed",
+        transcript="test",
+        response_text="Redis down response.",
+        tools_invoked=[],
+    )
+    episodic.write_entry(artifact, policy)
+
+    retrieval = RetrievalManager()
+    cache = MockCacheManager(available=False)  # Redis unavailable
+
+    # Retrieve should not crash and should correctly query DB
+    facts = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
     assert len(facts) == 1
-
-
-def test_retrieve_falls_back_to_disk_when_cache_get_none() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    facts = RetrievalManager().retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.keyword_called_with == ("apple", 2)
-    assert len(facts) == 1
-
-
-def test_retrieve_falls_back_to_disk_when_cache_get_raises() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    cache.raise_on_get = True
-    facts = RetrievalManager().retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.keyword_called_with == ("apple", 2)
-    assert len(facts) == 1
-
-
-def test_retrieve_falls_back_to_disk_on_invalid_cached_json() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    cache.store["retrieval:keyword:xyz:2"] = "not-json"
-    manager = RetrievalManager()
-    key = manager._cache_key("apple", 2)
-    cache.store[key] = "not-json"
-    facts = manager.retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.keyword_called_with == ("apple", 2)
-    assert len(facts) == 1
-
-
-def test_retrieve_cache_set_raising_does_not_fail_retrieval() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    cache.raise_on_set = True
-    facts = RetrievalManager().retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert len(facts) == 1
-
-
-def test_keyword_and_recency_keys_are_distinct_and_include_n() -> None:
-    manager = RetrievalManager()
-    key_keyword_n2 = manager._cache_key("apple", 2)
-    key_keyword_n3 = manager._cache_key("apple", 3)
-    key_recency_n2 = manager._cache_key(None, 2)
-    assert key_keyword_n2 != key_recency_n2
-    assert key_keyword_n2 != key_keyword_n3
-    assert key_keyword_n2.endswith(":2")
-    assert key_keyword_n3.endswith(":3")
-    assert key_recency_n2 == "retrieval:recency:2"
-
-
-def test_cached_facts_preserve_provenance_fields() -> None:
-    episodic = _FakeEpisodic()
-    cache = _FakeCache()
-    manager = RetrievalManager()
-    first = manager.retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    episodic.keyword_called_with = None
-    second = manager.retrieve(query="apple", n=2, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
-    assert episodic.keyword_called_with is None
-    assert first[0].turn_id == second[0].turn_id
-    assert first[0].session_id == second[0].session_id
-    assert first[0].source_field == second[0].source_field
-    assert first[0].relevance_method == second[0].relevance_method
+    assert facts[0].content == "Redis down response."

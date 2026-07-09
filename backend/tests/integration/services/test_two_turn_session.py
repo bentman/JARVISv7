@@ -139,3 +139,44 @@ def test_session_close_writes_session_artifact(tmp_path):
     assert session_artifact is not None
     assert session_artifact.turn_ids == [first.turn_id, second.turn_id]
     assert session_artifact.final_state == "IDLE"
+
+
+def test_two_turn_session_retrieves_semantic_memory(tmp_path):
+    from backend.app.memory.semantic import SemanticMemory
+
+    db_path = tmp_path / "semantic.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    # Pre-populate a semantic fact
+    semantic.write_fact(
+        text="JARVIS is running on a high-end local system.",
+        source_session_id="prior-session",
+        source_turn_id="prior-turn",
+        source_field="response_text",
+    )
+
+    llm = SequencedLLM(["understood"])
+    manager = SessionManager(session_id="session-2", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    engine = TurnEngine(
+        stt=FakeSTT(),
+        tts=FakeTTS(),
+        llm=llm,
+        personality=_personality(),
+        session_manager=manager,
+        write_policy=WritePolicy(max_working_memory_entries=10),
+        semantic=semantic,
+    )
+
+    # Run a text turn that matches the semantic fact keyword
+    result = engine.run_text_turn("Tell me about local system")
+    assert result.final_state == ConversationState.IDLE
+
+    # Verify that the semantic fact was retrieved and injected into the prompt
+    assert len(llm.prompts) == 1
+    assert "Relevant prior context:" in llm.prompts[0]
+    assert "JARVIS is running on a high-end local system." in llm.prompts[0]
+
+    # Verify turn artifact records retrieved memory refs
+    assert len(manager.turn_artifacts) == 1
+    artifact = manager.turn_artifacts[0]
+    assert "prior-turn" in artifact.retrieved_memory_refs

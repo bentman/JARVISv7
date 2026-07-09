@@ -23,6 +23,80 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-09 00:37
+  - Host class(es): Windows x64 validated
+  - Summary: Fixed wake monitor retriggering issue by adding a reset method to the wake runtime and invoking it during monitor service start/resume to clear openwakeword model prediction history.
+  - Scope:
+    - `backend/app/runtimes/wake/base.py`
+    - `backend/app/runtimes/wake/openwakeword_runtime.py`
+    - `backend/app/services/wake_monitor.py`
+    - `backend/tests/unit/runtimes/wake/test_wake_runtime.py`
+    - `backend/tests/unit/services/test_wake_monitor.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/wake/ -v` PASS (12 passed)
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_wake_monitor.py -v` PASS (11 passed)
+  - Notes:
+    - Reusing `OpenWakeWordRuntime` across pauses carried over prediction history, causing immediate false detections. Resetting the model clears internal buffers and resolves this.
+
+- Timestamp: 2026-07-09 00:26
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Sub-Slice BB.5 End-to-End Semantic Recall Path and Closeout, wiring SemanticMemory into TurnEngine and FastAPI startup wiring to enable context retrieval without disrupting existing turn behavior.
+  - Scope:
+    - `backend/app/conversation/engine.py`
+    - `backend/app/api/app.py`
+    - `backend/tests/integration/services/test_two_turn_session.py`
+    - `backend/tests/unit/conversation/test_engine.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/integration/services/test_two_turn_session.py -v` PASS (4 passed)
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation -q` PASS (75 passed)
+  - Notes:
+    - Passed semantic memory object to TurnEngine and RetrievalManager.retrieve. Updated FakeRetrieval test stub to accept semantic keyword arg. Registered SemanticMemory instance in ApiState and wired session consolidation triggers at startup.
+
+- Timestamp: 2026-07-09 00:23
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Sub-Slice BB.4 Semantic Write Policy and Closeout Consolidation, triggering policy-controlled semantic memory consolidation on session close.
+  - Scope:
+    - `backend/app/memory/write_policy.py`
+    - `backend/app/services/session_service.py`
+    - `backend/tests/unit/services/test_session_service.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_session_service.py -v` PASS (22 passed)
+  - Notes:
+    - Added default-disabled semantic fields to WritePolicy. EndSession triggers a try-except wrapped consolidation process that selects candidate texts (preferring response text over transcript), enforces length limits and maximum entry counts, and performs vector similarity deduplication.
+
+- Timestamp: 2026-07-09 00:22
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Sub-Slice BB.3 Hybrid Retrieval Integration, extending RetrievalManager to rank-merge episodic keyword results and semantic lexical/vector search results via Reciprocal Rank Fusion (RRF).
+  - Scope:
+    - `backend/app/memory/retrieval.py`
+    - `backend/tests/unit/memory/test_retrieval.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/memory/test_retrieval.py -v` PASS (6 passed)
+  - Notes:
+    - Normalizes and deduplicates candidates deterministically, uses a distinct cache key namespace for hybrid queries, and fails back gracefully when Redis cache is corrupt or unavailable.
+
+- Timestamp: 2026-07-09 00:17
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Sub-Slice BB.2 CPU Text Vectorization, adding a deterministic, CPU-only hashing-trick text vectorizer and updating write_fact to support auto-vectorization.
+  - Scope:
+    - `backend/app/memory/semantic.py`
+    - `backend/tests/unit/memory/test_semantic.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/memory/test_semantic.py -v` PASS (10 passed)
+  - Notes:
+    - Uses only numpy to build a stable 128-dimensional unit-length float32 vector, completely avoiding external API/dependency requirements.
+
+- Timestamp: 2026-07-09 00:12
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Sub-Slice BB.1 SQLite Semantic Store Foundation, enabling local-first SQLite-based SemanticEntry and SemanticMemory query and persistence capabilities.
+  - Scope:
+    - `backend/app/memory/semantic.py`
+    - `backend/tests/unit/memory/test_semantic.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/memory/test_semantic.py -v` PASS (8 passed)
+  - Notes:
+    - Bypasses any external service or dependency requirements. Stores vectors as little-endian float32 BLOBs and supports lexical (FTS5) and cosine vector similarity searches.
+
 - Timestamp: 2026-07-08 13:40
   - Host class(es): Windows x64 validated
   - Summary: Implemented configuration-backed default resident voice mode and auto-startup posture for resident stream and wake monitor at boot.

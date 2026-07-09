@@ -12,6 +12,7 @@ from backend.app.conversation.states import ConversationState
 from backend.app.core.paths import DATA_DIR
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
+from backend.app.memory.semantic import SemanticMemory
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +71,7 @@ class SessionService:
         engine_factory: Callable[[SessionManager], TurnEngine],
         active: bool = True,
         personality: PersonalityProfile | None = None,
+        semantic_memory: SemanticMemory | None = None,
     ) -> None:
         self._session_manager = session_manager
         self._engine = engine
@@ -84,6 +86,7 @@ class SessionService:
         self._tts_output_device: str | None = None
         self._voice_capture_diagnostics: dict[str, object] | None = None
         self._failure_phase: str | None = None
+        self._semantic_memory = semantic_memory
         self._wake_status_store = WakeStatusStore(
             provider="openwakeword",
             available=False,
@@ -129,6 +132,10 @@ class SessionService:
 
     def end_session(self, session_id: str, final_state: str = "IDLE") -> SessionCloseResult:
         self.assert_active_session(session_id)
+        try:
+            self._consolidate_semantic_memory()
+        except Exception:
+            pass
         artifact_path = self._session_manager.close_session(final_state)
         self._active = False
         self._state = final_state
@@ -272,6 +279,62 @@ class SessionService:
 
     def process_wake_chunks(self, wake_runtime: WakeRuntime, audio_chunks: Iterable[np.ndarray]) -> WakeMonitorStatus:
         return self._wake_status_store.process_chunks(wake_runtime, audio_chunks)
+
+    def _consolidate_semantic_memory(self) -> None:
+        if self._semantic_memory is None:
+            return
+
+        policy = getattr(self._engine, "write_policy", None)
+        if policy is None or not getattr(policy, "write_to_semantic_memory", False):
+            return
+        if not getattr(policy, "semantic_consolidate_on_close", False):
+            return
+
+        written_count = 0
+        for artifact in self._session_manager.turn_artifacts:
+            if getattr(policy, "episodic_skip_failed_turns", True) and artifact.failure_reason is not None:
+                continue
+
+            text: str | None = None
+            source_field: str | None = None
+
+            if artifact.response_text and artifact.response_text.strip():
+                candidate = artifact.response_text.strip()
+                if len(candidate) >= getattr(policy, "semantic_min_text_length", 10):
+                    text = candidate
+                    source_field = "response_text"
+
+            if text is None and artifact.transcript and artifact.transcript.strip():
+                candidate = artifact.transcript.strip()
+                if len(candidate) >= getattr(policy, "semantic_min_text_length", 10):
+                    text = candidate
+                    source_field = "transcript"
+
+            if text is not None and source_field is not None:
+                if written_count >= getattr(policy, "semantic_max_entries_per_session", 10):
+                    break
+
+                from backend.app.memory.semantic import text_to_vector
+                q_vec = text_to_vector(text)
+                sim_results = self._semantic_memory.search_vector(q_vec, n=1)
+                
+                # similarity deduplication check
+                if sim_results:
+                    _best_match, similarity = sim_results[0]
+                    if similarity >= getattr(policy, "semantic_similarity_dedupe_threshold", 0.95):
+                        continue
+
+                fact_id = self._semantic_memory.write_fact(
+                    text=text,
+                    vector=q_vec,
+                    vectorizer_id="local_hashing_trick_v1_128",
+                    source_session_id=artifact.session_id,
+                    source_turn_id=artifact.turn_id,
+                    source_field=source_field,
+                    kind="fact",
+                )
+                if fact_id is not None:
+                    written_count += 1
 
 
 def _turn_artifact_display_path(turns_base_dir: Path, session_id: str, turn_id: str) -> Path:

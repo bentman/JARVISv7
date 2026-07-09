@@ -320,3 +320,27 @@ def test_wake_pause_resume_does_not_stop_shared_resident_stream(tmp_path: Path) 
 
     assert resumed.active is True
 
+
+def test_wake_monitor_start_resets_runtime(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+
+    class RuntimeWithReset(_FakeWakeRuntime):
+        def __init__(self):
+            super().__init__()
+            self.reset_called = False
+
+        def reset(self):
+            self.reset_called = True
+
+    runtime = RuntimeWithReset()
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: runtime,
+        chunk_source=lambda stop: [np.zeros(4)],
+    )
+
+    monitor.start()
+    assert runtime.reset_called is True
+    monitor.stop()
+
