@@ -23,8 +23,10 @@
 
 ## Change Entries
 
-- Timestamp: 2026-07-10 11:42
-  - Host class(es): Windows x64 validated
+- Timestamp: 2026-07-10 11:49
+  - Host class(es): 
+    - Windows AMD64 / x64 validated 
+    - Windows ARM64 / arm64 validated
   - Summary: Implemented Slice CC.4 TTS Partial Playback, adding backward-compatible chunk iteration to the TTS base/runtime layer and wiring chunk playback through TurnEngine with streaming support.
   - Scope:
     - `backend/app/runtimes/tts/base.py`
