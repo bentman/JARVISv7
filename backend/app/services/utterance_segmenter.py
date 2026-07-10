@@ -199,6 +199,7 @@ class UtteranceSegmenter:
                     noise_floor_rms,
                     effective_speech_threshold,
                     speech_start_samples,
+                    trim_samples=silence_after_speech,
                 )
 
         if speech_started:
@@ -260,8 +261,11 @@ class UtteranceSegmenter:
         noise_floor_rms: float,
         effective_speech_threshold: float,
         speech_start_samples: int,
+        trim_samples: int = 0,
     ) -> UtteranceSegment:
         audio = np.concatenate(parts).astype(np.float32, copy=False) if parts else np.array([], dtype=np.float32)
+        if trim_samples > 0 and audio.size >= trim_samples:
+            audio = audio[:-trim_samples]
         return UtteranceSegment(
             audio=audio,
             sample_rate=self.sample_rate,

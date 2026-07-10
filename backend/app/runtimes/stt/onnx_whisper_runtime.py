@@ -59,6 +59,8 @@ class OnnxWhisperRuntime(STTBase):
     def is_available(self) -> bool:
         if self.device == "qnn":
             return False
+        if self._model is not None:
+            return True
         required = (
             "encoder_model.onnx",
             "decoder_model_merged.onnx",
@@ -173,6 +175,8 @@ class QnnWhisperRuntime(STTBase):
 
     def is_available(self) -> bool:
         """Check if all required model files are present."""
+        if self._encoder_session is not None and self._decoder_session is not None:
+            return True
         try:
             self._configured_model_file("encoder", "encoder.onnx")
             self._configured_model_file("decoder", "decoder.onnx")

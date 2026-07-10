@@ -538,3 +538,80 @@ def test_secondary_onnx_asr_runtime_boundary_is_unavailable():
     assert not runtime.is_available()
     with pytest.raises(RuntimeError, match="boundary-only"):
         runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000)
+
+
+def test_onnx_whisper_runtime_transcribe_avoids_repeated_file_probes(monkeypatch):
+    class FakeModel:
+        def recognize(self, waveform, sample_rate):
+            return "recognized text"
+
+    runtime = OnnxWhisperRuntime(model_path=Path("fake_path"))
+    runtime._model = FakeModel()
+
+    # Track calls to Path.is_file
+    is_file_calls = 0
+    original_is_file = Path.is_file
+
+    def mock_is_file(self):
+        nonlocal is_file_calls
+        if "fake_path" in str(self):
+            is_file_calls += 1
+            return True
+        return original_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", mock_is_file)
+
+    # transcribe first time
+    res = runtime.transcribe(np.zeros(160, dtype=np.float32), 16000)
+    assert res == "recognized text"
+    assert is_file_calls == 0
+
+
+def test_qnn_whisper_runtime_transcribe_avoids_repeated_file_probes(monkeypatch):
+    runtime = QnnWhisperRuntime(model_path=Path("fake_path"))
+    runtime._encoder_session = SimpleNamespace(
+        get_providers=lambda: ["QNNExecutionProvider"],
+        get_inputs=lambda: [SimpleNamespace(name="input_features")],
+        get_outputs=lambda: [SimpleNamespace(name="cross_0")],
+    )
+    runtime._encoder_session.run = lambda output_names, feed_dict: [np.zeros((1, 1500, 512), dtype=np.float16)]
+
+    runtime._decoder_session = SimpleNamespace(
+        get_providers=lambda: ["QNNExecutionProvider"],
+        get_inputs=lambda: [
+            SimpleNamespace(name="input_ids"),
+            SimpleNamespace(name="attention_mask", shape=[1, 1, 1, 2], type="tensor(int32)"),
+            SimpleNamespace(name="position_ids"),
+        ],
+        get_outputs=lambda: [SimpleNamespace(name="logits_0")],
+    )
+    runtime._decoder_session.run = lambda output_names, feed_dict: [np.zeros((1, 50258, 1, 1), dtype=np.float16)]
+
+    runtime._feature_extractor = lambda waveform, sampling_rate, return_tensors: SimpleNamespace(
+        input_features=np.zeros((1, 80, 3000), dtype=np.float16)
+    )
+
+    class FakeTokenizer:
+        def decode(self, token_ids, skip_special_tokens):
+            return "qnn recognized"
+
+    runtime._tokenizer = FakeTokenizer()
+    runtime._whisper_config = SimpleNamespace(decoder_start_token_id=50258, eos_token_id=50257)
+
+    # Track calls to Path.is_file
+    is_file_calls = 0
+    original_is_file = Path.is_file
+
+    def mock_is_file(self):
+        nonlocal is_file_calls
+        if "fake_path" in str(self):
+            is_file_calls += 1
+            return True
+        return original_is_file(self)
+
+    monkeypatch.setattr(Path, "is_file", mock_is_file)
+
+    # transcribe first time
+    res = runtime.transcribe(np.zeros(160, dtype=np.float32), 16000)
+    assert res == "qnn recognized"
+    assert is_file_calls == 0

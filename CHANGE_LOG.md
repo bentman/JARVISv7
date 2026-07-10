@@ -23,6 +23,24 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-10 10:11
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Slice CC.3 STT Hot-Path Cleanup, trimming terminal silence from completed utterance audio payloads and bypassing model file system checks once STT model weights/sessions are loaded.
+  - Scope:
+    - `backend/app/services/utterance_segmenter.py`
+    - `backend/app/runtimes/stt/onnx_whisper_runtime.py`
+    - `backend/tests/unit/services/test_utterance_segmenter.py`
+    - `backend/tests/unit/runtimes/stt/test_stt_runtime.py`
+    - `backend/tests/unit/services/test_resident_voice_invocation.py`
+    - `backend/tests/unit/services/test_resident_voice_modes.py`
+    - `backend/tests/unit/services/test_wake_monitor.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_utterance_segmenter.py` PASS (11 passed)
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/stt/test_stt_runtime.py` PASS (25 passed, 1 skipped)
+    - Run command `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (731 passed, 1 skipped)
+  - Notes:
+    - Preserves interior pauses and configured pre-roll. Reduces transcribe-path CPU/disk overhead by verifying loaded model state early, ensuring zero redundant file probes on active voice turns.
+
 - Timestamp: 2026-07-10 10:03
   - Host class(es): Windows x64 validated
   - Summary: Implemented Slice CC.2 HTTP Client Reuse, instantiating owned httpx.Client in LlamaCppLLM and OllamaLLM runtimes, and using scoped client contexts in readiness polling and sidecar health probing.

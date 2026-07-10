@@ -125,7 +125,7 @@ def test_hands_free_listens_for_one_bounded_follow_up_after_successful_turn(tmp_
         stream.stop()
 
     assert calls[1][1] == 16000
-    assert calls[1][0].shape == (20,)
+    assert calls[1][0].shape == (12,)
     assert resident.status().invocation_source == "hands_free"
     assert resident.follow_up_status().listening is False
 

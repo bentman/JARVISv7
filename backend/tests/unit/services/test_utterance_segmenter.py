@@ -32,7 +32,7 @@ def test_segmenter_detects_speech_start_and_silence_end() -> None:
     assert result.reason == "silence"
     assert result.speech_chunks == 2
     assert np.array_equal(result.audio[:4], np.zeros(4, dtype=np.float32))
-    assert result.audio.shape == (20,)
+    assert result.audio.shape == (12,)
 
 
 def test_segmenter_reports_no_speech_after_timeout() -> None:
@@ -99,7 +99,7 @@ def test_segmenter_includes_bounded_pre_roll_before_speech() -> None:
     result = segmenter.capture([_chunk(0.0, 1), _chunk(0.0, 2), _chunk(0.0, 3), _chunk(0.2, 4), _chunk(0.0, 5)])
 
     assert result.reason == "silence"
-    assert result.audio.shape == (16,)
+    assert result.audio.shape == (12,)
     assert np.array_equal(result.audio[:8], np.zeros(8, dtype=np.float32))
     assert np.array_equal(result.audio[8:12], np.full(4, 0.2, dtype=np.float32))
 
@@ -216,7 +216,7 @@ def test_segmenter_keeps_brief_hesitation_inside_utterance() -> None:
     assert result.speech_started is True
     assert result.reason == "silence"
     assert result.speech_chunks == 4
-    assert result.audio.shape == (32,)
+    assert result.audio.shape == (20,)
 
 
 def test_segmenter_reports_stream_ended_after_confirmed_speech_without_endpoint() -> None:

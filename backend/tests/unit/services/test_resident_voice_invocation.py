@@ -171,7 +171,7 @@ def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path:
 
     assert len(calls) == 1
     assert calls[0][1] == 16000
-    assert calls[0][0].shape == (20,)
+    assert calls[0][0].shape == (12,)
     assert np.array_equal(calls[0][0][:4], np.zeros(4, dtype=np.float32))
     assert service.status().invocation_source == "ptt"
     diagnostics = service.status().voice_capture_diagnostics
@@ -208,7 +208,7 @@ def test_ptt_uses_resident_stream_buffer_for_manual_pre_roll(tmp_path: Path) -> 
     stream.stop()
 
     assert len(calls) == 1
-    assert calls[0][0].shape == (20,)
+    assert calls[0][0].shape == (12,)
     assert np.array_equal(calls[0][0][:4], np.zeros(4, dtype=np.float32))
     diagnostics = service.status().voice_capture_diagnostics
     assert diagnostics is not None
@@ -387,7 +387,7 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
     stream.stop()
 
     assert len(calls) == 2
-    assert calls[1][0].shape == (20,)
+    assert calls[1][0].shape == (12,)
     assert calls[1][1] == 16000
     assert service.status().last_transcript == "resident transcript"
 

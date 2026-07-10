@@ -141,7 +141,7 @@ def test_wake_monitor_consumes_shared_stream_and_vad_delimits_command(tmp_path: 
     assert sample_rate == 16000
     assert audio is not None
     assert audio.dtype == np.float32
-    assert audio.size >= 20
+    assert audio.size >= 12
     assert stream.status().running is False
     diagnostics = service.status().voice_capture_diagnostics
     assert diagnostics is not None
