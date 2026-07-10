@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-10 09:46
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Slice CC.1 Response Text Preservation and Policy Reuse, preserving style-guarded formatted text for result/artifacts/memory, sanitizing separately for voice TTS, and reusing compiled personality policy in prompt assembly.
+  - Scope:
+    - `backend/app/cognition/prompt_assembler.py`
+    - `backend/app/conversation/engine.py`
+    - `backend/tests/unit/conversation/test_engine.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py` PASS (46 passed)
+    - Run command `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (727 passed, 1 skipped)
+  - Notes:
+    - Compiles policy once in TurnEngine._run_reasoning_path. Pass formatted stored_response to TurnResult, episodic/working memory, and artifacts. Sanitize stored_response separately to voice_text only for TTS speech synthesis.
+
 - Timestamp: 2026-07-09 00:37
   - Host class(es): Windows x64 validated
   - Summary: Fixed wake monitor retriggering issue by adding a reset method to the wake runtime and invoking it during monitor service start/resume to clear openwakeword model prediction history.

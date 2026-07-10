@@ -463,8 +463,17 @@ def test_sanitize_called_before_tts_synthesize(monkeypatch: pytest.MonkeyPatch):
     result = _engine(tts=tts, llm=llm).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
     assert result.final_state == ConversationState.IDLE
-    assert result.response_text == "ready now"
+    assert result.response_text == "**ready** `now`\x01"
     assert tts.synthesized_texts == ["ready now"]
+
+
+def test_text_turn_preserves_formatting():
+    formatted_response = "Here is `some code` and **bold text**."
+    llm = FakeLLM(response=formatted_response)
+    result = _engine(llm=llm).run_text_turn("test request")
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.response_text == formatted_response
 
 
 def test_voice_response_style_guard_trims_generic_acknowledgment(monkeypatch: pytest.MonkeyPatch):

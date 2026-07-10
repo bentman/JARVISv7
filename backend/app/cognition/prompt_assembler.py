@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.cognition.prompt_renderer import render_flat_prompt
-from backend.app.personality.policy import compile_personality_policy
+from backend.app.personality.policy import compile_personality_policy, PersonalityPolicy
 from backend.app.personality.schema import PersonalityProfile
 
 if TYPE_CHECKING:
@@ -19,8 +19,10 @@ def assemble_prompt_envelope(
     session_continuity: str | None = None,
     retrieved_context: list[RetrievedFact] | None = None,
     tool_context: str | None = None,
+    policy: PersonalityPolicy | None = None,
 ) -> PromptEnvelope:
-    policy = compile_personality_policy(personality)
+    if policy is None:
+        policy = compile_personality_policy(personality)
     segments: list[PromptSegment] = [
         PromptSegment(
             authority="application",
@@ -116,6 +118,7 @@ def assemble_prompt(
     session_continuity: str | None = None,
     retrieved_context: list[RetrievedFact] | None = None,
     tool_context: str | None = None,
+    policy: PersonalityPolicy | None = None,
 ) -> str:
     envelope = assemble_prompt_envelope(
         transcript,
@@ -124,5 +127,6 @@ def assemble_prompt(
         session_continuity=session_continuity,
         retrieved_context=retrieved_context,
         tool_context=tool_context,
+        policy=policy,
     )
     return render_flat_prompt(envelope)

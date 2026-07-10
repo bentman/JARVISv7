@@ -216,6 +216,7 @@ class TurnEngine:
                 tool_results.append(tool_result)
                 tool_context = self._format_tool_result_for_prompt(tool_result)
 
+            policy = compile_personality_policy(self.personality)
             prompt_envelope = assemble_prompt_envelope(
                 transcript,
                 self.personality,
@@ -223,6 +224,7 @@ class TurnEngine:
                 session_continuity=session_continuity,
                 retrieved_context=retrieved_context,
                 tool_context=tool_context,
+                policy=policy,
             )
 
             prompt = render_flat_prompt(prompt_envelope)
@@ -243,17 +245,18 @@ class TurnEngine:
                     failure_phase="llm" if voice_turn_started_at is not None else _failure_phase_for_state(context.state),
                 )
             context.advance(ConversationState.RESPONDING)
-            response = apply_personality_style_guard(
+            stored_response = apply_personality_style_guard(
                 response,
-                compile_personality_policy(self.personality),
+                policy,
                 modality="voice" if speak_response else "text",
             )
-            response_text = sanitize_for_tts(response)
             if speak_response:
+                voice_text = sanitize_for_tts(stored_response)
                 return self._speak_or_degrade(
                     context,
                     transcript=transcript,
-                    response_text=response_text,
+                    response_text=stored_response,
+                    voice_text=voice_text,
                     final_prompt_text=prompt,
                     tool_results=tool_results,
                     retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
@@ -266,7 +269,7 @@ class TurnEngine:
                 turn_id=context.turn_id,
                 session_id=context.session_id,
                 transcript=transcript,
-                response_text=response_text,
+                response_text=stored_response,
                 final_state=context.state,
                 tool_calls=self._to_tool_calls(tool_results),
                 tool_results=self._to_tool_results(tool_results),
@@ -300,6 +303,7 @@ class TurnEngine:
         transcript: str,
         response_text: str,
         final_prompt_text: str,
+        voice_text: str | None = None,
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
@@ -334,7 +338,8 @@ class TurnEngine:
 
         tts_started_at = time.perf_counter()
         try:
-            audio = self.tts.synthesize(response_text)
+            text_to_synthesize = voice_text if voice_text is not None else response_text
+            audio = self.tts.synthesize(text_to_synthesize)
             sample_rate = self.tts.sample_rate()
         finally:
             if voice_turn_started_at is not None:
