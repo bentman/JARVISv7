@@ -862,3 +862,49 @@ def test_interruption_monitor_exits_when_playback_finishes_with_live_like_source
     assert yielded_chunks == 2
     assert result.final_state == ConversationState.IDLE
     assert result.interrupted is False
+
+
+def test_tts_synthesis_resolves_before_playback_starts():
+    execution_order = []
+
+    class TrackedTTS(FakeTTS):
+        def synthesize(self, text: str) -> np.ndarray:
+            execution_order.append("synthesize_start")
+            res = super().synthesize(text)
+            execution_order.append("synthesize_end")
+            return res
+
+    class TrackedPlayback:
+        def play(self, audio: np.ndarray, sample_rate: int) -> None:
+            execution_order.append("playback_play")
+
+        def start(self, audio: np.ndarray, sample_rate: int) -> None:
+            execution_order.append("playback_start")
+
+        def stop(self) -> None:
+            execution_order.append("playback_stop")
+
+        def is_playing(self) -> bool:
+            return False
+
+    # Turn without interruption monitor (regular play)
+    engine = _engine(
+        tts=TrackedTTS(available=True),
+        playback_api=TrackedPlayback(),
+    )
+    engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert execution_order == ["synthesize_start", "synthesize_end", "playback_play"]
+
+    # Turn with interruption monitor (start/stop)
+    execution_order.clear()
+    detector = BargeInDetector(energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0)
+    engine_with_monitor = _engine(
+        tts=TrackedTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=[np.zeros(8, dtype=np.float32)],
+        playback_api=TrackedPlayback(),
+    )
+    engine_with_monitor.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert execution_order == ["synthesize_start", "synthesize_end", "playback_start"]

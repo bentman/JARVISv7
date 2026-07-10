@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-10 10:18
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Slice CC.4 TTS Partial Playback Split, decoupling TTS synthesis from playback blocking by extracting them into distinct helper methods and performing full synthesis eagerly before playback.
+  - Scope:
+    - `backend/app/conversation/engine.py`
+    - `backend/tests/unit/conversation/test_engine.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py` PASS (47 passed)
+    - Run command `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (732 passed, 1 skipped)
+  - Notes:
+    - Avoids stutters from scheduling latency between TTS synthesis chunks and hardware audio output. Added unit test verifying full eager synthesis completes before any playback starts.
+
 - Timestamp: 2026-07-10 10:11
   - Host class(es): Windows x64 validated
   - Summary: Implemented Slice CC.3 STT Hot-Path Cleanup, trimming terminal silence from completed utterance audio payloads and bypassing model file system checks once STT model weights/sessions are loaded.

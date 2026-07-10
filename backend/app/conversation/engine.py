@@ -336,14 +336,60 @@ class TurnEngine:
             )
             return result
 
+        audio, sample_rate = self._synthesize_voice(
+            stored_response=response_text,
+            voice_text=voice_text,
+            phase_durations_ms=phase_durations_ms,
+            voice_turn_started_at=voice_turn_started_at,
+        )
+
+        return self._play_voice(
+            context,
+            audio=audio,
+            sample_rate=sample_rate,
+            transcript=transcript,
+            response_text=response_text,
+            final_prompt_text=final_prompt_text,
+            tool_results=tool_results,
+            retrieved_memory_refs=retrieved_memory_refs,
+            raw_audio_path=raw_audio_path,
+            phase_durations_ms=phase_durations_ms,
+            voice_turn_started_at=voice_turn_started_at,
+        )
+
+    def _synthesize_voice(
+        self,
+        *,
+        stored_response: str,
+        voice_text: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
+    ) -> tuple[np.ndarray, int]:
         tts_started_at = time.perf_counter()
         try:
-            text_to_synthesize = voice_text if voice_text is not None else response_text
+            text_to_synthesize = voice_text if voice_text is not None else stored_response
             audio = self.tts.synthesize(text_to_synthesize)
             sample_rate = self.tts.sample_rate()
+            return audio, sample_rate
         finally:
-            if voice_turn_started_at is not None:
+            if voice_turn_started_at is not None and phase_durations_ms is not None:
                 phase_durations_ms["tts_synth_ms"] = _elapsed_ms(tts_started_at)
+
+    def _play_voice(
+        self,
+        context: TurnContext,
+        *,
+        audio: np.ndarray,
+        sample_rate: int,
+        transcript: str,
+        response_text: str,
+        final_prompt_text: str,
+        tool_results: list[ToolResult] | None = None,
+        retrieved_memory_refs: list[str] | None = None,
+        raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
+    ) -> TurnResult:
         context.advance(ConversationState.SPEAKING)
         if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
             return self._play_with_interruption_monitor(
@@ -351,9 +397,10 @@ class TurnEngine:
                 transcript=transcript,
                 response_text=response_text,
                 final_prompt_text=final_prompt_text,
-                retrieved_memory_refs=retrieved_memory_refs,
                 audio=audio,
                 sample_rate=sample_rate,
+                tool_results=tool_results,
+                retrieved_memory_refs=retrieved_memory_refs,
                 raw_audio_path=raw_audio_path,
                 phase_durations_ms=phase_durations_ms,
                 voice_turn_started_at=voice_turn_started_at,
@@ -362,7 +409,7 @@ class TurnEngine:
         try:
             self.playback_api.play(audio, sample_rate)
         finally:
-            if voice_turn_started_at is not None:
+            if voice_turn_started_at is not None and phase_durations_ms is not None:
                 phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
         tts_output_device = getattr(self.playback_api, "last_output_device", lambda: None)()
         context.advance(ConversationState.IDLE)
@@ -376,7 +423,7 @@ class TurnEngine:
             raw_audio_path=raw_audio_path,
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
-            phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+            phase_durations_ms=_voice_phase_durations(phase_durations_ms or {}, voice_turn_started_at),
         )
         self._record_artifact(
             context,
