@@ -656,7 +656,7 @@ This must reuse the same conversation engine rather than inventing a separate ch
 
 ### Should Have
 
-- streaming partial transcription
+- stateful streaming transcription
 - streaming partial assistant response
 - low-latency response start
 - visible degraded-mode indicators
