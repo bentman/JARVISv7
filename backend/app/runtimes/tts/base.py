@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Iterator
 from pathlib import Path
 
 import numpy as np
@@ -17,9 +18,21 @@ class TTSBase(ABC):
         self.device = device
         self.model_path = model_path
 
+    @property
+    def supports_streaming(self) -> bool:
+        return False
+
     @abstractmethod
     def synthesize(self, text: str) -> np.ndarray:
         raise NotImplementedError
+
+    def synthesize_stream(self, text: str) -> Iterator[tuple[np.ndarray, int]]:
+        """Yield chunks of (audio_chunk, sample_rate).
+
+        Default implementation yields the full synthesized audio in a single chunk.
+        """
+        audio = self.synthesize(text)
+        yield audio, self.sample_rate()
 
     @abstractmethod
     def sample_rate(self) -> int:

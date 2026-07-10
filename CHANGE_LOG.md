@@ -23,6 +23,21 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-10 11:42
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Slice CC.4 TTS Partial Playback, adding backward-compatible chunk iteration to the TTS base/runtime layer and wiring chunk playback through TurnEngine with streaming support.
+  - Scope:
+    - `backend/app/runtimes/tts/base.py`
+    - `backend/app/runtimes/tts/kokoro_onnx_runtime.py`
+    - `backend/app/runtimes/tts/playback.py`
+    - `backend/app/conversation/engine.py`
+    - `backend/tests/unit/conversation/test_engine.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py` PASS (48 passed)
+    - Run command `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (733 passed, 1 skipped)
+  - Notes:
+    - Minimizes playback latency by beginning sounddevice output playback before the final audio chunk has finished synthesizing.
+
 - Timestamp: 2026-07-10 11:10
   - Host class(es): Windows ARM64 / arm64 validated
   - Summary: Completed Slice CC.5 Closeout validation for the Windows ARM64 host class, confirming latency and response-path cleanups are regression-free.
@@ -355,6 +370,14 @@
 ---
 
 ## Change Appendix
+
+- Timestamp: 2026-07-10 11:44
+  - Host class(es): Windows x64 validated
+  - Summary: Corrected the streaming detection conditional in TurnEngine._speak_or_degrade to use the supports_streaming property instead of hasattr(self.tts, "synthesize_stream").
+  - Scope:
+    - `backend/app/conversation/engine.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py` PASS (48 passed)
 
 - Timestamp: 2026-07-08 13:52
   - Host class(es): Windows x64 validated

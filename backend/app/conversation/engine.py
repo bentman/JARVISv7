@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 import time
 import wave
+import threading
+import queue
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 from uuid import uuid4
@@ -336,6 +338,23 @@ class TurnEngine:
             )
             return result
 
+        use_streaming = getattr(self.tts, "supports_streaming", False) and hasattr(self.playback_api, "IterablePlayer")
+        if use_streaming:
+            sample_rate = self.tts.sample_rate()
+            return self._speak_streaming(
+                context,
+                text_to_synthesize=voice_text if voice_text is not None else response_text,
+                sample_rate=sample_rate,
+                transcript=transcript,
+                response_text=response_text,
+                final_prompt_text=final_prompt_text,
+                tool_results=tool_results,
+                retrieved_memory_refs=retrieved_memory_refs,
+                raw_audio_path=raw_audio_path,
+                phase_durations_ms=phase_durations_ms,
+                voice_turn_started_at=voice_turn_started_at,
+            )
+
         audio, sample_rate = self._synthesize_voice(
             stored_response=response_text,
             voice_text=voice_text,
@@ -425,6 +444,143 @@ class TurnEngine:
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
             phase_durations_ms=_voice_phase_durations(phase_durations_ms or {}, voice_turn_started_at),
         )
+        self._record_artifact(
+            context,
+            result,
+            final_prompt_text=final_prompt_text,
+            retrieved_memory_refs=retrieved_memory_refs,
+        )
+        return result
+
+    def _speak_streaming(
+        self,
+        context: TurnContext,
+        *,
+        text_to_synthesize: str,
+        sample_rate: int,
+        transcript: str,
+        response_text: str,
+        final_prompt_text: str,
+        tool_results: list[ToolResult] | None = None,
+        retrieved_memory_refs: list[str] | None = None,
+        raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
+    ) -> TurnResult:
+        phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
+        tts_started_at = time.perf_counter()
+
+        player = self.playback_api.IterablePlayer(sample_rate)
+        player.start()
+
+        chunks_collected: list[np.ndarray] = []
+        error_container: list[Exception] = []
+        stop_event = threading.Event()
+
+        def synthesis_worker() -> None:
+            try:
+                for chunk, rate in self.tts.synthesize_stream(text_to_synthesize):
+                    if stop_event.is_set():
+                        break
+                    player.put(chunk)
+                    chunks_collected.append(chunk)
+                player.put(None)
+            except Exception as exc:
+                error_container.append(exc)
+                player.put(None)
+
+        thread = threading.Thread(target=synthesis_worker, name="tts-synthesis-stream", daemon=True)
+        thread.start()
+
+        context.advance(ConversationState.SPEAKING)
+        playback_started_at = time.perf_counter()
+
+        interrupted = False
+        interruption_events = []
+
+        try:
+            if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
+                self.barge_in_detector.reset()
+                vad_iter = iter(self.interruption_audio_chunks or [])
+                while player.is_playing() or thread.is_alive():
+                    try:
+                        if error_container:
+                            raise error_container[0]
+                        chunk = next(vad_iter)
+                    except StopIteration:
+                        break
+                    if self.barge_in_detector.detect(chunk):
+                        stop_event.set()
+                        player.stop()
+                        interrupted = True
+                        event: dict[str, object] = {
+                            "type": "barge_in",
+                            "timestamp": timestamp_now(),
+                            "recovery_state": ConversationState.RECOVERING.value,
+                        }
+                        interruption_events.append(event)
+                        context.advance(ConversationState.INTERRUPTED)
+                        context.advance(ConversationState.RECOVERING)
+                        break
+            else:
+                while player.is_playing() or thread.is_alive():
+                    if error_container:
+                        raise error_container[0]
+                    time.sleep(0.01)
+
+            if not interrupted:
+                player.wait()
+
+            if error_container:
+                raise error_container[0]
+
+        except Exception as exc:
+            stop_event.set()
+            thread.join(timeout=0.5)
+            f_phase = "playback"
+            if error_container and exc is error_container[0]:
+                f_phase = "tts"
+            context.advance(ConversationState.IDLE)
+            return self._fail(
+                context,
+                transcript=transcript,
+                response_text=response_text,
+                reason=str(exc),
+                raw_audio_path=raw_audio_path,
+                phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                failure_phase=f_phase,
+            )
+
+        finally:
+            stop_event.set()
+            thread.join(timeout=0.5)
+
+        full_audio = np.concatenate(chunks_collected) if chunks_collected else np.array([], dtype=np.float32)
+
+        if voice_turn_started_at is not None:
+            phase_durations_ms["tts_synth_ms"] = _elapsed_ms(tts_started_at)
+            phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
+
+        tts_output_device = getattr(self.playback_api, "last_output_device", lambda: None)()
+        context.advance(ConversationState.IDLE)
+
+        result = TurnResult(
+            turn_id=context.turn_id,
+            session_id=context.session_id,
+            transcript=transcript,
+            response_text=response_text,
+            final_state=context.state,
+            tts_output_device=tts_output_device,
+            raw_audio_path=raw_audio_path,
+            active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+            phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+            interrupted=interrupted,
+            interruption_events=interruption_events,
+            tool_calls=self._to_tool_calls(tool_results or []),
+            tool_results=self._to_tool_results(tool_results or []),
+        )
+
         self._record_artifact(
             context,
             result,

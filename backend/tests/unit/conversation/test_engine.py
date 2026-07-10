@@ -101,6 +101,36 @@ class FakePlayback:
         self.output_device = "7: USB headset"
         self.playing_checks = list(playing_checks or [True])
 
+    class IterablePlayer:
+        def __init__(self, sample_rate: int) -> None:
+            self.sample_rate = sample_rate
+            self.started = False
+            self.stopped = False
+            self.chunks = []
+            self.total_samples = 0
+            self.active = True
+
+        def start(self) -> None:
+            self.started = True
+
+        def put(self, chunk: np.ndarray | None) -> None:
+            if chunk is not None:
+                self.chunks.append(chunk)
+                self.total_samples += chunk.size
+            else:
+                self.active = False
+
+        def stop(self) -> None:
+            self.stopped = True
+            self.active = False
+
+        def is_playing(self) -> bool:
+            return self.started and not self.stopped and self.active
+
+        def wait(self, timeout_s: float | None = None) -> None:
+            self.stopped = True
+            self.active = False
+
     def play(self, audio: np.ndarray, sample_rate: int) -> None:
         self.play_calls += 1
 
@@ -908,3 +938,80 @@ def test_tts_synthesis_resolves_before_playback_starts():
     engine_with_monitor.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
     assert execution_order == ["synthesize_start", "synthesize_end", "playback_start"]
+
+
+def test_partial_tts_playback_starts_before_synthesis_completes():
+    from collections.abc import Iterator
+    import time
+    
+    events = []
+
+    class StreamingTTS(FakeTTS):
+        @property
+        def supports_streaming(self) -> bool:
+            return True
+
+        def synthesize_stream(self, text: str) -> Iterator[tuple[np.ndarray, int]]:
+            events.append("synthesis_chunk_1")
+            yield np.zeros(800, dtype=np.float32), 16000
+            time.sleep(0.02)
+            events.append("synthesis_chunk_2")
+            yield np.zeros(800, dtype=np.float32), 16000
+
+    class TrackingPlayer:
+        def __init__(self, sample_rate: int) -> None:
+            self.sample_rate = sample_rate
+            self.started = False
+            self.stopped = False
+            self.chunks = []
+            self.active = True
+
+        def start(self) -> None:
+            self.started = True
+            events.append("player_start")
+
+        def put(self, chunk: np.ndarray | None) -> None:
+            if chunk is not None:
+                self.chunks.append(chunk)
+                events.append(f"player_put_chunk_{len(self.chunks)}")
+            else:
+                self.active = False
+                events.append("player_put_none")
+
+        def stop(self) -> None:
+            self.stopped = True
+            self.active = False
+
+        def is_playing(self) -> bool:
+            return self.started and not self.stopped and self.active
+
+        def wait(self, timeout_s: float | None = None) -> None:
+            self.stopped = True
+            self.active = False
+            events.append("player_wait")
+
+    class TrackingPlaybackAPI:
+        IterablePlayer = TrackingPlayer
+        
+        def last_output_device(self) -> str:
+            return "tracking_device"
+
+    engine = _engine(
+        tts=StreamingTTS(available=True),
+        playback_api=TrackingPlaybackAPI(),
+    )
+    result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert "player_start" in events
+    assert "synthesis_chunk_1" in events
+    assert "player_put_chunk_1" in events
+    assert "synthesis_chunk_2" in events
+    assert "player_put_chunk_2" in events
+    assert "player_put_none" in events
+    assert "player_wait" in events
+
+    idx_put_1 = events.index("player_put_chunk_1")
+    idx_synth_2 = events.index("synthesis_chunk_2")
+    assert idx_put_1 < idx_synth_2, f"Expected player_put_chunk_1 to precede synthesis_chunk_2, got events: {events}"
+    
+    assert result.final_state == ConversationState.IDLE

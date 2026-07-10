@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,10 @@ class KokoroOnnxRuntime(TTSBase):
         self.voice = voice
         self._model: Any | None = None
         self._sample_rate = KOKORO_SAMPLE_RATE
+
+    @property
+    def supports_streaming(self) -> bool:
+        return True
 
     @property
     def onnx_path(self) -> Path:
@@ -83,3 +88,18 @@ class KokoroOnnxRuntime(TTSBase):
 
     def sample_rate(self) -> int:
         return self._sample_rate
+
+    def synthesize_stream(self, text: str) -> Iterator[tuple[np.ndarray, int]]:
+        model = self._load_model()
+        voice = self.voice
+        if isinstance(voice, str):
+            voice = model.get_voice_style(voice)
+
+        phonemes = model.tokenizer.phonemize(text, "en-us")
+        batched_phonemes = model._split_phonemes(phonemes)
+        from kokoro_onnx.trim import trim as trim_audio
+
+        for phonemes in batched_phonemes:
+            audio_part, sample_rate = model._create_audio(phonemes, voice, 1.0)
+            audio_part, _ = trim_audio(audio_part)
+            yield np.asarray(audio_part, dtype=np.float32), int(sample_rate)

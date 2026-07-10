@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import queue
+import time
 from typing import Any
 import threading
 
@@ -108,3 +110,84 @@ def _playback_timeout_s(audio: np.ndarray, sample_rate: int) -> float:
     rate = max(1, int(sample_rate))
     duration_s = samples / float(rate)
     return max(0.5, duration_s + 0.5)
+
+
+class IterablePlayer:
+    def __init__(self, sample_rate: int) -> None:
+        self.sample_rate = sample_rate
+        self.sounddevice = _load_sounddevice()
+        self.q: queue.Queue[np.ndarray | None] = queue.Queue()
+        self.active = True
+        self.total_samples = 0
+        self._current_chunk = np.array([], dtype=np.float32)
+        self._current_idx = 0
+        self._stream = None
+        global _last_output_device
+        _last_output_device = describe_output_device(self.sounddevice)
+
+    def _callback(self, outdata: np.ndarray, frames: int, time_info: Any, status: Any) -> None:
+        outdata.fill(0)
+        filled = 0
+        while filled < frames and self.active:
+            if self._current_idx >= len(self._current_chunk):
+                try:
+                    next_chunk = self.q.get_nowait()
+                    if next_chunk is None:
+                        self.active = False
+                        break
+                    self._current_chunk = next_chunk.reshape(-1)
+                    self._current_idx = 0
+                except Exception:
+                    break
+            
+            chunk_left = len(self._current_chunk) - self._current_idx
+            frames_needed = frames - filled
+            to_write = min(chunk_left, frames_needed)
+            
+            outdata[filled:filled+to_write, 0] = self._current_chunk[self._current_idx : self._current_idx+to_write]
+            self._current_idx += to_write
+            filled += to_write
+
+        if not self.active:
+            raise self.sounddevice.CallbackStop
+
+    def start(self) -> None:
+        self._stream = self.sounddevice.OutputStream(
+            samplerate=self.sample_rate,
+            channels=1,
+            callback=self._callback,
+            dtype='float32'
+        )
+        self._stream.start()
+
+    def put(self, chunk: np.ndarray | None) -> None:
+        if chunk is not None:
+            self.total_samples += chunk.size
+        self.q.put(chunk)
+
+    def stop(self) -> None:
+        self.active = False
+        if self._stream is not None:
+            try:
+                self._stream.stop()
+                self._stream.close()
+            except Exception:
+                pass
+            self._stream = None
+
+    def is_playing(self) -> bool:
+        if not self.active:
+            return False
+        if self._stream is None:
+            return False
+        return bool(self._stream.active)
+
+    def wait(self, timeout_s: float | None = None) -> None:
+        if timeout_s is None:
+            timeout_s = (self.total_samples / self.sample_rate) + 0.5
+        start_time = time.time()
+        while self.active and (not self.q.empty() or self._current_idx < len(self._current_chunk)):
+            if time.time() - start_time > timeout_s:
+                break
+            time.sleep(0.01)
+        self.stop()
