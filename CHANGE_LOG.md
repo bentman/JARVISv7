@@ -23,6 +23,22 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-10 11:10
+  - Host class(es): Windows ARM64 / arm64 validated
+  - Summary: Completed Slice CC.5 Closeout validation for the Windows ARM64 host class, confirming latency and response-path cleanups are regression-free.
+  - Scope:
+    - None (validation check only)
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py` PASS (`47 passed`)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/llm/test_llm_runtime.py` PASS (`23 passed`)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_utterance_segmenter.py` PASS (`11 passed`)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/stt/test_stt_runtime.py` PASS (`26 passed`)
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (`733 passed`)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py integration` PASS (`9 passed`)
+  - Notes:
+    - Confirms Slice CC (CC.1 through CC.4) optimization features are fully compatible and run successfully on Windows ARM64 Snapdragon platforms.
+
 - Timestamp: 2026-07-10 10:18
   - Host class(es): Windows x64 validated
   - Summary: Implemented Slice CC.4 TTS Partial Playback Split, decoupling TTS synthesis from playback blocking by extracting them into distinct helper methods and performing full synthesis eagerly before playback.
