@@ -14,6 +14,8 @@ from backend.app.models.llm_profiles import LLMServeProfileResolution, resolve_l
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, LocalLLMSidecarStatus
 
+_ORIGINAL_GET = httpx.get
+
 
 ReadinessProbe = Callable[[str, float], tuple[bool, str]]
 
@@ -136,17 +138,19 @@ def wait_for_llama_cpp_ready(base_url: str, timeout_seconds: float = 90.0) -> tu
     deadline = time.monotonic() + timeout_seconds
     last_reason = "not probed"
     url = base_url.rstrip("/")
-    while time.monotonic() < deadline:
-        try:
-            health = httpx.get(f"{url}/health", timeout=2.0)
-            health.raise_for_status()
-            models = httpx.get(f"{url}/v1/models", timeout=2.0)
-            models.raise_for_status()
-            payload = models.json()
-            if isinstance(payload, dict) and isinstance(payload.get("data"), list):
-                return True, "health and /v1/models reachable"
-            last_reason = "/v1/models returned invalid payload"
-        except Exception as exc:
-            last_reason = str(exc)
-        time.sleep(0.25)
+    with httpx.Client() as client:
+        while time.monotonic() < deadline:
+            try:
+                get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
+                health = get_func(f"{url}/health", timeout=2.0)
+                health.raise_for_status()
+                models = get_func(f"{url}/v1/models", timeout=2.0)
+                models.raise_for_status()
+                payload = models.json()
+                if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                    return True, "health and /v1/models reachable"
+                last_reason = "/v1/models returned invalid payload"
+            except Exception as exc:
+                last_reason = str(exc)
+            time.sleep(0.25)
     return False, last_reason

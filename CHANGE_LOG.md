@@ -23,6 +23,33 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-10 10:03
+  - Host class(es): Windows x64 validated
+  - Summary: Implemented Slice CC.2 HTTP Client Reuse, instantiating owned httpx.Client in LlamaCppLLM and OllamaLLM runtimes, and using scoped client contexts in readiness polling and sidecar health probing.
+  - Scope:
+    - `backend/app/runtimes/llm/local_runtime.py`
+    - `backend/app/runtimes/llm/ollama_runtime.py`
+    - `backend/app/services/local_llm_startup.py`
+    - `backend/app/services/local_llm_sidecar.py`
+    - `backend/tests/unit/runtimes/llm/test_llm_runtime.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/llm/test_llm_runtime.py` PASS (23 passed)
+    - Run command `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (729 passed, 1 skipped)
+  - Notes:
+    - Avoids TCP connection churn in hot paths. Retains module-level original function checks to preserve compatibility with existing monkeypatched test assertions. Added focused unit tests verifying owned client usage.
+
+- Timestamp: 2026-07-10 10:15
+  - Host class(es): Windows x64 / amd64 validated
+  - Summary: Fixed stale Wake/PTT transcript replay in the desktop Conversation panel after later text turns.
+  - Scope:
+    - `desktop/src/components/resident-voice.js`
+    - `desktop/tests/static.test.mjs`
+  - Validation:
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
+    - `backend\.venv\Scripts\python -m pytest backend\tests\unit\desktop\test_desktop_static_contract.py -q` PASS (`32 passed`)
+  - Notes:
+    - Resident voice completion de-duplication now keys on latest-turn identity only when the latest turn is voice, preventing stale Wake completion fields from being re-appended after text chat.
+
 - Timestamp: 2026-07-10 09:46
   - Host class(es): Windows x64 validated
   - Summary: Implemented Slice CC.1 Response Text Preservation and Policy Reuse, preserving style-guarded formatted text for result/artifacts/memory, sanitizing separately for voice TTS, and reusing compiled personality policy in prompt assembly.

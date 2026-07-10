@@ -11,6 +11,8 @@ import psutil
 
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 
+_ORIGINAL_GET = httpx.get
+
 
 class SidecarProcess(Protocol):
     pid: int
@@ -308,24 +310,27 @@ def _probe_endpoint_healthy(base_url: str) -> tuple[bool, str]:
     This is a non-blocking single-probe check (no retry loop).
     """
     url = base_url.rstrip("/")
-    try:
-        # Try /health first (quickest check)
-        health = httpx.get(f"{url}/health", timeout=1.0)
-        health.raise_for_status()
-        return True, f"endpoint healthy at {base_url}"
-    except Exception:
-        pass
-
-    try:
-        # Try /v1/models as fallback
-        models = httpx.get(f"{url}/v1/models", timeout=1.0)
-        models.raise_for_status()
-        payload = models.json()
-        if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+    with httpx.Client() as client:
+        try:
+            # Try /health first (quickest check)
+            get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
+            health = get_func(f"{url}/health", timeout=1.0)
+            health.raise_for_status()
             return True, f"endpoint healthy at {base_url}"
-        return False, "endpoint returned invalid /v1/models payload"
-    except Exception as exc:
-        return False, f"endpoint unreachable: {exc}"
+        except Exception:
+            pass
+
+        try:
+            # Try /v1/models as fallback
+            get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
+            models = get_func(f"{url}/v1/models", timeout=1.0)
+            models.raise_for_status()
+            payload = models.json()
+            if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                return True, f"endpoint healthy at {base_url}"
+            return False, "endpoint returned invalid /v1/models payload"
+        except Exception as exc:
+            return False, f"endpoint unreachable: {exc}"
 
 
 def build_llama_server_command(resolution: LLMServeProfileResolution) -> LocalLLMSidecarCommand:

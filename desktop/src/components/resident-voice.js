@@ -114,7 +114,9 @@ export function createResidentVoicePresenter(options) {
   function appendResidentVoiceCompletion(status) {
     if (!status.last_transcript && !status.last_response && !status.failure_reason) return;
     const latestTurn = status.latest_turn;
-    const key = latestTurn?.turn_id
+    const latestTurnIsVoice = latestTurn?.input_modality === "voice";
+    if (latestTurn && !latestTurnIsVoice && status.state !== "FAILED") return;
+    const key = latestTurnIsVoice && latestTurn?.turn_id
       ? [latestTurn.turn_id, latestTurn.final_state ?? "", latestTurn.failure_reason ?? ""].join("|")
       : [
           status.invocation_source ?? "",

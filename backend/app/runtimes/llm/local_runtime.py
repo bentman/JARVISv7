@@ -11,6 +11,9 @@ from backend.app.core.settings import load_settings
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarStatus
 
+_ORIGINAL_GET = httpx.get
+_ORIGINAL_POST = httpx.post
+
 
 DEFAULT_LLAMA_CPP_BASE_URL = "http://127.0.0.1:8080"
 _OPENAI_MODELS_PATH = "/v1/models"
@@ -56,6 +59,7 @@ class LlamaCppLLM(LLMBase):
         self.model_role = model_role
         self.model_selection_reason = model_selection_reason
         self.reason = "not probed"
+        self.client = httpx.Client()
 
     def is_available(self) -> bool:
         if not self._sidecar_ready():
@@ -162,7 +166,8 @@ class LlamaCppLLM(LLMBase):
         return self.is_available()
 
     def _post_chat_completion(self, payload: dict[str, Any]) -> Any:
-        response = httpx.post(
+        post_func = httpx.post if httpx.post is not _ORIGINAL_POST else self.client.post
+        response = post_func(
             f"{self.base_url}{_OPENAI_CHAT_COMPLETIONS_PATH}",
             json=payload,
             timeout=self.timeout,
@@ -172,7 +177,8 @@ class LlamaCppLLM(LLMBase):
 
     def _probe_models_endpoint(self) -> str | None:
         try:
-            response = httpx.get(f"{self.base_url}{_OPENAI_MODELS_PATH}", timeout=10.0)
+            get_func = httpx.get if httpx.get is not _ORIGINAL_GET else self.client.get
+            response = get_func(f"{self.base_url}{_OPENAI_MODELS_PATH}", timeout=10.0)
             response.raise_for_status()
             data = response.json()
         except Exception as exc:
@@ -183,9 +189,10 @@ class LlamaCppLLM(LLMBase):
 
     def _probe_health_endpoint(self) -> str | None:
         last_reason = "health endpoint unavailable"
+        get_func = httpx.get if httpx.get is not _ORIGINAL_GET else self.client.get
         for path in _HEALTH_PATHS:
             try:
-                response = httpx.get(f"{self.base_url}{path}", timeout=10.0)
+                response = get_func(f"{self.base_url}{path}", timeout=10.0)
                 response.raise_for_status()
             except Exception as exc:
                 last_reason = f"{path} unavailable: {exc}"

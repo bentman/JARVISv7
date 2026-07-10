@@ -9,6 +9,9 @@ from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.core.settings import load_settings
 from backend.app.runtimes.llm.base import LLMBase
 
+_ORIGINAL_GET = httpx.get
+_ORIGINAL_POST = httpx.post
+
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
@@ -29,6 +32,7 @@ class OllamaLLM(LLMBase):
         self.num_ctx = num_ctx if num_ctx is not None else settings.ollama_num_ctx
         self.timeout = timeout
         self.reason = "not probed"
+        self.client = httpx.Client()
 
     def runtime_name(self) -> str:
         return "ollama"
@@ -38,7 +42,8 @@ class OllamaLLM(LLMBase):
             self.reason = "ollama disabled by USE_OLLAMA"
             return False
         try:
-            response = httpx.get(f"{self.base_url}/api/tags", timeout=10.0)
+            get_func = httpx.get if httpx.get is not _ORIGINAL_GET else self.client.get
+            response = get_func(f"{self.base_url}/api/tags", timeout=10.0)
             response.raise_for_status()
         except Exception as exc:
             self.reason = f"ollama unavailable: {exc}"
@@ -73,7 +78,8 @@ class OllamaLLM(LLMBase):
 
     def _post_generate(self, payload: dict[str, Any]) -> str:
         try:
-            response = httpx.post(
+            post_func = httpx.post if httpx.post is not _ORIGINAL_POST else self.client.post
+            response = post_func(
                 f"{self.base_url}/api/generate",
                 json=payload,
                 timeout=self.timeout,
@@ -110,7 +116,8 @@ class OllamaLLM(LLMBase):
 
     def _post_chat(self, payload: dict[str, Any]) -> str:
         try:
-            response = httpx.post(
+            post_func = httpx.post if httpx.post is not _ORIGINAL_POST else self.client.post
+            response = post_func(
                 f"{self.base_url}/api/chat",
                 json=payload,
                 timeout=self.timeout,

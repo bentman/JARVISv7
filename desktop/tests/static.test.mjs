@@ -4,6 +4,7 @@ import { renderConversationDebug } from "../src/components/conversation-debug.js
 import { renderBackendDiagnostics } from "../src/components/backend-diagnostics.js";
 import { collectDegradedConditions, selectedFamilyBlockers } from "../src/components/degraded-list.js";
 import { createDesktopState } from "../src/components/desktop-state.js";
+import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -114,6 +115,10 @@ assert.ok(conversationDebug.includes("raw_audio_path"), "conversation debug must
 assert.ok(conversationDebug.includes("degraded_reason"), "conversation debug must render compact degraded reason");
 assert.ok(!conversationDebug.includes("last_transcript"), "conversation debug must not duplicate transcript text");
 assert.ok(!conversationDebug.includes("last_response"), "conversation debug must not duplicate assistant response text");
+assert.ok(
+  residentVoice.includes("latestTurn?.input_modality === \"voice\""),
+  "resident voice completion de-dupe must not key stale voice fields from latest text turns",
+);
 assert.ok(main.includes("renderDegradedList(readiness, degradedEl)"), "desktop degraded detail must render from existing readiness payload");
 assert.ok(
   main.indexOf("await ensureResidentVoiceStream()") < main.indexOf("const readiness = await api.getReadiness()"),
@@ -139,7 +144,7 @@ assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barg
 assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
 assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
 assert.ok(desktopSource.includes("continuous-active"), "desktop must render resident continuous active status");
-assert.ok(residentVoice.includes("latestTurn?.turn_id"), "resident voice completion dedupe must prefer latest-turn identity");
+assert.ok(residentVoice.includes("latestTurnIsVoice && latestTurn?.turn_id"), "resident voice completion dedupe must prefer voice latest-turn identity");
 assert.ok(conversationDebug.includes("currentFailureWithoutTurn"), "conversation debug must show current capture failures ahead of stale latest-turn data");
 assert.ok(main.includes("ensureResidentVoiceStream"), "desktop must start resident stream before resident wake/mode proof");
 assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resident mode mutation");
@@ -440,5 +445,59 @@ assert.ok(staleVoiceDetail.textContent.includes("runtime: llm=llama.cpp"), "text
 assert.ok(!staleVoiceDetail.textContent.includes("wake"), "text latest turn must not show stale voice source");
 assert.ok(!staleVoiceDetail.textContent.includes("stale voice failure"), "text latest turn must not show stale flat failure");
 assert.ok(!staleVoiceDetail.textContent.includes("stale output device"), "text latest turn must not show stale flat TTS output");
+
+const appendedMessages = [];
+const residentPresenter = createResidentVoicePresenter({
+  pttButton: {
+    dataset: {},
+    disabled: false,
+    textContent: "",
+    setAttribute(name, value) {
+      this[name] = value;
+    },
+  },
+  voiceStatusEl: { textContent: "" },
+  residentModeEl: null,
+  residentStatusEl: null,
+  setState() {},
+  showError() {},
+  appendMessage(role, text) {
+    appendedMessages.push({ role, text });
+  },
+});
+residentPresenter.renderResidentVoiceStatus({
+  state: "IDLE",
+  invocation_source: "wake",
+  last_transcript: "Hey Jarvis, what is the capital of the United States?",
+  last_response: "The capital of the United States is Washington, D.C.",
+  latest_turn: {
+    turn_id: "text-turn-123",
+    input_modality: "text",
+    final_state: "IDLE",
+    failure_reason: null,
+  },
+});
+assert.deepEqual(
+  appendedMessages,
+  [],
+  "resident voice presenter must not append stale wake completion after latest text turn",
+);
+residentPresenter.renderResidentVoiceStatus({
+  state: "IDLE",
+  invocation_source: "wake",
+  last_transcript: "Hey Jarvis, what is the capital of the United States?",
+  last_response: "The capital of the United States is Washington, D.C.",
+  latest_turn: {
+    turn_id: "voice-turn-123",
+    input_modality: "voice",
+    final_state: "IDLE",
+    failure_reason: null,
+  },
+});
+assert.deepEqual(
+  appendedMessages.map((message) => message.role),
+  ["user", "assistant"],
+  "resident voice presenter must still append current voice completions",
+);
 
 console.log("desktop static voice checks passed");

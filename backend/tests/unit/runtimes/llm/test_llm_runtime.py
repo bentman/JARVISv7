@@ -540,3 +540,38 @@ def test_null_runtime_generate_envelope_raises_runtime_reason():
     runtime = NullLLMRuntime("no runtime")
     with pytest.raises(RuntimeError, match="no runtime"):
         runtime.generate_envelope(PromptEnvelope((PromptSegment("user", "user_input", False, "hello"),)))
+
+
+def test_local_runtime_uses_owned_client(monkeypatch):
+    runtime = LlamaCppLLM(base_url="http://test", model="assistant-small-q4")
+    called = []
+
+    def fake_post(url, *, json, timeout):
+        called.append(url)
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"choices": [{"message": {"content": "ready"}}]},
+        )
+
+    monkeypatch.setattr(runtime.client, "post", fake_post)
+    monkeypatch.setattr(runtime, "_ensure_sidecar_available_for_turn", lambda: True)
+
+    assert runtime.generate("hello") == "ready"
+    assert called == ["http://test/v1/chat/completions"]
+
+
+def test_ollama_runtime_uses_owned_client(monkeypatch):
+    runtime = OllamaLLM(base_url="http://test", model="assistant", enabled=True)
+    called = []
+
+    def fake_post(url, *, json, timeout):
+        called.append(url)
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"response": "ollama answer"},
+        )
+
+    monkeypatch.setattr(runtime.client, "post", fake_post)
+
+    assert runtime.generate("hello") == "ollama answer"
+    assert called == ["http://test/api/generate"]
