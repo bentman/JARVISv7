@@ -1015,3 +1015,33 @@ def test_partial_tts_playback_starts_before_synthesis_completes():
     assert idx_put_1 < idx_synth_2, f"Expected player_put_chunk_1 to precede synthesis_chunk_2, got events: {events}"
     
     assert result.final_state == ConversationState.IDLE
+
+
+def test_streaming_playback_start_failure_reports_playback_failure_phase():
+    class StreamingTTS(FakeTTS):
+        @property
+        def supports_streaming(self) -> bool:
+            return True
+
+    class FailingPlayer:
+        def __init__(self, sample_rate: int) -> None:
+            pass
+
+        def start(self) -> None:
+            raise RuntimeError("sounddevice start failed")
+
+    class FailingPlaybackAPI:
+        IterablePlayer = FailingPlayer
+        
+        def last_output_device(self) -> str:
+            return "failing_device"
+
+    engine = _engine(
+        tts=StreamingTTS(available=True),
+        playback_api=FailingPlaybackAPI(),
+    )
+    result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.final_state == ConversationState.FAILED
+    assert result.failure_reason == "sounddevice start failed"
+    assert result.failure_phase == "playback"

@@ -470,35 +470,37 @@ class TurnEngine:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         tts_started_at = time.perf_counter()
 
-        player = self.playback_api.IterablePlayer(sample_rate)
-        player.start()
-
-        chunks_collected: list[np.ndarray] = []
-        error_container: list[Exception] = []
+        player = None
+        thread = None
         stop_event = threading.Event()
-
-        def synthesis_worker() -> None:
-            try:
-                for chunk, rate in self.tts.synthesize_stream(text_to_synthesize):
-                    if stop_event.is_set():
-                        break
-                    player.put(chunk)
-                    chunks_collected.append(chunk)
-                player.put(None)
-            except Exception as exc:
-                error_container.append(exc)
-                player.put(None)
-
-        thread = threading.Thread(target=synthesis_worker, name="tts-synthesis-stream", daemon=True)
-        thread.start()
-
-        context.advance(ConversationState.SPEAKING)
-        playback_started_at = time.perf_counter()
-
-        interrupted = False
-        interruption_events = []
+        error_container: list[Exception] = []
+        chunks_collected: list[np.ndarray] = []
 
         try:
+            player = self.playback_api.IterablePlayer(sample_rate)
+            player.start()
+
+            def synthesis_worker() -> None:
+                try:
+                    for chunk, rate in self.tts.synthesize_stream(text_to_synthesize):
+                        if stop_event.is_set():
+                            break
+                        player.put(chunk)
+                        chunks_collected.append(chunk)
+                    player.put(None)
+                except Exception as exc:
+                    error_container.append(exc)
+                    player.put(None)
+
+            thread = threading.Thread(target=synthesis_worker, name="tts-synthesis-stream", daemon=True)
+            thread.start()
+
+            context.advance(ConversationState.SPEAKING)
+            playback_started_at = time.perf_counter()
+
+            interrupted = False
+            interruption_events = []
+
             if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
                 self.barge_in_detector.reset()
                 vad_iter = iter(self.interruption_audio_chunks or [])
@@ -536,7 +538,13 @@ class TurnEngine:
 
         except Exception as exc:
             stop_event.set()
-            thread.join(timeout=0.5)
+            if thread is not None:
+                thread.join(timeout=0.5)
+            if player is not None:
+                try:
+                    player.stop()
+                except Exception:
+                    pass
             f_phase = "playback"
             if error_container and exc is error_container[0]:
                 f_phase = "tts"
@@ -553,7 +561,8 @@ class TurnEngine:
 
         finally:
             stop_event.set()
-            thread.join(timeout=0.5)
+            if thread is not None:
+                thread.join(timeout=0.5)
 
         full_audio = np.concatenate(chunks_collected) if chunks_collected else np.array([], dtype=np.float32)
 

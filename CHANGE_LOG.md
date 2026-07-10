@@ -373,6 +373,15 @@
 
 ## Change Appendix
 
+- Timestamp: 2026-07-10 15:05
+  - Host class(es): Windows x64 validated
+  - Summary: Wrapped player.start() in _speak_streaming within the try/except block to ensure streaming playback-start errors are correctly assigned failure_phase="playback".
+  - Scope:
+    - `backend/app/conversation/engine.py`
+    - `backend/tests/unit/conversation/test_engine.py`
+  - Validation:
+    - Run command `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py` PASS (49 passed)
+
 - Timestamp: 2026-07-10 11:44
   - Host class(es): Windows x64 validated
   - Summary: Corrected the streaming detection conditional in TurnEngine._speak_or_degrade to use the supports_streaming property instead of hasattr(self.tts, "synthesize_stream").
