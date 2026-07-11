@@ -1,5 +1,7 @@
 # New Toolbox — Pluggable Extensions Architecture
 
+> This document is a transformation guide, NOT completion evidence.
+
 ## User Summary
 
 JARVIS should gain new capabilities without requiring core code changes for every installation.
@@ -40,8 +42,6 @@ The target architecture must:
 - permit additional extension shapes without replacing the toolbox;
 - enforce filesystem roots and read/write level at execution;
 - prefer modifying existing backend modules over creating parallel frameworks.
-
-This document is a transformation guide, not completion evidence.
 
 ---
 
