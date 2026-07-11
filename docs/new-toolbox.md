@@ -2,203 +2,204 @@
 
 ## User Summary
 
-JARVIS should use a toolbox that can grow without requiring changes to the core application each time a new capability is added.
+JARVIS should gain new capabilities without requiring core code changes for every installation.
 
-A new tool source should be installable by copying a standards-shaped directory into a designated data folder. JARVIS should discover it, validate it, expose its available tools, and route calls through the existing conversation and execution path.
+The target experience is:
 
-The system should support multiple extension shapes rather than treating everything as one custom tool type:
-
-- MCP servers provide callable tools and related protocol capabilities.
-- Skills provide reusable instructions, workflows, references, scripts, and assets.
-- Agents will eventually provide delegated actors through a separate interoperable contract.
-
-JARVIS keeps one toolbox for runtime use, but that toolbox is assembled from multiple providers. Built-in tools and installed MCP servers appear through the same callable interface. Filesystem access is limited to folders explicitly selected by the user, with each folder marked read-only or read-write.
-
-The intended operator experience is simple:
-
-1. Copy an extension directory into `data/extensions/<shape>/`.
-2. Configure any required local values in the extension's JARVIS sidecar file.
+1. Copy a standards-shaped extension into `data/extensions/<shape>/`.
+2. Add only the local JARVIS settings that the extension requires.
 3. Start or refresh JARVIS.
-4. JARVIS discovers the extension and reports whether it is ready.
-5. Its tools become available through the normal toolbox when valid and enabled.
+4. JARVIS discovers, validates, and reports the extension.
+5. Valid capabilities become available through the existing application paths.
+
+The three extension shapes are intentionally separate:
+
+- **MCP** provides callable tools and related protocol capabilities.
+- **Skills** provide reusable instructions, workflows, references, scripts, and assets.
+- **Agents** provide delegated actors through an agent-card and task/message contract.
+
+JARVIS keeps one runtime toolbox for callable tools, but the wider extension system may also contain skills and agents. Existing backend code remains the foundation: the current registry, executor, turn engine, agent specs, agent policy, dry-run roles, ledger, and API surfaces should be extended rather than replaced.
+
+Filesystem access is limited to folders explicitly selected by the user. Each selected folder is read-only or read-write.
 
 ---
 
 ## 1. Objective
 
-Transform the current tool registry into a pluggable, provider-based toolbox that follows established agentic coding ecosystem shapes rather than a JARVIS-only plugin format.
+Transform the current tool and agent scaffolds into a pluggable extension system that follows shared agentic-development shapes instead of a JARVIS-only plugin format.
 
 The target architecture must:
 
-- preserve the existing `ToolRegistry -> ToolExecutor -> TurnEngine` execution path;
-- support built-in tools and externally installed tool providers;
+- preserve `ToolRegistry -> ToolExecutor -> TurnEngine`;
+- preserve the existing `backend/app/agents` scaffold;
 - use MCP as the first external tool-provider shape;
-- reserve separate extension namespaces for skills and agents;
+- use Agent Skills conventions for skills;
+- use an agent-card plus task/message model for external agents;
 - discover installed extensions from the canonical `data/` root;
-- keep portable extension metadata separate from JARVIS-specific local state;
-- permit new extension shapes later without redesigning the toolbox;
-- gate host filesystem access to user-designated folders with explicit read-only or read-write access.
+- separate portable extension metadata from JARVIS-local state;
+- permit additional extension shapes without replacing the toolbox;
+- enforce filesystem roots and read/write level at execution;
+- prefer modifying existing backend modules over creating parallel frameworks.
 
-This document defines the conceptual and technical target. It is a transformation guide, not completion evidence.
+This document is a transformation guide, not completion evidence.
 
 ---
 
-## 2. Core Architectural Decision
+## 2. Core Concepts
 
-JARVIS will distinguish between:
-
-- **extension shape** — the external format or interoperability contract;
-- **provider** — the runtime adapter that makes one extension source available to JARVIS;
-- **toolbox** — the aggregate callable tool surface presented to JARVIS execution;
-- **tool** — one callable operation exposed by a provider.
-
-The toolbox is not itself a plugin format. It is the normalized runtime view over all active providers.
+- **Extension shape**: an external interoperability format, such as MCP, Agent Skills, or an agent-card protocol.
+- **Provider**: the adapter that exposes one extension source to JARVIS.
+- **Toolbox**: the aggregate callable tool surface presented to `ToolExecutor` and `TurnEngine`.
+- **Skill catalog**: metadata and progressive loading for installed skills.
+- **Agent catalog**: internal and external agent descriptions available for status, selection, and later delegation.
+- **Tool**: one callable operation exposed by a provider.
+- **Agent**: a delegated actor that receives tasks/messages and returns status, artifacts, or results. An agent is not a tool.
 
 ```text
 Installed extensions
   ├─ MCP servers
   ├─ Skills
-  └─ Agents (future)
+  └─ External agents
           │
           ▼
-Shape-specific discovery and adapters
+Existing and shape-specific loaders/adapters
           │
-          ▼
-Tool providers
-  ├─ BuiltinToolProvider
-  └─ MCPToolProvider
-          │
-          ▼
-ToolRegistry (the toolbox)
-          │
-          ▼
-ToolExecutor
-          │
-          ▼
-TurnEngine and turn artifacts
+          ├─ Tool providers -> ToolRegistry -> ToolExecutor -> TurnEngine
+          ├─ Skill catalog -> planning/agent context
+          └─ Agent catalog -> existing agent policy/ledger/API -> future delegation runtime
 ```
-
-This preserves direct in-process execution for built-in tools while allowing protocol-backed providers such as MCP.
 
 ---
 
-## 3. Directory Ownership
+## 3. Governing Migration Rule
 
-### 3.1 Backend code
+Migration must prefer **use and modification of existing backend scaffolding** over redesign or broad refactoring.
 
-Backend code owns discovery, validation, lifecycle, adaptation, routing, and execution.
+Required approach:
 
-Recommended shape:
+1. Extend existing interfaces where they already own the behavior.
+2. Add adapters at external-format boundaries.
+3. Preserve existing data and API contracts unless interoperability requires a narrow additive field.
+4. Avoid duplicate registries, duplicate ledgers, alternate agent runtimes, or a second tool execution path.
+5. Move files only when the move is required for runtime ownership; do not reorganize merely for visual symmetry.
+6. Keep compatibility shims while callers migrate, then remove them only under a separately validated change.
+
+Existing authorities to retain:
+
+- `backend/app/tools/registry.py` remains the callable toolbox.
+- `backend/app/cognition/executor.py` remains the tool execution coordinator.
+- `backend/app/conversation/engine.py` remains the canonical turn path.
+- `backend/app/agents/specs.py` remains the internal agent-spec loader and validator.
+- `backend/app/agents/policy.py` remains the agent enablement and allowed-role/tool gate.
+- `backend/app/agents/ledger.py` remains the durable agent trace/event store.
+- Existing planner, executor, critic, curator, learner, and creator modules remain the role scaffold.
+- `backend/app/api/routes/agents.py` remains the agent status/trace API owner.
+
+---
+
+## 4. Directory Ownership
+
+### 4.1 Backend code
+
+Use the existing domains first. Add only the smallest adapter surfaces needed.
 
 ```text
 backend/app/
-├─ extensions/
-│  ├─ discovery.py              # aggregate extension discovery
-│  ├─ models.py                 # shared installed-extension status models
-│  ├─ registry.py               # extension catalog, distinct from callable toolbox
-│  ├─ mcp/
-│  │  ├─ client.py              # MCP connection/session lifecycle
-│  │  ├─ discovery.py           # MCP installation discovery
-│  │  ├─ models.py              # MCP installation/runtime state
-│  │  ├─ provider.py            # MCP tools exposed as ToolProvider
-│  │  └─ roots.py               # filesystem root normalization and enforcement
-│  ├─ skills/
-│  │  ├─ discovery.py           # Agent Skills directory discovery
-│  │  ├─ loader.py              # metadata-first, progressive skill loading
-│  │  └─ models.py
-│  └─ agents/
-│     └─ ...                    # reserved until the agent contract is implemented
-└─ tools/
-   ├─ registry.py               # callable toolbox and provider routing
-   ├─ provider.py               # common ToolProvider contract
-   ├─ models.py                 # normalized tool definitions/results
-   ├─ builtin/
-   │  ├─ provider.py
-   │  ├─ time_tool.py
-   │  ├─ hardware_tool.py
-   │  └─ search_tool.py
-   └─ filesystem/
-      └─ ...                    # optional built-in filesystem implementation
+├─ tools/
+│  ├─ registry.py               # existing toolbox; extend for providers
+│  ├─ provider.py               # small common ToolProvider contract if needed
+│  ├─ models.py                 # normalized definitions/results if needed
+│  ├─ system/                   # retain existing built-ins
+│  ├─ search/                   # retain existing search tool
+│  └─ filesystem/               # retain and expand existing filesystem tools
+├─ agents/
+│  ├─ specs.py                  # retain internal JarvisAgentSpec catalog
+│  ├─ roles.py                  # retain role projection
+│  ├─ policy.py                 # retain enablement/allow rules
+│  ├─ messages.py               # extend toward interoperable task/message fields
+│  ├─ ledger.py                 # retain trace/event persistence
+│  ├─ planner.py                # retain dry-run planner scaffold
+│  ├─ executor.py               # retain dry-run tool decision scaffold
+│  ├─ critic.py
+│  ├─ curator.py
+│  ├─ learner.py
+│  ├─ creator.py
+│  ├─ discovery.py              # add external-agent directory discovery
+│  ├─ cards.py                  # add agent-card normalization/validation
+│  └─ provider.py               # add external-agent adapter only when execution is enabled
+└─ extensions/                  # add only shared cross-shape coordination if proven necessary
+   ├─ discovery.py
+   ├─ models.py
+   ├─ mcp/
+   └─ skills/
 ```
 
-Exact file splitting should remain minimal. The required boundary is more important than the number of files.
+Do not move the existing `backend/app/agents` implementation beneath a new framework. External-agent support should enter through adapters owned by that package.
 
-### 3.2 Installed and user-managed content
-
-Installed extensions belong under the existing canonical `data/` root:
+### 4.2 Installed and user-managed content
 
 ```text
 data/extensions/
 ├─ mcp/
-│  ├─ filesystem/
-│  │  ├─ server.json
-│  │  └─ jarvis.json
-│  └─ github/
+│  └─ <installation>/
 │     ├─ server.json
-│     └─ jarvis.json
+│     └─ jarvis.json            # optional local state
 ├─ skills/
-│  └─ code-review/
+│  └─ <skill-name>/
 │     ├─ SKILL.md
-│     ├─ scripts/
-│     ├─ references/
-│     └─ assets/
+│     ├─ scripts/               # optional
+│     ├─ references/            # optional
+│     └─ assets/                # optional
 └─ agents/
-   └─ ...                       # reserved; no active loader until implemented
+   └─ <agent-id>/
+      ├─ agent-card.json
+      └─ jarvis.json            # optional local state
 ```
 
 Use lowercase directory names: `mcp`, `skills`, and `agents`.
 
-### 3.3 Why `data/extensions/`
+### 4.3 Existing internal agent content
 
-`data/extensions/` is the neutral installation root because MCP servers, skills, and agents are not all tools.
+Existing repo-owned agent specs and prompts remain in place:
 
-- MCP is a protocol-backed capability source.
-- Skills are reusable workflows and supporting material.
-- Agents are delegated actors.
+```text
+config/agents/specs/*.yaml
+config/prompts/agents/*.md
+```
 
-The toolbox may consume capabilities from these sources, but the sources should not be forced into one JARVIS-specific tool package shape.
+They are internal JARVIS agent definitions, not installed external-agent packages. They should be represented in the same normalized agent catalog through an adapter, not physically moved into `data/extensions/agents`.
 
 ---
 
-## 4. Toolbox Contract
+## 5. Toolbox Contract
 
-### 4.1 Tool provider
+### 5.1 Provider contract
 
-A provider is the smallest abstraction needed to aggregate built-in and external tools.
-
-Conceptual contract:
+The smallest useful tool-provider contract is:
 
 ```python
 class ToolProvider(Protocol):
     provider_id: str
 
-    def list_tools(self) -> list[ToolDefinition]:
-        ...
+    def list_tools(self) -> list[ToolDefinition]: ...
 
     def call_tool(
         self,
         tool_name: str,
         arguments: dict[str, object],
-    ) -> ToolCallResult:
-        ...
+    ) -> ToolCallResult: ...
 ```
 
 Initial providers:
 
-- `BuiltinToolProvider`
-- `MCPToolProvider`
+- built-in JARVIS tools;
+- MCP servers.
 
-Possible later providers:
+The registry must not import arbitrary Python copied into `data/`.
 
-- remote HTTP provider;
-- A2A agent proxy provider;
-- provider supplied by another supported extension shape.
+### 5.2 Normalized tool definition
 
-The registry must not assume that every provider is a Python subclass copied into `data/`.
-
-### 4.2 Tool definition
-
-Use an MCP-compatible normalized tool shape:
+Use an MCP-compatible shape:
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -211,11 +212,7 @@ class ToolDefinition:
     annotations: dict[str, object] | None = None
 ```
 
-This maps directly to MCP and can be adapted to other model-provider function-calling formats.
-
-### 4.3 Tool result
-
-Use a structured result rather than arbitrary success strings:
+### 5.3 Normalized result
 
 ```python
 @dataclass(frozen=True, slots=True)
@@ -225,13 +222,11 @@ class ToolCallResult:
     is_error: bool = False
 ```
 
-The existing `ToolExecutor` may continue to produce its current turn-facing `ToolResult`, but it should normalize from `ToolCallResult` rather than assuming every provider returns a plain string.
+`ToolExecutor` may keep its current turn-facing `ToolResult`, normalizing provider results into that existing artifact contract.
 
-### 4.4 Registry identity
+### 5.4 Tool identity
 
-Tool names are not guaranteed to be globally unique across providers.
-
-Use a provider-qualified internal identity:
+Use provider-qualified routing identity:
 
 ```text
 <provider-id>::<tool-name>
@@ -241,449 +236,416 @@ Examples:
 
 ```text
 builtin::time
-builtin::hardware_info
+builtin::hardware.info
 filesystem::read_file
 github::get_issue
 ```
 
-The registry may expose model-facing aliases, but routing and artifacts must retain provider ownership.
+Existing unqualified names may remain as aliases during migration. Routing and artifacts must retain provider identity.
 
-### 4.5 Registry responsibilities
+### 5.5 Registry responsibilities
 
-`backend/app/tools/registry.py` becomes the toolbox and should own:
+Extend `backend/app/tools/registry.py` to own:
 
 - provider registration;
-- deterministic provider and tool ordering;
-- tool catalog refresh;
+- compatibility registration for existing `ToolBase` instances;
+- deterministic listing;
 - provider-qualified lookup;
-- collision detection for aliases;
-- normalized tool listing;
+- alias collision detection;
 - invocation routing;
-- explicit unavailable/disabled provider reporting;
-- preservation of provider identity in results.
+- provider identity in results;
+- unavailable-provider reporting.
 
-It should not own:
-
-- MCP transport implementation;
-- filesystem path enforcement;
-- skill interpretation;
-- agent delegation;
-- dynamic import of arbitrary Python from `data/`.
+It must not own MCP transport, filesystem containment, skill loading, or agent delegation.
 
 ---
 
-## 5. Built-In Tools
+## 6. Existing Built-In Tools
 
-Existing JARVIS tools become one provider rather than special registry cases.
+Retain the existing modules and adapt them into one built-in provider:
 
-Initial built-ins:
+- `time`;
+- `hardware.info`;
+- `search`;
+- expanded filesystem operations.
 
-- current time;
-- cached hardware information;
-- configured internet search.
+Do not relocate or rewrite these tools merely to create a new directory layout. A small `BuiltinToolProvider` may wrap existing `ToolBase` objects.
 
-Conceptual registration:
-
-```python
-builtin_provider = BuiltinToolProvider(
-    tools=[
-        TimeTool(),
-        HardwareTool(profile),
-        SearchTool(settings),
-    ]
-)
-registry.register_provider(builtin_provider)
-```
-
-Built-ins should use the same normalized definitions and results as MCP tools. This keeps the toolbox consistent and makes built-ins exportable later.
+Application startup should construct one registry, register the built-in provider, attach enabled MCP providers, store the registry on application state, and pass the same registry to every `TurnEngine` created by startup or session binding.
 
 ---
 
-## 6. MCP Extension Shape
+## 7. MCP Extension Shape
 
-### 6.1 Installation unit
-
-Each immediate child directory beneath `data/extensions/mcp/` is one installed MCP integration.
-
-Required portable file:
+Each immediate child beneath `data/extensions/mcp/` is one installed MCP integration.
 
 ```text
-server.json
+data/extensions/mcp/<installation>/
+├─ server.json                  # portable standards-shaped metadata
+└─ jarvis.json                  # optional JARVIS-local state
 ```
 
-Optional JARVIS-local file:
+Discovery:
 
-```text
-jarvis.json
-```
+1. Scan immediate child directories deterministically.
+2. Require and validate `server.json`.
+3. Load optional `jarvis.json`.
+4. Skip disabled entries explicitly.
+5. Start or connect to enabled servers.
+6. Perform MCP initialization.
+7. call `tools/list`.
+8. Register returned tools under the provider identity.
+9. Refresh when the server reports tool-list changes.
+10. Isolate failures to the affected provider.
 
-Example:
-
-```text
-data/extensions/mcp/filesystem/
-├─ server.json
-└─ jarvis.json
-```
-
-### 6.2 `server.json`
-
-`server.json` should remain standards-shaped and portable. It describes the MCP server identity, version, package or remote endpoint, transport, arguments, and required environment inputs.
-
-JARVIS should consume the official schema rather than inventing a parallel manifest.
-
-### 6.3 `jarvis.json`
-
-`jarvis.json` stores host-specific installation state that should not modify portable MCP metadata.
-
-Conceptual shape:
-
-```json
-{
-  "enabled": true,
-  "selectedPackage": 0,
-  "environment": {
-    "LOG_LEVEL": "info"
-  },
-  "roots": [
-    {
-      "id": "documents",
-      "uri": "file:///C:/Users/example/Documents/JARVIS",
-      "name": "Documents",
-      "access": "read-write"
-    },
-    {
-      "id": "reference",
-      "uri": "file:///D:/Reference",
-      "name": "Reference",
-      "access": "read-only"
-    }
-  ]
-}
-```
-
-Do not store secrets directly in this file. Secret values should continue to resolve through an approved local secret/environment mechanism.
-
-### 6.4 Discovery
-
-At startup or explicit refresh:
-
-1. Scan only immediate child directories under `data/extensions/mcp/`.
-2. Require one `server.json` per installation.
-3. Validate portable metadata.
-4. Load optional `jarvis.json`.
-5. Skip disabled installations.
-6. Report invalid installations explicitly without preventing unrelated providers from loading.
-7. Start or connect to enabled MCP servers.
-8. Perform MCP initialization.
-9. Call `tools/list`.
-10. Register the returned tools under the provider identity.
-11. Refresh the provider catalog when the MCP server reports a tool-list change.
-
-Discovery must be deterministic and fail locally. One broken extension must not erase the built-in toolbox or unrelated providers.
-
-### 6.5 Lifecycle
-
-The application startup state should own active MCP sessions so they are reused rather than recreated per turn.
-
-Application shutdown should close MCP sessions and child processes cleanly.
-
-Session binding may rebuild `TurnEngine`, but it must continue to receive the same application-owned toolbox.
+Application startup owns active MCP sessions. Application shutdown closes them. They are not recreated per turn.
 
 ---
 
-## 7. Filesystem Access
+## 8. Filesystem Access
 
-### 7.1 User-designated roots
-
-Filesystem access is authorized only through roots explicitly selected by the user.
+Filesystem access is authorized only through user-selected roots.
 
 Each root has:
 
-- stable local identifier;
+- stable local id;
 - `file://` URI;
 - optional display name;
-- access level: `read-only` or `read-write`.
+- `read-only` or `read-write` access.
 
-No tool call may introduce a new root or arbitrary host absolute path.
+`read-only` permits listing and reading. `read-write` additionally permits directory creation, file creation, and explicit overwrite.
 
-### 7.2 Access levels
+Initial scope excludes delete, rename/move, execution, permission changes, link creation, and unrestricted binary editing.
 
-`read-only` permits:
-
-- list directories;
-- inspect metadata needed for listing;
-- read supported files.
-
-`read-write` permits all read-only operations plus:
-
-- create directories;
-- create supported files;
-- explicitly overwrite supported files.
-
-Initial scope excludes:
-
-- delete;
-- rename or move;
-- execute;
-- ownership or permission changes;
-- symlink, junction, or reparse-point creation;
-- unrestricted binary editing.
-
-### 7.3 Enforcement boundary
-
-JARVIS must enforce root and access restrictions before forwarding an MCP tool call. A third-party filesystem server is not the sole authority for JARVIS-selected access.
-
-Required sequence:
+JARVIS must enforce root containment and access before forwarding a filesystem MCP call or executing a built-in filesystem operation:
 
 ```text
-requested tool call
+call
   -> identify provider and operation
   -> resolve selected root
-  -> resolve requested relative path
-  -> verify final target remains inside root
+  -> resolve relative path
+  -> verify target remains under root
   -> reject symlink/junction/reparse escape
-  -> verify root access permits operation
-  -> forward call to provider
+  -> verify read/write level
+  -> execute or forward
   -> normalize result
 ```
 
-### 7.4 Operation intent
-
-Write behavior must be explicit.
-
-Recommended inputs distinguish:
-
-- create new file;
-- overwrite existing file.
-
-A create request should fail when the target already exists. An overwrite request should fail when the target does not exist unless a later contract explicitly changes that behavior.
+Create and overwrite are distinct intents. Create fails when a target exists. Overwrite fails when the target is absent unless a later contract explicitly changes that behavior.
 
 ---
 
-## 8. Skills Shape
+## 9. Skills Shape
 
-Skills follow the Agent Skills directory convention:
+Follow the Agent Skills directory convention:
 
 ```text
 data/extensions/skills/<skill-name>/
 ├─ SKILL.md
-├─ scripts/        optional
-├─ references/     optional
-└─ assets/         optional
+├─ scripts/                     # optional
+├─ references/                  # optional
+└─ assets/                      # optional
 ```
 
-Discovery should be metadata-first:
+Discovery is metadata-first:
 
-1. identify immediate child directories;
-2. require `SKILL.md`;
-3. load and validate frontmatter metadata;
-4. retain path and summary in the skill catalog;
-5. load full instructions only when selected;
-6. load scripts, references, and assets only when required.
+1. Discover immediate child directories.
+2. Require `SKILL.md`.
+3. Validate frontmatter.
+4. Catalog name, description, and path.
+5. Load full instructions only when selected.
+6. Load scripts, references, and assets only as needed.
 
-A skill is not automatically a callable tool. It may reference or require toolbox capabilities, including MCP tools.
-
-Skills should have a separate catalog even if later orchestration makes them visible to planning or agent systems.
+A skill is not automatically a tool. It may declare or describe dependencies on toolbox tools, including MCP tools.
 
 ---
 
-## 9. Agents Namespace
+## 10. Industry-Aligned Agent Shape
 
-Reserve:
+### 10.1 Conceptual external contract
+
+External agents should use an **agent card plus task/message lifecycle** rather than a JARVIS-only YAML package.
+
+The normalized agent card should be able to represent common industry fields:
+
+```python
+@dataclass(frozen=True, slots=True)
+class AgentCard:
+    agent_id: str
+    name: str
+    description: str
+    version: str | None
+    endpoint: str | None
+    capabilities: dict[str, object]
+    skills: list[dict[str, object]]
+    input_modes: list[str]
+    output_modes: list[str]
+    authentication: dict[str, object] | None
+    metadata: dict[str, object]
+```
+
+The exact wire adapter may target an A2A-compatible Agent Card and task/message exchange. JARVIS should normalize external cards instead of copying their fields into `JarvisAgentSpec` directly.
+
+### 10.2 Installation unit
 
 ```text
-data/extensions/agents/
+data/extensions/agents/<agent-id>/
+├─ agent-card.json              # portable external description
+└─ jarvis.json                  # optional local state
 ```
 
-Do not activate discovery or execution until an interoperable agent contract is selected and implemented.
+`jarvis.json` may contain:
 
-The current internal JARVIS agent specifications remain under their existing configuration paths. They should not be moved merely to match the reserved installation namespace.
-
-When external agents are implemented, evaluate industry agent-card and delegation protocols separately from MCP and skills.
-
----
-
-## 10. Application Wiring
-
-The application startup path should:
-
-1. construct the built-in provider;
-2. discover installed MCP integrations;
-3. establish enabled MCP providers;
-4. build one `ToolRegistry` toolbox;
-5. store the toolbox and extension readiness state on application state;
-6. pass the same toolbox to every `TurnEngine` created by startup or session binding;
-7. close active provider resources during application shutdown.
-
-The existing conversation path remains authoritative:
-
-```text
-TurnEngine
-  -> ToolExecutor
-  -> ToolRegistry
-  -> selected ToolProvider
-  -> tool call
-  -> normalized result
-  -> turn result and artifact
-```
-
-No parallel conversation or agent-only tool execution path should be introduced.
-
----
-
-## 11. Readiness and Observability
-
-Extension discovery must produce observable state.
-
-For each installation, report at least:
-
-- extension shape;
-- installation identifier;
 - enabled state;
-- discovery state;
-- validation state;
-- connection/start state where applicable;
-- number of available tools;
-- reason when unavailable;
-- source directory.
+- local display alias;
+- endpoint override;
+- environment/secret references;
+- timeout and connection settings;
+- mapping to permitted JARVIS roles or tools where needed.
 
-For each registered tool, preserve:
+Portable card metadata remains untouched.
 
-- provider identifier;
-- tool name;
-- description;
-- input schema;
-- output schema when available;
-- annotations when available;
-- current availability.
+### 10.3 Internal and external agents share a catalog, not a file format
 
-Failures must be localized and explicit. A broken MCP server should not silently disappear, and it should not prevent built-in tools from loading.
+The agent catalog should contain normalized entries from two sources:
 
----
+```text
+InternalAgentAdapter
+  -> existing JarvisAgentSpec objects
 
-## 12. Security and Functional Boundaries
+ExternalAgentAdapter
+  -> discovered AgentCard objects
 
-The objective is functional interoperability, not a broad policy framework. Enforcement should occur at concrete execution boundaries.
+Both
+  -> AgentCatalogEntry
+```
 
-Required controls:
+Suggested normalized entry:
 
-- do not import arbitrary Python from installed data directories;
-- validate installation metadata before execution;
-- keep provider processes and sessions application-owned;
-- preserve provider identity in routing and artifacts;
-- prevent path traversal and link/reparse escape;
-- enforce read-only/read-write at filesystem execution;
-- keep secrets outside portable manifests;
-- limit discovery to declared installation roots;
-- fail one provider independently from the rest of the toolbox.
+```python
+@dataclass(frozen=True, slots=True)
+class AgentCatalogEntry:
+    agent_id: str
+    source: Literal["internal", "external"]
+    display_name: str
+    description: str
+    enabled: bool
+    capabilities: dict[str, object]
+    allowed_tools: list[str]
+    endpoint: str | None
+    raw_reference: str
+```
 
-Avoid speculative authorization layers that are not required to deliver these behaviors.
+This allows common status and selection while preserving source-specific contracts.
 
----
+### 10.4 Existing scaffold mapping
 
-## 13. Transformation Sequence
+Use the current implementation as follows:
 
-### Phase 1 — Normalize the existing toolbox
+- `JarvisAgentSpec` remains the internal spec model.
+- `load_agent_specs()` remains the internal catalog source.
+- `roles.py` continues projecting internal role definitions.
+- `AgentPolicy` remains the gate for whether roles/tools are allowed.
+- `messages.py` is extended additively to represent task id, status, artifacts, and external message references when required.
+- `AgentLedger` remains the durable record of plans, policy decisions, task events, outcomes, and external delegation records.
+- Existing planner/executor/critic/curator/learner functions remain dry-run role implementations until a later slice enables live execution.
+- The creator continues producing internal disabled specs; it does not create external agent cards.
+- `/agents/status` expands to include normalized internal and external catalog entries.
+- `/agents/traces/{trace_id}` continues reading the same ledger.
 
-- Add normalized tool definition and result types.
-- Add the `ToolProvider` contract.
-- Convert `ToolRegistry` into provider-based routing.
-- Preserve compatibility with the existing executor and turn artifacts.
+### 10.5 Discovery without execution
 
-### Phase 2 — Convert built-in tools
+The first external-agent increment should provide discovery and status only:
 
-- Add `BuiltinToolProvider`.
-- Wire time, hardware information, and search.
-- Construct the toolbox during application startup.
-- Ensure session-bound engines retain the same toolbox.
+1. Scan immediate children of `data/extensions/agents/`.
+2. Require `agent-card.json`.
+3. Validate and normalize the card.
+4. Load optional `jarvis.json`.
+5. Record readiness and reason.
+6. Add valid entries to the agent catalog.
+7. Expose them through the existing agent status API.
+8. Do not delegate tasks until an execution slice explicitly enables it.
 
-### Phase 3 — Add MCP installations
+This uses the current read-only agent boundary rather than creating a second runtime.
 
-- Add `data/extensions/mcp/` discovery.
-- Validate `server.json`.
-- Load optional `jarvis.json`.
-- Establish MCP client/session lifecycle.
-- Import `tools/list` into the toolbox.
-- Route `tools/call` through `MCPToolProvider`.
+### 10.6 Later delegation path
 
-### Phase 4 — Add filesystem roots
+When live external-agent execution is approved, extend the existing path:
 
-- Represent user-selected roots with `file://` URIs.
-- Add read-only/read-write local state.
-- Enforce root containment and operation access before forwarding calls.
-- Validate multi-root behavior and Windows path edge cases.
+```text
+agent request
+  -> existing AgentPolicy
+  -> normalized agent catalog lookup
+  -> external-agent adapter
+  -> task/message exchange
+  -> existing AgentLedger records
+  -> existing status/trace API
+```
 
-### Phase 5 — Add skills discovery
-
-- Add `data/extensions/skills/` discovery.
-- Validate `SKILL.md` metadata.
-- Implement progressive loading.
-- Keep skills separate from callable tool registration.
-
-### Phase 6 — Reserve agents cleanly
-
-- Create or recognize `data/extensions/agents/`.
-- Do not load or execute external agents yet.
-- Define the agent interoperability contract in a later approved effort.
-
----
-
-## 14. Acceptance Criteria
-
-The transformation is functionally complete when:
-
-- the application constructs one provider-based toolbox;
-- existing built-in tools are invocable through that toolbox;
-- every engine created by startup or session binding receives the same toolbox;
-- copying a valid enabled MCP installation directory beneath `data/extensions/mcp/` makes its discovered tools available without changing core registration code;
-- invalid or unavailable MCP installations are reported without disabling other providers;
-- provider-qualified tool identities prevent ambiguous routing;
-- MCP tool definitions and results are normalized without losing protocol fields needed for interoperability;
-- user-selected filesystem roots support multiple folders;
-- read-only roots reject mutating operations;
-- read-write roots permit the explicitly supported create and overwrite operations;
-- all filesystem operations remain inside their selected roots;
-- skills copied beneath `data/extensions/skills/` are discoverable through `SKILL.md` metadata without being misregistered as tools;
-- `data/extensions/agents/` remains a reserved, inactive namespace until an agent contract is implemented;
-- tool calls and failures continue to flow through the existing executor, turn result, and artifact path.
+Do not route delegated agents through `ToolRegistry` as though they were tools. An agent may consume tools, and a tool may proxy a remote service, but those are separate contracts.
 
 ---
 
-## 15. Non-Goals
+## 11. Application Wiring
 
-This transformation does not require:
+Startup should:
 
-- a marketplace;
-- automatic package installation from untrusted metadata;
-- arbitrary Python plugin imports;
-- a new conversation engine;
-- autonomous agent execution;
-- treating skills as tools;
-- treating agents as tools;
-- unrestricted host filesystem access;
-- deletion or execution through the initial filesystem capability;
-- replacing MCP with a JARVIS-specific protocol;
-- forcing built-in tools to communicate through local JSON-RPC.
+1. construct the built-in tool provider;
+2. discover and connect enabled MCP providers;
+3. build one application-owned `ToolRegistry`;
+4. discover skills into a separate skill catalog;
+5. load existing internal agent specs;
+6. discover external agent cards;
+7. build one normalized agent catalog;
+8. retain existing agent policy and ledger ownership;
+9. store toolbox, catalogs, and readiness state on application state;
+10. pass the same toolbox to every canonical `TurnEngine`;
+11. close active provider/agent connections during shutdown.
+
+No parallel conversation path or agent-only tool execution path should be introduced.
 
 ---
 
-## 16. Final Target
+## 12. Readiness and Observability
 
-The final conceptual model is:
+For every extension installation, report:
+
+- shape;
+- installation id;
+- source directory;
+- enabled state;
+- discovery and validation state;
+- connection state where applicable;
+- exposed capability count;
+- reason when unavailable.
+
+For tools, retain provider id, tool name, schema, annotations, and availability.
+
+For agents, retain source, agent id, display name, capabilities, enabled state, endpoint availability, and reason.
+
+Failures are localized. One broken MCP server, skill, or agent card must not remove valid built-ins or unrelated extensions.
+
+---
+
+## 13. Functional Boundaries
+
+- Do not import arbitrary Python from installed data directories.
+- Validate portable metadata before starting or connecting.
+- Keep active processes/sessions application-owned.
+- Preserve provider and agent source identity in artifacts and ledger records.
+- Enforce filesystem containment and access at execution.
+- Keep secrets outside portable manifests.
+- Restrict discovery to declared roots.
+- Keep MCP tools, skills, and agents as separate shapes.
+- Avoid speculative authorization frameworks beyond concrete functional gates.
+- Do not enable autonomous or external-agent execution as a side effect of discovery.
+
+---
+
+## 14. Migration Sequence
+
+### Phase 1 — Complete the existing toolbox
+
+- Extend `ToolRegistry` with provider routing while retaining `ToolBase` compatibility.
+- Add normalized definitions/results only where required.
+- Wrap existing tools in a built-in provider.
+- Wire one registry through application startup and session binding.
+
+### Phase 2 — Add MCP providers
+
+- Add deterministic `data/extensions/mcp` discovery.
+- Implement MCP lifecycle and tool normalization.
+- Preserve existing executor, turn results, and artifacts.
+
+### Phase 3 — Expand filesystem capability
+
+- Reuse `backend/app/tools/filesystem`.
+- Replace the single-root assumption with user-selected roots.
+- Add read-only/read-write enforcement and operation-specific tools.
+- Support both built-in and MCP filesystem providers through the same root authority where practical.
+
+### Phase 4 — Add skills discovery
+
+- Add metadata-first discovery beneath `data/extensions/skills`.
+- Keep skills separate from tool registration.
+
+### Phase 5 — Normalize the existing agent catalog
+
+- Add `AgentCatalogEntry` or equivalent without replacing `JarvisAgentSpec`.
+- Adapt existing specs into normalized catalog entries.
+- Extend existing `/agents/status` output additively.
+- Keep all existing agents disabled/dry-run according to policy.
+
+### Phase 6 — Add external-agent discovery
+
+- Discover `agent-card.json` beneath `data/extensions/agents`.
+- Normalize cards into the same catalog.
+- Record readiness through existing status surfaces.
+- Do not implement live delegation yet.
+
+### Phase 7 — Enable delegation separately
+
+- Extend existing policy, messages, ledger, and role boundaries.
+- Add an external-agent transport adapter.
+- Validate task lifecycle, cancellation, artifacts, failures, and trace persistence.
+- Enable only through an explicitly approved execution slice.
+
+---
+
+## 15. Acceptance Criteria
+
+The transformation is complete when:
+
+- existing built-in tools run through one provider-based toolbox;
+- every canonical engine receives the same toolbox;
+- valid copied MCP installations expose tools without core registration edits;
+- invalid MCP providers fail independently;
+- filesystem roots enforce read-only/read-write and containment;
+- copied skills are metadata-discoverable without becoming tools;
+- existing internal agent specs appear in a normalized agent catalog without being moved or rewritten;
+- copied external agent cards appear in the same catalog without enabling execution;
+- existing agent policy, dry-run roles, ledger, status, and trace APIs remain authoritative;
+- later delegation can be added by extending those existing surfaces rather than creating a parallel agent framework;
+- all tool calls still flow through the existing executor/turn/artifact path;
+- all agent events and outcomes still flow through the existing ledger/status/trace path.
+
+---
+
+## 16. Non-Goals
+
+- Marketplace implementation.
+- Automatic installation from untrusted metadata.
+- Arbitrary Python plugin imports.
+- A replacement conversation engine.
+- Rewriting the existing agent package.
+- Moving internal agent specs into the external installation directory.
+- Treating skills or agents as tools.
+- Enabling autonomous or remote-agent execution during discovery work.
+- Unrestricted host filesystem access.
+- Deletion or execution in the initial filesystem capability.
+- Replacing MCP or agent-card protocols with JARVIS-specific wire formats.
+- Forcing built-in tools through local JSON-RPC.
+
+---
+
+## 17. Final Target
 
 ```text
 data/extensions/
-  ├─ mcp/       copied protocol integrations
+  ├─ mcp/       copied MCP integrations
   ├─ skills/    copied Agent Skills directories
-  └─ agents/    reserved future delegated actors
-
-backend/app/extensions/
-  └─ shape-specific discovery, validation, lifecycle, and adaptation
+  └─ agents/    copied external agent-card integrations
 
 backend/app/tools/
-  └─ normalized provider-based toolbox used by JARVIS runtime execution
+  └─ existing toolbox extended with provider routing
+
+backend/app/agents/
+  └─ existing internal scaffold extended with external discovery and later delegation adapters
+
+backend/app/extensions/
+  └─ only shared cross-shape discovery/readiness code that is proven necessary
 ```
 
 The governing principle is:
 
-> Extensions keep their industry-standard shape. JARVIS adapters discover and normalize them. The toolbox presents one stable callable surface without making every extension conform to a custom JARVIS package format.
+> Preserve JARVIS's existing execution and agent scaffolds. Add standards-shaped adapters at their edges so external tools, skills, and agents can be installed and shared without turning the application into a second, custom ecosystem.
