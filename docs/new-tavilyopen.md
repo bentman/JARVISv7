@@ -1,6 +1,6 @@
 # New Capability (Concept): Local Tavily-Compatible Search (`tavily-open`)
 
-Status: **concept / not yet slice-planned.** This document preserves research findings and architectural direction so the idea isn't lost. It is not an implementation plan and authorizes no code changes.
+Status: **concept / not yet slice-planned.** This document preserves research findings and an implementation shape so the idea isn't lost. It is not an implementation plan and authorizes no code changes.
 
 ---
 
@@ -8,9 +8,7 @@ Status: **concept / not yet slice-planned.** This document preserves research fi
 
 Today, JARVISv7's web search tries three things in order: a local search box (SearXNG, if you're running it), a free public search library (DDGS), and paid Tavily search (if you've added an API key). All three mostly return short snippets -- a title, a link, a one-line description.
 
-`tavily-open` is a free, self-hosted tool that does more: it takes those same search results and actually reads the pages, pulling out the real article content instead of just a snippet. That's the same thing the *paid* Tavily service is normally used for -- but running locally, for free, using search infrastructure we already have installed (SearXNG + Redis).
-
-The idea is not to replace anything that works today. It's to add a "get the real content, not just the snippet" step, using tools we already run, before falling back to the existing snippet-only or paid options.
+`tavily-open` is a free, self-hosted tool that does more: it takes those same search results and actually reads the pages, pulling out the real article content instead of just a snippet. It brings its own bundled SearXNG and Redis, so it isn't something we merge into today's stack -- it's a complete alternate stack you run instead of the current one, switched on with a single on/off setting.
 
 ---
 
@@ -20,23 +18,24 @@ The idea is not to replace anything that works today. It's to add a "get the rea
 
 Source: [github.com/jianjungki/tavily-open](https://github.com/jianjungki/tavily-open)
 
-A self-hosted FastAPI service that:
-- Takes a search query, runs it against a **SearXNG** instance for result URLs.
+A self-hosted FastAPI service (Uvicorn, default port `8000`) that:
+- Takes a search query, runs it against a **bundled SearXNG** instance for result URLs.
 - Crawls/extracts full page content for those URLs through a staged fallback chain (direct HTTP fetch -> Jina Reader -> remote Browserless/CDP -> local Playwright).
-- Optionally caches results in **Redis**.
+- Caches results in a **bundled Redis** (`REDIS_URL`, default `redis://localhost:6379/0`).
 - Exposes one endpoint: `POST /search`, returning its own schema -- `results: [{content, reference}], success_count, failed_urls, cache_hits, newly_crawled`.
 
-It requires SearXNG to expose `formats: [html, json]`. It has no relationship to `api.tavily.com` and requires no API key -- despite the name, it is an independent local alternative, not a proxy or fallback wrapper for the real Tavily cloud API.
+It ships as its own Docker Compose project (API + SearXNG + Redis, same default ports our stack already uses). It has no relationship to `api.tavily.com` and requires no API key.
 
 ### 2.2 What it is not
 
-- It is **not** a drop-in replacement for the real Tavily API's request/response schema.
-- It does **not** call `api.tavily.com` under any circumstance.
-- It does **not** ship its own search index -- it depends entirely on SearXNG for discovery; its value-add is the content-extraction layer on top.
+- Not a drop-in replacement for the real Tavily API's request/response schema.
+- Does not call `api.tavily.com` under any circumstance.
+- Does not ship its own search index -- it depends entirely on its own SearXNG for discovery.
+- Not designed to run alongside our current `redis`/`searxng` containers -- default ports collide (`6379`, SearXNG `8080` internal). It's an **alternate** stack, not an addition.
 
 ---
 
-## 3. Why it matters -- the actual gap it closes
+## 3. Why it matters -- the gap it closes
 
 | Current runtime | Returns |
 |---|---|
@@ -45,42 +44,145 @@ It requires SearXNG to expose `formats: [html, json]`. It has no relationship to
 | `TavilyRuntime` (cloud, api-key gated) | Title + URL + extracted content |
 | `tavily-open` (proposed) | Reference + extracted page **content**, free, local |
 
-The only runtime today that returns real page content instead of a snippet is the paid cloud Tavily path, which requires an API key. `tavily-open` would close that gap locally and at no cost, using infrastructure already provisioned.
+The only runtime today that returns real page content instead of a snippet is the paid cloud Tavily path. `tavily-open` closes that gap locally and at no cost, at the cost of running a second, self-contained Docker stack instead of the current one.
 
 ---
 
-## 4. Correlation to current codebase (as inspected)
+## 4. Implementation shape
 
-| Repo surface | Current state | Relevance |
-|---|---|---|
-| `backend/app/tools/search/search_tool.py` | Escalates `SearXNGRuntime -> DDGSRuntime -> TavilyRuntime`, all implementing `SearchBase` | New runtime would slot in as a fourth implementation of the same interface |
-| `backend/app/runtimes/internetsearch/base.py` | `SearchBase(runtime_name, is_available, search)`, `SearchResult(title, url, snippet, source)` | Stable interface; a `tavily-open` runtime maps cleanly onto it (`content` -> `snippet`/new field) |
-| `backend/app/runtimes/internetsearch/searxng_runtime.py` | Local-only, gated by `USE_SEARXNG`, no public-instance fallback | `tavily-open` would call this same local SearXNG, not a second instance |
-| `backend/app/runtimes/internetsearch/tavily_runtime.py` | Calls `api.tavily.com` directly, gated by `USE_TAVILY` + `TAVILY_API_KEY` | Distinct from `tavily-open`; candidate to become mode-aware (`local` vs `cloud`) rather than adding a fully separate class |
-| `docker-compose.yml` | `redis` + `searxng` services; `searxng` already `depends_on: redis` | A `tavily-open` service should point at these existing containers, not start its own SearXNG/Redis |
-| `config/search/searxng/settings.yml` | Already sets `formats: [html, json]` | Already satisfies `tavily-open`'s SearXNG requirement -- no config change needed there |
-| `config/search/tavily/` | Exists, empty (`.gitkeep` only) | Already-reserved config surface for this exact purpose -- no new root needed |
-| `config/search/ddgs/` | Exists, empty (`.gitkeep` only) | Unrelated placeholder, noted for completeness |
+Single new toggle, single new runtime file, single new docker folder. No changes to the existing four runtimes' code, no new levers beyond the one switch.
 
-**Conclusion: no new architectural surface is required.** Every piece this concept needs (interface, config directory, container dependency chain, JSON-format SearXNG) already exists in reserved or active form.
+### 4.1 `.env` addition
+
+```env
+## Alternate search stack (replaces SearXNG/DDGS/Tavily escalation when true)
+USE_TAVILYOPEN=false
+```
+
+One key. No separate host/port/URL settings -- `TavilyOpenRuntime` targets a fixed local default (`http://127.0.0.1:8000`, tavily-open's own Uvicorn default) since only one search stack is expected to run at a time.
+
+`backend/app/core/settings.py`:
+- Add `"USE_TAVILYOPEN": "primary"` to `SETTING_ENV_CLASSIFICATION`, alongside the existing `USE_SEARXNG`/`USE_DDGS`/`USE_TAVILY` entries -- same classification tier, same pattern, no new tier invented.
+- Add `use_tavilyopen: bool = field(default_factory=lambda: _env_bool("USE_TAVILYOPEN", False))` to `Settings`, next to `use_tavily`.
+
+### 4.2 New runtime: `backend/app/runtimes/internetsearch/tavilyopen_runtime.py`
+
+Implements the existing `SearchBase` interface exactly like the other three -- no interface change needed:
+
+```python
+from __future__ import annotations
+
+import httpx
+
+from backend.app.core.settings import Settings
+from backend.app.runtimes.internetsearch.base import SearchBase, SearchResult
+
+
+class TavilyOpenRuntime(SearchBase):
+    def __init__(self, settings: Settings, timeout_s: float = 8.0) -> None:
+        self._enabled = bool(settings.use_tavilyopen)
+        self._base_url = "http://127.0.0.1:8000"
+        self._timeout_s = timeout_s
+
+    def runtime_name(self) -> str:
+        return "tavilyopen"
+
+    def is_available(self) -> bool:
+        return self._enabled
+
+    def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        if not self._enabled or not query.strip():
+            return []
+        try:
+            response = httpx.post(
+                f"{self._base_url}/search",
+                json={"query": query, "limit": max(0, max_results)},
+                timeout=self._timeout_s,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            results = payload.get("results", []) if isinstance(payload, dict) else []
+            mapped: list[SearchResult] = []
+            for item in results[: max(0, max_results)]:
+                if not isinstance(item, dict):
+                    continue
+                mapped.append(
+                    SearchResult(
+                        title=str(item.get("reference", "")),
+                        url=str(item.get("reference", "")),
+                        snippet=str(item.get("content", "")),
+                        source="tavilyopen",
+                    )
+                )
+            return mapped
+        except Exception:
+            return []
+```
+
+Field mapping note: `tavily-open`'s schema has no separate `title`; `reference` (the source URL) is used for both `title` and `url` unless/until a cleaner mapping is confirmed against a live instance.
+
+### 4.3 `search_tool.py` wiring
+
+One conditional in `_providers()` -- when the alternate stack is on, it fully replaces the chain rather than joining it, per the "instead of" framing:
+
+```python
+def _providers(self) -> list[SearchBase]:
+    if self._settings.use_tavilyopen:
+        return [TavilyOpenRuntime(self._settings)]
+    return [
+        SearXNGRuntime(self._settings),
+        DDGSRuntime(self._settings),
+        TavilyRuntime(self._settings),
+    ]
+```
+
+No change to `run()`, no change to `SearchResult`, no change to the other three runtime files.
+
+### 4.4 `docker\tavily-open` (new directory)
+
+Clone `jianjungki/tavily-open` as-is into `docker\tavily-open` (new `docker\` root -- doesn't exist today; root `docker-compose.yml` stays where it is, untouched). This becomes a second, independent Compose project:
+
+```text
+docker\tavily-open\          <- cloned repo, unmodified
+  docker-compose.yml         <- tavily-open's own API + SearXNG + Redis
+  .env                       <- tavily-open's own config (CACHE_ENABLED, REDIS_URL, etc.)
+  ...
+```
+
+Operational model: **run one stack or the other, not both.**
+
+```powershell
+# Current stack (default):
+docker compose up --detach                        # root docker-compose.yml
+
+# Alternate stack:
+docker compose -f docker\tavily-open\docker-compose.yml up --detach
+```
+
+```env
+# .env
+USE_TAVILYOPEN=true
+USE_SEARXNG=false
+USE_DDGS=false
+USE_TAVILY=false
+```
+
+Since `tavily-open`'s bundled SearXNG/Redis default to the same ports as ours (`6379`, SearXNG's internal `8080`), starting both stacks at once will port-conflict -- that's expected and reinforces "instead of," not "alongside."
+
+### 4.5 What is deliberately *not* added
+
+- No `TAVILYOPEN_BASE_URL`/`TAVILYOPEN_PORT` setting -- fixed default only, per "keep it simple."
+- No merging of `tavily-open`'s bundled Redis with the app's own `REDIS_HOST`/`REDIS_PORT` settings (which also serve episodic-memory caching, not just search) -- the two Redis instances stay conceptually separate; `tavily-open`'s Redis is internal to its own stack and never referenced by `backend/app/core/settings.py`.
+- No changes to `SearchResult`, `SearchBase`, or the three existing runtime files.
 
 ---
 
-## 5. Proposed integration shape (conceptual -- not scoped/sequenced)
+## 5. Open questions (not resolved, for future slice planning)
 
-- Prefer **modifying `TavilyRuntime`** into a mode-aware runtime (`TAVILY_MODE=local|cloud`, mirroring the repo's existing local/managed-vs-cloud pattern such as `LLM_MODEL_MODE`) over adding a wholly separate class -- one setting, one class, two backends.
-- Add a `tavily-open` service to `docker-compose.yml`, configured to use the existing `redis`/`searxng` containers rather than duplicating them.
-- Use the already-reserved `config/search/tavily/` directory for its config, rather than a new root.
-- Likely escalation position: after `SearXNGRuntime` (cheap/fast snippet pass) and before `DDGSRuntime`/cloud fallback -- i.e., "get real content" as the second-tier attempt, not the first or last.
-
----
-
-## 6. Open questions (not resolved, for future slice planning)
-
-- Does `tavily-open`'s response schema map cleanly enough onto `SearchResult(title, url, snippet, source)`, or does it need a distinct field (e.g. `content`) surfaced to the LLM differently than a snippet?
-- Should `USE_SEARXNG=false` (SearXNG container absent) hard-disable `tavily-open` too, since it depends on SearXNG? (Current evidence says yes -- no independent search capability of its own.)
-- Docker resource cost of adding a fourth container (`tavily-open` itself, beyond `redis`/`searxng`) -- acceptable for an optional service, but worth noting in provisioning docs.
-- Whether the Playwright-based crawl fallback introduces a browser-automation dependency the repo doesn't currently carry, and what that means for provisioning/footprint.
+- Confirm the exact `/search` request/response shape against a live `tavily-open` instance before finalizing `TavilyOpenRuntime` -- the mapping above is from published docs, not a live probe.
+- Decide whether `title` should stay mirrored from `reference`, or whether the first line of `content` should be used instead.
+- Confirm whether running `docker\tavily-open`'s compose file requires stopping the root stack first (port conflict), or whether remapping ports in one of the two compose files is worth the added complexity -- current recommendation is stop-and-swap, not remap, to keep this a true single-lever toggle.
+- Docker resource cost of the `tavily-open` stack (API + its own SearXNG + its own Redis + optional Playwright) vs. the current two-container stack.
 
 ---
 
@@ -89,3 +191,4 @@ The only runtime today that returns real page content instead of a snippet is th
 - `tavily-open` source: https://github.com/jianjungki/tavily-open
 - Current repo escalation chain: `backend/app/tools/search/search_tool.py`
 - Current repo runtimes: `backend/app/runtimes/internetsearch/`
+- Current repo settings/classification: `backend/app/core/settings.py`
