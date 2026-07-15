@@ -83,7 +83,7 @@ def test_desktop_backend_bridge_reuses_one_http_client() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     assert "http_client: Client" in lib_rs
-    assert "Client::builder().build()" in lib_rs
+    assert "Client::builder().timeout(Duration::from_secs(10)).build()" in lib_rs
     assert "Client::new()" not in backend_rs
     assert "timeout(Duration::from_millis(700))" in backend_rs
 

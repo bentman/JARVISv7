@@ -105,6 +105,69 @@ def test_npu_detector_returns_false_when_no_npu_evidence(monkeypatch: pytest.Mon
     assert result["npu_tops"] is None
 
 
+def test_npu_detector_ignores_non_npu_vendor_pnp_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(npu_detector.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(npu_detector.platform, "processor", lambda: "Intel64 Family 6 Model 154")
+    monkeypatch.setattr(npu_detector.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        npu_detector,
+        "_run_command",
+        lambda command: "Intel(R) UHD Graphics\nAMD Radeon RX 7800 XT\nIntel(R) Wi-Fi 6E AX211",
+    )
+
+    result = npu_detector.detect_npu_info()
+
+    assert result["npu_available"] is False
+    assert result["npu_vendor"] is None
+
+
+def test_npu_detector_requires_npu_token_on_same_pnp_line_as_vendor(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(npu_detector.platform, "machine", lambda: "AMD64")
+    monkeypatch.setattr(npu_detector.platform, "processor", lambda: "Intel64 Family 6 Model 170")
+    monkeypatch.setattr(npu_detector.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        npu_detector,
+        "_run_command",
+        lambda command: "Intel(R) UHD Graphics\nIntel(R) AI Boost",
+    )
+
+    result = npu_detector.detect_npu_info()
+
+    assert result["npu_available"] is True
+    assert result["npu_vendor"] == "intel"
+
+
+def test_npu_detector_keeps_qualcomm_arm64_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(npu_detector.platform, "machine", lambda: "ARM64")
+    monkeypatch.setattr(npu_detector.platform, "processor", lambda: "")
+    monkeypatch.setattr(npu_detector.platform, "system", lambda: "Windows")
+    monkeypatch.setattr(
+        npu_detector,
+        "_run_command",
+        lambda command: "Snapdragon(R) X Elite - Qualcomm(R) Hexagon(TM) NPU",
+    )
+
+    result = npu_detector.detect_npu_info()
+
+    assert result["npu_available"] is True
+    assert result["npu_vendor"] == "qualcomm"
+
+
+def test_npu_detector_skips_powershell_probe_off_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fail_if_called(command: list[str]) -> str:
+        raise AssertionError("PowerShell probe must not run on non-windows hosts")
+
+    monkeypatch.setattr(npu_detector.platform, "machine", lambda: "x86_64")
+    monkeypatch.setattr(npu_detector.platform, "processor", lambda: "x86_64")
+    monkeypatch.setattr(npu_detector.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(npu_detector, "_run_command", fail_if_called)
+
+    result = npu_detector.detect_npu_info()
+
+    assert result["npu_available"] is False
+    assert result["npu_vendor"] is None
+
+
 def test_profiler_composes_all_detectors_into_full_report(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(profiler_module, "_utc_timestamp", lambda: "2026-04-23T15:00:00Z")
     monkeypatch.setattr(

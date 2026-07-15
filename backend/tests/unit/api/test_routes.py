@@ -16,6 +16,7 @@ from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
+from backend.app.core.paths import REPO_ROOT
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import PersonalityProfileError, PersonalityProfileList
 from backend.app.personality.schema import (
@@ -169,7 +170,7 @@ class _FakeSessionManager:
 
     def close_session(self, final_state: str = "IDLE") -> Path:
         _ = final_state
-        return Path("data/sessions/session-test.json")
+        return REPO_ROOT / "data" / "sessions" / "session-test.json"
 
     def mark_profile_switch(self, profile_id: str) -> None:
         _ = profile_id
@@ -341,7 +342,10 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     assert state.wake_monitor._utterance_segmenter.silence_end_s == 0.8
     assert state.wake_monitor._utterance_segmenter.trailing_pad_s == 0.12
     assert state.engine.barge_in_detector is not None
-    assert state.engine.interruption_audio_chunks is None
+    # interruption source is a per-playback factory; it resolves to None while
+    # the resident stream is stopped (startup state) instead of being None itself
+    assert callable(state.engine.interruption_audio_chunks)
+    assert state.engine.interruption_audio_chunks() is None
 
 
 def test_build_engine_injects_resident_interruption_chunks_when_stream_running() -> None:
@@ -723,6 +727,7 @@ def test_session_ptt_works_when_wake_is_unavailable() -> None:
 
 def test_session_ptt_works_while_wake_monitoring_is_enabled() -> None:
     client = _client()
+    assert client.put("/status/resident-voice/mode", json={"mode": "ptt+wake"}).status_code == 200
     wake_started = client.post("/status/wake/start")
     assert wake_started.status_code == 200
     assert wake_started.json()["active"] is True
@@ -754,6 +759,7 @@ def test_session_close_returns_closed() -> None:
     response = client.post("/session/close", json={"session_id": session_id})
     assert response.status_code == 200
     assert response.json()["closed"] is True
+    assert response.json()["artifact_path"] == "data/sessions/session-test.json"
 
 
 def test_session_close_rejects_unknown_session_id() -> None:
@@ -843,6 +849,14 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
         "resident_speech_rms_threshold": 0.02,
         "resident_vad_speech": True,
     }
+
+
+def test_diagnostics_audio_ingress_rejects_out_of_bounds_duration() -> None:
+    client = _client()
+
+    assert client.post("/diagnostics/audio-ingress?duration_s=20").status_code == 422
+    assert client.post("/diagnostics/audio-ingress?duration_s=0").status_code == 422
+    assert client.post("/diagnostics/audio-ingress?duration_s=-1").status_code == 422
 
 
 def test_agents_status_is_disabled_read_only() -> None:
@@ -958,13 +972,15 @@ def test_desktop_status_snapshot_builds_each_underlying_status_once(monkeypatch)
     assert payload["session"]["session_id"] == "session-test"
     assert payload["resident_voice"]["mode"] == "ptt-only"
     assert payload["wake"]["available"] is True
-    assert payload["wake"]["active"] is False
+    assert payload["wake"]["active"] is True
+    assert payload["wake"]["reason"] == "wake monitor is active while resident voice mode is ptt-only"
     assert payload["resident_voice"]["wake_active"] == payload["wake"]["active"]
     assert calls == {"session": 1, "configure_wake": 1, "read_wake": 0, "tts": 1}
 
 
 def test_wake_monitor_start_stop_and_toggle_endpoints() -> None:
     client = _client()
+    assert client.put("/status/resident-voice/mode", json={"mode": "ptt+wake"}).status_code == 200
 
     started = client.post("/status/wake/start")
     assert started.status_code == 200
@@ -1088,7 +1104,7 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert started_payload["barge_in_supported"] is False
     assert started_payload["barge_in_wired"] is True
     assert started_payload["stream"]["running"] is True
-    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is not None
+    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks() is not None
 
     stopped = client.post("/status/resident-voice/stop")
     assert stopped.status_code == 200
@@ -1099,7 +1115,7 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert stopped_payload["barge_in_supported"] is False
     assert stopped_payload["barge_in_wired"] is False
     assert stopped_payload["stream"]["running"] is False
-    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None
+    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks() is None
 
 
 def test_resident_voice_hands_free_and_continuous_report_barge_in_supported_when_wired() -> None:
@@ -1141,6 +1157,7 @@ def test_resident_voice_stream_start_endpoint_rejects_missing_stream() -> None:
 
 def test_resident_voice_mode_endpoint_sets_visible_mode_and_stops_wake_for_ptt_only() -> None:
     client = _client()
+    assert client.put("/status/resident-voice/mode", json={"mode": "ptt+wake"}).status_code == 200
     wake_started = client.post("/status/wake/start")
     assert wake_started.status_code == 200
     assert wake_started.json()["active"] is True
@@ -1169,21 +1186,34 @@ def test_resident_voice_wake_mode_keeps_wake_plus_ptt_available() -> None:
     assert payload["barge_in_supported"] is False
 
 
-def test_resident_voice_status_reconciles_ptt_only_with_active_wake() -> None:
+def test_resident_voice_status_surfaces_ptt_only_wake_inconsistency_without_stopping() -> None:
     client = _client()
     state = client.app.state.jarvis_state
+    assert state.wake_monitor.start().active is True
     state.resident_voice.set_mode("ptt-only")
-    wake_started = client.post("/status/wake/start")
-    assert wake_started.status_code == 200
-    assert wake_started.json()["active"] is True
 
     response = client.get("/status/resident-voice")
     payload = response.json()
 
     assert response.status_code == 200
     assert payload["mode"] == "ptt-only"
-    assert payload["wake_active"] is False
-    assert payload["wake_monitoring"] is False
+    assert payload["wake_active"] is True
+    assert payload["wake_monitoring"] is True
+    assert client.get("/status/wake").json()["active"] is True
+
+    desktop = client.get("/status/desktop").json()
+    assert desktop["wake"]["active"] is True
+    assert desktop["wake"]["reason"] == "wake monitor is active while resident voice mode is ptt-only"
+    assert client.get("/status/wake").json()["active"] is True
+
+
+def test_wake_start_endpoint_returns_409_while_resident_mode_is_ptt_only() -> None:
+    client = _client()
+
+    response = client.post("/status/wake/start")
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "wake monitor cannot start while resident voice mode is ptt-only"
     assert client.get("/status/wake").json()["active"] is False
 
 
@@ -1402,6 +1432,42 @@ def test_operator_config_write_rejects_non_allowlisted_keys_and_preserves_unknow
         "TAVILY_API_KEY=new-secret\n"
         "REDIS_PORT=6379\n"
     )
+
+
+def test_operator_config_write_rejects_values_with_newline_injection(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("USE_OLLAMA=true\nREDIS_HOST=127.0.0.1\n", encoding="utf-8")
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().post(
+        "/config/operator",
+        json={"fields": {"USE_OLLAMA": "false\nINJECTED=1", "REDIS_HOST": "127.0.0.1\rINJECTED=1"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "written": [],
+        "rejected": [
+            {"key": "USE_OLLAMA", "reason": "invalid_value"},
+            {"key": "REDIS_HOST", "reason": "invalid_value"},
+        ],
+    }
+    assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=true\nREDIS_HOST=127.0.0.1\n"
+
+
+def test_operator_config_write_skips_masked_secret_sentinel_without_clobbering(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("TAVILY_API_KEY=real-secret\nUSE_OLLAMA=true\n", encoding="utf-8")
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().post(
+        "/config/operator",
+        json={"fields": {"TAVILY_API_KEY": "***", "USE_OLLAMA": "false"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"written": ["USE_OLLAMA"], "rejected": []}
+    assert env_file.read_text(encoding="utf-8") == "TAVILY_API_KEY=real-secret\nUSE_OLLAMA=false\n"
 
 
 def test_operator_config_write_appends_missing_allowlisted_key_without_creating_missing_env(tmp_path: Path, monkeypatch) -> None:

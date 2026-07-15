@@ -118,9 +118,10 @@ class IterablePlayer:
         self.q: queue.Queue[np.ndarray | None] = queue.Queue()
         self.active = True
         self.total_samples = 0
+        self._input_done = False
         self._current_chunk = np.array([], dtype=np.float32)
         self._current_idx = 0
-        self._stream = None
+        self._stream: Any | None = None
         global _last_output_device
         _last_output_device = describe_output_device(self.sounddevice)
 
@@ -160,7 +161,9 @@ class IterablePlayer:
         self._stream.start()
 
     def put(self, chunk: np.ndarray | None) -> None:
-        if chunk is not None:
+        if chunk is None:
+            self._input_done = True
+        else:
             self.total_samples += chunk.size
         self.q.put(chunk)
 
@@ -182,11 +185,21 @@ class IterablePlayer:
         return bool(self._stream.active)
 
     def wait(self, timeout_s: float | None = None) -> None:
-        if timeout_s is None:
-            timeout_s = (self.total_samples / self.sample_rate) + 0.5
         start_time = time.time()
-        while self.active and (not self.q.empty() or self._current_idx < len(self._current_chunk)):
-            if time.time() - start_time > timeout_s:
+        while self.active:
+            if self._input_done and self.q.empty() and self._current_idx >= len(self._current_chunk):
+                break
+            if timeout_s is not None:
+                deadline = timeout_s
+            else:
+                # Recompute against samples enqueued so far: a momentary
+                # synthesis underrun must not be mistaken for end-of-playback
+                # (that would truncate the remainder of the response). While
+                # the producer is still streaming, allow a generous stall
+                # grace instead of the drain grace.
+                grace = 0.5 if self._input_done else 5.0
+                deadline = (self.total_samples / self.sample_rate) + grace
+            if time.time() - start_time > deadline:
                 break
             time.sleep(0.01)
         self.stop()

@@ -412,7 +412,7 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
     assert settings.ollama_num_ctx == 8192
     assert settings.use_searxng is False
     assert settings.model_path == settings_module.MODELS_DIR
-    assert settings.tool_filesystem_sandbox_path == Path("data/tool_sandbox")
+    assert settings.tool_filesystem_sandbox_path == settings_module.DATA_DIR / "tool_sandbox"
     assert settings.config_path == settings_module.CONFIG_DIR
     assert settings.stt_models == "models/stt"
     assert settings.tts_models == "models/tts"

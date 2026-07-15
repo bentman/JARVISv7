@@ -54,6 +54,16 @@ class NullLLMRuntime(LLMBase):
         raise RuntimeError(self.reason)
 
 
+def _provider_api_key_env(provider_policy: dict[str, Any], name: str, default: str) -> str:
+    # A bare `name:` entry in policies.yaml parses to None; a non-dict entry
+    # must not crash startup with AttributeError.
+    entry = provider_policy.get(name)
+    if not isinstance(entry, dict):
+        return default
+    value = entry.get("api_key_env", default)
+    return value if isinstance(value, str) and value else default
+
+
 def _cloud_runtimes(policy: dict[str, Any]) -> list[LLMBase]:
     llm_policy = policy.get("llm", {}) if isinstance(policy.get("llm", {}), dict) else {}
     provider_policy = (
@@ -61,11 +71,11 @@ def _cloud_runtimes(policy: dict[str, Any]) -> list[LLMBase]:
     )
     cloud_enabled = bool(llm_policy.get("cloud_enabled", False))
     return [
-        ClaudeLLM(cloud_enabled, provider_policy.get("claude", {}).get("api_key_env", "ANTHROPIC_API_KEY")),
-        OpenAILLM(cloud_enabled, provider_policy.get("openai", {}).get("api_key_env", "OPENAI_API_KEY")),
-        GeminiLLM(cloud_enabled, provider_policy.get("gemini", {}).get("api_key_env", "GEMINI_API_KEY")),
-        XaiLLM(cloud_enabled, provider_policy.get("xai", {}).get("api_key_env", "XAI_API_KEY")),
-        ZaiLLM(cloud_enabled, provider_policy.get("zai", {}).get("api_key_env", "ZAI_API_KEY")),
+        ClaudeLLM(cloud_enabled, _provider_api_key_env(provider_policy, "claude", "ANTHROPIC_API_KEY")),
+        OpenAILLM(cloud_enabled, _provider_api_key_env(provider_policy, "openai", "OPENAI_API_KEY")),
+        GeminiLLM(cloud_enabled, _provider_api_key_env(provider_policy, "gemini", "GEMINI_API_KEY")),
+        XaiLLM(cloud_enabled, _provider_api_key_env(provider_policy, "xai", "XAI_API_KEY")),
+        ZaiLLM(cloud_enabled, _provider_api_key_env(provider_policy, "zai", "ZAI_API_KEY")),
     ]
 
 

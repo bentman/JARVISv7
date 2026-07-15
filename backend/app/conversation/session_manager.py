@@ -118,7 +118,9 @@ class SessionManager:
     def close_session(self, final_state: ConversationState | str = ConversationState.IDLE) -> Path:
         final_state_value = final_state.value if isinstance(final_state, ConversationState) else final_state
         self.record_timeline_event("session_closed", state=final_state_value)
-        timeline_path = storage.write_session_timeline(self.timeline, self.sessions_base_dir)
+        timeline = self.timeline
+        assert timeline is not None  # record_timeline_event above initializes it
+        timeline_path = storage.write_session_timeline(timeline, self.sessions_base_dir)
         continuity_summary = self.build_continuity_packet().summary()
         artifact = SessionArtifact(
             session_id=self.session_id,
@@ -171,13 +173,20 @@ class SessionManager:
                 prior_interrupted=bool(last_turn and last_turn.interruption_events),
             )
         )
-        suppress_assistant_context = self._consume_assistant_context_suppression()
+        suppress_assistant_context = False
         suppressed_context_reason = None
-        if suppress_assistant_context:
-            suppressed_context_reason = "profile switch suppressed prior assistant wording and working memory"
-        elif self._is_immediate_repeat(latest_text, last_turn):
-            suppress_assistant_context = True
-            suppressed_context_reason = "repeat prompt suppressed prior assistant wording and working memory"
+        if policy_result.include_continuity:
+            # Consume the one-shot profile-switch flag only when the packet
+            # will actually carry the suppression marker; the excluded-
+            # continuity early return would otherwise burn the flag without
+            # the engine ever seeing it, leaking working memory into the
+            # first post-switch prompt.
+            suppress_assistant_context = self._consume_assistant_context_suppression()
+            if suppress_assistant_context:
+                suppressed_context_reason = "profile switch suppressed prior assistant wording and working memory"
+            elif self._is_immediate_repeat(latest_text, last_turn):
+                suppress_assistant_context = True
+                suppressed_context_reason = "repeat prompt suppressed prior assistant wording and working memory"
         return ContinuityPacketBuilder().build(
             session_id=self.session_id,
             policy_result=policy_result,

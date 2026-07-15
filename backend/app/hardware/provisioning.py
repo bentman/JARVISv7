@@ -27,6 +27,18 @@ _EXTRA_REQUIREMENT_SPECS: dict[str, tuple[str, ...]] = {
 }
 
 
+_WINDOWS_ONLY_REQUIREMENT_NAMES = {"onnxruntime-directml"}
+
+
+def _extra_requirement_specs(profile: HardwareProfile, extra: str) -> tuple[str, ...]:
+    specs = _EXTRA_REQUIREMENT_SPECS.get(extra, ())
+    if profile.os_name != "windows":
+        return tuple(
+            spec for spec in specs if _requirement_name(spec) not in _WINDOWS_ONLY_REQUIREMENT_NAMES
+        )
+    return specs
+
+
 def _requirement_name(requirement: str) -> str:
     candidate = requirement.split(";", 1)[0].strip()
     match = _REQUIREMENT_NAME_PATTERN.match(candidate)
@@ -124,7 +136,7 @@ def resolve_required_requirement_specs(
 ) -> list[str]:
     requirement_specs: list[str] = []
     for extra in resolve_required_extras(profile, include_porcupine):
-        for requirement in _EXTRA_REQUIREMENT_SPECS.get(extra, ()):
+        for requirement in _extra_requirement_specs(profile, extra):
             if requirement not in requirement_specs:
                 requirement_specs.append(requirement)
     return requirement_specs

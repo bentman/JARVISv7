@@ -77,6 +77,9 @@ class RealtimeConversationSession:
                         **_audio_metadata(audio, sample_rate),
                     },
                 )
+            # has_committable_audio(True) implies both are present; the other
+            # branch reassigns them from audio_capture().
+            assert audio is not None and sample_rate is not None
             self.ledger.append(
                 RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
                 source=source,

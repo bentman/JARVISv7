@@ -69,7 +69,10 @@ class ResidentAudioStream:
         if thread is not None:
             thread.join(timeout=timeout_s)
         with self._lock:
-            if self._thread is thread:
+            # Keep the handle while the capture thread is still exiting so
+            # status() stays truthful and start() cannot clear the shared
+            # stop event under a live thread (two mic InputStreams).
+            if self._thread is thread and (thread is None or not thread.is_alive()):
                 self._thread = None
             return self.status()
 

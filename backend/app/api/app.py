@@ -87,7 +87,9 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         cache_manager=state.cache_manager,
         semantic=state.semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
-        interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
+        # Factory: resolved per playback so barge-in subscribes fresh each turn
+        # and tracks the resident stream's current running state.
+        interruption_audio_chunks=lambda: resident_interruption_chunks(state.resident_audio_stream),
     )
 
 
@@ -130,7 +132,7 @@ def build_startup_state() -> ApiState:
         cache_manager=cache_manager,
         semantic=semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
-        interruption_audio_chunks=resident_interruption_chunks(resident_audio_stream),
+        interruption_audio_chunks=lambda: resident_interruption_chunks(resident_audio_stream),
     )
     session_service = SessionService(
         session_manager=session_manager,
@@ -153,7 +155,7 @@ def build_startup_state() -> ApiState:
     )
     resident_voice.set_invocation_hooks(
         before_invocation=wake_monitor.pause_for_voice_invocation,
-        after_invocation=wake_monitor.resume_after_voice_invocation,
+        after_invocation=lambda state: wake_monitor.resume_after_voice_invocation(bool(state)),
     )
     wake_monitor.warmup()
 

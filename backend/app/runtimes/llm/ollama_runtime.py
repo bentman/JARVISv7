@@ -66,13 +66,13 @@ class OllamaLLM(LLMBase):
 
     def generate(self, prompt: str, **kwargs: object) -> str:
         payload = self._payload(prompt)
-        payload.update(kwargs)
+        _merge_request_kwargs(payload, kwargs)
         return self._post_generate(payload)
 
     def generate_envelope(self, envelope: PromptEnvelope, **kwargs: object) -> str:
         chat_prompt = render_chat_prompt(envelope)
         payload = self._chat_payload(chat_prompt.messages, chat_prompt.generation)
-        payload.update(kwargs)
+        _merge_request_kwargs(payload, kwargs)
         return self._post_chat(payload)
 
     def _post_generate(self, payload: dict[str, Any]) -> str:
@@ -136,3 +136,34 @@ def _copy_option(source: dict[str, object], target: dict[str, Any], key: str) ->
     value = source.get(key)
     if value is not None:
         target[key] = value
+
+
+# Sampling parameters the Ollama API only honors inside "options"; merging
+# them at the top level of the request payload silently disables them.
+_OPTION_KWARGS = frozenset(
+    {
+        "temperature",
+        "top_p",
+        "top_k",
+        "min_p",
+        "repeat_penalty",
+        "stop",
+        "seed",
+        "num_ctx",
+        "num_predict",
+        "mirostat",
+        "mirostat_eta",
+        "mirostat_tau",
+    }
+)
+
+
+def _merge_request_kwargs(payload: dict[str, Any], kwargs: dict[str, object]) -> None:
+    options = payload.setdefault("options", {})
+    for key, value in kwargs.items():
+        if key == "max_tokens":
+            options["num_predict"] = value
+        elif key in _OPTION_KWARGS:
+            options[key] = value
+        else:
+            payload[key] = value

@@ -6,7 +6,7 @@ import pytest
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings
 from backend.app.hardware.preflight import PreflightResult
-from backend.app.models.catalog import ModelEntry
+from backend.app.models.catalog import ModelCatalogError, ModelEntry
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 from backend.app.services import local_llm_startup
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
@@ -98,6 +98,39 @@ def test_prepare_managed_local_llm_reports_profile_degraded_reason(
     assert result.runtime is None
     assert result.sidecar is None
     assert result.degraded_reason == "Degraded-no-local-model-artifact"
+
+
+def test_prepare_managed_local_llm_degrades_when_catalog_resolution_fails(monkeypatch) -> None:
+    def raise_catalog_error(*args, **kwargs):
+        raise ModelCatalogError("LLM model 'assistant-small-q4' has no CPU serve profile for freebsd/riscv64")
+
+    monkeypatch.setattr(local_llm_startup, "select_llm_model", raise_catalog_error)
+
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="freebsd", arch="riscv64"),
+        _preflight(),
+        settings=_settings(),
+        flags=CapabilityFlags(),
+    )
+
+    assert result.runtime is None
+    assert result.sidecar is None
+    assert result.degraded_reason == "LLM model 'assistant-small-q4' has no CPU serve profile for freebsd/riscv64"
+
+
+def test_prepare_managed_local_llm_degrades_on_linux_host_instead_of_crashing() -> None:
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="linux", arch="amd64"),
+        _preflight(),
+        settings=_settings(),
+        flags=CapabilityFlags(),
+    )
+
+    assert result.runtime is None
+    assert result.resolution is not None
+    assert result.resolution.serve_profile_id == "linux_amd64_cpu"
+    assert result.resolution.binary_path.name == "llama-server"
+    assert result.degraded_reason is not None
 
 
 def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runtime(

@@ -29,6 +29,13 @@ def test_filesystem_read_refuses_outside_and_sibling_data_dirs(tmp_path: Path) -
     assert tool.run({"path": "../agents/x.txt"}).startswith("ERROR")
 
 
+def test_filesystem_read_nul_byte_path_returns_error_string(tmp_path: Path) -> None:
+    sandbox = tmp_path / "tool_sandbox"
+    sandbox.mkdir()
+    tool = FilesystemReadTool(sandbox)
+    assert tool.run({"path": "bad\x00name.txt"}) == "ERROR: invalid path"
+
+
 def test_filesystem_read_missing_and_binary_fail_closed(tmp_path: Path) -> None:
     sandbox = tmp_path / "tool_sandbox"
     sandbox.mkdir()

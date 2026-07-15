@@ -54,6 +54,23 @@ def test_resolver_adds_intel_for_intel_gpu() -> None:
     assert resolve_required_extras(profile) == ["hw-cpu-base", "hw-x64-base", "hw-gpu-intel", "dev"]
 
 
+def test_directml_requirement_expected_only_on_windows_gpu_hosts() -> None:
+    windows_amd = HardwareProfile(os_name="windows", arch="amd64", gpu_available=True, gpu_vendor="amd")
+    windows_intel = HardwareProfile(os_name="windows", arch="amd64", gpu_available=True, gpu_vendor="intel")
+
+    assert "onnxruntime-directml" in resolve_required_requirement_names(windows_amd)
+    assert "onnxruntime-directml" in resolve_required_requirement_names(windows_intel)
+
+
+def test_directml_requirement_filtered_on_non_windows_gpu_hosts() -> None:
+    linux_amd = HardwareProfile(os_name="linux", arch="amd64", gpu_available=True, gpu_vendor="amd")
+    linux_intel = HardwareProfile(os_name="linux", arch="amd64", gpu_available=True, gpu_vendor="intel")
+
+    assert resolve_required_extras(linux_amd) == ["hw-cpu-base", "hw-x64-base", "hw-gpu-amd", "dev"]
+    assert "onnxruntime-directml" not in resolve_required_requirement_names(linux_amd)
+    assert "onnxruntime-directml" not in resolve_required_requirement_specs(linux_intel)
+
+
 def test_resolver_adds_qnn_for_qualcomm_npu() -> None:
     profile = HardwareProfile(arch="arm64", npu_available=True, npu_vendor="qualcomm")
 

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
+import logging
 import sqlite3
 import uuid
 from dataclasses import dataclass
@@ -12,6 +12,8 @@ from typing import Any, cast
 
 import numpy as np
 from backend.app.core.paths import DATA_DIR
+
+_LOGGER = logging.getLogger(__name__)
 
 
 def _iso_now() -> str:
@@ -173,13 +175,6 @@ class SemanticMemory:
         """Writes a fully constructed SemanticEntry to the store, performing deduplication on text_hash."""
         try:
             with self._get_conn() as conn:
-                # Deduplication check
-                existing = conn.execute(
-                    "SELECT fact_id FROM semantic_fact WHERE text_hash = ?", (entry.text_hash,)
-                ).fetchone()
-                if existing is not None:
-                    return cast(str, existing["fact_id"])
-
                 metadata_json = json.dumps(entry.metadata)
                 cursor = conn.execute(
                     """
@@ -188,6 +183,7 @@ class SemanticMemory:
                         created_at, updated_at, kind, confidence, metadata_json,
                         vectorizer_id, vector_dim, vector_blob, text_hash
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(text_hash) DO NOTHING
                     """,
                     (
                         entry.fact_id,
@@ -206,15 +202,38 @@ class SemanticMemory:
                         entry.text_hash,
                     ),
                 )
+                if cursor.rowcount == 0:
+                    # Lost the race (or duplicate): another writer owns this text_hash.
+                    existing = conn.execute(
+                        "SELECT fact_id FROM semantic_fact WHERE text_hash = ?",
+                        (entry.text_hash,),
+                    ).fetchone()
+                    if existing is not None:
+                        return cast(str, existing["fact_id"])
+                    return None
                 rowid = cursor.lastrowid
                 if self.supports_fts and rowid is not None:
-                    with contextlib.suppress(Exception):
-                        conn.execute(
-                            "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
-                            (rowid, entry.text),
-                        )
+                    # Same transaction as the fact insert: an FTS failure rolls
+                    # back the fact too, so no fact is invisible to lexical search.
+                    conn.execute(
+                        "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
+                        (rowid, entry.text),
+                    )
                 return entry.fact_id
+        except sqlite3.IntegrityError:
+            try:
+                with self._get_conn() as conn:
+                    existing = conn.execute(
+                        "SELECT fact_id FROM semantic_fact WHERE text_hash = ?",
+                        (entry.text_hash,),
+                    ).fetchone()
+                    if existing is not None:
+                        return cast(str, existing["fact_id"])
+            except Exception:
+                pass
+            return None
         except Exception:
+            _LOGGER.warning("semantic write_entry failed for text_hash=%s", entry.text_hash, exc_info=True)
             return None
 
     def write_fact(

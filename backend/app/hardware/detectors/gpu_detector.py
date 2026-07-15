@@ -6,7 +6,10 @@ import subprocess
 
 
 def _run_command(command: list[str]) -> str:
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        completed = subprocess.run(command, capture_output=True, text=True, check=False, timeout=10)
+    except subprocess.TimeoutExpired:
+        return ""
     if completed.returncode != 0:
         return ""
     return (completed.stdout or completed.stderr or "").strip()

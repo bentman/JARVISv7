@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state, get_session_service
 from backend.app.api.schemas.session import (
@@ -10,10 +12,20 @@ from backend.app.api.schemas.session import (
     LatestTurnSummary,
     SessionStatusResponse,
 )
+from backend.app.core.paths import REPO_ROOT
 from backend.app.services.session_service import SessionService
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
+
+
+def _artifact_display_path(path: Path) -> str:
+    if path.is_absolute():
+        try:
+            return path.relative_to(REPO_ROOT).as_posix()
+        except ValueError:
+            pass
+    return path.as_posix()
 
 
 @router.post("/session/create", response_model=CreateSessionResponse)
@@ -41,7 +53,7 @@ def close_session(
     return CloseSessionResponse(
         session_id=result.session_id,
         closed=result.closed,
-        artifact_path=str(result.artifact_path),
+        artifact_path=_artifact_display_path(result.artifact_path),
     )
 
 

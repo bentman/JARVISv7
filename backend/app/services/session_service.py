@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import contextlib
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import ClassVar
@@ -230,7 +230,7 @@ class SessionService:
         *,
         source: str,
         stage: str,
-        diagnostics: dict[str, object],
+        diagnostics: Mapping[str, object],
     ) -> SessionStatus:
         self._voice_capture_diagnostics = {
             "source": source,

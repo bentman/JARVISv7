@@ -197,9 +197,10 @@ def diagnose_audio_ingress(duration_s: float = 1.0) -> AudioIngressDiagnostics:
 
 def describe_input_device(sounddevice: Any | None = None) -> str | None:
     try:
-        sd = sounddevice
-        if sd is None:
+        if sounddevice is None:
             import sounddevice as sd
+        else:
+            sd = sounddevice
         default_device = sd.default.device
         input_index = default_device[0] if isinstance(default_device, (list, tuple)) else default_device
         if input_index is None or input_index == -1:

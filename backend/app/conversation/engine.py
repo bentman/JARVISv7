@@ -5,7 +5,7 @@ import re
 import threading
 import time
 import wave
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
@@ -68,7 +68,7 @@ class TurnEngine:
         session_manager: SessionManager | None = None,
         write_policy: WritePolicy | None = None,
         barge_in_detector: BargeInDetector | None = None,
-        interruption_audio_chunks: Iterable[np.ndarray] | None = None,
+        interruption_audio_chunks: Iterable[np.ndarray] | Callable[[], Iterable[np.ndarray] | None] | None = None,
         playback_api: Any | None = None,
         executor: ToolExecutor | None = None,
         tool_registry: Any | None = None,
@@ -407,7 +407,8 @@ class TurnEngine:
         voice_turn_started_at: float | None = None,
     ) -> TurnResult:
         context.advance(ConversationState.SPEAKING)
-        if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
+        interruption_chunks = self._interruption_chunk_iter() if self.barge_in_detector is not None else None
+        if self.barge_in_detector is not None and interruption_chunks is not None:
             return self._play_with_interruption_monitor(
                 context,
                 transcript=transcript,
@@ -415,6 +416,7 @@ class TurnEngine:
                 final_prompt_text=final_prompt_text,
                 audio=audio,
                 sample_rate=sample_rate,
+                interruption_chunks=interruption_chunks,
                 tool_results=tool_results,
                 retrieved_memory_refs=retrieved_memory_refs,
                 raw_audio_path=raw_audio_path,
@@ -471,7 +473,6 @@ class TurnEngine:
         thread = None
         stop_event = threading.Event()
         error_container: list[Exception] = []
-        chunks_collected: list[np.ndarray] = []
 
         try:
             player = self.playback_api.IterablePlayer(sample_rate)
@@ -483,7 +484,6 @@ class TurnEngine:
                         if stop_event.is_set():
                             break
                         player.put(chunk)
-                        chunks_collected.append(chunk)
                     player.put(None)
                 except Exception as exc:
                     error_container.append(exc)
@@ -498,29 +498,32 @@ class TurnEngine:
             interrupted = False
             interruption_events = []
 
-            if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
+            vad_iter = self._interruption_chunk_iter() if self.barge_in_detector is not None else None
+            if self.barge_in_detector is not None and vad_iter is not None:
                 self.barge_in_detector.reset()
-                vad_iter = iter(self.interruption_audio_chunks or [])
-                while player.is_playing() or thread.is_alive():
-                    try:
-                        if error_container:
-                            raise error_container[0]
-                        chunk = next(vad_iter)
-                    except StopIteration:
-                        break
-                    if self.barge_in_detector.detect(chunk):
-                        stop_event.set()
-                        player.stop()
-                        interrupted = True
-                        event: dict[str, object] = {
-                            "type": "barge_in",
-                            "timestamp": timestamp_now(),
-                            "recovery_state": ConversationState.RECOVERING.value,
-                        }
-                        interruption_events.append(event)
-                        context.advance(ConversationState.INTERRUPTED)
-                        context.advance(ConversationState.RECOVERING)
-                        break
+                try:
+                    while player.is_playing() or thread.is_alive():
+                        try:
+                            if error_container:
+                                raise error_container[0]
+                            chunk = next(vad_iter)
+                        except StopIteration:
+                            break
+                        if self.barge_in_detector.detect(chunk):
+                            stop_event.set()
+                            player.stop()
+                            interrupted = True
+                            event: dict[str, object] = {
+                                "type": "barge_in",
+                                "timestamp": timestamp_now(),
+                                "recovery_state": ConversationState.RECOVERING.value,
+                            }
+                            interruption_events.append(event)
+                            context.advance(ConversationState.INTERRUPTED)
+                            context.advance(ConversationState.RECOVERING)
+                            break
+                finally:
+                    self._close_chunk_iter(vad_iter)
             else:
                 while player.is_playing() or thread.is_alive():
                     if error_container:
@@ -558,8 +561,6 @@ class TurnEngine:
             stop_event.set()
             if thread is not None:
                 thread.join(timeout=0.5)
-
-        np.concatenate(chunks_collected) if chunks_collected else np.array([], dtype=np.float32)
 
         if voice_turn_started_at is not None:
             phase_durations_ms["tts_synth_ms"] = _elapsed_ms(tts_started_at)
@@ -602,6 +603,7 @@ class TurnEngine:
         final_prompt_text: str,
         audio: np.ndarray,
         sample_rate: int,
+        interruption_chunks: Iterator[np.ndarray],
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
@@ -613,47 +615,49 @@ class TurnEngine:
         self.barge_in_detector.reset()
         playback_started_at = time.perf_counter()
         self.playback_api.start(audio, sample_rate)
-        chunks = iter(self.interruption_audio_chunks or [])
-        while self._playback_is_playing():
-            try:
-                chunk = next(chunks)
-            except StopIteration:
-                break
-            if self.barge_in_detector.detect(chunk):
-                self.playback_api.stop()
-                event: dict[str, object] = {
-                    "type": "barge_in",
-                    "timestamp": timestamp_now(),
-                    "recovery_state": ConversationState.RECOVERING.value,
-                }
-                interruption_events: list[dict[str, object]] = [event]
-                context.advance(ConversationState.INTERRUPTED)
-                context.advance(ConversationState.RECOVERING)
-                context.advance(ConversationState.IDLE)
-                if voice_turn_started_at is not None:
-                    phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
-                result = TurnResult(
-                    turn_id=context.turn_id,
-                    session_id=context.session_id,
-                    transcript=transcript,
-                    response_text=response_text,
-                    final_state=context.state,
-                    interrupted=True,
-                    interruption_events=interruption_events,
-                    tool_calls=self._to_tool_calls(tool_results or []),
-                    tool_results=self._to_tool_results(tool_results or []),
-                    raw_audio_path=raw_audio_path,
-                    active_personality_profile_id=self.personality.profile_id,
-                    profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
-                    phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
-                )
-                self._record_artifact(
-                    context,
-                    result,
-                    final_prompt_text=final_prompt_text,
-                    retrieved_memory_refs=retrieved_memory_refs,
-                )
-                return result
+        try:
+            while self._playback_is_playing():
+                try:
+                    chunk = next(interruption_chunks)
+                except StopIteration:
+                    break
+                if self.barge_in_detector.detect(chunk):
+                    self.playback_api.stop()
+                    event: dict[str, object] = {
+                        "type": "barge_in",
+                        "timestamp": timestamp_now(),
+                        "recovery_state": ConversationState.RECOVERING.value,
+                    }
+                    interruption_events: list[dict[str, object]] = [event]
+                    context.advance(ConversationState.INTERRUPTED)
+                    context.advance(ConversationState.RECOVERING)
+                    context.advance(ConversationState.IDLE)
+                    if voice_turn_started_at is not None:
+                        phase_durations_ms["playback_ms"] = _elapsed_ms(playback_started_at)
+                    result = TurnResult(
+                        turn_id=context.turn_id,
+                        session_id=context.session_id,
+                        transcript=transcript,
+                        response_text=response_text,
+                        final_state=context.state,
+                        interrupted=True,
+                        interruption_events=interruption_events,
+                        tool_calls=self._to_tool_calls(tool_results or []),
+                        tool_results=self._to_tool_results(tool_results or []),
+                        raw_audio_path=raw_audio_path,
+                        active_personality_profile_id=self.personality.profile_id,
+                        profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+                        phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                    )
+                    self._record_artifact(
+                        context,
+                        result,
+                        final_prompt_text=final_prompt_text,
+                        retrieved_memory_refs=retrieved_memory_refs,
+                    )
+                    return result
+        finally:
+            self._close_chunk_iter(interruption_chunks)
 
         context.advance(ConversationState.IDLE)
         if voice_turn_started_at is not None:
@@ -684,6 +688,33 @@ class TurnEngine:
         if not callable(is_playing):
             return False
         return bool(is_playing())
+
+    def _interruption_chunk_iter(self) -> Iterator[np.ndarray] | None:
+        """Resolve the interruption audio source at playback time.
+
+        Accepts either a plain iterable (legacy/test wiring) or a zero-arg
+        factory that subscribes fresh per playback and may return None when
+        the resident stream is not running. A fresh subscription per turn
+        prevents two failure modes of a shared long-lived generator: silent
+        permanent exhaustion after a stream stop/restart, and stale buffered
+        audio triggering false barge-ins at the start of the next turn.
+        """
+        source = self.interruption_audio_chunks
+        if source is None:
+            return None
+        if callable(source):
+            resolved = source()
+            if resolved is None:
+                return None
+            return iter(resolved)
+        return iter(source)
+
+    @staticmethod
+    def _close_chunk_iter(chunks: Iterator[np.ndarray] | None) -> None:
+        close = getattr(chunks, "close", None)
+        if callable(close):
+            with contextlib.suppress(Exception):
+                close()
 
     def _fail(
         self,

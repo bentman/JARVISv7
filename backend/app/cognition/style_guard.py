@@ -13,7 +13,8 @@ _GENERIC_ACK_RE = re.compile(r"^(?:sure|okay|ok|certainly|absolutely)[,.!\s]+", 
 def apply_personality_style_guard(text: str, policy: PersonalityPolicy, *, modality: Modality) -> str:
     cleaned = " ".join(text.split())
     if _prefers_trimmed_acknowledgment(policy, modality):
-        cleaned = _GENERIC_ACK_RE.sub("", cleaned).lstrip()
+        trimmed = _GENERIC_ACK_RE.sub("", cleaned).lstrip()
+        cleaned = trimmed or cleaned
     return cleaned
 
 

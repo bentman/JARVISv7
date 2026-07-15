@@ -250,10 +250,12 @@ class LocalLLMSidecarService:
                 process.wait(timeout=self._stop_timeout_seconds)
             except (TimeoutError, subprocess.TimeoutExpired):
                 process.kill()
-                process.wait(timeout=self._stop_timeout_seconds)
+                with contextlib.suppress(TimeoutError, subprocess.TimeoutExpired):
+                    process.wait(timeout=self._stop_timeout_seconds)
             if process.poll() is None:
                 process.kill()
-                process.wait(timeout=self._stop_timeout_seconds)
+                with contextlib.suppress(TimeoutError, subprocess.TimeoutExpired):
+                    process.wait(timeout=self._stop_timeout_seconds)
         binary_path = self._last_binary_path() if process is not None else None
         if binary_path is not None:
             self._process_reaper(binary_path, self._stop_timeout_seconds)
@@ -396,9 +398,6 @@ def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -
                                 break
                         except Exception:
                             pass
-                        if target_model_id in mid or mid in target_model_id:
-                            matched = True
-                            break
 
                     if matched:
                         return True, f"endpoint healthy at {base_url} serving model {target_model_id}"

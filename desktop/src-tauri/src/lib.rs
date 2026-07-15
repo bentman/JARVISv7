@@ -18,7 +18,7 @@ fn backend_base_url(state: &DesktopState) -> Result<String, String> {
     Ok(manager.base_url())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn start_backend(state: State<'_, DesktopState>) -> Result<String, String> {
     let (base_url, diagnostics) = {
         let mut manager = state.backend.lock().map_err(|_| "backend manager lock poisoned".to_string())?;
@@ -53,7 +53,7 @@ fn start_backend(state: State<'_, DesktopState>) -> Result<String, String> {
     .map_err(|err| format!("failed to serialize start_backend response: {err}"))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn stop_backend(state: State<'_, DesktopState>) -> Result<(), String> {
     let base_url = backend_base_url(&state)?;
     let session = {
@@ -68,7 +68,7 @@ fn stop_backend(state: State<'_, DesktopState>) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn health_check(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     match get_json(&state.http_client, &base_url, "/health") {
@@ -77,55 +77,55 @@ fn health_check(state: State<'_, DesktopState>) -> Result<String, String> {
     }
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_readiness(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     get_json(&state.http_client, &base_url, "/readiness")
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_session_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_session_status(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_desktop_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_desktop_status(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn invoke_resident_ptt(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_invoke_resident_ptt(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_wake_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_wake_status(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_resident_voice_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_resident_voice_status(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn start_resident_voice_stream(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_start_resident_voice_stream(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn stop_resident_voice_stream(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_stop_resident_voice_stream(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_resident_voice_mode(mode: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let trimmed = mode.trim();
     if trimmed.is_empty() {
@@ -135,7 +135,7 @@ fn set_resident_voice_mode(mode: String, state: State<'_, DesktopState>) -> Resu
     backend_set_resident_voice_mode(&state.http_client, &base_url, trimmed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn set_resident_voice_tts_voice(voice: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let trimmed = voice.trim();
     if trimmed.is_empty() {
@@ -145,31 +145,31 @@ fn set_resident_voice_tts_voice(voice: String, state: State<'_, DesktopState>) -
     backend_set_resident_voice_tts_voice(&state.http_client, &base_url, trimmed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn start_wake_monitor(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_start_wake_monitor(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn stop_wake_monitor(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_stop_wake_monitor(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn toggle_wake_monitor(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_toggle_wake_monitor(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_personality_list(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_personality_list(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn select_personality(profile_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let trimmed = profile_id.trim();
     if trimmed.is_empty() {
@@ -179,19 +179,19 @@ fn select_personality(profile_id: String, state: State<'_, DesktopState>) -> Res
     backend_select_personality(&state.http_client, &base_url, trimmed)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn get_operator_config(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_operator_config(&state.http_client, &base_url)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn write_operator_config(fields: Value, state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_write_operator_config(&state.http_client, &base_url, fields)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -244,7 +244,7 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
 
 pub fn run() {
     let backend = BackendProcessManager::new().expect("failed to initialize backend process manager");
-    let http_client = Client::builder().build().expect("failed to initialize desktop HTTP client");
+    let http_client = Client::builder().timeout(Duration::from_secs(10)).build().expect("failed to initialize desktop HTTP client");
     tauri::Builder::default()
         .manage(DesktopState { backend: Arc::new(Mutex::new(backend)), http_client, session_id: Arc::new(Mutex::new(None)) })
         .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config, get_resident_voice_status, start_resident_voice_stream, stop_resident_voice_stream, set_resident_voice_mode, set_resident_voice_tts_voice, submit_text])

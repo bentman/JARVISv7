@@ -154,7 +154,12 @@ impl BackendProcessManager {
     }
 
     fn python_path(&self) -> PathBuf {
-        self.repo_root.join("backend").join(".venv").join("Scripts").join("python.exe")
+        let venv = self.repo_root.join("backend").join(".venv");
+        if cfg!(windows) {
+            venv.join("Scripts").join("python.exe")
+        } else {
+            venv.join("bin").join("python")
+        }
     }
 
     fn backend_script_path(&self) -> PathBuf {
@@ -386,19 +391,26 @@ fn find_pid_by_port(port: u16) -> Option<u32> {
             .output()
         {
             let stdout = String::from_utf8_lossy(&output.stdout);
+            let port_str = port.to_string();
             for line in stdout.lines() {
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 5 {
                     let local_addr = parts[1];
-                    if local_addr.contains(&format!(":{}", port)) {
+                    let state = parts[3];
+                    let local_port = local_addr.rsplit(':').next().unwrap_or("");
+                    if local_port == port_str && state.eq_ignore_ascii_case("LISTENING") {
                         if let Ok(pid) = parts[parts.len() - 1].parse::<u32>() {
-                            return Some(pid);
+                            if pid != 0 {
+                                return Some(pid);
+                            }
                         }
                     }
                 }
             }
         }
     }
+    #[cfg(not(windows))]
+    let _ = port;
     None
 }
 

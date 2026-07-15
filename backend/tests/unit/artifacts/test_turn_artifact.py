@@ -4,6 +4,7 @@ import json
 
 from backend.app.artifacts import storage
 from backend.app.artifacts.session_artifact import SESSION_ARTIFACT_FIELDS, SessionArtifact
+from backend.app.artifacts.trace_writer import write_trace
 from backend.app.artifacts.turn_artifact import TURN_ARTIFACT_FIELDS, TurnArtifact
 
 
@@ -52,6 +53,42 @@ def test_storage_write_creates_expected_turn_file_path(tmp_path):
 
 def test_storage_read_returns_none_for_missing_artifact(tmp_path):
     assert storage.read_turn_artifact("missing-session", "missing-turn", tmp_path) is None
+
+
+def test_atomic_write_text_replaces_existing_content_and_removes_tmp(tmp_path):
+    target = tmp_path / "file.json"
+    target.write_text("old", encoding="utf-8")
+
+    storage._atomic_write_text(target, "new")
+
+    assert target.read_text(encoding="utf-8") == "new"
+    assert not target.with_name("file.json.tmp").exists()
+
+
+def test_storage_writes_leave_no_tmp_files(tmp_path):
+    artifact_path = storage.write_turn_artifact(_turn_artifact(), tmp_path)
+
+    assert artifact_path.exists()
+    assert list(artifact_path.parent.glob("*.tmp")) == []
+
+
+def test_storage_write_atomically_replaces_existing_turn_artifact(tmp_path):
+    artifact = _turn_artifact()
+    storage.write_turn_artifact(artifact, tmp_path)
+    artifact.response_text = "updated"
+    storage.write_turn_artifact(artifact, tmp_path)
+
+    loaded = storage.read_turn_artifact("session-1", "turn-1", tmp_path)
+
+    assert loaded is not None
+    assert loaded.response_text == "updated"
+
+
+def test_write_trace_is_atomic_and_leaves_no_tmp_file(tmp_path):
+    trace_path = write_trace("turn-1", "trace content", tmp_path / "traces")
+
+    assert trace_path.read_text(encoding="utf-8") == "trace content"
+    assert list(trace_path.parent.glob("*.tmp")) == []
 
 
 def test_turn_schema_fields_unchanged():

@@ -113,7 +113,7 @@ class QnnWhisperRuntime(STTBase):
         self._tokenizer: Any | None = None
         self._whisper_config: Any | None = None
 
-    def _ensure_preprocessors(self) -> None:
+    def _ensure_preprocessors(self) -> tuple[Any, Any, Any]:
         if self._feature_extractor is None or self._tokenizer is None or self._whisper_config is None:
             from transformers import WhisperConfig, WhisperFeatureExtractor, WhisperTokenizer
 
@@ -123,6 +123,7 @@ class QnnWhisperRuntime(STTBase):
             self._whisper_config.return_dict = False
             self._whisper_config.tie_word_embeddings = False
             self._whisper_config.mask_neg = -100.0
+        return self._feature_extractor, self._tokenizer, self._whisper_config
 
     def _decode_config(self) -> dict[str, Any]:
         decode = self._model_config.get("decode", {})
@@ -194,7 +195,7 @@ class QnnWhisperRuntime(STTBase):
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if not self.is_available():
             raise RuntimeError(f"STT model files are unavailable at {self.model_path}")
-        self._ensure_preprocessors()
+        feature_extractor, tokenizer, whisper_config = self._ensure_preprocessors()
 
         encoder = self._load_encoder_session()
         decoder = self._load_decoder_session()
@@ -207,7 +208,7 @@ class QnnWhisperRuntime(STTBase):
         waveform = np.asarray(audio, dtype=np.float32)
         audio_rms = float(np.sqrt(np.mean(np.square(waveform)))) if waveform.size else 0.0
         audio_peak = float(np.max(np.abs(waveform))) if waveform.size else 0.0
-        features = self._feature_extractor(
+        features = feature_extractor(
             waveform,
             sampling_rate=sample_rate,
             return_tensors="np",
@@ -230,10 +231,13 @@ class QnnWhisperRuntime(STTBase):
         if len(attention_shape) != 4 or attention_shape[-1] < 2:
             raise RuntimeError(f"unsupported QNN Whisper attention_mask shape {attention_shape}")
         mean_decode_len = int(attention_shape[-1])
-        max_decode_steps = mean_decode_len - 1
-        mask_neg = float(getattr(self._whisper_config, "mask_neg", -100.0))
-        token_ids: list[int] = [int(self._whisper_config.decoder_start_token_id)]
-        eot_token = int(self._whisper_config.eos_token_id)
+        # Honor the catalog's decode.max_new_tokens bound (previously loaded
+        # but never applied) while staying within the mask width.
+        decode_config = self._decode_config()
+        max_decode_steps = min(mean_decode_len - 1, int(decode_config["max_new_tokens"]))
+        mask_neg = float(getattr(whisper_config, "mask_neg", -100.0))
+        token_ids: list[int] = [int(whisper_config.decoder_start_token_id)]
+        eot_token = int(whisper_config.eos_token_id)
 
         def _norm_tokens(name: str) -> list[str]:
             cleaned = name.replace("_in", "").replace("_out", "")
@@ -307,7 +311,7 @@ class QnnWhisperRuntime(STTBase):
                     decoder_feed[name] = last_token
                     continue
                 if name == "attention_mask":
-                    mask_dtype = np.int32 if input_def.type == "tensor(int32)" else np.float16
+                    mask_dtype: type[np.generic] = np.int32 if input_def.type == "tensor(int32)" else np.float16
                     if input_def.type == "tensor(float)":
                         mask_dtype = np.float32
                     decoder_feed[name] = attention_mask.astype(mask_dtype, copy=False)
@@ -364,7 +368,7 @@ class QnnWhisperRuntime(STTBase):
             if next_token == eot_token:
                 break
 
-        transcript = self._tokenizer.decode(token_ids, skip_special_tokens=True)
+        transcript = tokenizer.decode(token_ids, skip_special_tokens=True)
         result = transcript.strip().lower()
         if not result and audio_peak > 1e-4 and audio_rms > 1e-5:
             raise RuntimeError(

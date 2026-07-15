@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 
 import numpy as np
 import pytest
-from backend.app.memory.semantic import SemanticMemory, _get_text_hash
+from backend.app.memory.semantic import SemanticEntry, SemanticMemory, _get_text_hash
 
 
 def test_init_db(tmp_path: Path):
@@ -72,6 +73,87 @@ def test_deduplication(tmp_path: Path):
     with memory._get_conn() as conn:
         count = conn.execute("SELECT count(*) FROM semantic_fact").fetchone()[0]
         assert count == 1
+
+
+def _entry(fact_id: str, text: str) -> SemanticEntry:
+    return SemanticEntry(
+        fact_id=fact_id,
+        text=text,
+        source_session_id=None,
+        source_turn_id=None,
+        source_field=None,
+        created_at="2026-07-15T00:00:00+00:00",
+        updated_at="2026-07-15T00:00:00+00:00",
+        kind="fact",
+        confidence=None,
+        metadata={},
+        vectorizer_id="test-vec",
+        vector_dim=1,
+        vector_blob=np.array([1.0], dtype="<f4").tobytes(),
+        text_hash=_get_text_hash(text),
+    )
+
+
+def test_write_entry_conflict_returns_existing_fact_id(tmp_path: Path):
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+
+    # Two entries with the same text_hash but different fact_ids simulate the
+    # loser of a SELECT-then-INSERT race: the second insert hits the unique
+    # index and must return the winner's fact_id instead of None.
+    first_id = memory.write_entry(_entry("fact-winner", "Race entry text"))
+    second_id = memory.write_entry(_entry("fact-loser", "Race entry text"))
+
+    assert first_id == "fact-winner"
+    assert second_id == "fact-winner"
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT count(*) FROM semantic_fact").fetchone()[0]
+        assert count == 1
+
+
+def test_concurrent_duplicate_writes_return_same_fact_id(tmp_path: Path):
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+
+    results: list[str | None] = []
+    barrier = threading.Barrier(4)
+
+    def worker() -> None:
+        barrier.wait()
+        results.append(memory.write_fact("Concurrent duplicate fact", [1.0, 0.0], "test-vec"))
+
+    threads = [threading.Thread(target=worker) for _ in range(4)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(results) == 4
+    assert all(fact_id is not None for fact_id in results)
+    assert len(set(results)) == 1
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT count(*) FROM semantic_fact").fetchone()[0]
+        assert count == 1
+
+
+def test_fts_insert_failure_rolls_back_fact(tmp_path: Path):
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+    if not memory.supports_fts:
+        pytest.skip("FTS5 not available in this sqlite build")
+
+    # Break the FTS table while supports_fts stays True to force the FTS insert to fail.
+    with memory._get_conn() as conn:
+        conn.execute("DROP TABLE semantic_fact_fts")
+
+    assert memory.write_fact("Fact with broken fts", [1.0], "test-vec") is None
+
+    # The fact insert must roll back too: no fact invisible to lexical search.
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT count(*) FROM semantic_fact").fetchone()[0]
+        assert count == 0
 
 
 def test_lexical_search(tmp_path: Path):

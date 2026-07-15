@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
+from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord, AgentRecordType
 from backend.app.agents.specs import DEFAULT_SPECS_DIR, JarvisAgentSpec, write_agent_spec
 from pydantic import BaseModel, Field
 
@@ -125,7 +125,7 @@ def _append_event(
     ledger: AgentLedger | None,
     trace_id: str,
     spec_id: str,
-    record_type: str,
+    record_type: AgentRecordType,
     payload: dict[str, object],
 ) -> str | None:
     if ledger is None:

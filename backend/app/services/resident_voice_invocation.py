@@ -3,9 +3,10 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 from backend.app.conversation.engine import TurnEngine
@@ -144,8 +145,8 @@ class ResidentVoiceInvocationService:
         hook_state: object = None
         realtime_session: RealtimeConversationSession | None = None
         engine: TurnEngine | None = None
-        previous_barge_in_detector: object = None
-        previous_interruption_audio_chunks: object = None
+        previous_barge_in_detector: Any = None
+        previous_interruption_audio_chunks: Any = None
         try:
             if self._before_invocation is not None:
                 hook_state = self._before_invocation()
@@ -273,13 +274,23 @@ class ResidentVoiceInvocationService:
         self._follow_up_listening = True
         self._follow_up_source = source
         try:
-            request = self._capture_streamed_request(ResidentInvocationRequest(source=source))
+            while True:
+                request = self._capture_streamed_request(ResidentInvocationRequest(source=source))
+                if request.audio is not None and request.audio.size > 0 and request.sample_rate is not None:
+                    self.enqueue(source, request.audio, request.sample_rate)
+                    return
+                if source != "continuous" or self._mode != "continuous":
+                    return
+                # Continuous mode re-arms after a silent window instead of
+                # dead-ending; bail out if the stream stopped or newer
+                # requests are waiting (they re-arm on completion).
+                if self._resident_stream is None or not self._resident_stream.status().running:
+                    return
+                if not self._queue.empty():
+                    return
         finally:
             self._follow_up_listening = False
             self._follow_up_source = None
-        if request.audio is None or request.audio.size == 0 or request.sample_rate is None:
-            return
-        self.enqueue(source, request.audio, request.sample_rate)
 
 
 def _subscriber_chunks(subscriber: queue.Queue[AudioChunk], resident_stream: ResidentAudioStream) -> Iterable[AudioChunk]:
@@ -290,7 +301,7 @@ def _subscriber_chunks(subscriber: queue.Queue[AudioChunk], resident_stream: Res
             break
 
 
-def _capture_diagnostics_with_timing(diagnostics: dict[str, object], capture_ms: float) -> dict[str, object]:
+def _capture_diagnostics_with_timing(diagnostics: Mapping[str, object], capture_ms: float) -> dict[str, object]:
     return {**diagnostics, "capture_ms": max(0.0, capture_ms)}
 
 

@@ -113,10 +113,14 @@ class WakeMonitorService:
         if thread is not None and thread.is_alive():
             thread.join(timeout=1.0)
         with self._lock:
-            if self._thread is thread:
-                self._thread = None
-                self._runtime = None
-            self._stop_event.clear()
+            # Only recycle monitor state once the thread has actually exited.
+            # Clearing the shared stop event while the thread is still running
+            # would revive a zombie monitor and allow a duplicate to start.
+            if thread is None or not thread.is_alive():
+                if self._thread is thread:
+                    self._thread = None
+                    self._runtime = None
+                self._stop_event.clear()
         return self._session_service.stop_wake_monitor()
 
     def pause_for_voice_invocation(self) -> bool:
@@ -128,9 +132,10 @@ class WakeMonitorService:
         if thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=1.0)
         with self._lock:
-            if self._thread is thread:
-                self._thread = None
-            self._stop_event.clear()
+            if (thread is None or not thread.is_alive()) and thread is not threading.current_thread():
+                if self._thread is thread:
+                    self._thread = None
+                self._stop_event.clear()
         if should_resume:
             self._session_service.pause_wake_monitor()
         return should_resume
@@ -195,7 +200,12 @@ class WakeMonitorService:
 
     def _collect_command_audio(self, source: Iterator[np.ndarray]) -> np.ndarray | None:
         if self._utterance_segmenter is None:
-            return _chunks_to_stt_audio(self._collect_post_wake_chunks(source))
+            chunks = self._collect_post_wake_chunks(source)
+            if not chunks:
+                return None
+            # Return int16 samples so the caller performs the single
+            # int16 -> float32 STT conversion for pre-roll + command together.
+            return np.concatenate(chunks)
         segment = self._utterance_segmenter.capture(_wake_audio_chunks(source))
         self._session_service.record_voice_capture_diagnostics(
             source="wake",

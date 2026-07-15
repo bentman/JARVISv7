@@ -140,7 +140,7 @@ class Settings:
     )
     data_path: Path = field(default_factory=lambda: _env_path("DATA_PATH", DATA_DIR))
     tool_filesystem_sandbox_path: Path = field(
-        default_factory=lambda: _env_path("TOOL_FILESYSTEM_SANDBOX_PATH", "data/tool_sandbox/")
+        default_factory=lambda: _env_path("TOOL_FILESYSTEM_SANDBOX_PATH", DATA_DIR / "tool_sandbox")
     )
     model_path: Path = field(default_factory=lambda: _env_path("MODEL_PATH", MODELS_DIR))
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", True))

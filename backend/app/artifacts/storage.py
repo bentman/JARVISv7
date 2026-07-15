@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from backend.app.artifacts.session_artifact import SessionArtifact
@@ -8,11 +9,20 @@ from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.core.paths import DATA_DIR
 
 
+def _atomic_write_text(path: Path, text: str) -> None:
+    tmp_path = path.with_name(path.name + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as handle:
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)
+
+
 def write_turn_artifact(artifact: TurnArtifact, base_dir: Path = DATA_DIR / "turns") -> Path:
     session_dir = base_dir / artifact.session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = session_dir / f"{artifact.turn_id}.json"
-    artifact_path.write_text(artifact.to_json() + "\n", encoding="utf-8")
+    _atomic_write_text(artifact_path, artifact.to_json() + "\n")
     return artifact_path
 
 
@@ -27,7 +37,7 @@ def write_session_artifact(artifact: SessionArtifact, base_dir: Path = DATA_DIR 
     session_dir = base_dir / artifact.session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = session_dir / "session.json"
-    artifact_path.write_text(artifact.to_json() + "\n", encoding="utf-8")
+    _atomic_write_text(artifact_path, artifact.to_json() + "\n")
     return artifact_path
 
 
@@ -42,7 +52,7 @@ def write_session_timeline(timeline: SessionTimeline, base_dir: Path = DATA_DIR 
     session_dir = base_dir / timeline.session_id
     session_dir.mkdir(parents=True, exist_ok=True)
     artifact_path = session_dir / "timeline.json"
-    artifact_path.write_text(timeline.to_json() + "\n", encoding="utf-8")
+    _atomic_write_text(artifact_path, timeline.to_json() + "\n")
     return artifact_path
 
 

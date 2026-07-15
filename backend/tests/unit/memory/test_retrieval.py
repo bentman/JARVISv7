@@ -232,3 +232,48 @@ def test_redis_unavailable_fallback(tmp_path: Path):
     facts = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
     assert len(facts) == 1
     assert facts[0].content == "Redis down response."
+
+
+def test_cache_key_distinguishes_backend_presence():
+    retrieval = RetrievalManager()
+
+    kw_only = retrieval._cache_key("q", 3, has_semantic=False, has_episodic=True)
+    hybrid = retrieval._cache_key("q", 3, has_semantic=True, has_episodic=True)
+    sem_only = retrieval._cache_key("q", 3, has_semantic=True, has_episodic=False)
+    assert len({kw_only, hybrid, sem_only}) == 3
+
+    rec_epi = retrieval._cache_key(None, 3, has_episodic=True)
+    rec_none = retrieval._cache_key(None, 3, has_episodic=False)
+    assert rec_epi != rec_none
+
+
+def test_recency_without_episodic_does_not_poison_cache(tmp_path: Path):
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    db_path = tmp_path / "memory.sqlite"
+    semantic = SemanticMemory(db_path)
+
+    policy = WritePolicy()
+    artifact = TurnArtifact(
+        turn_id="t-1",
+        session_id="s-1",
+        input_modality="text",
+        final_state="completed",
+        transcript="test",
+        response_text="Recency cache response.",
+        tools_invoked=[],
+    )
+    episodic.write_entry(artifact, policy)
+
+    retrieval = RetrievalManager()
+    cache = MockCacheManager(available=True)
+
+    # Recency retrieval without episodic computes [] and must NOT write to cache
+    empty = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=None, semantic=semantic)
+    assert empty == []
+    assert cache.store == {}
+
+    # Recency retrieval with episodic must return the entry, not a stale cached []
+    facts = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=episodic, semantic=None)
+    assert len(facts) == 1
+    assert facts[0].content == "Recency cache response."

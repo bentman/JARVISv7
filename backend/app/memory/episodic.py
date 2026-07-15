@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import contextlib
 import json
+import shutil
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -44,7 +46,7 @@ class EpisodicEntry:
             session_started_at=str(payload.get("session_started_at", "")),
             transcript=payload.get("transcript"),
             response_text=payload.get("response_text"),
-            tools_invoked=list(payload.get("tools_invoked", [])),
+            tools_invoked=list(payload.get("tools_invoked") or []),
             written_at=str(payload.get("written_at", "")),
         )
 
@@ -81,11 +83,12 @@ class EpisodicMemory:
             session_dir = self.base_dir / artifact.session_id
             session_dir.mkdir(parents=True, exist_ok=True)
             entry_path = session_dir / f"{artifact.turn_id}.json"
-            entry_path.write_text(entry.to_json() + "\n", encoding="utf-8")
-            self._prune_sessions(policy)
-            return entry
+            storage._atomic_write_text(entry_path, entry.to_json() + "\n")
         except Exception:
             return None
+        with contextlib.suppress(Exception):
+            self._prune_sessions(policy)
+        return entry
 
     def retrieve_recent(self, n: int = 5, base_dir: Path | None = None) -> list[EpisodicEntry]:
         return self._retrieve(base_dir=base_dir, n=n)
@@ -118,8 +121,11 @@ class EpisodicMemory:
                 if not session_dir.is_dir():
                     continue
                 for file_path in session_dir.glob("*.json"):
-                    payload = json.loads(file_path.read_text(encoding="utf-8"))
-                    entry = EpisodicEntry.from_dict(payload)
+                    try:
+                        payload = json.loads(file_path.read_text(encoding="utf-8"))
+                        entry = EpisodicEntry.from_dict(payload)
+                    except Exception:
+                        continue
                     entries.append(entry)
             entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=UTC), reverse=True)
             return entries[:n]
@@ -146,10 +152,7 @@ class EpisodicMemory:
         candidates.sort(key=lambda item: item[0])
         prune_count = max(0, len(session_dirs) - retention)
         for _, session_dir in candidates[:prune_count]:
-            for file_path in session_dir.glob("*"):
-                if file_path.is_file():
-                    file_path.unlink()
-            session_dir.rmdir()
+            shutil.rmtree(session_dir, ignore_errors=True)
 
     def _session_timestamp(self, session_dir: Path) -> datetime | None:
         timestamps: list[datetime] = []

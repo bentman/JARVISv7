@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import replace
+
 from backend.app.api.app import ApiState, bind_session
 from backend.app.api.dependencies import get_api_state
 from backend.app.api.routes.session import build_session_status_response
@@ -36,6 +38,12 @@ def desktop_status(state: ApiState = Depends(get_api_state)) -> DesktopStatusSna
 
 @router.post("/status/wake/start", response_model=WakeStatusResponse)
 def start_wake_monitor(state: ApiState = Depends(get_api_state)) -> WakeStatusResponse:
+    mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
+    if mode == "ptt-only":
+        raise HTTPException(
+            status_code=409,
+            detail="wake monitor cannot start while resident voice mode is ptt-only",
+        )
     return _wake_response(state.wake_monitor.start())
 
 
@@ -136,6 +144,7 @@ def build_resident_voice_status(
     )
     barge_in_supported = barge_in_wired and mode in {"hands-free", "continuous"}
     tts_voice = _tts_voice_response(state)
+    supported_voices = tts_voice.get("supported_voices")
     return ResidentVoiceStatusResponse(
         mode=mode,
         available=state.resident_voice is not None
@@ -169,7 +178,7 @@ def build_resident_voice_status(
         follow_up_source=follow_up.source if follow_up is not None else None,
         continuous_active=follow_up.continuous_active if follow_up is not None else False,
         tts_voice=str(tts_voice.get("voice") or "") or None,
-        tts_supported_voices=list(tts_voice.get("supported_voices") or []),
+        tts_supported_voices=[str(voice) for voice in supported_voices] if isinstance(supported_voices, list) else [],
         tts_voice_restart_required=bool(tts_voice.get("restart_required", True)),
         tts_voice_model=str(tts_voice.get("model") or "") or None,
     )
@@ -188,7 +197,7 @@ def _reconcile_resident_wake(
 ) -> WakeMonitorStatus:
     resident_mode = mode or (state.resident_voice.mode() if state.resident_voice is not None else "ptt-only")
     if resident_mode == "ptt-only" and (wake.active or wake.monitoring):
-        return state.wake_monitor.stop()
+        return replace(wake, reason="wake monitor is active while resident voice mode is ptt-only")
     return wake
 
 
@@ -215,6 +224,8 @@ def _apply_tts_voice(state: ApiState, voice: str) -> None:
         if runtime is None or id(runtime) in seen:
             continue
         seen.add(id(runtime))
+        # Kokoro runtimes expose a settable voice; other TTSBase runtimes
+        # simply gain the attribute without effect.
         runtime.voice = voice
 
 

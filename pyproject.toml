@@ -279,8 +279,8 @@ module = [
   "onnx_asr.*",
   "kokoro_onnx.*",
   "openwakeword.*",
-  "pvporcupine.*",
   "sounddevice.*",
+  "transformers.*",
 ]
 ignore_missing_imports = true
 

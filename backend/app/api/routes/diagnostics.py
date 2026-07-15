@@ -10,7 +10,7 @@ from backend.app.api.schemas.diagnostics import (
     DiagnosticsProfileResponse,
 )
 from backend.app.services.voice_service import diagnose_audio_ingress
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 router = APIRouter()
 
@@ -30,7 +30,7 @@ def diagnostics_preflight(state: ApiState = Depends(get_api_state)) -> Diagnosti
 
 
 @router.post("/diagnostics/audio-ingress", response_model=DiagnosticsAudioIngressResponse)
-def diagnostics_audio_ingress(duration_s: float = 1.0) -> DiagnosticsAudioIngressResponse:
+def diagnostics_audio_ingress(duration_s: float = Query(1.0, gt=0, le=10.0)) -> DiagnosticsAudioIngressResponse:
     result = diagnose_audio_ingress(duration_s=duration_s)
     return DiagnosticsAudioIngressResponse(
         usable=result.usable,

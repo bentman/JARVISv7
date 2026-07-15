@@ -8,6 +8,7 @@ import httpx
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.models.catalog import ModelCatalogError
 from backend.app.models.llm_profiles import LLMServeProfileResolution, resolve_llm_serve_profile
 from backend.app.models.llm_selection import select_llm_model
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
@@ -43,15 +44,21 @@ def prepare_managed_local_llm(
             degraded_reason="local model disabled",
         )
 
-    model_selection = select_llm_model(route, profile, settings=resolved_settings)
-    resolution = resolve_llm_serve_profile(
-        route,
-        profile,
-        preflight,
-        settings=resolved_settings,
-        flags=flags,
-        model_name=model_selection.model_id,
-    )
+    try:
+        model_selection = select_llm_model(route, profile, settings=resolved_settings)
+        resolution = resolve_llm_serve_profile(
+            route,
+            profile,
+            preflight,
+            settings=resolved_settings,
+            flags=flags,
+            model_name=model_selection.model_id,
+        )
+    except ModelCatalogError as exc:
+        return ManagedLocalLLMStartup(
+            runtime=None,
+            degraded_reason=str(exc),
+        )
     resolution = LLMServeProfileResolution(
         model_id=resolution.model_id,
         route=resolution.route,

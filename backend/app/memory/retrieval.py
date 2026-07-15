@@ -27,12 +27,15 @@ class RetrievedFact:
 
 
 class RetrievalManager:
-    def _cache_key(self, query: str | None, n: int, has_semantic: bool = False) -> str:
+    def _cache_key(
+        self, query: str | None, n: int, has_semantic: bool = False, has_episodic: bool = False
+    ) -> str:
+        backends = f"e{int(has_episodic)}s{int(has_semantic)}"
         if query is None:
-            return make_key(NS_RETRIEVAL, "recency", str(n))
+            return make_key(NS_RETRIEVAL, "recency", backends, str(n))
         query_hash = hashlib.md5(query.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         suffix = "hybrid" if has_semantic else "keyword"
-        return make_key(NS_RETRIEVAL, suffix, query_hash, str(n))
+        return make_key(NS_RETRIEVAL, suffix, backends, query_hash, str(n))
 
     def _facts_from_cache_value(self, payload: str) -> list[RetrievedFact]:
         raw = json.loads(payload)
@@ -67,7 +70,12 @@ class RetrievalManager:
         if episodic is None and semantic is None:
             return []
 
-        key = self._cache_key(query=query, n=n, has_semantic=(semantic is not None))
+        key = self._cache_key(
+            query=query,
+            n=n,
+            has_semantic=(semantic is not None),
+            has_episodic=(episodic is not None),
+        )
         can_use_cache = False
         if cache_manager is not None:
             try:
@@ -146,26 +154,26 @@ class RetrievalManager:
             if semantic is not None:
                 # Lexical
                 lex_entries = semantic.search_lexical(query, n=n)
-                for entry in lex_entries:
+                for sem_entry in lex_entries:
                     semantic_lexical_candidates.append(
                         RetrievedFact(
-                            turn_id=entry.source_turn_id or "",
-                            session_id=entry.source_session_id or "",
-                            content=entry.text,
-                            source_field=entry.source_field or "text",
+                            turn_id=sem_entry.source_turn_id or "",
+                            session_id=sem_entry.source_session_id or "",
+                            content=sem_entry.text,
+                            source_field=sem_entry.source_field or "text",
                             relevance_method="lexical",
                         )
                     )
                 # Vector
                 q_vec = text_to_vector(query)
                 vec_results = semantic.search_vector(q_vec, n=n)
-                for entry, _score in vec_results:
+                for sem_entry, _score in vec_results:
                     semantic_vector_candidates.append(
                         RetrievedFact(
-                            turn_id=entry.source_turn_id or "",
-                            session_id=entry.source_session_id or "",
-                            content=entry.text,
-                            source_field=entry.source_field or "text",
+                            turn_id=sem_entry.source_turn_id or "",
+                            session_id=sem_entry.source_session_id or "",
+                            content=sem_entry.text,
+                            source_field=sem_entry.source_field or "text",
                             relevance_method="vector",
                         )
                     )
@@ -199,7 +207,10 @@ class RetrievalManager:
                 for norm_content in sorted_norm[:n]:
                     facts.append(fact_map[norm_content])
 
-        if can_use_cache and cache_manager is not None:
+        # Do not cache results computed without the backend the key path requires
+        # (recency retrieval is episodic-only).
+        should_cache = not (query is None and episodic is None)
+        if can_use_cache and cache_manager is not None and should_cache:
             with contextlib.suppress(Exception):
                 cache_manager.set(key, self._facts_to_cache_value(facts), ttl=DEFAULT_RETRIEVAL_TTL)
         return facts

@@ -168,12 +168,21 @@ def test_continuous_mode_requires_explicit_opt_in_and_reports_active_state(tmp_p
         stream.publish_for_test(np.zeros(4, dtype=np.float32))
         _wait_for(lambda: len(calls) == 2)
         _wait_for(lambda: resident.follow_up_status().source == "continuous")
-        stream.publish_for_test(np.zeros(4, dtype=np.float32))
-        stream.publish_for_test(np.zeros(4, dtype=np.float32))
-        _wait_for(lambda: not resident.follow_up_status().listening)
+        # A silent window must re-arm continuous listening, not dead-end it:
+        # speech published after silence is still captured.
+        deadline = time.monotonic() + 2.0
+        while len(calls) < 3 and time.monotonic() < deadline:
+            stream.publish_for_test(np.zeros(4, dtype=np.float32))
+            stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+            stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+            stream.publish_for_test(np.zeros(4, dtype=np.float32))
+            stream.publish_for_test(np.zeros(4, dtype=np.float32))
+            time.sleep(0.01)
+        _wait_for(lambda: len(calls) >= 3)
+        assert resident.follow_up_status().continuous_active is True
     finally:
         stream.stop()
 
-    assert len(calls) == 2
+    assert len(calls) >= 3
     assert resident.status().invocation_source == "continuous"
     assert resident.follow_up_status().continuous_active is True
