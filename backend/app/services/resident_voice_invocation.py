@@ -13,7 +13,7 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.realtime.events import RealtimeEvent
 from backend.app.conversation.realtime.session import RealtimeConversationSession
 from backend.app.core.settings import load_settings
-from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.runtimes.vad import select_vad_runtime
 from backend.app.services import voice_service
 from backend.app.services.audio_stream import AudioChunk, ResidentAudioStream
 from backend.app.services.session_service import SessionService, SessionStatus
@@ -307,8 +307,9 @@ def _capture_diagnostics_with_timing(diagnostics: Mapping[str, object], capture_
 
 def default_utterance_segmenter() -> UtteranceSegmenter:
     settings = load_settings()
+    vad, _vad_reason = select_vad_runtime(settings)
     return UtteranceSegmenter(
-        vad=EnergyVADRuntime(speech_rms_threshold=settings.resident_voice_speech_rms_threshold),
+        vad=vad,
         sample_rate=16000,
         pre_roll_s=settings.resident_voice_pre_roll_seconds,
         min_speech_s=settings.resident_voice_min_speech_seconds,

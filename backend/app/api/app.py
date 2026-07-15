@@ -9,6 +9,7 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.core.paths import CONFIG_DIR
+from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.memory.semantic import SemanticMemory
 from backend.app.personality.loader import load_default_personality
@@ -20,7 +21,7 @@ from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
-from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.runtimes.vad import VADRuntime, select_vad_runtime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
@@ -76,6 +77,13 @@ def _load_runtime_policy(path=DEFAULT_POLICY_PATH) -> dict[str, object]:
     return payload
 
 
+def _barge_in_vad() -> VADRuntime:
+    # Fresh instance per detector: SileroVADRuntime carries recurrent state and
+    # must not be shared with the utterance segmenter's runtime.
+    runtime, _reason = select_vad_runtime(load_settings())
+    return runtime
+
+
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
     manager = session_manager or state.session_manager
     return TurnEngine(
@@ -86,7 +94,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         session_manager=manager,
         cache_manager=state.cache_manager,
         semantic=state.semantic_memory,
-        barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
+        barge_in_detector=BargeInDetector(vad=_barge_in_vad(), min_speech_s=0.2, min_speech_chunks=2),
         # Factory: resolved per playback so barge-in subscribes fresh each turn
         # and tracks the resident stream's current running state.
         interruption_audio_chunks=lambda: resident_interruption_chunks(state.resident_audio_stream),
@@ -131,7 +139,7 @@ def build_startup_state() -> ApiState:
         session_manager=session_manager,
         cache_manager=cache_manager,
         semantic=semantic_memory,
-        barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
+        barge_in_detector=BargeInDetector(vad=_barge_in_vad(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=lambda: resident_interruption_chunks(resident_audio_stream),
     )
     session_service = SessionService(

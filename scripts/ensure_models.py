@@ -24,7 +24,7 @@ from backend.app.hardware.provisioning import resolve_required_extras
 from backend.app.models.catalog import ModelEntry, get_model_entry, list_models
 from backend.app.models.llm_selection import select_llm_model
 
-MODEL_FAMILIES = ("stt", "tts", "wake")
+MODEL_FAMILIES = ("stt", "tts", "wake", "vad")
 ALL_FAMILIES = (*MODEL_FAMILIES, "llm")
 _PENDING_RUNTIME_SOURCE_TYPES = {"pending-pinned-release", "pending-viability", "build-required"}
 

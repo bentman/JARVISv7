@@ -1,0 +1,13 @@
+default_model: silero-vad
+
+models:
+  silero-vad:
+    family: vad
+    runtime: silero_onnx
+    devices: [cpu]
+    threshold: 0.5
+    source:
+      type: url
+      files:
+        silero_vad.onnx: https://github.com/snakers4/silero-vad/raw/master/src/silero_vad/data/silero_vad.onnx
+    local_path: models/vad/silero-vad

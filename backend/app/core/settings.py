@@ -44,6 +44,7 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "RESIDENT_VOICE_MAX_DURATION_SECONDS": "advanced",
     "RESIDENT_VOICE_PRE_ROLL_SECONDS": "advanced",
     "RESIDENT_VOICE_MIN_SPEECH_SECONDS": "advanced",
+    "RESIDENT_VOICE_VAD": "advanced",
     "QAIRT_SDK_PATH": "advanced",
     "PICOVOICE_ACCESS_KEY": "secret",
     "PVPORCUPINE_MODEL_PATH": "advanced",
@@ -196,6 +197,9 @@ class Settings:
     )
     resident_voice_min_speech_seconds: float = field(
         default_factory=lambda: _env_float("RESIDENT_VOICE_MIN_SPEECH_SECONDS") or 0.2
+    )
+    resident_voice_vad: str = field(
+        default_factory=lambda: _env_choice("RESIDENT_VOICE_VAD", {"auto", "energy", "silero"}, "auto")
     )
     qairt_sdk_path: str | None = field(default_factory=lambda: _env_str("QAIRT_SDK_PATH"))
     picovoice_access_key: str | None = field(

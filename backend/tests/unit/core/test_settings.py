@@ -40,6 +40,7 @@ ENV_NAMES = (
     "RESIDENT_VOICE_MAX_DURATION_SECONDS",
     "RESIDENT_VOICE_PRE_ROLL_SECONDS",
     "RESIDENT_VOICE_MIN_SPEECH_SECONDS",
+    "RESIDENT_VOICE_VAD",
     "QAIRT_SDK_PATH",
     "PICOVOICE_ACCESS_KEY",
     "PVPORCUPINE_MODEL_PATH",
@@ -466,6 +467,7 @@ def test_resident_voice_segmenter_settings_read_from_env(monkeypatch, tmp_path):
                 "RESIDENT_VOICE_MAX_DURATION_SECONDS=9",
                 "RESIDENT_VOICE_PRE_ROLL_SECONDS=0.5",
                 "RESIDENT_VOICE_MIN_SPEECH_SECONDS=0.3",
+                "RESIDENT_VOICE_VAD=silero",
             ]
         )
         + "\n",
@@ -480,6 +482,14 @@ def test_resident_voice_segmenter_settings_read_from_env(monkeypatch, tmp_path):
     assert settings.resident_voice_max_duration_seconds == 9.0
     assert settings.resident_voice_pre_roll_seconds == 0.5
     assert settings.resident_voice_min_speech_seconds == 0.3
+    assert settings.resident_voice_vad == "silero"
+
+
+def test_resident_voice_vad_rejects_invalid_value(monkeypatch, tmp_path):
+    settings_module = _reload_settings(monkeypatch, tmp_path, "RESIDENT_VOICE_VAD=noise\n", None)
+
+    with pytest.raises(ValueError, match="RESIDENT_VOICE_VAD"):
+        settings_module.load_settings()
 
 
 def _parse_env_template(path: Path) -> dict[str, str]:

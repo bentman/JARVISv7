@@ -218,6 +218,8 @@ Thumbs.db
 !/models/tts/.gitkeep
 /models/wake/*
 !/models/wake/.gitkeep
+/models/vad/*
+!/models/vad/.gitkeep
 
 # Model binary extensions (anywhere): kept out of source.
 # Note: `.onnx` is NOT globally banned — ONNX models live under /models/**
