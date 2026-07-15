@@ -25,62 +25,22 @@
 
 - Timestamp: 2026-07-14 23:44
   - Host class(es): Windows AMD64
-  - Summary: Restored the live voice and continuity test fixes unintentionally omitted by the pooled desktop HTTP client commit, including production STT selection, current personality contracts, retrieval mocks, and live-service skip detection.
+  - Summary: Stabilized the backend conversation/runtime test path and desktop bridge as one delivery slice: cleaned staged API/engine construction, verified VAD and local-LLM target resolution, repaired live voice/continuity contracts and service gating, and reduced desktop/backend churn through a pooled HTTP client with adaptive polling.
   - Scope:
-    - `backend/tests/conftest.py`
-    - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
-    - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+    - `backend/app/api/app.py`, `backend/app/conversation/engine.py`
+    - `backend/app/services/utterance_segmenter.py`, `backend/app/services/local_llm_sidecar.py`
+    - `backend/tests/conftest.py`, `backend/tests/runtime/turn/`, `backend/tests/runtime/acceleration_matrix/`
+    - `backend/tests/unit/api/`, `backend/tests/unit/services/`, `backend/tests/unit/desktop/`, `backend/tests/integration/api/`
+    - `desktop/src-tauri/src/`, `desktop/src/components/desktop-polling.js`, `desktop/tests/static.test.mjs`
   - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py backend/tests/integration/api/test_headless_client.py` PASS (60 passed)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_local_llm_sidecar.py backend/tests/unit/services/test_utterance_segmenter.py` PASS (40 passed)
     - `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_continuity_retrieval_live.py backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py -q` PASS (12 passed, 5 hardware-gated skips)
-    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (737 passed, 1 skipped)
-    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715044354-regression.txt`)
-
-- Timestamp: 2026-07-14 23:26
-  - Host class(es): Windows AMD64
-  - Summary: Reused one pooled HTTP client across the desktop backend bridge and reduced status polling churn with active, idle, and hidden-window schedules while preserving backend API contracts.
-  - Scope:
-    - `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`
-    - `desktop/src/components/desktop-polling.js`, `desktop/tests/static.test.mjs`
-    - `backend/tests/unit/desktop/test_desktop_static_contract.py`
-  - Validation:
     - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
     - `cargo test --manifest-path desktop/src-tauri/Cargo.toml` PASS (desktop crate compiled; 0 failed)
     - `backend/.venv/Scripts/python -m pytest backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (33 passed)
     - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (737 passed, 1 skipped)
-    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715042607-regression.txt`)
-
-- Timestamp: 2026-07-14 21:17
-  - Host class(es): Windows AMD64
-  - Summary: Fixed WAV-backed live voice tests to use production host-priority STT selection, correct PersonalityProfile contracts, and resolved immediate-repeat / retrieve mock signature mismatches. Configured Ollama-dependent tests to automatically skip with a warning if the local Ollama service daemon is not running.
-  - Scope:
-    - `backend/tests/conftest.py`
-    - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
-    - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
-  - Validation:
-    - `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_continuity_retrieval_live.py backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py` PASS (7 passed, 10 skipped cleanly)
-    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (736 passed, 1 skipped)
-
-- Timestamp: 2026-07-14 21:10
-  - Host class(es): Windows AMD64
-  - Summary: Inspected VAD noise-floor calibration and implemented model-verified target resolution matching during local LLM sidecar endpoint adoption, with corresponding unit tests.
-  - Scope:
-    - `backend/app/services/utterance_segmenter.py`
-    - `backend/app/services/local_llm_sidecar.py`
-    - `backend/tests/unit/services/test_local_llm_sidecar.py`
-  - Validation:
-    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_local_llm_sidecar.py backend/tests/unit/services/test_utterance_segmenter.py` PASS (40 passed)
-    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (736 passed, 1 skipped)
-
-- Timestamp: 2026-07-14 21:02
-  - Host class(es): Windows AMD64
-  - Summary: Removed duplicated import block in TurnEngine and replaced temporary None assignments in ApiState initialization with a type-safe staged-construction pattern.
-  - Scope:
-    - `backend/app/conversation/engine.py`
-    - `backend/app/api/app.py`
-    - `backend/tests/unit/api/test_routes.py`
-    - `backend/tests/integration/api/test_headless_client.py`
-  - Validation:
-    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py backend/tests/integration/api/test_headless_client.py` PASS (60 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715044354-regression.txt`)
     - `backend/.venv/Scripts/python scripts/validate_backend.py ci` PASS (734 passed, 1 skipped unit tests; 9 passed integration tests; 155 passed regression tests)
 
 - Timestamp: 2026-07-10 11:49
