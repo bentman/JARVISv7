@@ -9,19 +9,26 @@ agents:
   allowed_roles: [planner, executor, critic, curator, learner]
   allowed_tools: []
 
+# Optional per-provider overrides: uncomment "model" or "base_url" to override
+# the runtime's built-in default (shown in the commented examples below).
 cloud_providers:
   claude:
     api_key_env: ANTHROPIC_API_KEY
-    model: claude-sonnet
+    # model: claude-sonnet-4-5
+    # base_url: https://api.anthropic.com/v1
   openai:
     api_key_env: OPENAI_API_KEY
-    model: gpt-4o
+    # model: gpt-4o-mini
+    # base_url: https://api.openai.com/v1
   gemini:
     api_key_env: GEMINI_API_KEY
-    model: gemini-1.5-pro
+    # model: gemini-2.0-flash
+    # base_url: https://generativelanguage.googleapis.com/v1beta/openai
   xai:
     api_key_env: XAI_API_KEY
-    model: grok-2
+    # model: grok-3-mini
+    # base_url: https://api.x.ai/v1
   zai:
     api_key_env: ZAI_API_KEY
-    model: TBD
+    # model: glm-4.7
+    # base_url: https://api.z.ai/api/paas/v4

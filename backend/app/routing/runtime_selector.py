@@ -64,6 +64,16 @@ def _provider_api_key_env(provider_policy: dict[str, Any], name: str, default: s
     return value if isinstance(value, str) and value else default
 
 
+def _provider_option(provider_policy: dict[str, Any], name: str, key: str) -> str | None:
+    # Optional per-provider overrides (e.g. "model", "base_url"); a missing,
+    # bare, or malformed entry falls back to the runtime's built-in default.
+    entry = provider_policy.get(name)
+    if not isinstance(entry, dict):
+        return None
+    value = entry.get(key)
+    return value if isinstance(value, str) and value else None
+
+
 def _cloud_runtimes(policy: dict[str, Any]) -> list[LLMBase]:
     llm_policy = policy.get("llm", {}) if isinstance(policy.get("llm", {}), dict) else {}
     provider_policy = (
@@ -71,11 +81,36 @@ def _cloud_runtimes(policy: dict[str, Any]) -> list[LLMBase]:
     )
     cloud_enabled = bool(llm_policy.get("cloud_enabled", False))
     return [
-        ClaudeLLM(cloud_enabled, _provider_api_key_env(provider_policy, "claude", "ANTHROPIC_API_KEY")),
-        OpenAILLM(cloud_enabled, _provider_api_key_env(provider_policy, "openai", "OPENAI_API_KEY")),
-        GeminiLLM(cloud_enabled, _provider_api_key_env(provider_policy, "gemini", "GEMINI_API_KEY")),
-        XaiLLM(cloud_enabled, _provider_api_key_env(provider_policy, "xai", "XAI_API_KEY")),
-        ZaiLLM(cloud_enabled, _provider_api_key_env(provider_policy, "zai", "ZAI_API_KEY")),
+        ClaudeLLM(
+            cloud_enabled,
+            _provider_api_key_env(provider_policy, "claude", "ANTHROPIC_API_KEY"),
+            model=_provider_option(provider_policy, "claude", "model"),
+            base_url=_provider_option(provider_policy, "claude", "base_url"),
+        ),
+        OpenAILLM(
+            cloud_enabled,
+            _provider_api_key_env(provider_policy, "openai", "OPENAI_API_KEY"),
+            model=_provider_option(provider_policy, "openai", "model"),
+            base_url=_provider_option(provider_policy, "openai", "base_url"),
+        ),
+        GeminiLLM(
+            cloud_enabled,
+            _provider_api_key_env(provider_policy, "gemini", "GEMINI_API_KEY"),
+            model=_provider_option(provider_policy, "gemini", "model"),
+            base_url=_provider_option(provider_policy, "gemini", "base_url"),
+        ),
+        XaiLLM(
+            cloud_enabled,
+            _provider_api_key_env(provider_policy, "xai", "XAI_API_KEY"),
+            model=_provider_option(provider_policy, "xai", "model"),
+            base_url=_provider_option(provider_policy, "xai", "base_url"),
+        ),
+        ZaiLLM(
+            cloud_enabled,
+            _provider_api_key_env(provider_policy, "zai", "ZAI_API_KEY"),
+            model=_provider_option(provider_policy, "zai", "model"),
+            base_url=_provider_option(provider_policy, "zai", "base_url"),
+        ),
     ]
 
 

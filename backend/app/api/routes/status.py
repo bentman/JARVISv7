@@ -226,7 +226,7 @@ def _apply_tts_voice(state: ApiState, voice: str) -> None:
         seen.add(id(runtime))
         # Kokoro runtimes expose a settable voice; other TTSBase runtimes
         # simply gain the attribute without effect.
-        runtime.voice = voice
+        runtime.voice = voice  # type: ignore[union-attr]
 
 
 def _tts_voice_response(state: ApiState) -> dict[str, object]:
