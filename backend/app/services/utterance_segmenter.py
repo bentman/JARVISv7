@@ -9,6 +9,10 @@ from backend.app.runtimes.vad import VADRuntime
 from backend.app.services.audio_stream import AudioChunk
 
 
+WAKE_COMMAND_SILENCE_END_S = 0.8
+WAKE_COMMAND_TRAILING_PAD_S = 0.12
+
+
 @dataclass(frozen=True, slots=True)
 class UtteranceDiagnostics:
     reason: str
@@ -60,6 +64,7 @@ class UtteranceSegmenter:
     speech_start_s: float = 0.08
     min_speech_s: float = 0.2
     silence_end_s: float = 0.4
+    trailing_pad_s: float = 0.0
     max_duration_s: float = 8.0
     no_speech_timeout_s: float = 3.0
     noise_floor_multiplier: float = 3.0
@@ -70,6 +75,7 @@ class UtteranceSegmenter:
         speech_start_samples = self._seconds_to_samples(self.speech_start_s)
         min_speech_samples = self._seconds_to_samples(self.min_speech_s)
         silence_end_samples = self._seconds_to_samples(self.silence_end_s)
+        trailing_pad_samples = self._seconds_to_samples(self.trailing_pad_s)
         max_samples = self._seconds_to_samples(self.max_duration_s)
         no_speech_samples = self._seconds_to_samples(self.no_speech_timeout_s)
 
@@ -201,7 +207,7 @@ class UtteranceSegmenter:
                     noise_floor_rms,
                     effective_speech_threshold,
                     speech_start_samples,
-                    trim_samples=silence_after_speech,
+                    trim_samples=max(0, silence_after_speech - trailing_pad_samples),
                 )
 
         if speech_started:

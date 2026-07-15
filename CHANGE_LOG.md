@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 13:56
+  - Host class(es): Windows AMD64; platform-neutral wake capture behavior
+  - Summary: Corrected premature wake-command endpointing by giving wake capture an isolated 0.8-second post-speech silence window and retaining 0.12 seconds of trailing audio. Resident/PTT endpointing and all existing capture bounds remained unchanged.
+  - Scope:
+    - `backend/app/services/utterance_segmenter.py`, `backend/app/api/app.py`
+    - `backend/tests/unit/services/test_utterance_segmenter.py`, `backend/tests/unit/api/test_routes.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_utterance_segmenter.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/conversation/realtime/test_session.py -q` PASS (59 passed)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py::test_build_startup_state_uses_runtime_selector_for_llm -q` PASS (1 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (745 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715185546-regression.txt`)
+
 - Timestamp: 2026-07-15 13:05
   - Host class(es): Windows AMD64; platform-neutral shared llama.cpp lifecycle behavior
   - Summary: Added bounded phase timing to existing managed llama.cpp startup diagnostics and corrected adopted-endpoint ownership so stop/restart never reap an external server. Preserved managed cleanup and normalized profile command construction.

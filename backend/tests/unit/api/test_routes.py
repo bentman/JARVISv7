@@ -331,6 +331,10 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     assert selector_calls == [(policy, preflight, profile, prepared_local)]
     assert state.resident_audio_stream is not None
     assert state.utterance_segmenter is not None
+    assert state.resident_voice._utterance_segmenter is state.utterance_segmenter
+    assert state.wake_monitor._utterance_segmenter is not state.utterance_segmenter
+    assert state.wake_monitor._utterance_segmenter.silence_end_s == 0.8
+    assert state.wake_monitor._utterance_segmenter.trailing_pad_s == 0.12
     assert state.engine.barge_in_detector is not None
     assert state.engine.interruption_audio_chunks is None
 

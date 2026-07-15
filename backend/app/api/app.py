@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 from fastapi import FastAPI
@@ -36,7 +36,11 @@ from backend.app.services.resident_voice_invocation import (
     resident_interruption_chunks,
 )
 from backend.app.services.startup_context import ReadinessMap, load_startup_context
-from backend.app.services.utterance_segmenter import UtteranceSegmenter
+from backend.app.services.utterance_segmenter import (
+    WAKE_COMMAND_SILENCE_END_S,
+    WAKE_COMMAND_TRAILING_PAD_S,
+    UtteranceSegmenter,
+)
 from backend.app.services.wake_monitor import WakeMonitorService
 
 
@@ -116,6 +120,11 @@ def build_startup_state() -> ApiState:
     semantic_memory = SemanticMemory()
     resident_audio_stream = ResidentAudioStream()
     utterance_segmenter = default_utterance_segmenter()
+    wake_utterance_segmenter = replace(
+        utterance_segmenter,
+        silence_end_s=WAKE_COMMAND_SILENCE_END_S,
+        trailing_pad_s=WAKE_COMMAND_TRAILING_PAD_S,
+    )
     engine = TurnEngine(
         stt=stt,
         tts=tts,
@@ -144,7 +153,7 @@ def build_startup_state() -> ApiState:
         runtime_factory=lambda: select_wake_runtime(preflight, profile),
         invocation_callback=resident_voice.enqueue,
         resident_stream=resident_audio_stream,
-        utterance_segmenter=utterance_segmenter,
+        utterance_segmenter=wake_utterance_segmenter,
     )
     resident_voice.set_invocation_hooks(
         before_invocation=wake_monitor.pause_for_voice_invocation,

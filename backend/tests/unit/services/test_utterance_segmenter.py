@@ -3,7 +3,11 @@ from __future__ import annotations
 import numpy as np
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import AudioChunk
-from backend.app.services.utterance_segmenter import UtteranceSegmenter
+from backend.app.services.utterance_segmenter import (
+    WAKE_COMMAND_SILENCE_END_S,
+    WAKE_COMMAND_TRAILING_PAD_S,
+    UtteranceSegmenter,
+)
 
 
 def _chunk(value: float, sequence: int, samples: int = 4) -> AudioChunk:
@@ -217,6 +221,37 @@ def test_segmenter_keeps_brief_hesitation_inside_utterance() -> None:
     assert result.reason == "silence"
     assert result.speech_chunks == 4
     assert result.audio.shape == (20,)
+
+
+def test_wake_endpoint_keeps_natural_pause_and_trailing_audio_pad() -> None:
+    sample_rate = 10
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=sample_rate,
+        pre_roll_s=0.0,
+        speech_start_s=0.1,
+        min_speech_s=0.2,
+        silence_end_s=WAKE_COMMAND_SILENCE_END_S,
+        trailing_pad_s=WAKE_COMMAND_TRAILING_PAD_S,
+        max_duration_s=8.0,
+        no_speech_timeout_s=3.0,
+    )
+    chunks = [
+        AudioChunk(np.full(2, 0.2, dtype=np.float32), sample_rate, 1, 1.0),
+        AudioChunk(np.zeros(6, dtype=np.float32), sample_rate, 2, 2.0),
+        AudioChunk(np.full(2, 0.2, dtype=np.float32), sample_rate, 3, 3.0),
+        AudioChunk(np.zeros(8, dtype=np.float32), sample_rate, 4, 4.0),
+    ]
+
+    result = segmenter.capture(chunks)
+
+    assert result.reason == "silence"
+    assert result.speech_chunks == 2
+    assert result.audio.shape == (11,)
+    assert np.array_equal(result.audio[-3:-1], np.full(2, 0.2, dtype=np.float32))
+    assert result.audio[-1] == 0.0
+    assert result.diagnostics.sample_count == 11
+    assert result.diagnostics.duration_s == 1.1
 
 
 def test_segmenter_reports_stream_ended_after_confirmed_speech_without_endpoint() -> None:
