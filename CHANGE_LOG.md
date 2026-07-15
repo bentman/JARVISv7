@@ -23,6 +23,21 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 11:27
+  - Host class(es): Windows AMD64; platform-neutral backend and desktop behavior
+  - Summary: Added one read-only desktop status snapshot for session, resident voice, and wake state. Slow polling cycles now use one Tauri/HTTP request and construct shared wake/session state once, while fast active-turn ticks remain session-only.
+  - Scope:
+    - `backend/app/api/routes/session.py`, `backend/app/api/routes/status.py`, `backend/app/api/schemas/status.py`
+    - `backend/tests/unit/api/test_routes.py`, `backend/tests/unit/desktop/test_desktop_static_contract.py`
+    - `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`
+    - `desktop/src/api-client.js`, `desktop/src/main.js`, `desktop/src/components/desktop-polling.js`, `desktop/tests/static.test.mjs`
+  - Validation:
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
+    - `cargo test --manifest-path desktop/src-tauri/Cargo.toml` PASS (desktop crate compiled; 0 failed)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (89 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (741 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715162724-regression.txt`)
+
 - Timestamp: 2026-07-15 00:32
   - Host class(es): Windows AMD64; platform-neutral voice-turn behavior
   - Summary: Consolidated desktop session, resident-voice, and wake scheduling into one adaptive polling loop without changing backend APIs. Removed repeated utterance-length scans and moved raw voice persistence behind STT while preserving failure artifacts.

@@ -3,13 +3,16 @@ from __future__ import annotations
 from backend.app.api.app import ApiState, bind_session
 from backend.app.api.dependencies import get_api_state
 from backend.app.api.schemas.status import (
+    DesktopStatusSnapshotResponse,
     ResidentVoiceModeRequest,
     ResidentVoiceStatusResponse,
     ResidentVoiceStreamStatus,
     ResidentVoiceTTSVoiceRequest,
     WakeStatusResponse,
 )
+from backend.app.api.routes.session import build_session_status_response
 from backend.app.runtimes.tts.tts_runtime import tts_voice_config, validate_tts_voice
+from backend.app.services.wake_status import WakeMonitorStatus
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
@@ -17,10 +20,18 @@ router = APIRouter()
 
 @router.get("/status/wake", response_model=WakeStatusResponse)
 def wake_status(state: ApiState = Depends(get_api_state)) -> WakeStatusResponse:
-    _device, available, reason = state.readiness["wake"]
-    state.session_service.configure_wake_status(provider="openwakeword", available=available, reason=reason)
-    status = state.session_service.wake_status()
-    return _wake_response(status)
+    return _wake_response(_configured_wake_status(state))
+
+
+@router.get("/status/desktop", response_model=DesktopStatusSnapshotResponse)
+def desktop_status(state: ApiState = Depends(get_api_state)) -> DesktopStatusSnapshotResponse:
+    mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
+    wake = _reconcile_resident_wake(state, _configured_wake_status(state), mode=mode)
+    return DesktopStatusSnapshotResponse(
+        session=build_session_status_response(state.session_service.status()),
+        resident_voice=build_resident_voice_status(state, wake=wake, mode=mode),
+        wake=_wake_response(wake),
+    )
 
 
 @router.post("/status/wake/start", response_model=WakeStatusResponse)
@@ -92,7 +103,12 @@ def set_resident_voice_tts_voice(
     return build_resident_voice_status(state)
 
 
-def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
+def build_resident_voice_status(
+    state: ApiState,
+    *,
+    wake: WakeMonitorStatus | None = None,
+    mode: str | None = None,
+) -> ResidentVoiceStatusResponse:
     stream = state.resident_audio_stream
     stream_status = stream.status() if stream is not None else None
     vad_configured = state.utterance_segmenter is not None
@@ -109,10 +125,8 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
     stream_running = bool(stream_status.running) if stream_status is not None else False
     if stream is not None and not stream_running:
         degraded_reasons.append("resident audio stream is stopped")
-    mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
-    wake = state.session_service.wake_status()
-    if mode == "ptt-only" and (wake.active or wake.monitoring):
-        wake = state.wake_monitor.stop()
+    mode = mode or (state.resident_voice.mode() if state.resident_voice is not None else "ptt-only")
+    wake = _reconcile_resident_wake(state, wake or state.session_service.wake_status(), mode=mode)
     follow_up = state.resident_voice.follow_up_status() if state.resident_voice is not None else None
     barge_in_wired = bool(
         stream_running
@@ -159,6 +173,23 @@ def build_resident_voice_status(state: ApiState) -> ResidentVoiceStatusResponse:
         tts_voice_restart_required=bool(tts_voice.get("restart_required", True)),
         tts_voice_model=str(tts_voice.get("model") or "") or None,
     )
+
+
+def _configured_wake_status(state: ApiState) -> WakeMonitorStatus:
+    _device, available, reason = state.readiness["wake"]
+    return state.session_service.configure_wake_status(provider="openwakeword", available=available, reason=reason)
+
+
+def _reconcile_resident_wake(
+    state: ApiState,
+    wake: WakeMonitorStatus,
+    *,
+    mode: str | None = None,
+) -> WakeMonitorStatus:
+    resident_mode = mode or (state.resident_voice.mode() if state.resident_voice is not None else "ptt-only")
+    if resident_mode == "ptt-only" and (wake.active or wake.monitoring):
+        return state.wake_monitor.stop()
+    return wake
 
 
 def _wake_response(status) -> WakeStatusResponse:

@@ -1,6 +1,6 @@
 mod backend;
 
-use backend::{close_session, create_session, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_resident_voice_status as backend_resident_voice_status, get_session_status as backend_session_status, get_wake_status as backend_wake_status, invoke_resident_ptt as backend_invoke_resident_ptt, select_personality as backend_select_personality, set_resident_voice_mode as backend_set_resident_voice_mode, set_resident_voice_tts_voice as backend_set_resident_voice_tts_voice, start_resident_voice_stream as backend_start_resident_voice_stream, start_wake_monitor as backend_start_wake_monitor, stop_resident_voice_stream as backend_stop_resident_voice_stream, stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn, toggle_wake_monitor as backend_toggle_wake_monitor, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
+use backend::{close_session, create_session, get_desktop_status as backend_desktop_status, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_resident_voice_status as backend_resident_voice_status, get_session_status as backend_session_status, get_wake_status as backend_wake_status, invoke_resident_ptt as backend_invoke_resident_ptt, select_personality as backend_select_personality, set_resident_voice_mode as backend_set_resident_voice_mode, set_resident_voice_tts_voice as backend_set_resident_voice_tts_voice, start_resident_voice_stream as backend_start_resident_voice_stream, start_wake_monitor as backend_start_wake_monitor, stop_resident_voice_stream as backend_stop_resident_voice_stream, stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn, toggle_wake_monitor as backend_toggle_wake_monitor, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -87,6 +87,12 @@ fn get_readiness(state: State<'_, DesktopState>) -> Result<String, String> {
 fn get_session_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_session_status(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_desktop_status(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_desktop_status(&state.http_client, &base_url)
 }
 
 #[tauri::command]
@@ -241,7 +247,7 @@ pub fn run() {
     let http_client = Client::builder().build().expect("failed to initialize desktop HTTP client");
     tauri::Builder::default()
         .manage(DesktopState { backend: Arc::new(Mutex::new(backend)), http_client, session_id: Arc::new(Mutex::new(None)) })
-        .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config, get_resident_voice_status, start_resident_voice_stream, stop_resident_voice_stream, set_resident_voice_mode, set_resident_voice_tts_voice, submit_text])
+        .invoke_handler(tauri::generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config, get_resident_voice_status, start_resident_voice_stream, stop_resident_voice_stream, set_resident_voice_mode, set_resident_voice_tts_voice, submit_text])
         .setup(|app| {
             setup_tray(app)?;
             Ok(())

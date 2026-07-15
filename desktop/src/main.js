@@ -169,14 +169,30 @@ function renderReadiness(readiness) {
   desktopState.renderSystemState(degraded ? "DEGRADED" : "READY", degraded);
 }
 
-async function refreshSessionStatus() {
-  const status = await api.getSessionStatus();
+function renderSessionStatus(status) {
   sessionEl.textContent = status.session_id || "not active";
   if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
   renderConversationDebug(status, voiceDetailEl);
   residentVoice.renderResidentVoiceStatus(status);
   if (desktopState) desktopState.renderTurnStatus(status.state);
   return status;
+}
+
+async function refreshSessionStatus() {
+  return renderSessionStatus(await api.getSessionStatus());
+}
+
+function renderResidentVoiceUnavailable(error) {
+  residentVoice.renderResidentModeStatus({
+    mode: "ptt-only",
+    available: false,
+    vad_configured: false,
+    barge_in_supported: false,
+    barge_in_wired: false,
+    degraded_reasons: [`resident voice status unavailable: ${String(error)}`],
+    stream: { present: false, running: false, subscribers: 0, buffer_chunks: 0, dropped_chunks: 0, last_error: null },
+  });
+  renderResidentTtsVoiceSelector({ tts_voice: "", tts_supported_voices: [], tts_voice_restart_required: false });
 }
 
 async function refreshResidentVoiceStatus() {
@@ -189,16 +205,7 @@ async function refreshResidentVoiceStatus() {
     renderResidentTtsVoiceSelector(status);
     return status;
   } catch (error) {
-    residentVoice.renderResidentModeStatus({
-      mode: "ptt-only",
-      available: false,
-      vad_configured: false,
-      barge_in_supported: false,
-      barge_in_wired: false,
-      degraded_reasons: [`resident voice status unavailable: ${String(error)}`],
-      stream: { present: false, running: false, subscribers: 0, buffer_chunks: 0, dropped_chunks: 0, last_error: null },
-    });
-    renderResidentTtsVoiceSelector({ tts_voice: "", tts_supported_voices: [], tts_voice_restart_required: false });
+    renderResidentVoiceUnavailable(error);
     return null;
   }
 }
@@ -303,34 +310,48 @@ async function setResidentVoiceMode(mode, options = {}) {
   return status;
 }
 
+function renderWakeStatusPayload(status) {
+  renderWakeStatus(status, wakeIndicatorEl);
+  if (wakeToggleEl) {
+    wakeToggleEl.disabled = !status.available;
+    wakeToggleEl.textContent = status.active || status.monitoring ? "Stop" : "Start";
+    wakeToggleEl.setAttribute("aria-pressed", status.active || status.monitoring ? "true" : "false");
+  }
+  return status;
+}
+
+function renderWakeUnavailable(error) {
+  return renderWakeStatusPayload({
+    provider: "unknown",
+    available: false,
+    monitoring: false,
+    active: false,
+    enabled: false,
+    reason: `Wake status unavailable; PTT-only fallback is active. Reason: ${String(error)}`,
+  });
+}
+
 async function refreshWakeStatus() {
   try {
-    const status = await api.getWakeStatus();
-    renderWakeStatus(status, wakeIndicatorEl);
-    if (wakeToggleEl) {
-      wakeToggleEl.disabled = !status.available;
-      wakeToggleEl.textContent = status.active || status.monitoring ? "Stop" : "Start";
-      wakeToggleEl.setAttribute("aria-pressed", status.active || status.monitoring ? "true" : "false");
-    }
-    return status;
+    return renderWakeStatusPayload(await api.getWakeStatus());
   } catch (error) {
-    renderWakeStatus(
-      {
-        provider: "unknown",
-        available: false,
-        monitoring: false,
-        active: false,
-        enabled: false,
-        reason: `Wake status unavailable; PTT-only fallback is active. Reason: ${String(error)}`,
-      },
-      wakeIndicatorEl,
-    );
-    if (wakeToggleEl) {
-      wakeToggleEl.disabled = true;
-      wakeToggleEl.textContent = "Start";
-      wakeToggleEl.setAttribute("aria-pressed", "false");
-    }
+    renderWakeUnavailable(error);
     return null;
+  }
+}
+
+async function refreshDesktopStatus() {
+  try {
+    const snapshot = await api.getDesktopStatus();
+    renderSessionStatus(snapshot.session);
+    residentVoice.renderResidentModeStatus(snapshot.resident_voice);
+    renderResidentTtsVoiceSelector(snapshot.resident_voice);
+    renderWakeStatusPayload(snapshot.wake);
+    return snapshot.session;
+  } catch (error) {
+    renderResidentVoiceUnavailable(error);
+    renderWakeUnavailable(error);
+    throw error;
   }
 }
 
@@ -398,8 +419,7 @@ async function applyStoredPersonalityIfAvailable(profilePayload) {
 
 const polling = createDesktopPolling({
   refreshSessionStatus,
-  refreshResidentVoiceStatus,
-  refreshWakeStatus,
+  refreshDesktopStatus,
 });
 
 const { startAllPolling, stopAllPolling } = polling;

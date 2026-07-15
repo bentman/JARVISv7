@@ -23,8 +23,7 @@ export function statusPollingInterval(isVisible = true) {
 
 export function createDesktopPolling({
   refreshSessionStatus,
-  refreshResidentVoiceStatus,
-  refreshWakeStatus,
+  refreshDesktopStatus,
 }) {
   let pollTimer = null;
   let isPollingRunning = false;
@@ -36,14 +35,12 @@ export function createDesktopPolling({
     if (!isPollingRunning) return;
     pollTimer = null;
     let status = null;
-    try {
-      status = await refreshSessionStatus();
-    } catch {}
     const now = Date.now();
-    if (lastStatusPollAt === 0 || now - lastStatusPollAt >= statusPollingInterval(isVisible())) {
-      lastStatusPollAt = now;
-      await Promise.allSettled([refreshResidentVoiceStatus(), refreshWakeStatus()]);
-    }
+    const refreshFullStatus = lastStatusPollAt === 0 || now - lastStatusPollAt >= statusPollingInterval(isVisible());
+    if (refreshFullStatus) lastStatusPollAt = now;
+    try {
+      status = refreshFullStatus ? await refreshDesktopStatus() : await refreshSessionStatus();
+    } catch {}
     if (!isPollingRunning) return;
     pollTimer = window.setTimeout(pollDesktopStatus, sessionPollingInterval(status, isVisible()));
   }

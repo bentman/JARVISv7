@@ -48,17 +48,17 @@ def close_session(
 @router.get("/session/status", response_model=SessionStatusResponse)
 def session_status(session_service: SessionService = Depends(get_session_service)) -> SessionStatusResponse:
     status = session_service.status()
-    return _session_status_response(status)
+    return build_session_status_response(status)
 
 
 @router.post("/session/ptt", response_model=SessionStatusResponse)
 def invoke_ptt(state: ApiState = Depends(get_api_state)) -> SessionStatusResponse:
     if state.resident_voice is None:
         raise HTTPException(status_code=503, detail="resident voice invocation is unavailable")
-    return _session_status_response(state.resident_voice.ptt())
+    return build_session_status_response(state.resident_voice.ptt())
 
 
-def _session_status_response(status) -> SessionStatusResponse:
+def build_session_status_response(status) -> SessionStatusResponse:
     latest_turn = None
     if status.latest_turn is not None:
         latest_turn = LatestTurnSummary(

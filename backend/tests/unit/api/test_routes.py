@@ -10,6 +10,7 @@ from backend.app.api import app as app_module
 from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
 from backend.app.api.routes import config as config_route
+from backend.app.api.routes import status as status_route
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
@@ -904,6 +905,53 @@ def test_wake_status_uses_readiness_without_starting_monitor() -> None:
         "last_score": None,
         "threshold": None,
     }
+
+
+def test_desktop_status_snapshot_builds_each_underlying_status_once(monkeypatch) -> None:
+    state = _state()
+    state.resident_voice.set_mode("ptt-only")
+    assert state.wake_monitor.start().active is True
+    calls = {"session": 0, "configure_wake": 0, "read_wake": 0, "tts": 0}
+    original_session_status = state.session_service.status
+    original_configure_wake = state.session_service.configure_wake_status
+    original_wake_status = state.session_service.wake_status
+
+    def session_status():
+        calls["session"] += 1
+        return original_session_status()
+
+    def configure_wake_status(*, provider: str, available: bool, reason: str):
+        calls["configure_wake"] += 1
+        return original_configure_wake(provider=provider, available=available, reason=reason)
+
+    def wake_status():
+        calls["read_wake"] += 1
+        return original_wake_status()
+
+    def tts_voice_config(*, active_voice: str | None = None):
+        calls["tts"] += 1
+        return {
+            "model": "test-tts",
+            "voice": active_voice or "test-voice",
+            "supported_voices": ["test-voice"],
+            "restart_required": False,
+        }
+
+    monkeypatch.setattr(state.session_service, "status", session_status)
+    monkeypatch.setattr(state.session_service, "configure_wake_status", configure_wake_status)
+    monkeypatch.setattr(state.session_service, "wake_status", wake_status)
+    monkeypatch.setattr(status_route, "tts_voice_config", tts_voice_config)
+
+    response = TestClient(create_app(state)).get("/status/desktop")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["session"]["session_id"] == "session-test"
+    assert payload["resident_voice"]["mode"] == "ptt-only"
+    assert payload["wake"]["available"] is True
+    assert payload["wake"]["active"] is False
+    assert payload["resident_voice"]["wake_active"] == payload["wake"]["active"]
+    assert calls == {"session": 1, "configure_wake": 1, "read_wake": 0, "tts": 1}
 
 
 def test_wake_monitor_start_stop_and_toggle_endpoints() -> None:

@@ -41,6 +41,7 @@ export function createApiClient(invoke) {
     stopBackend: () => invoke("stop_backend"),
     getReadiness: async () => parseJson(await invoke("get_readiness")),
     getSessionStatus: async () => parseJson(await invoke("get_session_status")),
+    getDesktopStatus: async () => parseJson(await invoke("get_desktop_status")),
     invokeResidentPtt: async () => parseJson(await invoke("invoke_resident_ptt")),
     getWakeStatus: async () => parseJson(await invoke("get_wake_status")),
     getResidentVoiceStatus: async () => parseJson(await invoke("get_resident_voice_status")),

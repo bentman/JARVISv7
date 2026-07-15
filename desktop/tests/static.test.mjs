@@ -33,8 +33,7 @@ const scheduledPolling = [];
 let visibilityHandler = null;
 let now = 1000;
 let sessionRefreshes = 0;
-let residentRefreshes = 0;
-let wakeRefreshes = 0;
+let desktopRefreshes = 0;
 Date.now = () => now;
 globalThis.document = {
   visibilityState: "visible",
@@ -54,27 +53,23 @@ const pollingBehavior = createDesktopPolling({
     sessionRefreshes += 1;
     return { state: "reasoning" };
   },
-  refreshResidentVoiceStatus: async () => {
-    residentRefreshes += 1;
-    return {};
-  },
-  refreshWakeStatus: async () => {
-    wakeRefreshes += 1;
-    return {};
+  refreshDesktopStatus: async () => {
+    desktopRefreshes += 1;
+    return { state: "reasoning" };
   },
 });
 pollingBehavior.startAllPolling();
 await new Promise((resolve) => setImmediate(resolve));
 assert.deepEqual(scheduledPolling.slice(-1).map(({ delay }) => delay), [100], "desktop statuses must share one adaptive poll timer");
-assert.deepEqual([sessionRefreshes, residentRefreshes, wakeRefreshes], [1, 1, 1]);
+assert.deepEqual([sessionRefreshes, desktopRefreshes], [0, 1]);
 now += 100;
 scheduledPolling.at(-1).callback();
 await new Promise((resolve) => setImmediate(resolve));
-assert.deepEqual([sessionRefreshes, residentRefreshes, wakeRefreshes], [2, 1, 1], "fast session ticks must not repeat slow status requests");
+assert.deepEqual([sessionRefreshes, desktopRefreshes], [1, 1], "fast ticks must request session status only");
 now += 3000;
 scheduledPolling.at(-1).callback();
 await new Promise((resolve) => setImmediate(resolve));
-assert.deepEqual([sessionRefreshes, residentRefreshes, wakeRefreshes], [3, 2, 2], "resident and wake status must refresh together when due");
+assert.deepEqual([sessionRefreshes, desktopRefreshes], [1, 2], "slow status ticks must issue only the desktop snapshot request");
 globalThis.document.visibilityState = "hidden";
 visibilityHandler();
 assert.deepEqual(scheduledPolling.slice(-1).map(({ delay }) => delay), [10000]);
@@ -96,11 +91,13 @@ assert.ok(!backend.includes("application/octet-stream"), "desktop voice must not
 assert.ok(!backend.toLowerCase().includes("multipart"), "voice upload must not use multipart");
 assert.ok(!main.toLowerCase().includes("websocket"), "desktop must not use WebSockets");
 assert.ok(backend.includes("/session/status"), "backend bridge must call /session/status");
+assert.ok(backend.includes("/status/desktop"), "backend bridge must call the consolidated desktop status endpoint");
 assert.ok(lib.includes("http_client: Client"), "desktop state must own one shared HTTP client");
 assert.ok(!backend.includes("Client::new()"), "backend requests must reuse the shared HTTP client");
 assert.ok(backend.includes("timeout(Duration::from_millis(700))"), "startup health probes must retain their request timeout");
 assert.ok(lib.includes("get_session_status"), "Tauri command must expose get_session_status");
 assert.ok(apiClient.includes('invoke("get_session_status")'), "desktop API client must invoke get_session_status");
+assert.ok(apiClient.includes('invoke("get_desktop_status")'), "desktop API client must invoke get_desktop_status");
 assert.ok(index.includes("session-turn-count"), "desktop must display session turn count");
 assert.ok(backend.includes("/status/wake"), "backend bridge must call /status/wake");
 assert.ok(backend.includes("/status/resident-voice"), "backend bridge must call /status/resident-voice");
@@ -136,6 +133,9 @@ assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desk
 assert.ok(main.includes("renderBackendDiagnostics"), "desktop must render backend diagnostics");
 assert.ok(main.includes("error.diagnostics"), "startup failures must not collapse only into String(error)");
 assert.ok(desktopPolling.includes("let pollTimer"), "desktop polling helper must own one consolidated timer handle");
+assert.ok(desktopPolling.includes("refreshDesktopStatus"), "slow polling ticks must use the consolidated desktop snapshot");
+assert.ok(!desktopPolling.includes("refreshResidentVoiceStatus"), "polling must not issue a separate resident status request");
+assert.ok(!desktopPolling.includes("refreshWakeStatus"), "polling must not issue a separate wake status request");
 for (const removedTimer of ["sessionPollTimer", "residentVoicePollTimer", "wakePollTimer"]) {
   assert.ok(!desktopPolling.includes(removedTimer), `desktop polling helper must not retain independent ${removedTimer} loops`);
 }

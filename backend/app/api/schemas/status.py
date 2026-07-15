@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from backend.app.api.schemas.session import SessionStatusResponse
+
 
 class WakeStatusResponse(BaseModel):
     provider: str
@@ -59,3 +61,9 @@ class ResidentVoiceStatusResponse(BaseModel):
     tts_supported_voices: list[str] = []
     tts_voice_restart_required: bool = True
     tts_voice_model: str | None = None
+
+
+class DesktopStatusSnapshotResponse(BaseModel):
+    session: SessionStatusResponse
+    resident_voice: ResidentVoiceStatusResponse
+    wake: WakeStatusResponse

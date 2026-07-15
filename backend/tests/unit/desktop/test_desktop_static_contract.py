@@ -118,8 +118,10 @@ def test_desktop_displays_resident_session_status() -> None:
     assert "/session/ptt" in backend_rs
     assert "get_session_status" in lib_rs
     assert "invoke_resident_ptt" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt" in lib_rs
     assert 'invoke("get_session_status")' in api_client
+    assert 'invoke("get_desktop_status")' in api_client
+    assert "/status/desktop" in backend_rs
     assert 'invoke("invoke_resident_ptt")' in api_client
     assert "./api-client.js" in main_js
     assert "./components/resident-voice.js" in main_js
@@ -128,6 +130,9 @@ def test_desktop_displays_resident_session_status() -> None:
     assert "createDesktopPolling({" in main_js
     assert "startAllPolling()" in main_js
     assert "pollDesktopStatus" in desktop_polling
+    assert "refreshDesktopStatus" in desktop_polling
+    assert "refreshResidentVoiceStatus" not in desktop_polling
+    assert "refreshWakeStatus" not in desktop_polling
     assert "let pollTimer" in desktop_polling
     assert "sessionPollTimer" not in desktop_polling
     assert "residentVoice.renderResidentVoiceStatus" in main_js
@@ -158,7 +163,7 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "start_wake_monitor" in lib_rs
     assert "stop_wake_monitor" in lib_rs
     assert "toggle_wake_monitor" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
     assert 'invoke("get_wake_status")' in api_client
     assert 'invoke("start_wake_monitor")' in api_client
     assert 'invoke("stop_wake_monitor")' in api_client
@@ -259,7 +264,7 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert "write_operator_config" in lib_rs
     assert "backend_operator_config" in lib_rs
     assert "backend_write_operator_config" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
+    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
     assert "get_operator_config" in backend_rs
     assert "write_operator_config" in backend_rs
     assert "/config/operator" in backend_rs

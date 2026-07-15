@@ -215,6 +215,10 @@ pub fn get_session_status(client: &Client, base_url: &str) -> Result<String, Str
     get_json(client, base_url, "/session/status")
 }
 
+pub fn get_desktop_status(client: &Client, base_url: &str) -> Result<String, String> {
+    get_json(client, base_url, "/status/desktop")
+}
+
 pub fn invoke_resident_ptt(client: &Client, base_url: &str) -> Result<String, String> {
     let response = client.post(format!("{base_url}/session/ptt")).json(&json!({})).send().map_err(|err| format!("POST /session/ptt failed: {err}"))?;
     let status = response.status();
