@@ -20,7 +20,8 @@ def test_current_host_llm_serve_profile_resolution_uses_real_evidence(
     assert resolution.serve_profile_id.startswith(
         f"{profiler_fixture.profile.os_name}_{profiler_fixture.profile.arch}_"
     )
-    assert resolution.binary_path.name == "llama-server.exe"
+    expected_binary = "llama-server.exe" if profiler_fixture.profile.os_name == "windows" else "llama-server"
+    assert resolution.binary_path.name == expected_binary
     assert resolution.local_model_path.name.endswith(".gguf")
 
     if profiler_fixture.profile.arch == "amd64" and profiler_fixture.profile.gpu_vendor == "nvidia":
