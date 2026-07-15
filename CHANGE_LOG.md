@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-14 21:02
+  - Host class(es): Windows AMD64
+  - Summary: Removed duplicated import block in TurnEngine and replaced temporary None assignments in ApiState initialization with a type-safe staged-construction pattern.
+  - Scope:
+    - `backend/app/conversation/engine.py`
+    - `backend/app/api/app.py`
+    - `backend/tests/unit/api/test_routes.py`
+    - `backend/tests/integration/api/test_headless_client.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py backend/tests/integration/api/test_headless_client.py` PASS (60 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py ci` PASS (734 passed, 1 skipped unit tests; 9 passed integration tests; 155 passed regression tests)
+
 - Timestamp: 2026-07-10 11:49
   - Host class(es): 
     - Windows AMD64 / x64 validated 

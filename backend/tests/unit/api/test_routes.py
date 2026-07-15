@@ -222,6 +222,32 @@ def _state() -> ApiState:
         requires_degraded_mode=False,
     )
     session_manager = _FakeSessionManager()
+    stt = _FakeSTT()
+    tts = _FakeTTS()
+    llm = _FakeLLM()
+    engine = _FakeEngine()
+    cache_manager = CacheManager()
+    session_service = SessionService(
+        session_manager=session_manager,  # type: ignore[arg-type]
+        engine=engine,  # type: ignore[arg-type]
+        engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type]
+    )
+    resident_voice = ResidentVoiceInvocationService(
+        session_service=session_service,
+        engine_provider=lambda: session_service.engine(),
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+    )
+    wake_monitor = WakeMonitorService(
+        session_service=session_service,
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type]
+        chunk_source=_wake_source,
+        invocation_callback=resident_voice.enqueue,
+    )
+    resident_voice.set_invocation_hooks(
+        before_invocation=wake_monitor.pause_for_voice_invocation,
+        after_invocation=wake_monitor.resume_after_voice_invocation,
+    )
+
     state = ApiState(
         report=FullCapabilityReport(profile=profile, flags=flags),
         profile=profile,
@@ -234,35 +260,15 @@ def _state() -> ApiState:
             "wake": ("cpu", True, "wake ready"),
         },
         personality=_personality(),
-        stt=_FakeSTT(),  # type: ignore[arg-type]
-        tts=_FakeTTS(),  # type: ignore[arg-type]
-        llm=_FakeLLM(),  # type: ignore[arg-type]
+        stt=stt,  # type: ignore[arg-type]
+        tts=tts,  # type: ignore[arg-type]
+        llm=llm,  # type: ignore[arg-type]
         session_manager=session_manager,  # type: ignore[arg-type]
-        engine=_FakeEngine(),  # type: ignore[arg-type]
-        session_service=None,  # type: ignore[arg-type]
-        resident_voice=None,  # type: ignore[arg-type]
-        wake_monitor=None,  # type: ignore[arg-type]
-        cache_manager=CacheManager(),
-    )
-    state.session_service = SessionService(
-        session_manager=state.session_manager,  # type: ignore[arg-type]
-        engine=state.engine,
-        engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type]
-    )
-    state.resident_voice = ResidentVoiceInvocationService(
-        session_service=state.session_service,
-        engine_provider=lambda: state.session_service.engine(),
-        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
-    )
-    state.wake_monitor = WakeMonitorService(
-        session_service=state.session_service,
-        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type]
-        chunk_source=_wake_source,
-        invocation_callback=state.resident_voice.enqueue,
-    )
-    state.resident_voice.set_invocation_hooks(
-        before_invocation=state.wake_monitor.pause_for_voice_invocation,
-        after_invocation=state.wake_monitor.resume_after_voice_invocation,
+        engine=engine,  # type: ignore[arg-type]
+        session_service=session_service,
+        wake_monitor=wake_monitor,
+        cache_manager=cache_manager,
+        resident_voice=resident_voice,
     )
     return state
 

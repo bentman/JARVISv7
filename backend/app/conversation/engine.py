@@ -16,15 +16,6 @@ from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.style_guard import apply_personality_style_guard
 from backend.app.cognition.executor import ToolExecutor, ToolResult
-from dataclasses import dataclass, field
-from typing import Any, Iterable
-from uuid import uuid4
-
-from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
-from backend.app.cognition.prompt_renderer import render_flat_prompt
-from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
-from backend.app.cognition.style_guard import apply_personality_style_guard
-from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager

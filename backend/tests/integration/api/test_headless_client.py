@@ -85,6 +85,19 @@ def _client() -> TestClient:
     profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-integration")
     flags = CapabilityFlags(supports_local_stt=True, supports_local_tts=True, supports_wake_word=True)
     runtime = _FakeRuntime()
+    session_manager = _SessionManager()
+    engine = _Engine()
+    session_service = SessionService(
+        session_manager=session_manager,  # type: ignore[arg-type]
+        engine=engine,  # type: ignore[arg-type]
+        engine_factory=lambda manager: _Engine(),  # type: ignore[arg-type]
+    )
+    from backend.app.services.wake_monitor import WakeMonitorService
+    from unittest.mock import MagicMock
+    wake_monitor = WakeMonitorService(
+        session_service=session_service,
+        runtime_factory=lambda: MagicMock(),
+    )
     state = ApiState(
         report=FullCapabilityReport(profile=profile, flags=flags),
         profile=profile,
@@ -124,16 +137,11 @@ def _client() -> TestClient:
         stt=runtime,  # type: ignore[arg-type]
         tts=runtime,  # type: ignore[arg-type]
         llm=runtime,  # type: ignore[arg-type]
-        session_manager=_SessionManager(),  # type: ignore[arg-type]
-        engine=_Engine(),  # type: ignore[arg-type]
-        session_service=None,  # type: ignore[arg-type]
-        wake_monitor=None,  # type: ignore[arg-type]
+        session_manager=session_manager,  # type: ignore[arg-type]
+        engine=engine,  # type: ignore[arg-type]
+        session_service=session_service,
+        wake_monitor=wake_monitor,
         cache_manager=CacheManager(),
-    )
-    state.session_service = SessionService(
-        session_manager=state.session_manager,  # type: ignore[arg-type]
-        engine=state.engine,
-        engine_factory=lambda manager: _Engine(),  # type: ignore[arg-type]
     )
     return TestClient(create_app(state))
 
@@ -207,6 +215,15 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
             session_manager=session_manager,
         )
 
+    engine = build_engine(manager)
+    session_service = SessionService(session_manager=manager, engine=engine, engine_factory=build_engine)
+    from backend.app.services.wake_monitor import WakeMonitorService
+    from unittest.mock import MagicMock
+    wake_monitor = WakeMonitorService(
+        session_service=session_service,
+        runtime_factory=lambda: MagicMock(),
+    )
+
     state = ApiState(
         report=FullCapabilityReport(profile=profile, flags=flags),
         profile=profile,
@@ -242,12 +259,11 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
         tts=runtime,  # type: ignore[arg-type]
         llm=runtime,  # type: ignore[arg-type]
         session_manager=manager,
-        engine=build_engine(manager),
-        session_service=None,  # type: ignore[arg-type]
-        wake_monitor=None,  # type: ignore[arg-type]
+        engine=engine,
+        session_service=session_service,
+        wake_monitor=wake_monitor,
         cache_manager=CacheManager(),
     )
-    state.session_service = SessionService(session_manager=manager, engine=state.engine, engine_factory=build_engine)
     client = TestClient(create_app(state))
     created = client.post("/session/create", json={})
     assert created.status_code == 200

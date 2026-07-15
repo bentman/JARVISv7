@@ -114,6 +114,44 @@ def build_startup_state() -> ApiState:
     session_manager = SessionManager()
     cache_manager = CacheManager()
     semantic_memory = SemanticMemory()
+    resident_audio_stream = ResidentAudioStream()
+    utterance_segmenter = default_utterance_segmenter()
+    engine = TurnEngine(
+        stt=stt,
+        tts=tts,
+        llm=llm,
+        personality=personality,
+        session_manager=session_manager,
+        cache_manager=cache_manager,
+        semantic=semantic_memory,
+        barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
+        interruption_audio_chunks=resident_interruption_chunks(resident_audio_stream),
+    )
+    session_service = SessionService(
+        session_manager=session_manager,
+        engine=engine,
+        engine_factory=lambda manager: bind_session(state, manager),
+        semantic_memory=semantic_memory,
+    )
+    resident_voice = ResidentVoiceInvocationService(
+        session_service=session_service,
+        engine_provider=lambda: session_service.engine(),
+        resident_stream=resident_audio_stream,
+        utterance_segmenter=utterance_segmenter,
+    )
+    wake_monitor = WakeMonitorService(
+        session_service=session_service,
+        runtime_factory=lambda: select_wake_runtime(preflight, profile),
+        invocation_callback=resident_voice.enqueue,
+        resident_stream=resident_audio_stream,
+        utterance_segmenter=utterance_segmenter,
+    )
+    resident_voice.set_invocation_hooks(
+        before_invocation=wake_monitor.pause_for_voice_invocation,
+        after_invocation=wake_monitor.resume_after_voice_invocation,
+    )
+    wake_monitor.warmup()
+
     state = ApiState(
         report=report,
         profile=profile,
@@ -125,42 +163,17 @@ def build_startup_state() -> ApiState:
         tts=tts,
         llm=llm,
         session_manager=session_manager,
-        engine=None,  # type: ignore[arg-type]
-        session_service=None,  # type: ignore[arg-type]
-        resident_voice=None,  # type: ignore[arg-type]
-        wake_monitor=None,  # type: ignore[arg-type]
+        engine=engine,
+        session_service=session_service,
+        wake_monitor=wake_monitor,
         cache_manager=cache_manager,
-        resident_audio_stream=ResidentAudioStream(),
-        utterance_segmenter=default_utterance_segmenter(),
+        resident_audio_stream=resident_audio_stream,
+        utterance_segmenter=utterance_segmenter,
+        resident_voice=resident_voice,
         llm_trace=llm_trace,
         local_llm_sidecar=local_llm.sidecar,
         semantic_memory=semantic_memory,
     )
-    state.engine = build_engine(state, session_manager)
-    state.session_service = SessionService(
-        session_manager=session_manager,
-        engine=state.engine,
-        engine_factory=lambda manager: bind_session(state, manager),
-        semantic_memory=semantic_memory,
-    )
-    state.resident_voice = ResidentVoiceInvocationService(
-        session_service=state.session_service,
-        engine_provider=lambda: state.session_service.engine(),
-        resident_stream=state.resident_audio_stream,
-        utterance_segmenter=state.utterance_segmenter,
-    )
-    state.wake_monitor = WakeMonitorService(
-        session_service=state.session_service,
-        runtime_factory=lambda: select_wake_runtime(state.preflight, state.profile),
-        invocation_callback=state.resident_voice.enqueue,
-        resident_stream=state.resident_audio_stream,
-        utterance_segmenter=state.utterance_segmenter,
-    )
-    state.resident_voice.set_invocation_hooks(
-        before_invocation=state.wake_monitor.pause_for_voice_invocation,
-        after_invocation=state.wake_monitor.resume_after_voice_invocation,
-    )
-    state.wake_monitor.warmup()
     return state
 
 
