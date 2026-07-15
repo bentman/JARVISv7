@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +13,7 @@ from backend.app.memory.write_policy import WritePolicy
 
 
 def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _parse_iso(value: str) -> datetime | None:
@@ -37,7 +37,7 @@ class EpisodicEntry:
         return json.dumps(asdict(self), indent=2, sort_keys=True)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "EpisodicEntry":
+    def from_dict(cls, payload: dict[str, Any]) -> EpisodicEntry:
         return cls(
             turn_id=str(payload.get("turn_id", "")),
             session_id=str(payload.get("session_id", "")),
@@ -121,7 +121,7 @@ class EpisodicMemory:
                     payload = json.loads(file_path.read_text(encoding="utf-8"))
                     entry = EpisodicEntry.from_dict(payload)
                     entries.append(entry)
-            entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+            entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=UTC), reverse=True)
             return entries[:n]
         except Exception:
             return []

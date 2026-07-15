@@ -4,10 +4,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
 from backend.app.models.catalog import get_model_entry
 from backend.app.runtimes.wake.base import WakeBase
-
 
 WAKE_MODEL_KEY = "hey_jarvis_v0.1"
 WAKE_CHUNK_SAMPLES = 1280

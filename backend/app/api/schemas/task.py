@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
-
 from backend.app.api.schemas.tools import ToolCallSummary
+from pydantic import BaseModel
 
 
 class TextTurnRequest(BaseModel):

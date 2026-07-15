@@ -6,8 +6,7 @@ from typing import Any
 from backend.app.personality import schema as schema_module
 from backend.app.personality.schema import PersonalityProfile
 
-
-_FORBIDDEN_OVERRIDE_CATEGORIES = tuple(sorted(schema_module._PROHIBITED_FIELDS))  # noqa: SLF001
+_FORBIDDEN_OVERRIDE_CATEGORIES = tuple(sorted(schema_module._PROHIBITED_FIELDS))
 
 _TRAIT_INSTRUCTIONS: dict[str, dict[str, str]] = {
     "warmth": {

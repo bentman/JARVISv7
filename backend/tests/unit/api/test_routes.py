@@ -11,18 +11,23 @@ from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
 from backend.app.api.routes import config as config_route
 from backend.app.api.routes import status as status_route
+from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import PersonalityProfileError, PersonalityProfileList
-from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 from backend.app.routing.runtime_selector import SelectionTrace
-from backend.app.artifacts.turn_artifact import TurnArtifact
-from backend.app.services.startup_context import StartupContext
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.session_service import SessionService
+from backend.app.services.startup_context import StartupContext
 from backend.app.services.wake_monitor import WakeMonitorService
 from fastapi.testclient import TestClient
 
@@ -1057,7 +1062,7 @@ def test_resident_voice_tts_voice_endpoint_applies_runtime_voice_without_rewriti
     assert accepted.json()["tts_voice"] == "af_bella"
     assert "af_bella" in accepted.json()["tts_supported_voices"]
     assert accepted.json()["tts_voice_restart_required"] is False
-    assert getattr(client.app.state.jarvis_state.tts, "voice") == "af_bella"
+    assert client.app.state.jarvis_state.tts.voice == "af_bella"
     assert rejected.status_code == 400
     assert "unsupported tts voice" in rejected.json()["detail"]
     assert config_path.read_text(encoding="utf-8") == before

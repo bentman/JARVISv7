@@ -1,14 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import threading
 import time
 import wave
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pytest
-
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.states import ConversationState
@@ -32,7 +31,6 @@ from backend.tests.conftest import (
     ollama_base_url,
 )
 from backend.tests.unit.services.test_session_service import _service
-
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
 

@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.cognition.prompt_renderer import render_flat_prompt
-from backend.app.personality.policy import compile_personality_policy, PersonalityPolicy
+from backend.app.personality.policy import PersonalityPolicy, compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
 
 if TYPE_CHECKING:

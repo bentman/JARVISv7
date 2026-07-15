@@ -4,10 +4,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, Field
-
-from backend.app.core.paths import CONFIG_DIR
 from backend.app.agents.specs import DEFAULT_SPECS_DIR, JarvisAgentSpec, load_agent_specs
+from backend.app.core.paths import CONFIG_DIR
+from pydantic import BaseModel, Field
 
 DEFAULT_ROLES_PATH = CONFIG_DIR / "agents" / "roles.yaml"
 

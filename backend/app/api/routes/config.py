@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-
 from backend.app.api.schemas.config import (
     OperatorConfigField,
     OperatorConfigRejectedField,
@@ -13,6 +11,7 @@ from backend.app.api.schemas.config import (
     OperatorConfigWriteResponse,
 )
 from backend.app.core.paths import REPO_ROOT
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
 
@@ -14,7 +14,6 @@ if str(REPO_ROOT) not in sys.path:
 
 from backend.app.artifacts.trace_writer import write_trace
 from backend.app.conversation.engine import TurnEngine, TurnResult
-from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.hardware.preflight import PreflightResult
@@ -22,11 +21,10 @@ from backend.app.personality.loader import load_default_personality
 from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
+from backend.app.services import turn_service, voice_service
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.startup_context import load_startup_context, readiness_summary
-from backend.app.services import turn_service, voice_service
-
 
 TEXT_DIAGNOSTIC_PROMPT = "Briefly confirm JARVIS proving-host text path is operational."
 
@@ -43,7 +41,7 @@ class StartupContext:
 
 
 def _timestamp_slug() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    return datetime.now(UTC).strftime("%Y%m%d%H%M%S")
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:

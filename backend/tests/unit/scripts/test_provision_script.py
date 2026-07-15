@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from backend.app.core.capabilities import HardwareProfile
 from scripts import provision
 

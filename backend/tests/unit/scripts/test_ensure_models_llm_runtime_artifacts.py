@@ -6,7 +6,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.settings import Settings
 from scripts import ensure_models
@@ -450,7 +449,7 @@ def test_runtime_source_metadata_rejects_missing_source_type(tmp_path: Path) -> 
     profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
     profile["runtime_artifact"]["source"] = {}
 
-    with pytest.raises(ValueError, match="source.type"):
+    with pytest.raises(ValueError, match=r"source\.type"):
         ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=True)
 
 

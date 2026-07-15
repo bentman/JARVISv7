@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from fastapi import Request
-
 from backend.app.api.app import ApiState
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
@@ -10,6 +8,7 @@ from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.session_service import SessionService
+from fastapi import Request
 
 
 def get_api_state(request: Request) -> ApiState:

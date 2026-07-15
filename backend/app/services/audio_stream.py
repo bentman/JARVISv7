@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from collections import deque
-from collections.abc import Callable, Iterable
-from dataclasses import dataclass
 import queue
 import threading
 import time
+from collections import deque
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass
 
 import numpy as np
 

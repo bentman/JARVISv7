@@ -4,9 +4,7 @@ from dataclasses import dataclass
 
 import httpx
 import redis
-
 from backend.app.core.settings import Settings, load_settings
-
 
 _READINESS_TIMEOUT_S = 0.5
 

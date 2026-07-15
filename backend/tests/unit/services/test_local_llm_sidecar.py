@@ -4,10 +4,12 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 from backend.app.services import local_llm_sidecar
-from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, build_llama_server_command
+from backend.app.services.local_llm_sidecar import (
+    LocalLLMSidecarService,
+    build_llama_server_command,
+)
 
 
 class _FakeProcess:
@@ -324,7 +326,7 @@ def test_unsupported_launch_keys_are_reported_without_silent_noop(tmp_path: Path
 
 
 def test_invalid_base_url_fails_before_command_is_returned(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="invalid llama.cpp base URL"):
+    with pytest.raises(ValueError, match=r"invalid llama\.cpp base URL"):
         build_llama_server_command(_resolution(tmp_path, base_url="not-a-url"))
 
 

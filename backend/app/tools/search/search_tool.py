@@ -3,7 +3,13 @@ from __future__ import annotations
 import json
 
 from backend.app.core.settings import Settings
-from backend.app.runtimes.internetsearch import DDGSRuntime, SearchBase, SearchResult, SearXNGRuntime, TavilyRuntime
+from backend.app.runtimes.internetsearch import (
+    DDGSRuntime,
+    SearchBase,
+    SearchResult,
+    SearXNGRuntime,
+    TavilyRuntime,
+)
 from backend.app.tools.registry import ToolBase
 
 

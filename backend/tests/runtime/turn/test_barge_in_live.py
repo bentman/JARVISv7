@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
@@ -20,7 +19,10 @@ from backend.app.runtimes.tts import playback as tts_playback
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import ResidentAudioStream
-from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService, resident_interruption_chunks
+from backend.app.services.resident_voice_invocation import (
+    ResidentVoiceInvocationService,
+    resident_interruption_chunks,
+)
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.conftest import SKIP_UNLESS_LIVE
 from backend.tests.unit.services.test_session_service import _service

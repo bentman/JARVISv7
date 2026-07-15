@@ -8,7 +8,6 @@ import numpy as np
 from backend.app.runtimes.vad import VADRuntime
 from backend.app.services.audio_stream import AudioChunk
 
-
 WAKE_COMMAND_SILENCE_END_S = 0.8
 WAKE_COMMAND_TRAILING_PAD_S = 0.12
 

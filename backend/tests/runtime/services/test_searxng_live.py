@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.core.settings import load_settings
 from backend.app.runtimes.internetsearch.searxng_runtime import SearXNGRuntime
 

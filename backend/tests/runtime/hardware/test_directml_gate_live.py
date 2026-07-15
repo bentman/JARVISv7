@@ -4,7 +4,6 @@ from pathlib import Path
 
 import onnxruntime
 import pytest
-
 from backend.app.models.catalog import get_model_entry
 from backend.tests.conftest import SKIP_UNLESS_DIRECTML, SKIP_UNLESS_LIVE
 

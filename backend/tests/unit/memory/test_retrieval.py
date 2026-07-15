@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
-import json
 
-from backend.app.memory.episodic import EpisodicMemory, EpisodicEntry
-from backend.app.memory.semantic import SemanticMemory, text_to_vector
-from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
 from backend.app.artifacts.turn_artifact import TurnArtifact
+from backend.app.memory.episodic import EpisodicMemory
+from backend.app.memory.retrieval import RetrievalManager
+from backend.app.memory.semantic import SemanticMemory
 from backend.app.memory.write_policy import WritePolicy
 
 
@@ -28,15 +26,13 @@ class MockCacheManager:
         return True
 
     def is_available(self) -> bool:
-        if not self.available:
-            return False
-        return True
+        return self.available
 
 
 def test_episodic_only_retrieval(tmp_path: Path):
     episodic_dir = tmp_path / "episodic"
     episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
-    
+
     # Write episodic entries
     policy = WritePolicy()
     artifact_1 = TurnArtifact(
@@ -51,7 +47,7 @@ def test_episodic_only_retrieval(tmp_path: Path):
     episodic.write_entry(artifact_1, policy)
 
     retrieval = RetrievalManager()
-    
+
     # 1. Recency retrieval
     facts_recency = retrieval.retrieve(query=None, n=1, episodic=episodic, semantic=None)
     assert len(facts_recency) == 1
@@ -72,7 +68,7 @@ def test_episodic_only_retrieval(tmp_path: Path):
 def test_semantic_only_retrieval(tmp_path: Path):
     db_path = tmp_path / "memory.sqlite"
     semantic = SemanticMemory(db_path)
-    
+
     # Write semantic entry
     semantic.write_fact(
         text="The capital of Spain is Madrid.",
@@ -104,12 +100,12 @@ def test_semantic_only_retrieval(tmp_path: Path):
 def test_hybrid_retrieval_and_rrf_rank_merge(tmp_path: Path):
     episodic_dir = tmp_path / "episodic"
     episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
-    
+
     db_path = tmp_path / "memory.sqlite"
     semantic = SemanticMemory(db_path)
 
     policy = WritePolicy()
-    
+
     # Write same concept to episodic and semantic with slightly different wording to test RRF ranking
     # Episodic match
     artifact = TurnArtifact(
@@ -128,7 +124,7 @@ def test_hybrid_retrieval_and_rrf_rank_merge(tmp_path: Path):
     semantic.write_fact("Unrelated semantic fact.", source_session_id="s-1", source_turn_id="t-2")
 
     retrieval = RetrievalManager()
-    
+
     # Retrieve top 2 facts for query "London"
     facts = retrieval.retrieve(query="London", n=2, episodic=episodic, semantic=semantic)
 
@@ -143,7 +139,7 @@ def test_hybrid_retrieval_and_rrf_rank_merge(tmp_path: Path):
 def test_deduplication_between_sources(tmp_path: Path):
     episodic_dir = tmp_path / "episodic"
     episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
-    
+
     db_path = tmp_path / "memory.sqlite"
     semantic = SemanticMemory(db_path)
 
@@ -195,14 +191,14 @@ def test_cache_miss_hit_and_corruption(tmp_path: Path):
     facts_1 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
     assert len(facts_1) == 1
     assert len(cache.store) == 1  # Should have 1 cache key written
-    
+
     # 2. Second retrieve: Cache hit
     facts_2 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
     assert len(facts_2) == 1
     assert facts_2[0].content == "Cache test response."
 
     # 3. Corrupt the cache value
-    cache_key = list(cache.store.keys())[0]
+    cache_key = next(iter(cache.store.keys()))
     cache.store[cache_key] = "{invalid json string}"
 
     # 4. Third retrieve: Cache corruption fallback to database

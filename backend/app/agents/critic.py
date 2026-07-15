@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
 from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
 from backend.app.agents.policy import AgentPolicy
+from pydantic import BaseModel, Field
 
 
 class AgentCriticReview(BaseModel):

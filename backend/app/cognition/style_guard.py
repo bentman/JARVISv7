@@ -5,7 +5,6 @@ from typing import Literal
 
 from backend.app.personality.policy import PersonalityPolicy
 
-
 Modality = Literal["text", "voice"]
 
 _GENERIC_ACK_RE = re.compile(r"^(?:sure|okay|ok|certainly|absolutely)[,.!\s]+", re.IGNORECASE)
@@ -22,6 +21,4 @@ def _prefers_trimmed_acknowledgment(policy: PersonalityPolicy, modality: Modalit
     text = policy.system_text.lower()
     if "no intro" in text or "do not add reassurance" in text:
         return True
-    if modality == "voice" and policy.max_words_default <= 80:
-        return True
-    return False
+    return bool(modality == "voice" and policy.max_words_default <= 80)

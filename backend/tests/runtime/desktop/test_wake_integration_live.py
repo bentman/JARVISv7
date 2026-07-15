@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-
+from backend.app.conversation.engine import TurnEngine, TurnResult
 from backend.app.conversation.session_manager import SessionManager
+from backend.app.conversation.states import ConversationState
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.session_service import SessionService
-from backend.app.conversation.engine import TurnEngine, TurnResult
-from backend.app.conversation.states import ConversationState
 from backend.tests.conftest import SKIP_UNLESS_LIVE
 
 

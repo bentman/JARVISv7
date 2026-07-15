@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from backend.app.services.wake_status import WakeStatusStore
 
 

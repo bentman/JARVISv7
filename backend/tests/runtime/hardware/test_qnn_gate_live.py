@@ -4,7 +4,6 @@ from pathlib import Path
 
 import onnxruntime
 import pytest
-
 from backend.app.hardware.qnn_provider import create_qnn_session, get_qnn_provider_options
 from backend.app.models.catalog import ModelEntry, get_model_entry
 from backend.tests.conftest import SKIP_UNLESS_ARM64, SKIP_UNLESS_LIVE, SKIP_UNLESS_QNN

@@ -4,7 +4,7 @@ import argparse
 import importlib.metadata
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -12,15 +12,14 @@ REPO_ROOT = SCRIPT_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
-from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.provisioning import (
     explain_required_extras,
     resolve_required_extras,
     resolve_required_requirement_names,
 )
-
 
 REQUIREMENTS_PATH = APP_REPO_ROOT / "backend" / "requirements.txt"
 
@@ -32,7 +31,7 @@ def _load_profiler():
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _read_base_requirements() -> list[str]:

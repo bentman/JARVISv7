@@ -6,10 +6,9 @@ from pathlib import Path
 from typing import Any, Literal
 from uuid import uuid4
 
-from pydantic import BaseModel, Field
-
 from backend.app.conversation.turn_manager import utc_now
 from backend.app.core.paths import DATA_DIR
+from pydantic import BaseModel, Field
 
 DEFAULT_LEDGER_PATH = DATA_DIR / "agents" / "agent_ledger.sqlite3"
 AgentRecordType = Literal[

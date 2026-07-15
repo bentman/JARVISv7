@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from backend.app.api.app import ApiState, bind_session
 from backend.app.api.dependencies import get_api_state
+from backend.app.api.routes.session import build_session_status_response
 from backend.app.api.schemas.status import (
     DesktopStatusSnapshotResponse,
     ResidentVoiceModeRequest,
@@ -10,7 +11,6 @@ from backend.app.api.schemas.status import (
     ResidentVoiceTTSVoiceRequest,
     WakeStatusResponse,
 )
-from backend.app.api.routes.session import build_session_status_response
 from backend.app.runtimes.tts.tts_runtime import tts_voice_config, validate_tts_voice
 from backend.app.services.wake_status import WakeMonitorStatus
 from fastapi import APIRouter, Depends, HTTPException
@@ -215,7 +215,7 @@ def _apply_tts_voice(state: ApiState, voice: str) -> None:
         if runtime is None or id(runtime) in seen:
             continue
         seen.add(id(runtime))
-        setattr(runtime, "voice", voice)
+        runtime.voice = voice
 
 
 def _tts_voice_response(state: ApiState) -> dict[str, object]:

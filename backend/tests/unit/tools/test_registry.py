@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.tools.registry import ToolBase, ToolNotFoundError, ToolRegistry
 
 

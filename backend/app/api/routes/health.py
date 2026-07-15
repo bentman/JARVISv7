@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-
 from backend.app.api.schemas.common import HealthResponse
+from fastapi import APIRouter
 
 router = APIRouter()
 

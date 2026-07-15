@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 import httpx
-
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
-from backend.app.models.llm_selection import select_llm_model
 from backend.app.models.llm_profiles import LLMServeProfileResolution, resolve_llm_serve_profile
+from backend.app.models.llm_selection import select_llm_model
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, LocalLLMSidecarStatus
 

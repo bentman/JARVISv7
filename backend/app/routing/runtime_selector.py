@@ -4,10 +4,16 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.app.core.capabilities import HardwareProfile
-from backend.app.hardware.preflight import PreflightResult
 from backend.app.core.settings import Settings
+from backend.app.hardware.preflight import PreflightResult
+from backend.app.runtimes.internetsearch import (
+    DDGSRuntime,
+    NullSearchRuntime,
+    SearchBase,
+    SearXNGRuntime,
+    TavilyRuntime,
+)
 from backend.app.runtimes.llm.base import LLMBase
-from backend.app.runtimes.internetsearch import DDGSRuntime, NullSearchRuntime, SearchBase, SearXNGRuntime, TavilyRuntime
 from backend.app.runtimes.llm.claude_runtime import ClaudeLLM
 from backend.app.runtimes.llm.gemini_runtime import GeminiLLM
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM

@@ -4,10 +4,8 @@ from pathlib import Path
 
 import httpx
 import yaml
-
 from backend.app.api.service_status import _probe_searxng
 from backend.app.core.settings import Settings
-
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 

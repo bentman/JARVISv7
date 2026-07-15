@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 from backend.app.core.capabilities import HardwareProfile
-
 
 _REQUIREMENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]+")
 

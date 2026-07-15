@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 import numpy as np
-
 from backend.app.runtimes.wake.base import WakeBase
 
 

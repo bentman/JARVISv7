@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from ddgs import DDGS
-
 from backend.app.core.settings import Settings
 from backend.app.runtimes.internetsearch.base import SearchBase, SearchResult
+from ddgs import DDGS
 
 
 class DDGSRuntime(SearchBase):

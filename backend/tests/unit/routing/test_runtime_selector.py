@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
-from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.routing.runtime_selector import NullLLMRuntime, select_llm
+from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 
 
 class _AvailableOllama(OllamaLLM):

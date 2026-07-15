@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from backend.app.core.capabilities import HardwareProfile
-from backend.app.models.catalog import get_model_path
 from backend.app.hardware.preflight import PreflightResult
 
 

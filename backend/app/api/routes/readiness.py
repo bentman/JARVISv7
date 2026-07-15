@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import re
 
-from fastapi import APIRouter, Depends
-
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state
+from backend.app.api.routes.status import build_resident_voice_status
 from backend.app.api.schemas.readiness import (
     FamilyReadiness,
     PreflightSummary,
@@ -14,8 +13,8 @@ from backend.app.api.schemas.readiness import (
     ServiceReadiness,
 )
 from backend.app.api.service_status import collect_service_statuses
-from backend.app.api.routes.status import build_resident_voice_status
 from backend.app.routing.runtime_selector import SelectionTrace
+from fastapi import APIRouter, Depends
 
 router = APIRouter()
 

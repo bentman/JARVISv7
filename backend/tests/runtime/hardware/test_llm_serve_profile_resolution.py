@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.core.paths import REPO_ROOT
 from backend.app.models.llm_profiles import resolve_llm_serve_profile
 

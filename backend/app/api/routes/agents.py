@@ -1,16 +1,15 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-
 from backend.app.agents.ledger import AgentLedger
+from backend.app.agents.policy import load_agent_policy
 from backend.app.agents.specs import load_agent_specs
 from backend.app.api.schemas.agents import (
     AgentSpecStatusResponse,
+    AgentsStatusResponse,
     AgentTraceRecordResponse,
     AgentTraceResponse,
-    AgentsStatusResponse,
 )
-from backend.app.agents.policy import load_agent_policy
+from fastapi import APIRouter
 
 router = APIRouter()
 

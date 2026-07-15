@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import wave
 from dataclasses import dataclass
 from pathlib import Path
-import wave
 
 import numpy as np
 import pytest
-
 from backend.app.artifacts.storage import read_turn_artifact
 from backend.app.conversation.engine import TurnEngine, TurnResult
 from backend.app.conversation.session_manager import SessionManager
@@ -19,7 +18,6 @@ from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.base import STTBase
-from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime
 from backend.tests.conftest import (
     LLAMA_CPP_READY_PROMPT,
@@ -28,7 +26,6 @@ from backend.tests.conftest import (
     assert_llama_cpp_ready_contract,
     ollama_base_url,
 )
-
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
 
@@ -102,13 +99,12 @@ def _engine(tmp_path: Path, preflight, profile) -> tuple[TurnEngine, SessionMana
         turns_base_dir=tmp_path / "turns",
         sessions_base_dir=tmp_path / "sessions",
     )
-    from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
     from backend.app.personality.schema import (
         PersonalityExample,
-        PersonalityProfile,
         PersonalityStyle,
         PersonalityTraits,
     )
+    from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
     stt = select_stt_runtime(preflight, profile)
     engine = TurnEngine(
         stt=stt,

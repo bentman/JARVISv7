@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
-from backend.tests.conftest import LLAMA_CPP_READY_PROMPT, SKIP_UNLESS_LIVE, SKIP_UNLESS_OLLAMA, ollama_base_url
+from backend.tests.conftest import (
+    LLAMA_CPP_READY_PROMPT,
+    SKIP_UNLESS_LIVE,
+    SKIP_UNLESS_OLLAMA,
+    ollama_base_url,
+)
 
 
 @pytest.mark.live

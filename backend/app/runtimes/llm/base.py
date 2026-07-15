@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 import os
+from abc import ABC, abstractmethod
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt

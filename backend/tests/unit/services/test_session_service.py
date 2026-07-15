@@ -3,12 +3,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
-from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 from backend.app.services.session_service import SessionService
 
 

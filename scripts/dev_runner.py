@@ -8,10 +8,9 @@ import shutil
 import subprocess
 import sys
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TextIO
-
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
@@ -110,7 +109,7 @@ class Trace:
         self.path: Path | None = None
         self.lines: list[str] = []
         if trace_to is not None:
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            stamp = datetime.now(UTC).strftime("%Y%m%d%H%M%S")
             self.path = trace_to / f"{stamp}-dev-runner.txt"
 
     def add(self, line: str) -> None:
@@ -173,8 +172,7 @@ def _run_command(args: list[str] | str, *, env: dict[str, str] | None = None, sh
             shell=shell,
             check=False,
             text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
         )
     except FileNotFoundError as exc:
         return CommandResult(args=args, returncode=1, stdout="", stderr=str(exc))

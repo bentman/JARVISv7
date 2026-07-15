@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
-from backend.tests.conftest import LLAMA_CPP_READY_PROMPT, SKIP_UNLESS_LIVE, assert_llama_cpp_ready_contract
+from backend.tests.conftest import (
+    LLAMA_CPP_READY_PROMPT,
+    SKIP_UNLESS_LIVE,
+    assert_llama_cpp_ready_contract,
+)
 
 
 def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:

@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import yaml
-from pydantic import BaseModel, Field
-
 from backend.app.core.paths import CONFIG_DIR
+from pydantic import BaseModel, Field
 
 DEFAULT_POLICY_PATH = CONFIG_DIR / "app" / "policies.yaml"
 

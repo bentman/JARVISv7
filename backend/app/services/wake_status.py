@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Iterable, Protocol
+from datetime import UTC, datetime
+from typing import Protocol
 
 import numpy as np
 
@@ -113,7 +114,7 @@ class WakeStatusStore:
             active=self._status.active,
             enabled=self._status.enabled,
             monitoring=self._status.monitoring,
-            last_detected=datetime.now(timezone.utc).isoformat(),
+            last_detected=datetime.now(UTC).isoformat(),
             detection_count=self._status.detection_count + 1,
             last_error=None,
             last_score=last_score if last_score is not None else self._status.last_score,

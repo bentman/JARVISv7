@@ -2,7 +2,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from backend.app.agents.creator import AgentSpecSeed, create_agent_spec, create_projectvision_agent_specs
+from backend.app.agents.creator import (
+    AgentSpecSeed,
+    create_agent_spec,
+    create_projectvision_agent_specs,
+)
 from backend.app.agents.ledger import AgentLedger
 from backend.app.agents.specs import load_agent_specs
 

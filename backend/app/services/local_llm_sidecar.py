@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+import contextlib
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 from urllib.parse import urlparse
 
 import httpx
 import psutil
-
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 
 _ORIGINAL_GET = httpx.get
@@ -253,20 +254,15 @@ class LocalLLMSidecarService:
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=self._stop_timeout_seconds)
-        if process is not None:
-            binary_path = self._last_binary_path()
-        else:
-            binary_path = None
+        binary_path = self._last_binary_path() if process is not None else None
         if binary_path is not None:
             self._process_reaper(binary_path, self._stop_timeout_seconds)
 
         # Port reclamation on stop
         port = None
         if self._last_resolution is not None:
-            try:
+            with contextlib.suppress(Exception):
                 _, port = _host_port(self._last_resolution.base_url)
-            except Exception:
-                pass
         if port is not None:
             binary_path = self._last_binary_path()
             binary_name = binary_path.name if binary_path else "llama-server"
@@ -382,7 +378,7 @@ def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -
                             mid = item["id"]
                             if isinstance(mid, str):
                                 model_ids.append(mid)
-                    
+
                     matched = False
                     for mid in model_ids:
                         if mid == target_model_id:
@@ -484,7 +480,7 @@ def build_llama_server_command(resolution: LLMServeProfileResolution) -> LocalLL
 def _default_process_factory(argv: list[str]) -> SidecarProcess:
     binary_path = Path(argv[0])
     cwd = binary_path.parent if binary_path.parent.is_dir() else None
-    return subprocess.Popen(argv, cwd=cwd)  # noqa: S603
+    return subprocess.Popen(argv, cwd=cwd)
 
 
 def _reap_processes_for_binary(binary_path: Path, timeout_seconds: float) -> None:

@@ -1,8 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from backend.app.artifacts.storage import read_session_artifact, read_session_timeline, read_turn_artifact
+from backend.app.artifacts.storage import (
+    read_session_artifact,
+    read_session_timeline,
+    read_turn_artifact,
+)
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -111,7 +115,7 @@ def test_build_continuity_packet_uses_recent_turn_and_working_memory(tmp_path):
 
 
 def test_build_continuity_packet_excludes_stale_same_session_context(tmp_path):
-    now = datetime(2026, 6, 14, 12, 0, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 14, 12, 0, tzinfo=UTC)
     manager = SessionManager(
         session_id="session-1",
         turns_base_dir=tmp_path / "turns",

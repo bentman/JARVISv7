@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings
 from backend.app.hardware.preflight import PreflightResult
@@ -284,7 +283,7 @@ def test_resolve_windows_arm64_cpu_profile_first(tmp_path: Path) -> None:
 
     assert resolution.serve_profile_id == "windows_arm64_cpu"
     assert resolution.accelerator == "cpu"
-    assert "selected current-host CPU serve profile windows_arm64_cpu" == resolution.selected_reason
+    assert resolution.selected_reason == "selected current-host CPU serve profile windows_arm64_cpu"
     assert resolution.degraded_reasons == [
         "Degraded-no-local-model-artifact",
         "Degraded-no-sidecar-binary",

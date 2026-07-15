@@ -251,6 +251,9 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "backend/tests/**/*.py" = ["N802", "N803", "N806"]  # test naming flexibility
+"scripts/*.py" = ["E402"]  # scripts bootstrap sys.path before repo imports
+# warmup/reset are intentional optional no-op hooks, not required overrides
+"backend/app/runtimes/*/base.py" = ["B027"]
 
 # ---------------------------------------------------------------------------
 # Mypy

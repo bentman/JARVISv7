@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
@@ -96,10 +97,8 @@ class WakeMonitorService:
             if not available:
                 return self._session_service.record_wake_unavailable()
             if hasattr(runtime, "reset"):
-                try:
+                with contextlib.suppress(Exception):
                     runtime.reset()
-                except Exception:
-                    pass
             self._stop_event.clear()
             self._runtime = runtime
             self._session_service.start_wake_monitor(provider=self._provider, available=True, reason="wake monitoring active")

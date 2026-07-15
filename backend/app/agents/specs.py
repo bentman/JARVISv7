@@ -5,9 +5,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, Field, field_validator
-
 from backend.app.core.paths import CONFIG_DIR, REPO_ROOT
+from pydantic import BaseModel, Field, field_validator
 
 DEFAULT_SPECS_DIR = CONFIG_DIR / "agents" / "specs"
 AGENT_PROMPTS_DIR = CONFIG_DIR / "prompts" / "agents"

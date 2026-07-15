@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 STT_DEVICES = {"cpu", "cuda", "directml", "qnn"}
 
 

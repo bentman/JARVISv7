@@ -6,14 +6,16 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.wake.base import WakeBase
-from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES, WAKE_MODEL_KEY
+from backend.app.runtimes.wake.openwakeword_runtime import (
+    WAKE_CHUNK_SAMPLES,
+    WAKE_MODEL_KEY,
+    OpenWakeWordRuntime,
+)
 from backend.app.runtimes.wake.porcupine_runtime import PorcupineRuntime
 from backend.app.runtimes.wake.wake_runtime import NullWakeRuntime, select_wake_runtime
-
 
 FIXTURE_DIR = Path(__file__).resolve().parents[3] / "fixtures"
 

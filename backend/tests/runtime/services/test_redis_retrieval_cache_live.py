@@ -4,7 +4,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-
 from backend.app.cache.keys import NS_RETRIEVAL
 from backend.app.cache.manager import CacheManager
 from backend.app.memory.episodic import EpisodicMemory

@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import queue
+import threading
 import time
 from typing import Any
-import threading
 
 import numpy as np
-
 
 _sounddevice: Any | None = None
 _sounddevice_error: Exception | None = None
@@ -67,7 +66,7 @@ def last_output_device() -> str | None:
 def describe_output_device(sounddevice: Any | None = None) -> str:
     sd = sounddevice or _load_sounddevice()
     try:
-        default_device = getattr(sd, "default").device
+        default_device = sd.default.device
         output_index = default_device[1] if isinstance(default_device, (list, tuple)) else default_device
         if output_index is None or output_index == -1:
             return "sounddevice default output"
@@ -139,11 +138,11 @@ class IterablePlayer:
                     self._current_idx = 0
                 except Exception:
                     break
-            
+
             chunk_left = len(self._current_chunk) - self._current_idx
             frames_needed = frames - filled
             to_write = min(chunk_left, frames_needed)
-            
+
             outdata[filled:filled+to_write, 0] = self._current_chunk[self._current_idx : self._current_idx+to_write]
             self._current_idx += to_write
             filled += to_write

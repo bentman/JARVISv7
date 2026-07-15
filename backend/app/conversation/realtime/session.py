@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import replace
-import time
 from typing import Protocol
 
 import numpy as np
@@ -152,11 +152,11 @@ class RealtimeConversationSession:
     def _run_engine_with_live_status(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
         engine = self._engine_provider()
         previous_observer = getattr(engine, "phase_observer", None)
-        setattr(engine, "phase_observer", self._observe_live_phase)
+        engine.phase_observer = self._observe_live_phase
         try:
             return engine.run_voice_turn(audio, sample_rate)
         finally:
-            setattr(engine, "phase_observer", previous_observer)
+            engine.phase_observer = previous_observer
 
     def _observe_live_phase(self, state: ConversationState) -> None:
         if state in LIVE_STATUS_PHASES:

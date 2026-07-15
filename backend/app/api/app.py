@@ -3,38 +3,34 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 
-
-from fastapi import FastAPI
 import yaml
-
-
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
-from backend.app.memory.semantic import SemanticMemory
 from backend.app.core.paths import CONFIG_DIR
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.memory.semantic import SemanticMemory
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.llm.base import LLMBase
-from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
+from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
-from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
-from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
+from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
-from backend.app.services.session_service import SessionService
-from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.resident_voice_invocation import (
     ResidentVoiceInvocationService,
     default_utterance_segmenter,
     resident_interruption_chunks,
 )
+from backend.app.services.session_service import SessionService
 from backend.app.services.startup_context import ReadinessMap, load_startup_context
 from backend.app.services.utterance_segmenter import (
     WAKE_COMMAND_SILENCE_END_S,
@@ -42,7 +38,7 @@ from backend.app.services.utterance_segmenter import (
     UtteranceSegmenter,
 )
 from backend.app.services.wake_monitor import WakeMonitorService
-
+from fastapi import FastAPI
 
 DEFAULT_POLICY_PATH = CONFIG_DIR / "app" / "policies.yaml"
 
@@ -214,7 +210,17 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
-    from backend.app.api.routes import agents, config, diagnostics, health, personality, readiness, session, status, task
+    from backend.app.api.routes import (
+        agents,
+        config,
+        diagnostics,
+        health,
+        personality,
+        readiness,
+        session,
+        status,
+        task,
+    )
 
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1", lifespan=lifespan)
     install_state(app, startup_state or build_startup_state())

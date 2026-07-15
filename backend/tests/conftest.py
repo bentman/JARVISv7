@@ -10,13 +10,12 @@ from types import SimpleNamespace
 import httpx
 import psutil
 import pytest
-
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult, run_preflight
 from backend.app.hardware.provisioning import resolve_required_extras
-from backend.app.models.llm_selection import select_llm_model
 from backend.app.models.llm_profiles import resolve_llm_serve_profile
+from backend.app.models.llm_selection import select_llm_model
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 
@@ -119,7 +118,7 @@ if not _llama_cpp_avail and not _ollama_run:
     warnings.warn(
         "Neither llama-server (local llama.cpp sidecar) nor local Ollama service is running/available. "
         "Live LLM and continuity tests will be skipped.",
-        UserWarning,
+        UserWarning, stacklevel=2,
     )
 
 

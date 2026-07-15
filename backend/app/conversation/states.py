@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 
-class ConversationState(str, Enum):
+class ConversationState(StrEnum):
     BOOTSTRAP = "BOOTSTRAP"
     PROFILING = "PROFILING"
     IDLE = "IDLE"

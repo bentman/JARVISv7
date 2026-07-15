@@ -1,30 +1,30 @@
 from __future__ import annotations
 
+import contextlib
 import re
+import threading
 import time
 import wave
-import threading
-import queue
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 from uuid import uuid4
 
 import numpy as np
-
+from backend.app.artifacts.turn_artifact import TurnArtifact
+from backend.app.cache.manager import CacheManager
+from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.style_guard import apply_personality_style_guard
-from backend.app.cognition.executor import ToolExecutor, ToolResult
-from backend.app.cache.manager import CacheManager
-from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import PhaseObserver, TurnContext
-from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
-from backend.app.memory.semantic import SemanticMemory
 from backend.app.memory.retrieval import RetrievalManager, RetrievedFact
+from backend.app.memory.semantic import SemanticMemory
+from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.base import LLMBase
@@ -127,10 +127,8 @@ class TurnEngine:
             try:
                 transcript = self.stt.transcribe(samples, sample_rate)
             except Exception:
-                try:
+                with contextlib.suppress(Exception):
                     raw_audio_path = self._persist_voice_audio(context, samples, sample_rate)
-                except Exception:
-                    pass
                 raise
             finally:
                 phase_durations_ms["stt_ms"] = _elapsed_ms(stt_started_at)
@@ -481,7 +479,7 @@ class TurnEngine:
 
             def synthesis_worker() -> None:
                 try:
-                    for chunk, rate in self.tts.synthesize_stream(text_to_synthesize):
+                    for chunk, _rate in self.tts.synthesize_stream(text_to_synthesize):
                         if stop_event.is_set():
                             break
                         player.put(chunk)
@@ -540,10 +538,8 @@ class TurnEngine:
             if thread is not None:
                 thread.join(timeout=0.5)
             if player is not None:
-                try:
+                with contextlib.suppress(Exception):
                     player.stop()
-                except Exception:
-                    pass
             f_phase = "playback"
             if error_container and exc is error_container[0]:
                 f_phase = "tts"
@@ -563,7 +559,7 @@ class TurnEngine:
             if thread is not None:
                 thread.join(timeout=0.5)
 
-        full_audio = np.concatenate(chunks_collected) if chunks_collected else np.array([], dtype=np.float32)
+        np.concatenate(chunks_collected) if chunks_collected else np.array([], dtype=np.float32)
 
         if voice_turn_started_at is not None:
             phase_durations_ms["tts_synth_ms"] = _elapsed_ms(tts_started_at)
@@ -765,10 +761,8 @@ class TurnEngine:
         )
         self.session_manager.record_turn_artifact(artifact)
         if self.episodic is not None:
-            try:
+            with contextlib.suppress(Exception):
                 self.episodic.write_entry(artifact, self.write_policy)
-            except Exception:
-                pass
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
 

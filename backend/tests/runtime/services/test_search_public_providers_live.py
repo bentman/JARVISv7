@@ -3,7 +3,6 @@ from __future__ import annotations
 import os
 
 import pytest
-
 from backend.app.core.settings import load_settings
 from backend.app.runtimes.internetsearch.ddgs_runtime import DDGSRuntime
 from backend.app.runtimes.internetsearch.tavily_runtime import TavilyRuntime

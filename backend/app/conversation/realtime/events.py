@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from typing import Any
 
 from backend.app.conversation.states import ConversationState
 
 
-class RealtimeEventType(str, Enum):
+class RealtimeEventType(StrEnum):
     SESSION_ACTIVE = "SESSION_ACTIVE"
     INVOCATION_RECEIVED = "INVOCATION_RECEIVED"
     AUDIO_CAPTURE_STARTED = "AUDIO_CAPTURE_STARTED"
@@ -57,7 +57,7 @@ class RealtimeEvent:
             session_id=session_id,
             event_type=event_type,
             sequence=sequence,
-            timestamp=timestamp or datetime.now(timezone.utc).isoformat(),
+            timestamp=timestamp or datetime.now(UTC).isoformat(),
             source=source,
             turn_id=turn_id,
             state=state_value,

@@ -1,17 +1,21 @@
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from types import SimpleNamespace
-import time
+from typing import ClassVar
 
 import numpy as np
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.tts.kokoro_onnx_runtime import KOKORO_SAMPLE_RATE, KokoroOnnxRuntime
 from backend.app.runtimes.tts.playback import describe_output_device, is_playing, stop
-from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime, select_tts_runtime, validate_tts_voice
+from backend.app.runtimes.tts.tts_runtime import (
+    NullTTSRuntime,
+    select_tts_runtime,
+    validate_tts_voice,
+)
 
 
 def test_selector_returns_cpu_runtime_when_readiness_says_cpu():
@@ -266,7 +270,7 @@ def test_playback_records_default_output_device(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
     class Default:
-        device = [2, 7]
+        device: ClassVar[list[int]] = [2, 7]
 
     calls = []
     fake_sounddevice = SimpleNamespace(
@@ -289,7 +293,7 @@ def test_playback_wait_is_bounded_when_sounddevice_wait_blocks(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
     class Default:
-        device = [2, 7]
+        device: ClassVar[list[int]] = [2, 7]
 
     calls: list[str] = []
 
@@ -318,7 +322,7 @@ def test_playback_wait_error_is_propagated(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
     class Default:
-        device = [2, 7]
+        device: ClassVar[list[int]] = [2, 7]
 
     fake_sounddevice = SimpleNamespace(
         default=Default(),

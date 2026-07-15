@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
 from backend.app.agents.curator import CuratedArtifactCandidate
 from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
+from pydantic import BaseModel, Field
 
 
 class LearnerProposal(BaseModel):

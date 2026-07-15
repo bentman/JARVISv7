@@ -1,21 +1,21 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import sqlite3
 import uuid
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
-
 from backend.app.core.paths import DATA_DIR
 
 
 def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _normalize_text(text: str) -> str:
@@ -208,13 +208,11 @@ class SemanticMemory:
                 )
                 rowid = cursor.lastrowid
                 if self.supports_fts and rowid is not None:
-                    try:
+                    with contextlib.suppress(Exception):
                         conn.execute(
                             "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
                             (rowid, entry.text),
                         )
-                    except Exception:
-                        pass
                 return entry.fact_id
         except Exception:
             return None

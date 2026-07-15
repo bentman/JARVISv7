@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import sqlite3
-import numpy as np
-import pytest
 from pathlib import Path
 
-from backend.app.memory.semantic import SemanticEntry, SemanticMemory, _get_text_hash
+import numpy as np
+import pytest
+from backend.app.memory.semantic import SemanticMemory, _get_text_hash
 
 
 def test_init_db(tmp_path: Path):
@@ -216,7 +216,7 @@ def test_auto_vectorization_on_write(tmp_path: Path):
     assert entry is not None
     assert entry.vectorizer_id == "local_hashing_trick_v1_128"
     assert entry.vector_dim == 128
-    
+
     # Retrieve using query string
     from backend.app.memory.semantic import text_to_vector
     q_vec = text_to_vector("Auto vectorized test fact")

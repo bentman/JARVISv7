@@ -4,14 +4,13 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
-
-from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
+from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.models.catalog import get_model_entry
 from backend.app.personality.loader import load_personality_profile
+from backend.app.routing.runtime_selector import NullLLMRuntime
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
-from backend.app.routing.runtime_selector import NullLLMRuntime
 
 
 def test_local_runtime_is_available_returns_false():
@@ -413,7 +412,7 @@ def test_local_runtime_generate_fails_on_timeout_or_connection_failure(monkeypat
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("timeout")),
     )
 
-    with pytest.raises(RuntimeError, match="llama.cpp chat completion failed"):
+    with pytest.raises(RuntimeError, match=r"llama\.cpp chat completion failed"):
         LlamaCppLLM(base_url="http://test").generate("hello")
 
 

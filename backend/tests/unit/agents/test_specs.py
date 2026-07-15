@@ -3,9 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from pydantic import ValidationError
-
 from backend.app.agents.specs import JarvisAgentSpec, load_agent_specs, spec_ids, write_agent_spec
+from pydantic import ValidationError
 
 
 def _spec(spec_id: str = "research_agent") -> JarvisAgentSpec:

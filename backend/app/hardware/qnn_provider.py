@@ -245,8 +245,8 @@ def _classify_qnn_session_failure(exc: Exception) -> str:
     message = str(exc)
     if (
         "assigned to the default CPU EP" in message
-        or "com.microsoft.EPContext" in message
-        and "CPUExecutionProvider" in message
+        or ("com.microsoft.EPContext" in message
+        and "CPUExecutionProvider" in message)
     ):
         return "qnn-epcontext-not-claimed"
     return "qnn-session-create-failed"

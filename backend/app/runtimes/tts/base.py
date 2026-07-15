@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 TTS_DEVICES = {"cpu", "cuda", "directml", "qnn"}
 
 

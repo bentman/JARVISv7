@@ -3,9 +3,15 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
-
 from backend.app.hardware import profiler as profiler_module
-from backend.app.hardware.detectors import cpu_detector, cuda_detector, gpu_detector, memory_detector, npu_detector, os_detector
+from backend.app.hardware.detectors import (
+    cpu_detector,
+    cuda_detector,
+    gpu_detector,
+    memory_detector,
+    npu_detector,
+    os_detector,
+)
 
 
 def test_os_detector_returns_required_keys(monkeypatch: pytest.MonkeyPatch) -> None:

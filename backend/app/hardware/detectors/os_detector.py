@@ -5,7 +5,6 @@ import platform
 import subprocess
 from pathlib import Path
 
-
 _LAPTOP_CHASSIS_TYPES = {8, 9, 10, 11, 12, 14, 18, 21, 30, 31, 32}
 
 

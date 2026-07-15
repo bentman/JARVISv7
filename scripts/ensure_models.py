@@ -20,9 +20,9 @@ if str(REPO_ROOT) not in sys.path:
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.settings import load_settings
+from backend.app.hardware.provisioning import resolve_required_extras
 from backend.app.models.catalog import ModelEntry, get_model_entry, list_models
 from backend.app.models.llm_selection import select_llm_model
-from backend.app.hardware.provisioning import resolve_required_extras
 
 MODEL_FAMILIES = ("stt", "tts", "wake")
 ALL_FAMILIES = (*MODEL_FAMILIES, "llm")
@@ -418,7 +418,7 @@ def _extract_runtime_zip_payload(payload: bytes, target_root: Path) -> list[str]
 
 
 def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: bool) -> dict[str, Any]:
-    source = _runtime_source(profile)
+    _runtime_source(profile)
     source_type = _runtime_source_type(profile)
     if dry_run:
         return _planned_runtime_profile(profile_id, profile)

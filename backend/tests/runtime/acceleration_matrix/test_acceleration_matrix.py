@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import wave
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pytest
-
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import HardwareProfile
@@ -29,7 +28,6 @@ from backend.tests.conftest import (
     SKIP_UNLESS_X64,
     ollama_base_url,
 )
-
 
 ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "NOT-WIRED", "N/A")
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"

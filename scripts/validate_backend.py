@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import argparse
-import io
 import importlib.util
-from dataclasses import asdict, dataclass
+import io
 import json
-from datetime import datetime, timezone
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -18,7 +18,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
-from backend.app.services.startup_context import load_startup_context, selected_path_readiness_summary
+from backend.app.services.startup_context import (
+    load_startup_context,
+    selected_path_readiness_summary,
+)
 
 REPORTS_DIR = APP_REPO_ROOT / "reports"
 DIAGNOSTICS_DIR = REPORTS_DIR / "diagnostics"
@@ -32,11 +35,11 @@ def _load_context():
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _timestamp_slug() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    return datetime.now(UTC).strftime("%Y%m%d%H%M%S")
 
 
 def _capture_host_fingerprint(profile, extras, readiness: str) -> str:
@@ -117,10 +120,7 @@ def _collect_regression_rows(xml_path: Path) -> tuple[list[_RegressionTestRow], 
         rows.append(_RegressionTestRow(status=status, classname=classname, test_name=test_name))
 
     suite_elements: list[ET.Element]
-    if root.tag == "testsuites":
-        suite_elements = list(root.findall("testsuite"))
-    else:
-        suite_elements = [root]
+    suite_elements = list(root.findall("testsuite")) if root.tag == "testsuites" else [root]
 
     summary = _RegressionSuiteSummary()
     for suite in suite_elements:

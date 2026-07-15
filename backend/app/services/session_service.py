@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,9 +11,9 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.core.paths import DATA_DIR
+from backend.app.memory.semantic import SemanticMemory
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
-from backend.app.memory.semantic import SemanticMemory
 
 
 @dataclass(frozen=True, slots=True)
@@ -132,10 +133,8 @@ class SessionService:
 
     def end_session(self, session_id: str, final_state: str = "IDLE") -> SessionCloseResult:
         self.assert_active_session(session_id)
-        try:
+        with contextlib.suppress(Exception):
             self._consolidate_semantic_memory()
-        except Exception:
-            pass
         artifact_path = self._session_manager.close_session(final_state)
         self._active = False
         self._state = final_state
@@ -317,7 +316,7 @@ class SessionService:
                 from backend.app.memory.semantic import text_to_vector
                 q_vec = text_to_vector(text)
                 sim_results = self._semantic_memory.search_vector(q_vec, n=1)
-                
+
                 # similarity deduplication check
                 if sim_results:
                     _best_match, similarity = sim_results[0]

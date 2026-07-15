@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import sys
 from types import SimpleNamespace
+from typing import ClassVar
 
 import numpy as np
 import pytest
-
+from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 from backend.app.services.voice_service import (
     AudioCaptureError,
     capture_audio,
@@ -13,7 +14,6 @@ from backend.app.services.voice_service import (
     diagnose_audio_ingress,
     wake_chunk_source,
 )
-from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 
 
 def test_capture_audio_wraps_sounddevice(monkeypatch):
@@ -166,7 +166,7 @@ def test_diagnose_audio_ingress_reports_capture_exception(monkeypatch):
 
 def test_describe_input_device_uses_sounddevice_default_input():
     class Default:
-        device = [4, 8]
+        device: ClassVar[list[int]] = [4, 8]
 
     fake_sounddevice = SimpleNamespace(
         default=Default(),

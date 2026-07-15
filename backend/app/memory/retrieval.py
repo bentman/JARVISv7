@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 from dataclasses import asdict, dataclass
-from typing import Any
 
 from backend.app.cache.keys import NS_RETRIEVAL, make_key
 from backend.app.cache.manager import CacheManager
@@ -200,8 +200,6 @@ class RetrievalManager:
                     facts.append(fact_map[norm_content])
 
         if can_use_cache and cache_manager is not None:
-            try:
+            with contextlib.suppress(Exception):
                 cache_manager.set(key, self._facts_to_cache_value(facts), ttl=DEFAULT_RETRIEVAL_TTL)
-            except Exception:
-                pass
         return facts
