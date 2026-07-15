@@ -23,6 +23,38 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 16:50
+  - Host class(es): Linux ARM64 validated; platform-neutral behavior with Windows-parity unit coverage
+  - Summary: Added Silero VAD v5 ONNX runtime with auto-selection and energy fallback, implemented real cloud LLM provider escalation (Claude, OpenAI, Gemini, xAI, Z.AI), and gated VAD barge-in decisions behind an RMS loudness floor to prevent speaker-echo false interruptions.
+  - Scope:
+    - `backend/app/runtimes/vad/silero_runtime.py`, `backend/app/runtimes/vad/vad_runtime.py`, `config/models/vad.yaml`, `scripts/ensure_models.py`, `backend/app/core/settings.py`, `.env.example`
+    - `backend/app/runtimes/llm/base.py` + provider runtimes, `backend/app/routing/runtime_selector.py`, `config/app/policies.yaml`
+    - `backend/app/runtimes/stt/barge_in.py`, `backend/app/api/app.py`, `backend/app/services/resident_voice_invocation.py`
+    - `backend/tests/unit/runtimes/vad/test_silero_vad_runtime.py`, `backend/tests/unit/runtimes/llm/test_cloud_runtime.py`
+  - Validation:
+    - `backend/.venv/bin/python -m pytest backend/tests/unit -q` PASS (812 passed, 2 skipped)
+    - `backend/.venv/bin/python -m mypy --python-version 3.12` PASS (0 issues, 159 files)
+    - Real Silero model streaming probabilities on linux-arm64: speech fixture 1.000, white noise 0.028, silence 0.009, 440 Hz tone 0.003
+  - Notes:
+    - `RESIDENT_VOICE_VAD=auto` selects Silero only when `models/vad/silero-vad/silero_vad.onnx` is present (`ensure_models.py --family vad`); energy VAD remains the visible fallback.
+    - Cloud runtimes remain policy-gated behind `cloud_enabled` and per-provider API key env vars.
+
+- Timestamp: 2026-07-15 16:20
+  - Host class(es): Linux ARM64 validated; fixes are platform-neutral and include Windows-only code paths verified by unit tests
+  - Summary: Resolved verified defects across voice/audio, memory/artifacts, API/hardware, and desktop surfaces found by a full-repo review, and made the suite pass on non-Windows hosts. Zeroed ruff and mypy across backend and scripts.
+  - Scope:
+    - Voice: `backend/app/runtimes/tts/playback.py` (underrun truncation), `backend/app/conversation/engine.py` + `backend/app/api/app.py` (per-playback barge-in subscription factory), `backend/app/services/wake_monitor.py` (double int16/float conversion; stop/pause thread races), `backend/app/services/audio_stream.py`, `backend/app/services/resident_voice_invocation.py` (continuous-mode re-arm), `backend/app/conversation/session_manager.py` (one-shot suppression flag)
+    - Memory/artifacts: `backend/app/memory/{episodic,retrieval,semantic}.py`, `backend/app/artifacts/{storage,trace_writer}.py`, `backend/app/cache/redis_client.py`, `backend/app/cognition/style_guard.py`
+    - API/hardware: `backend/app/services/local_llm_startup.py` + `config/models/llm.yaml` (Linux serve profiles; degraded startup instead of crash), `backend/app/api/routes/{config,status,diagnostics,session}.py`, `backend/app/hardware/{detectors,provisioning}`, `backend/app/core/settings.py`, `backend/app/tools/filesystem/read_tool.py`, `backend/app/routing/runtime_selector.py`, `backend/app/runtimes/llm/ollama_runtime.py`, `backend/app/services/local_llm_sidecar.py`
+    - Desktop: `desktop/src-tauri/src/{backend,lib}.rs`, `docker-compose.yml`
+  - Validation:
+    - `backend/.venv/bin/python scripts/validate_backend.py unit` PASS (774+ passed at commit time; 812 passed after enhancements)
+    - `backend/.venv/bin/python scripts/validate_backend.py regression` PASS (161 passed)
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
+    - Live Linux boot proof: `create_app(build_startup_state())` served `/health`, `/readiness`, `/status/resident-voice` HTTP 200 with truthful degraded reasons (previously crashed with ModelCatalogError)
+  - Notes:
+    - Cross-platform: suite previously failed collection on Linux (missing extras) and 5 tests hardcoded Windows assumptions; API artifact paths are now canonical POSIX on all hosts.
+
 - Timestamp: 2026-07-15 13:56
   - Host class(es): Windows AMD64; platform-neutral wake capture behavior
   - Summary: Corrected premature wake-command endpointing by giving wake capture an isolated 0.8-second post-speech silence window and retaining 0.12 seconds of trailing audio. Resident/PTT endpointing and all existing capture bounds remained unchanged.

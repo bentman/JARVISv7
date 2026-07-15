@@ -31,6 +31,38 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-15 16:50
+  - State: Verified
+  - Host class(es): Linux ARM64 validated
+  - Summary: Neural voice-activity detection via Silero VAD v5 ONNX with settings-driven auto/energy/silero selection, visible energy fallback, and catalog-managed model acquisition.
+  - Location:
+    - `backend/app/runtimes/vad/silero_runtime.py`, `backend/app/runtimes/vad/vad_runtime.py`
+    - `config/models/vad.yaml`, `scripts/ensure_models.py`
+  - Evidence:
+    - Timestamp: 2026-07-15 16:50 - Added Silero VAD v5 ONNX runtime with auto-selection and energy fallback.
+
+- Timestamp: 2026-07-15 16:50
+  - State: Implemented
+  - Host class(es): Linux ARM64 (mock-endpoint unit coverage; no live provider calls made)
+  - Summary: Cloud LLM escalation implemented for Claude (Anthropic native API), OpenAI, Gemini, xAI, and Z.AI behind existing cloud_enabled policy and per-provider API key gating.
+  - Location:
+    - `backend/app/runtimes/llm/base.py` and provider runtime files
+    - `backend/app/routing/runtime_selector.py`, `config/app/policies.yaml`
+  - Evidence:
+    - Timestamp: 2026-07-15 16:50 - Implemented real cloud LLM provider escalation.
+  - Notes:
+    - State is Implemented (not Verified) because no live provider call has been exercised against a real API key; request/response contracts are unit-tested against mocked endpoints.
+
+- Timestamp: 2026-07-15 16:20
+  - State: Verified
+  - Host class(es): Linux ARM64 validated
+  - Summary: Linux host-class support: backend boots to degraded-truthful state, full unit and regression suites pass, desktop shell resolves POSIX venv layout, Linux llama.cpp CPU serve profiles exist in the model catalog.
+  - Location:
+    - `config/models/llm.yaml`, `backend/app/services/local_llm_startup.py`
+    - `desktop/src-tauri/src/backend.rs`
+  - Evidence:
+    - Timestamp: 2026-07-15 16:20 - Resolved verified defects across voice/audio, memory/artifacts, API/hardware, and desktop surfaces.
+
 - Timestamp: 2026-07-08 13:40
   - State: Verified
   - Host class(es): Windows x64 validated
