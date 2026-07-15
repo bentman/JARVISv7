@@ -127,7 +127,9 @@ def test_desktop_displays_resident_session_status() -> None:
     assert "refreshSessionStatus" in main_js
     assert "createDesktopPolling({" in main_js
     assert "startAllPolling()" in main_js
-    assert "startSessionPolling" in desktop_polling
+    assert "pollDesktopStatus" in desktop_polling
+    assert "let pollTimer" in desktop_polling
+    assert "sessionPollTimer" not in desktop_polling
     assert "residentVoice.renderResidentVoiceStatus" in main_js
     assert "function renderResidentVoiceStatus(status)" in resident_voice
     assert "function appendResidentVoiceCompletion(status)" in resident_voice
@@ -168,8 +170,8 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "createDesktopPolling({" in main_js
     assert "startAllPolling()" in main_js
     assert "stopAllPolling()" in main_js
-    assert "startWakePolling" in desktop_polling
-    assert "stopWakePolling" in desktop_polling
+    assert "pollDesktopStatus" in desktop_polling
+    assert "wakePollTimer" not in desktop_polling
     assert "./components/wake-indicator.js" in main_js
     assert "renderWakeStatus(status, wakeIndicatorEl)" in main_js
     assert "PTT-only fallback" in main_js
@@ -647,9 +649,9 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     ]
     assert "await startWakeMonitorIfAvailable()" not in complete_backend_start
     assert "createDesktopPolling({" in main_js
-    assert "startWakePolling" in desktop_polling
+    assert "pollDesktopStatus" in desktop_polling
     assert "window.setTimeout" in desktop_polling
-    assert "stopWakePolling" in desktop_polling
+    assert "wakePollTimer" not in desktop_polling
     assert 'wakeToggleEl.addEventListener("click"' in main_js
     assert 'id="wake-toggle"' in index_html
     assert 'id="wake-indicator"' in index_html

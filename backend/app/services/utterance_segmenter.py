@@ -76,6 +76,7 @@ class UtteranceSegmenter:
         pre_roll: deque[np.ndarray] = deque()
         pre_roll_total = 0
         collected: list[np.ndarray] = []
+        collected_samples = 0
         speech_started = False
         speech_samples = 0
         silence_after_speech = 0
@@ -135,6 +136,7 @@ class UtteranceSegmenter:
                         speech_samples += speech_candidate_samples
                         collected.extend(pre_roll)
                         collected.extend(speech_candidate_parts)
+                        collected_samples = pre_roll_total + speech_candidate_samples
                         pre_roll.clear()
                         pre_roll_total = 0
                         reset_speech_candidate(keep_as_pre_roll=False)
@@ -168,6 +170,7 @@ class UtteranceSegmenter:
                 continue
 
             collected.append(samples)
+            collected_samples += int(samples.size)
             if decision_speech:
                 speech_chunk_count += 1
                 speech_samples += int(samples.size)
@@ -175,8 +178,7 @@ class UtteranceSegmenter:
             else:
                 silence_after_speech += int(samples.size)
 
-            captured_samples = sum(int(part.size) for part in collected)
-            if captured_samples >= max_samples:
+            if collected_samples >= max_samples:
                 return self._segment(
                     collected,
                     "max-duration",

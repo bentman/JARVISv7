@@ -118,15 +118,23 @@ class TurnEngine:
         context = self._create_context("voice")
         voice_turn_started_at = time.perf_counter()
         phase_durations_ms: dict[str, float] = {}
-        raw_audio_path = self._persist_voice_audio(context, audio, sample_rate)
+        samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+        raw_audio_path = None
         try:
             context.advance(ConversationState.LISTENING)
             context.advance(ConversationState.TRANSCRIBING)
             stt_started_at = time.perf_counter()
             try:
-                transcript = self.stt.transcribe(np.asarray(audio, dtype=np.float32), sample_rate)
+                transcript = self.stt.transcribe(samples, sample_rate)
+            except Exception:
+                try:
+                    raw_audio_path = self._persist_voice_audio(context, samples, sample_rate)
+                except Exception:
+                    pass
+                raise
             finally:
                 phase_durations_ms["stt_ms"] = _elapsed_ms(stt_started_at)
+            raw_audio_path = self._persist_voice_audio(context, samples, sample_rate)
             if not transcript.strip():
                 return self._fail(
                     context,
@@ -785,14 +793,16 @@ class TurnEngine:
     def _persist_voice_audio(self, context: TurnContext, audio: np.ndarray, sample_rate: int) -> str | None:
         if self.session_manager is None:
             return None
-        samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+        samples = audio.reshape(-1)
         if samples.size == 0:
             return None
         session_dir = self.session_manager.turns_base_dir / context.session_id
         session_dir.mkdir(parents=True, exist_ok=True)
         audio_path = session_dir / f"{context.turn_id}.wav"
-        clipped = np.clip(samples, -1.0, 1.0)
-        pcm16 = (clipped * 32767.0).astype("<i2")
+        pcm_source = np.empty_like(samples, dtype=np.float32)
+        np.clip(samples, -1.0, 1.0, out=pcm_source)
+        np.multiply(pcm_source, 32767.0, out=pcm_source)
+        pcm16 = pcm_source.astype("<i2")
         with wave.open(str(audio_path), "wb") as wav_file:
             wav_file.setnchannels(1)
             wav_file.setsampwidth(2)

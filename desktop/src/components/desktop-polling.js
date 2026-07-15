@@ -26,126 +26,53 @@ export function createDesktopPolling({
   refreshResidentVoiceStatus,
   refreshWakeStatus,
 }) {
-  let sessionPollTimer = null;
-  let residentVoicePollTimer = null;
-  let wakePollTimer = null;
+  let pollTimer = null;
   let isPollingRunning = false;
+  let lastStatusPollAt = 0;
 
   const isVisible = () => document.visibilityState !== "hidden";
 
-  async function pollSession() {
+  async function pollDesktopStatus() {
     if (!isPollingRunning) return;
-    sessionPollTimer = null;
+    pollTimer = null;
     let status = null;
     try {
       status = await refreshSessionStatus();
     } catch {}
-    if (isPollingRunning) {
-      sessionPollTimer = window.setTimeout(pollSession, sessionPollingInterval(status, isVisible()));
+    const now = Date.now();
+    if (lastStatusPollAt === 0 || now - lastStatusPollAt >= statusPollingInterval(isVisible())) {
+      lastStatusPollAt = now;
+      await Promise.allSettled([refreshResidentVoiceStatus(), refreshWakeStatus()]);
     }
-  }
-
-  async function pollResidentVoice() {
     if (!isPollingRunning) return;
-    residentVoicePollTimer = null;
-    try {
-      await refreshResidentVoiceStatus();
-    } catch {}
-    if (isPollingRunning) {
-      residentVoicePollTimer = window.setTimeout(pollResidentVoice, statusPollingInterval(isVisible()));
-    }
-  }
-
-  async function pollWake() {
-    if (!isPollingRunning) return;
-    wakePollTimer = null;
-    try {
-      await refreshWakeStatus();
-    } catch {}
-    if (isPollingRunning) {
-      wakePollTimer = window.setTimeout(pollWake, statusPollingInterval(isVisible()));
-    }
+    pollTimer = window.setTimeout(pollDesktopStatus, sessionPollingInterval(status, isVisible()));
   }
 
   function rescheduleForVisibility() {
     if (!isPollingRunning) return;
     const delay = isVisible() ? 0 : HIDDEN_INTERVAL_MS;
-    if (sessionPollTimer) {
-      window.clearTimeout(sessionPollTimer);
-      sessionPollTimer = window.setTimeout(pollSession, delay);
-    }
-    if (residentVoicePollTimer) {
-      window.clearTimeout(residentVoicePollTimer);
-      residentVoicePollTimer = window.setTimeout(pollResidentVoice, delay);
-    }
-    if (wakePollTimer) {
-      window.clearTimeout(wakePollTimer);
-      wakePollTimer = window.setTimeout(pollWake, delay);
-    }
+    if (pollTimer) window.clearTimeout(pollTimer);
+    pollTimer = window.setTimeout(pollDesktopStatus, delay);
   }
 
   document.addEventListener("visibilitychange", rescheduleForVisibility);
 
-  function startSessionPolling() {
-    if (sessionPollTimer) window.clearTimeout(sessionPollTimer);
-    isPollingRunning = true;
-    pollSession();
-  }
-
-  function stopSessionPolling() {
-    if (sessionPollTimer) {
-      window.clearTimeout(sessionPollTimer);
-      sessionPollTimer = null;
-    }
-  }
-
-  function startResidentVoicePolling() {
-    if (residentVoicePollTimer) window.clearTimeout(residentVoicePollTimer);
-    isPollingRunning = true;
-    pollResidentVoice();
-  }
-
-  function stopResidentVoicePolling() {
-    if (residentVoicePollTimer) {
-      window.clearTimeout(residentVoicePollTimer);
-      residentVoicePollTimer = null;
-    }
-  }
-
-  function startWakePolling() {
-    if (wakePollTimer) window.clearTimeout(wakePollTimer);
-    isPollingRunning = true;
-    pollWake();
-  }
-
-  function stopWakePolling() {
-    if (wakePollTimer) {
-      window.clearTimeout(wakePollTimer);
-      wakePollTimer = null;
-    }
-  }
-
   function startAllPolling() {
+    if (pollTimer) window.clearTimeout(pollTimer);
     isPollingRunning = true;
-    startWakePolling();
-    startSessionPolling();
-    startResidentVoicePolling();
+    lastStatusPollAt = 0;
+    pollDesktopStatus();
   }
 
   function stopAllPolling() {
     isPollingRunning = false;
-    stopWakePolling();
-    stopSessionPolling();
-    stopResidentVoicePolling();
+    if (pollTimer) {
+      window.clearTimeout(pollTimer);
+      pollTimer = null;
+    }
   }
 
   return {
-    startSessionPolling,
-    stopSessionPolling,
-    startResidentVoicePolling,
-    stopResidentVoicePolling,
-    startWakePolling,
-    stopWakePolling,
     startAllPolling,
     stopAllPolling,
   };

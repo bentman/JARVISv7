@@ -28,8 +28,14 @@ assert.equal(statusPollingInterval(false), 10000, "hidden windows must throttle 
 
 const originalDocument = globalThis.document;
 const originalWindow = globalThis.window;
+const originalDateNow = Date.now;
 const scheduledPolling = [];
 let visibilityHandler = null;
+let now = 1000;
+let sessionRefreshes = 0;
+let residentRefreshes = 0;
+let wakeRefreshes = 0;
+Date.now = () => now;
 globalThis.document = {
   visibilityState: "visible",
   addEventListener(name, handler) {
@@ -44,22 +50,41 @@ globalThis.window = {
   clearTimeout() {},
 };
 const pollingBehavior = createDesktopPolling({
-  refreshSessionStatus: async () => ({ state: "reasoning" }),
-  refreshResidentVoiceStatus: async () => ({}),
-  refreshWakeStatus: async () => ({}),
+  refreshSessionStatus: async () => {
+    sessionRefreshes += 1;
+    return { state: "reasoning" };
+  },
+  refreshResidentVoiceStatus: async () => {
+    residentRefreshes += 1;
+    return {};
+  },
+  refreshWakeStatus: async () => {
+    wakeRefreshes += 1;
+    return {};
+  },
 });
 pollingBehavior.startAllPolling();
-await Promise.resolve();
-assert.deepEqual(scheduledPolling.slice(-3).map(({ delay }) => delay).sort((a, b) => a - b), [100, 3000, 3000]);
+await new Promise((resolve) => setImmediate(resolve));
+assert.deepEqual(scheduledPolling.slice(-1).map(({ delay }) => delay), [100], "desktop statuses must share one adaptive poll timer");
+assert.deepEqual([sessionRefreshes, residentRefreshes, wakeRefreshes], [1, 1, 1]);
+now += 100;
+scheduledPolling.at(-1).callback();
+await new Promise((resolve) => setImmediate(resolve));
+assert.deepEqual([sessionRefreshes, residentRefreshes, wakeRefreshes], [2, 1, 1], "fast session ticks must not repeat slow status requests");
+now += 3000;
+scheduledPolling.at(-1).callback();
+await new Promise((resolve) => setImmediate(resolve));
+assert.deepEqual([sessionRefreshes, residentRefreshes, wakeRefreshes], [3, 2, 2], "resident and wake status must refresh together when due");
 globalThis.document.visibilityState = "hidden";
 visibilityHandler();
-assert.deepEqual(scheduledPolling.slice(-3).map(({ delay }) => delay), [10000, 10000, 10000]);
+assert.deepEqual(scheduledPolling.slice(-1).map(({ delay }) => delay), [10000]);
 globalThis.document.visibilityState = "visible";
 visibilityHandler();
-assert.deepEqual(scheduledPolling.slice(-3).map(({ delay }) => delay), [0, 0, 0]);
+assert.deepEqual(scheduledPolling.slice(-1).map(({ delay }) => delay), [0]);
 pollingBehavior.stopAllPolling();
 globalThis.document = originalDocument;
 globalThis.window = originalWindow;
+Date.now = originalDateNow;
 
 assert.ok(!main.includes("getUserMedia"), "desktop PTT must not capture WebView microphone audio");
 assert.ok(!main.includes("MediaRecorder"), "desktop PTT must not record WebView microphone audio");
@@ -110,19 +135,11 @@ assert.ok(index.indexOf("Backend diagnostics") < index.indexOf("Degraded list de
 assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
 assert.ok(main.includes("renderBackendDiagnostics"), "desktop must render backend diagnostics");
 assert.ok(main.includes("error.diagnostics"), "startup failures must not collapse only into String(error)");
-assert.ok(desktopPolling.includes("let sessionPollTimer"), "desktop polling helper must own session interval handle");
-assert.ok(desktopPolling.includes("let residentVoicePollTimer"), "desktop polling helper must own resident voice interval handle");
-assert.ok(desktopPolling.includes("let wakePollTimer"), "desktop polling helper must own wake interval handle");
-for (const functionName of [
-  "startSessionPolling",
-  "stopSessionPolling",
-  "startResidentVoicePolling",
-  "stopResidentVoicePolling",
-  "startWakePolling",
-  "stopWakePolling",
-  "startAllPolling",
-  "stopAllPolling",
-]) {
+assert.ok(desktopPolling.includes("let pollTimer"), "desktop polling helper must own one consolidated timer handle");
+for (const removedTimer of ["sessionPollTimer", "residentVoicePollTimer", "wakePollTimer"]) {
+  assert.ok(!desktopPolling.includes(removedTimer), `desktop polling helper must not retain independent ${removedTimer} loops`);
+}
+for (const functionName of ["startAllPolling", "stopAllPolling"]) {
   assert.ok(desktopPolling.includes(functionName), `desktop polling helper must expose ${functionName}`);
 }
 assert.ok(main.includes('import { createDesktopPolling } from "./components/desktop-polling.js"'), "desktop main must import polling helper");

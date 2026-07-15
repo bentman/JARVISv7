@@ -672,6 +672,42 @@ def test_voice_failure_artifact_preserves_raw_audio_path(tmp_path: Path) -> None
     assert "stt_ms" in artifact.phase_durations_ms
 
 
+def test_voice_audio_persistence_runs_after_transcription(tmp_path: Path) -> None:
+    turns_dir = tmp_path / "turns"
+    manager = SessionManager(session_id="session-1", turns_base_dir=turns_dir, sessions_base_dir=tmp_path / "sessions")
+
+    class ObservingSTT(FakeSTT):
+        def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
+            assert audio.dtype == np.float32
+            assert list(turns_dir.rglob("*.wav")) == []
+            return super().transcribe(audio, sample_rate)
+
+    result = _engine(session_manager=manager, stt=ObservingSTT()).run_voice_turn(
+        np.linspace(-0.25, 0.25, 160, dtype=np.float64),
+        16000,
+    )
+
+    assert result.final_state == ConversationState.IDLE
+    assert manager.turn_artifacts[0].raw_audio_path is not None
+    assert Path(manager.turn_artifacts[0].raw_audio_path).exists()
+
+
+def test_stt_exception_still_persists_voice_audio(tmp_path: Path) -> None:
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+
+    result = _engine(session_manager=manager, stt=FakeSTT(error=RuntimeError("stt failed"))).run_voice_turn(
+        np.linspace(-0.25, 0.25, 160, dtype=np.float32),
+        16000,
+    )
+
+    assert result.final_state == ConversationState.FAILED
+    artifact = manager.turn_artifacts[0]
+    assert artifact.failure_reason == "stt failed"
+    assert artifact.raw_audio_path is not None
+    assert Path(artifact.raw_audio_path).exists()
+    assert artifact.failure_phase == "stt"
+
+
 def test_engine_calls_episodic_write_after_artifact_write_when_injected(tmp_path: Path) -> None:
     manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
     episodic = FakeEpisodic()

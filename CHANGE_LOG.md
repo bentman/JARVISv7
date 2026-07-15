@@ -23,6 +23,22 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 00:32
+  - Host class(es): Windows AMD64; platform-neutral voice-turn behavior
+  - Summary: Consolidated desktop session, resident-voice, and wake scheduling into one adaptive polling loop without changing backend APIs. Removed repeated utterance-length scans and moved raw voice persistence behind STT while preserving failure artifacts.
+  - Scope:
+    - `desktop/src/components/desktop-polling.js`, `desktop/tests/static.test.mjs`
+    - `backend/app/services/utterance_segmenter.py`, `backend/app/conversation/engine.py`
+    - `backend/tests/unit/conversation/test_engine.py`
+    - `backend/tests/unit/desktop/test_desktop_static_contract.py`
+  - Validation:
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
+    - `cargo test --manifest-path desktop/src-tauri/Cargo.toml` PASS (desktop crate compiled; 0 failed)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_utterance_segmenter.py backend/tests/unit/conversation/test_engine.py -q` PASS (62 passed)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (33 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (740 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715053222-regression.txt`)
+
 - Timestamp: 2026-07-15 00:12
   - Host class(es): Windows AMD64; platform-neutral runtime behavior
   - Summary: Removed per-turn llama.cpp readiness probes across managed, adopted, unmanaged, and fallback-selected completion paths. Healthy turns now send the completion request directly; managed sidecar recovery and one retry occur only after transport failure.
