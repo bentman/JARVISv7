@@ -168,11 +168,10 @@ impl Drop for BackendProcessManager {
     }
 }
 
-pub fn wait_healthy<F>(base_url: &str, timeout: Duration, mut child_exit_status: F) -> Result<(), String>
+pub fn wait_healthy<F>(client: &Client, base_url: &str, timeout: Duration, mut child_exit_status: F) -> Result<(), String>
 where
     F: FnMut() -> Result<Option<String>, String>,
 {
-    let client = Client::builder().timeout(Duration::from_millis(700)).build().map_err(|err| format!("failed to build HTTP client: {err}"))?;
     let health_url = format!("{base_url}/health");
     let deadline = Instant::now() + timeout;
     let mut last_error = "health probe not attempted".to_string();
@@ -181,7 +180,7 @@ where
         if let Some(status) = child_exit_status()? {
             return Err(format!("backend exited before health check passed: {status}"));
         }
-        match client.get(&health_url).send() {
+        match client.get(&health_url).timeout(Duration::from_millis(700)).send() {
             Ok(response) if response.status().is_success() => return Ok(()),
             Ok(response) => last_error = format!("/health returned {}", response.status()),
             Err(err) => last_error = err.to_string(),
@@ -192,8 +191,8 @@ where
     Err(format!("timed out waiting for /health at {health_url}: {last_error}"))
 }
 
-pub fn get_json(base_url: &str, path: &str) -> Result<String, String> {
-    let response = Client::new().get(format!("{base_url}{path}")).send().map_err(|err| format!("GET {path} failed: {err}"))?;
+pub fn get_json(client: &Client, base_url: &str, path: &str) -> Result<String, String> {
+    let response = client.get(format!("{base_url}{path}")).send().map_err(|err| format!("GET {path} failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("GET {path} body read failed: {err}"))?;
     if !status.is_success() {
@@ -202,8 +201,8 @@ pub fn get_json(base_url: &str, path: &str) -> Result<String, String> {
     Ok(body)
 }
 
-pub fn create_session(base_url: &str) -> Result<SessionCreateResponse, String> {
-    let response = Client::new().post(format!("{base_url}/session/create")).json(&json!({})).send().map_err(|err| format!("POST /session/create failed: {err}"))?;
+pub fn create_session(client: &Client, base_url: &str) -> Result<SessionCreateResponse, String> {
+    let response = client.post(format!("{base_url}/session/create")).json(&json!({})).send().map_err(|err| format!("POST /session/create failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST /session/create body read failed: {err}"))?;
     if !status.is_success() {
@@ -212,12 +211,12 @@ pub fn create_session(base_url: &str) -> Result<SessionCreateResponse, String> {
     serde_json::from_str(&body).map_err(|err| format!("invalid /session/create response: {err}; body={body}"))
 }
 
-pub fn get_session_status(base_url: &str) -> Result<String, String> {
-    get_json(base_url, "/session/status")
+pub fn get_session_status(client: &Client, base_url: &str) -> Result<String, String> {
+    get_json(client, base_url, "/session/status")
 }
 
-pub fn invoke_resident_ptt(base_url: &str) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}/session/ptt")).json(&json!({})).send().map_err(|err| format!("POST /session/ptt failed: {err}"))?;
+pub fn invoke_resident_ptt(client: &Client, base_url: &str) -> Result<String, String> {
+    let response = client.post(format!("{base_url}/session/ptt")).json(&json!({})).send().map_err(|err| format!("POST /session/ptt failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST /session/ptt body read failed: {err}"))?;
     if !status.is_success() {
@@ -226,24 +225,24 @@ pub fn invoke_resident_ptt(base_url: &str) -> Result<String, String> {
     Ok(body)
 }
 
-pub fn get_wake_status(base_url: &str) -> Result<String, String> {
-    get_json(base_url, "/status/wake")
+pub fn get_wake_status(client: &Client, base_url: &str) -> Result<String, String> {
+    get_json(client, base_url, "/status/wake")
 }
 
-pub fn get_resident_voice_status(base_url: &str) -> Result<String, String> {
-    get_json(base_url, "/status/resident-voice")
+pub fn get_resident_voice_status(client: &Client, base_url: &str) -> Result<String, String> {
+    get_json(client, base_url, "/status/resident-voice")
 }
 
-pub fn start_resident_voice_stream(base_url: &str) -> Result<String, String> {
-    post_resident_voice_action(base_url, "/status/resident-voice/start")
+pub fn start_resident_voice_stream(client: &Client, base_url: &str) -> Result<String, String> {
+    post_resident_voice_action(client, base_url, "/status/resident-voice/start")
 }
 
-pub fn stop_resident_voice_stream(base_url: &str) -> Result<String, String> {
-    post_resident_voice_action(base_url, "/status/resident-voice/stop")
+pub fn stop_resident_voice_stream(client: &Client, base_url: &str) -> Result<String, String> {
+    post_resident_voice_action(client, base_url, "/status/resident-voice/stop")
 }
 
-pub fn set_resident_voice_mode(base_url: &str, mode: &str) -> Result<String, String> {
-    let response = Client::new()
+pub fn set_resident_voice_mode(client: &Client, base_url: &str, mode: &str) -> Result<String, String> {
+    let response = client
         .put(format!("{base_url}/status/resident-voice/mode"))
         .json(&json!({"mode": mode}))
         .send()
@@ -256,8 +255,8 @@ pub fn set_resident_voice_mode(base_url: &str, mode: &str) -> Result<String, Str
     Ok(body)
 }
 
-pub fn set_resident_voice_tts_voice(base_url: &str, voice: &str) -> Result<String, String> {
-    let response = Client::new()
+pub fn set_resident_voice_tts_voice(client: &Client, base_url: &str, voice: &str) -> Result<String, String> {
+    let response = client
         .put(format!("{base_url}/status/resident-voice/tts-voice"))
         .json(&json!({"voice": voice}))
         .send()
@@ -270,8 +269,8 @@ pub fn set_resident_voice_tts_voice(base_url: &str, voice: &str) -> Result<Strin
     Ok(body)
 }
 
-fn post_resident_voice_action(base_url: &str, path: &str) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
+fn post_resident_voice_action(client: &Client, base_url: &str, path: &str) -> Result<String, String> {
+    let response = client.post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST {path} body read failed: {err}"))?;
     if !status.is_success() {
@@ -280,8 +279,8 @@ fn post_resident_voice_action(base_url: &str, path: &str) -> Result<String, Stri
     Ok(body)
 }
 
-fn post_wake_action(base_url: &str, path: &str) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
+fn post_wake_action(client: &Client, base_url: &str, path: &str) -> Result<String, String> {
+    let response = client.post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST {path} body read failed: {err}"))?;
     if !status.is_success() {
@@ -290,24 +289,24 @@ fn post_wake_action(base_url: &str, path: &str) -> Result<String, String> {
     Ok(body)
 }
 
-pub fn start_wake_monitor(base_url: &str) -> Result<String, String> {
-    post_wake_action(base_url, "/status/wake/start")
+pub fn start_wake_monitor(client: &Client, base_url: &str) -> Result<String, String> {
+    post_wake_action(client, base_url, "/status/wake/start")
 }
 
-pub fn stop_wake_monitor(base_url: &str) -> Result<String, String> {
-    post_wake_action(base_url, "/status/wake/stop")
+pub fn stop_wake_monitor(client: &Client, base_url: &str) -> Result<String, String> {
+    post_wake_action(client, base_url, "/status/wake/stop")
 }
 
-pub fn toggle_wake_monitor(base_url: &str) -> Result<String, String> {
-    post_wake_action(base_url, "/status/wake/toggle")
+pub fn toggle_wake_monitor(client: &Client, base_url: &str) -> Result<String, String> {
+    post_wake_action(client, base_url, "/status/wake/toggle")
 }
 
-pub fn get_personality_list(base_url: &str) -> Result<String, String> {
-    get_json(base_url, "/personality/list")
+pub fn get_personality_list(client: &Client, base_url: &str) -> Result<String, String> {
+    get_json(client, base_url, "/personality/list")
 }
 
-pub fn select_personality(base_url: &str, profile_id: &str) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}/personality/select")).json(&json!({"profile_id": profile_id})).send().map_err(|err| format!("POST /personality/select failed: {err}"))?;
+pub fn select_personality(client: &Client, base_url: &str, profile_id: &str) -> Result<String, String> {
+    let response = client.post(format!("{base_url}/personality/select")).json(&json!({"profile_id": profile_id})).send().map_err(|err| format!("POST /personality/select failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST /personality/select body read failed: {err}"))?;
     if !status.is_success() {
@@ -316,8 +315,8 @@ pub fn select_personality(base_url: &str, profile_id: &str) -> Result<String, St
     Ok(body)
 }
 
-pub fn get_operator_config(base_url: &str) -> Result<String, String> {
-    let response = Client::new().get(format!("{base_url}/config/operator")).send().map_err(|err| format!("GET /config/operator failed: {err}"))?;
+pub fn get_operator_config(client: &Client, base_url: &str) -> Result<String, String> {
+    let response = client.get(format!("{base_url}/config/operator")).send().map_err(|err| format!("GET /config/operator failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("GET /config/operator body read failed: {err}"))?;
     if status.is_success() || status.as_u16() == 409 {
@@ -326,8 +325,8 @@ pub fn get_operator_config(base_url: &str) -> Result<String, String> {
     Err(format!("GET /config/operator returned {status}: {body}"))
 }
 
-pub fn write_operator_config(base_url: &str, fields: Value) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}/config/operator")).json(&json!({"fields": fields})).send().map_err(|err| format!("POST /config/operator failed: {err}"))?;
+pub fn write_operator_config(client: &Client, base_url: &str, fields: Value) -> Result<String, String> {
+    let response = client.post(format!("{base_url}/config/operator")).json(&json!({"fields": fields})).send().map_err(|err| format!("POST /config/operator failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST /config/operator body read failed: {err}"))?;
     if !status.is_success() {
@@ -336,13 +335,13 @@ pub fn write_operator_config(base_url: &str, fields: Value) -> Result<String, St
     Ok(body)
 }
 
-pub fn close_session(base_url: &str, session_id: &str) -> Result<(), String> {
-    let response = Client::new().post(format!("{base_url}/session/close")).json(&json!({"session_id": session_id, "final_state": "IDLE"})).send().map_err(|err| format!("POST /session/close failed: {err}"))?;
+pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
+    let response = client.post(format!("{base_url}/session/close")).json(&json!({"session_id": session_id, "final_state": "IDLE"})).send().map_err(|err| format!("POST /session/close failed: {err}"))?;
     if response.status().is_success() { Ok(()) } else { Err(format!("POST /session/close returned {}", response.status())) }
 }
 
-pub fn submit_text_turn(base_url: &str, text: &str, session_id: Option<&str>) -> Result<String, String> {
-    let response = Client::new().post(format!("{base_url}/task/text")).json(&json!({"text": text, "session_id": session_id})).send().map_err(|err| format!("POST /task/text failed: {err}"))?;
+pub fn submit_text_turn(client: &Client, base_url: &str, text: &str, session_id: Option<&str>) -> Result<String, String> {
+    let response = client.post(format!("{base_url}/task/text")).json(&json!({"text": text, "session_id": session_id})).send().map_err(|err| format!("POST /task/text failed: {err}"))?;
     let status = response.status();
     let body = response.text().map_err(|err| format!("POST /task/text body read failed: {err}"))?;
     if !status.is_success() {

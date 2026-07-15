@@ -23,16 +23,19 @@
 
 ## Change Entries
 
-- Timestamp: 2026-07-14 21:17
+- Timestamp: 2026-07-14 23:26
   - Host class(es): Windows AMD64
-  - Summary: Fixed WAV-backed live voice tests to use production host-priority STT selection, correct PersonalityProfile contracts, and resolved immediate-repeat / retrieve mock signature mismatches. Configured Ollama-dependent tests to automatically skip with a warning if the local Ollama service daemon is not running.
+  - Summary: Reused one pooled HTTP client across the desktop backend bridge and reduced status polling churn with active, idle, and hidden-window schedules while preserving backend API contracts.
   - Scope:
-    - `backend/tests/conftest.py`
-    - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
-    - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+    - `desktop/src-tauri/src/backend.rs`, `desktop/src-tauri/src/lib.rs`
+    - `desktop/src/components/desktop-polling.js`, `desktop/tests/static.test.mjs`
+    - `backend/tests/unit/desktop/test_desktop_static_contract.py`
   - Validation:
-    - `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_continuity_retrieval_live.py backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py` PASS (7 passed, 10 skipped cleanly)
-    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (736 passed, 1 skipped)
+    - `npm --prefix desktop test` PASS (`desktop static voice checks passed`)
+    - `cargo test --manifest-path desktop/src-tauri/Cargo.toml` PASS (desktop crate compiled; 0 failed)
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (33 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (737 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715042607-regression.txt`)
 
 - Timestamp: 2026-07-14 21:10
   - Host class(es): Windows AMD64

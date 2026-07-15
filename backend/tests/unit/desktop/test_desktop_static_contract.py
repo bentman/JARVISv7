@@ -80,6 +80,15 @@ def test_backend_lifecycle_uses_repo_local_python_and_fixed_host_port() -> None:
     assert "current_dir(&self.repo_root)" in backend_rs
 
 
+def test_desktop_backend_bridge_reuses_one_http_client() -> None:
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    assert "http_client: Client" in lib_rs
+    assert "Client::builder().build()" in lib_rs
+    assert "Client::new()" not in backend_rs
+    assert "timeout(Duration::from_millis(700))" in backend_rs
+
+
 def test_desktop_references_only_approved_d1_endpoints_for_first_pass() -> None:
     source = "\n".join(
         path.read_text(encoding="utf-8")
@@ -639,7 +648,7 @@ def test_k4g_wake_monitor_desktop_contract() -> None:
     assert "await startWakeMonitorIfAvailable()" not in complete_backend_start
     assert "createDesktopPolling({" in main_js
     assert "startWakePolling" in desktop_polling
-    assert "window.setInterval" in desktop_polling
+    assert "window.setTimeout" in desktop_polling
     assert "stopWakePolling" in desktop_polling
     assert 'wakeToggleEl.addEventListener("click"' in main_js
     assert 'id="wake-toggle"' in index_html

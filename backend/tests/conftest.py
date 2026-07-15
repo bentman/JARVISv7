@@ -80,50 +80,7 @@ SKIP_UNLESS_ARM64 = _profile_report().profile.arch != "arm64"
 SKIP_UNLESS_CUDA = not _has_token("ep:CUDAExecutionProvider")
 SKIP_UNLESS_DIRECTML = not _has_token("ep:DmlExecutionProvider")
 SKIP_UNLESS_QNN = not _has_token("ep:QNNExecutionProvider")
-def _is_ollama_running() -> bool:
-    url = ollama_base_url()
-    if not url:
-        return False
-    try:
-        resp = httpx.get(url.rstrip("/") + "/", timeout=0.5)
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def _is_llama_cpp_available() -> bool:
-    try:
-        settings = _settings()
-        profile = _profile_report().profile
-        preflight = _preflight_report()
-        flags = _profile_report().flags
-        selection = select_llm_model("voice_chat", profile, settings=settings)
-        resolution = resolve_llm_serve_profile(
-            "voice_chat",
-            profile,
-            preflight,
-            settings=settings,
-            flags=flags,
-            model_name=selection.model_id,
-        )
-        return not bool(resolution.degraded_reason)
-    except Exception:
-        return False
-
-
-_llama_cpp_avail = _is_llama_cpp_available()
-_ollama_run = _is_ollama_running()
-
-if not _llama_cpp_avail and not _ollama_run:
-    import warnings
-    warnings.warn(
-        "Neither llama-server (local llama.cpp sidecar) nor local Ollama service is running/available. "
-        "Live LLM and continuity tests will be skipped.",
-        UserWarning,
-    )
-
-
-SKIP_UNLESS_OLLAMA = not _ollama_run
+SKIP_UNLESS_OLLAMA = ollama_base_url() == ""
 SKIP_UNLESS_PORCUPINE = not bool(_settings().picovoice_access_key)
 SKIP_UNLESS_REDIS = shutil.which("redis-server") is None
 SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None

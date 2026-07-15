@@ -5,6 +5,7 @@ import { renderBackendDiagnostics } from "../src/components/backend-diagnostics.
 import { collectDegradedConditions, selectedFamilyBlockers } from "../src/components/degraded-list.js";
 import { createDesktopState } from "../src/components/desktop-state.js";
 import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
+import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -19,6 +20,47 @@ const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "u
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
 const desktopSource = main + apiClient + residentVoice;
 
+assert.equal(sessionPollingInterval({ state: "reasoning" }), 100, "active sessions must retain responsive polling");
+assert.equal(sessionPollingInterval({ state: "IDLE" }), 2000, "idle sessions must reduce polling churn");
+assert.equal(sessionPollingInterval({ state: "reasoning" }, false), 10000, "hidden windows must throttle session polling");
+assert.equal(statusPollingInterval(), 3000, "resident and wake status polling must reduce idle churn");
+assert.equal(statusPollingInterval(false), 10000, "hidden windows must throttle status polling");
+
+const originalDocument = globalThis.document;
+const originalWindow = globalThis.window;
+const scheduledPolling = [];
+let visibilityHandler = null;
+globalThis.document = {
+  visibilityState: "visible",
+  addEventListener(name, handler) {
+    if (name === "visibilitychange") visibilityHandler = handler;
+  },
+};
+globalThis.window = {
+  setTimeout(callback, delay) {
+    scheduledPolling.push({ callback, delay });
+    return scheduledPolling.length;
+  },
+  clearTimeout() {},
+};
+const pollingBehavior = createDesktopPolling({
+  refreshSessionStatus: async () => ({ state: "reasoning" }),
+  refreshResidentVoiceStatus: async () => ({}),
+  refreshWakeStatus: async () => ({}),
+});
+pollingBehavior.startAllPolling();
+await Promise.resolve();
+assert.deepEqual(scheduledPolling.slice(-3).map(({ delay }) => delay).sort((a, b) => a - b), [100, 3000, 3000]);
+globalThis.document.visibilityState = "hidden";
+visibilityHandler();
+assert.deepEqual(scheduledPolling.slice(-3).map(({ delay }) => delay), [10000, 10000, 10000]);
+globalThis.document.visibilityState = "visible";
+visibilityHandler();
+assert.deepEqual(scheduledPolling.slice(-3).map(({ delay }) => delay), [0, 0, 0]);
+pollingBehavior.stopAllPolling();
+globalThis.document = originalDocument;
+globalThis.window = originalWindow;
+
 assert.ok(!main.includes("getUserMedia"), "desktop PTT must not capture WebView microphone audio");
 assert.ok(!main.includes("MediaRecorder"), "desktop PTT must not record WebView microphone audio");
 assert.ok(!backend.includes("/task/voice"), "backend bridge must not call legacy /task/voice");
@@ -29,6 +71,9 @@ assert.ok(!backend.includes("application/octet-stream"), "desktop voice must not
 assert.ok(!backend.toLowerCase().includes("multipart"), "voice upload must not use multipart");
 assert.ok(!main.toLowerCase().includes("websocket"), "desktop must not use WebSockets");
 assert.ok(backend.includes("/session/status"), "backend bridge must call /session/status");
+assert.ok(lib.includes("http_client: Client"), "desktop state must own one shared HTTP client");
+assert.ok(!backend.includes("Client::new()"), "backend requests must reuse the shared HTTP client");
+assert.ok(backend.includes("timeout(Duration::from_millis(700))"), "startup health probes must retain their request timeout");
 assert.ok(lib.includes("get_session_status"), "Tauri command must expose get_session_status");
 assert.ok(apiClient.includes('invoke("get_session_status")'), "desktop API client must invoke get_session_status");
 assert.ok(index.includes("session-turn-count"), "desktop must display session turn count");

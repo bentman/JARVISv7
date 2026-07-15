@@ -1,3 +1,26 @@
+const ACTIVE_SESSION_INTERVAL_MS = 100;
+const IDLE_SESSION_INTERVAL_MS = 2000;
+const STATUS_INTERVAL_MS = 3000;
+const HIDDEN_INTERVAL_MS = 10000;
+
+const ACTIVE_STATES = new Set([
+  "transcribing",
+  "reasoning",
+  "acting",
+  "responding",
+  "speaking",
+]);
+
+export function sessionPollingInterval(status, isVisible = true) {
+  if (!isVisible) return HIDDEN_INTERVAL_MS;
+  const state = (status?.state || "").toLowerCase();
+  return ACTIVE_STATES.has(state) ? ACTIVE_SESSION_INTERVAL_MS : IDLE_SESSION_INTERVAL_MS;
+}
+
+export function statusPollingInterval(isVisible = true) {
+  return isVisible ? STATUS_INTERVAL_MS : HIDDEN_INTERVAL_MS;
+}
+
 export function createDesktopPolling({
   refreshSessionStatus,
   refreshResidentVoiceStatus,
@@ -8,58 +31,60 @@ export function createDesktopPolling({
   let wakePollTimer = null;
   let isPollingRunning = false;
 
-  // Note: We use setTimeout recursively for dynamic polling, but we reference window.setInterval here to satisfy static tests.
-
-  const ACTIVE_STATES = new Set([
-    "transcribing",
-    "reasoning",
-    "acting",
-    "responding",
-    "speaking"
-  ]);
+  const isVisible = () => document.visibilityState !== "hidden";
 
   async function pollSession() {
     if (!isPollingRunning) return;
-    let nextInterval = 1000;
+    sessionPollTimer = null;
+    let status = null;
     try {
-      const status = await refreshSessionStatus();
-      const state = (status?.state || "").toLowerCase();
-      if (ACTIVE_STATES.has(state)) {
-        nextInterval = 100;
-      }
-    } catch (e) {
-      nextInterval = 2000;
-    }
+      status = await refreshSessionStatus();
+    } catch {}
     if (isPollingRunning) {
-      sessionPollTimer = window.setTimeout(pollSession, nextInterval);
+      sessionPollTimer = window.setTimeout(pollSession, sessionPollingInterval(status, isVisible()));
     }
   }
 
   async function pollResidentVoice() {
     if (!isPollingRunning) return;
-    let nextInterval = 1500;
+    residentVoicePollTimer = null;
     try {
       await refreshResidentVoiceStatus();
-    } catch (e) {
-      nextInterval = 3000;
-    }
+    } catch {}
     if (isPollingRunning) {
-      residentVoicePollTimer = window.setTimeout(pollResidentVoice, nextInterval);
+      residentVoicePollTimer = window.setTimeout(pollResidentVoice, statusPollingInterval(isVisible()));
     }
   }
 
   async function pollWake() {
     if (!isPollingRunning) return;
-    let nextInterval = 1500;
+    wakePollTimer = null;
     try {
       await refreshWakeStatus();
-    } catch (e) {
-      nextInterval = 3000;
-    }
+    } catch {}
     if (isPollingRunning) {
-      wakePollTimer = window.setTimeout(pollWake, nextInterval);
+      wakePollTimer = window.setTimeout(pollWake, statusPollingInterval(isVisible()));
     }
   }
+
+  function rescheduleForVisibility() {
+    if (!isPollingRunning) return;
+    const delay = isVisible() ? 0 : HIDDEN_INTERVAL_MS;
+    if (sessionPollTimer) {
+      window.clearTimeout(sessionPollTimer);
+      sessionPollTimer = window.setTimeout(pollSession, delay);
+    }
+    if (residentVoicePollTimer) {
+      window.clearTimeout(residentVoicePollTimer);
+      residentVoicePollTimer = window.setTimeout(pollResidentVoice, delay);
+    }
+    if (wakePollTimer) {
+      window.clearTimeout(wakePollTimer);
+      wakePollTimer = window.setTimeout(pollWake, delay);
+    }
+  }
+
+  document.addEventListener("visibilitychange", rescheduleForVisibility);
 
   function startSessionPolling() {
     if (sessionPollTimer) window.clearTimeout(sessionPollTimer);
