@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 13:05
+  - Host class(es): Windows AMD64; platform-neutral shared llama.cpp lifecycle behavior
+  - Summary: Added bounded phase timing to existing managed llama.cpp startup diagnostics and corrected adopted-endpoint ownership so stop/restart never reap an external server. Preserved managed cleanup and normalized profile command construction.
+  - Scope:
+    - `backend/app/services/local_llm_startup.py`, `backend/app/services/local_llm_sidecar.py`
+    - `backend/tests/unit/services/test_local_llm_startup.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_local_llm_sidecar.py backend/tests/unit/services/test_local_llm_startup.py -q` PASS (35 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (744 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715180514-regression.txt`)
+  - Notes:
+    - A controlled cold CPU-profile launch on unused loopback port 18081 measured endpoint adoption probe 1204 ms, `/health` readiness 906 ms, process launch 16 ms, stale-port cleanup 15 ms, and `/v1/models` below the host clock tick; only the measurement-owned process was stopped.
+
 - Timestamp: 2026-07-15 11:27
   - Host class(es): Windows AMD64; platform-neutral backend and desktop behavior
   - Summary: Added one read-only desktop status snapshot for session, resident voice, and wake state. Slow polling cycles now use one Tauri/HTTP request and construct shared wake/session state once, while fast active-turn ticks remain session-only.

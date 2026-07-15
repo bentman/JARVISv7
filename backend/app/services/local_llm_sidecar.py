@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import subprocess
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Protocol
@@ -61,6 +62,16 @@ class LocalLLMSidecarStatus:
     health_ready: bool | None = None
     health_reason: str | None = None
     restart_required: bool = False
+    startup_phase_durations_ms: dict[str, float] = field(default_factory=dict)
+
+
+_STARTUP_PHASES = (
+    "endpoint_adoption_probe",
+    "stale_port_cleanup",
+    "sidecar_process_launch",
+    "health_readiness",
+    "models_readiness",
+)
 
 
 _VALUE_FLAGS: dict[str, str] = {
@@ -117,6 +128,7 @@ class LocalLLMSidecarService:
         self._restart_required = False
         self._adopted_endpoint_base_url: str | None = None
         self._adopted_endpoint_reason: str | None = None
+        self._startup_phase_durations_ms = _empty_startup_phase_durations()
 
     def status(self) -> LocalLLMSidecarStatus:
         running = self._is_running()
@@ -140,6 +152,15 @@ class LocalLLMSidecarService:
         )
 
     def start(self, resolution: LLMServeProfileResolution) -> LocalLLMSidecarStatus:
+        return self._start(resolution, reclaim_stale_port=True)
+
+    def _start(
+        self,
+        resolution: LLMServeProfileResolution,
+        *,
+        reclaim_stale_port: bool,
+    ) -> LocalLLMSidecarStatus:
+        self._startup_phase_durations_ms = _empty_startup_phase_durations()
         command = build_llama_server_command(resolution)
         if not command.ready:
             self._clear_adoption()
@@ -159,7 +180,11 @@ class LocalLLMSidecarService:
 
         # Check if endpoint is already served by an existing llama-server process
         base_url = resolution.base_url.rstrip("/")
-        endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url, resolution.model_id)
+        phase_started_at = time.monotonic()
+        try:
+            endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url, resolution.model_id)
+        finally:
+            self._record_startup_phase("endpoint_adoption_probe", phase_started_at)
         if endpoint_ready:
             # Endpoint is already healthy - adopt it without spawning
             self._last_resolution = resolution
@@ -176,14 +201,20 @@ class LocalLLMSidecarService:
                 health_reason=endpoint_reason,
             )
 
-        # Port reclamation on start
-        try:
-            _, port = _host_port(resolution.base_url)
-            binary_name = resolution.binary_path.name if resolution.binary_path else "llama-server"
-            _reap_processes_on_port(port, binary_name, self._stop_timeout_seconds)
-        except Exception:
-            pass
+        # Port reclamation on start. A transition away from an adopted endpoint
+        # must not reap the external server that this service does not own.
+        if reclaim_stale_port:
+            phase_started_at = time.monotonic()
+            try:
+                _, port = _host_port(resolution.base_url)
+                binary_name = resolution.binary_path.name if resolution.binary_path else "llama-server"
+                _reap_processes_on_port(port, binary_name, self._stop_timeout_seconds)
+            except Exception:
+                pass
+            finally:
+                self._record_startup_phase("stale_port_cleanup", phase_started_at)
 
+        phase_started_at = time.monotonic()
         try:
             process = self._process_factory(list(command.argv))
         except Exception as exc:
@@ -194,6 +225,8 @@ class LocalLLMSidecarService:
             self._last_error = f"Degraded-sidecar-start-failed: {exc}"
             self._restart_required = False
             return self._status(state="degraded", running=False)
+        finally:
+            self._record_startup_phase("sidecar_process_launch", phase_started_at)
 
         self._clear_adoption()
         self._process = process
@@ -204,6 +237,11 @@ class LocalLLMSidecarService:
         return self.status()
 
     def stop(self) -> LocalLLMSidecarStatus:
+        if self._adopted_endpoint_base_url is not None and self._process is None:
+            self._clear_adoption()
+            self._restart_required = False
+            return self._status(state="stopped", running=False)
+
         process = self._process
         if process is not None and process.poll() is None:
             process.terminate()
@@ -240,8 +278,17 @@ class LocalLLMSidecarService:
         return self._status(state="stopped", running=False)
 
     def restart(self, resolution: LLMServeProfileResolution) -> LocalLLMSidecarStatus:
+        adopted_endpoint = self._adopted_endpoint_base_url is not None and self._process is None
         self.stop()
-        return self.start(resolution)
+        return self._start(resolution, reclaim_stale_port=not adopted_endpoint)
+
+    def update_startup_phase_durations(self, durations_ms: dict[str, float]) -> None:
+        for phase in ("health_readiness", "models_readiness"):
+            if phase in durations_ms:
+                self._startup_phase_durations_ms[phase] = max(0.0, float(durations_ms[phase]))
+
+    def _record_startup_phase(self, phase: str, started_at: float) -> None:
+        self._startup_phase_durations_ms[phase] = _elapsed_ms(started_at)
 
     def _is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
@@ -300,7 +347,16 @@ class LocalLLMSidecarService:
             health_ready=health_ready,
             health_reason=health_reason,
             restart_required=self._restart_required if restart_required is None else restart_required,
+            startup_phase_durations_ms=dict(self._startup_phase_durations_ms),
         )
+
+
+def _empty_startup_phase_durations() -> dict[str, float]:
+    return {phase: 0.0 for phase in _STARTUP_PHASES}
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return max(0.0, (time.monotonic() - started_at) * 1000.0)
 
 
 def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -> tuple[bool, str]:

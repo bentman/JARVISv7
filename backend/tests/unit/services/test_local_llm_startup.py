@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings
 from backend.app.hardware.preflight import PreflightResult
@@ -9,6 +11,17 @@ from backend.app.models.catalog import ModelEntry
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 from backend.app.services import local_llm_startup
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
+
+
+class _Response:
+    def __init__(self, payload: dict[str, object] | None = None) -> None:
+        self._payload = payload or {}
+
+    def raise_for_status(self) -> None:
+        return None
+
+    def json(self) -> dict[str, object]:
+        return self._payload
 
 
 def _settings(*, use_local_model: bool = True, managed: bool = True) -> Settings:
@@ -189,3 +202,27 @@ def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runt
     assert result.runtime.model_mode == "dev"
     assert result.runtime.model_policy == "auto"
     assert result.runtime.model_role == "portable"
+
+
+def test_wait_for_llama_cpp_ready_reports_health_and_models_phase_durations(monkeypatch) -> None:
+    monotonic_values = iter((0.0, 0.0, 0.001, 0.004, 0.005, 0.011))
+    monkeypatch.setattr(local_llm_startup.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(
+        local_llm_startup.httpx,
+        "get",
+        lambda url, timeout: _Response({"data": []}) if url.endswith("/v1/models") else _Response(),
+    )
+    durations: dict[str, float] = {}
+
+    ready, reason = local_llm_startup.wait_for_llama_cpp_ready(
+        "http://127.0.0.1:8080",
+        90.0,
+        phase_durations_ms=durations,
+    )
+
+    assert ready is True
+    assert reason == "health and /v1/models reachable"
+    assert durations == {
+        "health_readiness": pytest.approx(4.0),
+        "models_readiness": pytest.approx(6.0),
+    }

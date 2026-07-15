@@ -543,6 +543,26 @@ def test_lifecycle_status_delegates_health_probe_when_running(tmp_path: Path) ->
     assert status.health_reason == "healthy:http://127.0.0.1:18080"
 
 
+def test_startup_status_exposes_all_bounded_phase_durations(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monotonic_values = iter((0.001, 0.003, 0.004, 0.009, 0.010, 0.012))
+    monkeypatch.setattr(local_llm_sidecar.time, "monotonic", lambda: next(monotonic_values))
+    monkeypatch.setattr(local_llm_sidecar, "_reap_processes_on_port", lambda *args: None)
+    service = LocalLLMSidecarService(process_factory=lambda argv: _FakeProcess())
+
+    status = service.start(_resolution(tmp_path))
+
+    assert status.startup_phase_durations_ms == {
+        "endpoint_adoption_probe": pytest.approx(2.0),
+        "stale_port_cleanup": pytest.approx(5.0),
+        "sidecar_process_launch": pytest.approx(2.0),
+        "health_readiness": 0.0,
+        "models_readiness": 0.0,
+    }
+
+
 def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(
     monkeypatch, tmp_path: Path
 ) -> None:
@@ -637,6 +657,7 @@ def test_endpoint_adoption_stop_clears_adoption_without_reaping_external_process
 ) -> None:
     spawned: list[list[str]] = []
     reaped: list[Path] = []
+    port_reaped: list[tuple[int, str, float]] = []
     service = LocalLLMSidecarService(
         process_factory=lambda argv: spawned.append(argv) or _FakeProcess(),
         health_probe=lambda base_url: (True, f"healthy:{base_url}"),
@@ -646,6 +667,11 @@ def test_endpoint_adoption_stop_clears_adoption_without_reaping_external_process
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
         lambda base_url, target_model_id=None: (True, f"adopted existing endpoint at {base_url}"),
+    )
+    monkeypatch.setattr(
+        local_llm_sidecar,
+        "_reap_processes_on_port",
+        lambda port, binary_name, timeout: port_reaped.append((port, binary_name, timeout)),
     )
     resolution = _resolution(tmp_path)
 
@@ -661,6 +687,47 @@ def test_endpoint_adoption_stop_clears_adoption_without_reaping_external_process
     assert after_stop.running is False
     assert spawned == []
     assert reaped == []
+    assert port_reaped == []
+
+
+def test_endpoint_adoption_restart_attempts_transition_without_reaping_external_process(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    probe_results = iter(
+        (
+            (True, "adopted external endpoint"),
+            (False, "requested target is not served"),
+        )
+    )
+    spawned: list[list[str]] = []
+    binary_reaped: list[Path] = []
+    port_reaped: list[tuple[int, str, float]] = []
+    monkeypatch.setattr(
+        local_llm_sidecar,
+        "_probe_endpoint_healthy",
+        lambda base_url, target_model_id=None: next(probe_results),
+    )
+    monkeypatch.setattr(
+        local_llm_sidecar,
+        "_reap_processes_on_port",
+        lambda port, binary_name, timeout: port_reaped.append((port, binary_name, timeout)),
+    )
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: spawned.append(argv) or _FakeProcess(pid=9876),
+        process_reaper=lambda path, timeout: binary_reaped.append(path),
+    )
+
+    adopted = service.start(_resolution(tmp_path, profile_id="windows_amd64_cpu"))
+    restarted = service.restart(_resolution(tmp_path, profile_id="windows_arm64_cpu"))
+
+    assert adopted.running is True
+    assert adopted.pid is None
+    assert restarted.running is True
+    assert restarted.pid == 9876
+    assert len(spawned) == 1
+    assert binary_reaped == []
+    assert port_reaped == []
 
 
 def test_endpoint_adoption_spawns_when_endpoint_unhealthy(

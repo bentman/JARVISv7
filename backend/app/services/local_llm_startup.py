@@ -78,7 +78,6 @@ def prepare_managed_local_llm(
             degraded_reason=resolution.degraded_reason,
         )
 
-    probe = readiness_probe or wait_for_llama_cpp_ready
     sidecar: LocalLLMSidecarService | None = None
     if resolved_settings.effective_llama_cpp_managed:
         sidecar = LocalLLMSidecarService()
@@ -91,7 +90,12 @@ def prepare_managed_local_llm(
                 degraded_reason=status.degraded_reason or status.last_error or "managed llama.cpp sidecar did not start",
             )
 
-        ready, reason = probe(resolution.base_url, 90.0)
+        ready, reason = _probe_startup_readiness(
+            resolution.base_url,
+            90.0,
+            sidecar=sidecar,
+            readiness_probe=readiness_probe,
+        )
         if not ready:
             sidecar.stop()
             return ManagedLocalLLMStartup(
@@ -106,7 +110,12 @@ def prepare_managed_local_llm(
         status = sidecar.restart(resolution)
         if not status.running:
             return status
-        ready, _reason = probe(resolution.base_url, 90.0)
+        ready, _reason = _probe_startup_readiness(
+            resolution.base_url,
+            90.0,
+            sidecar=sidecar,
+            readiness_probe=readiness_probe,
+        )
         if not ready:
             sidecar.stop()
         return sidecar.status()
@@ -134,23 +143,72 @@ def prepare_managed_local_llm(
     )
 
 
-def wait_for_llama_cpp_ready(base_url: str, timeout_seconds: float = 90.0) -> tuple[bool, str]:
+def _probe_startup_readiness(
+    base_url: str,
+    timeout_seconds: float,
+    *,
+    sidecar: LocalLLMSidecarService,
+    readiness_probe: ReadinessProbe | None,
+) -> tuple[bool, str]:
+    if readiness_probe is not None:
+        return readiness_probe(base_url, timeout_seconds)
+    phase_durations_ms: dict[str, float] = {}
+    result = wait_for_llama_cpp_ready(
+        base_url,
+        timeout_seconds,
+        phase_durations_ms=phase_durations_ms,
+    )
+    sidecar.update_startup_phase_durations(phase_durations_ms)
+    return result
+
+
+def wait_for_llama_cpp_ready(
+    base_url: str,
+    timeout_seconds: float = 90.0,
+    *,
+    phase_durations_ms: dict[str, float] | None = None,
+) -> tuple[bool, str]:
     deadline = time.monotonic() + timeout_seconds
     last_reason = "not probed"
     url = base_url.rstrip("/")
+    durations = phase_durations_ms if phase_durations_ms is not None else {}
+    durations.setdefault("health_readiness", 0.0)
+    durations.setdefault("models_readiness", 0.0)
+    health_phase_started_at = time.monotonic()
+    models_phase_started_at: float | None = None
+    health_ready = False
     with httpx.Client() as client:
         while time.monotonic() < deadline:
+            get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
+            if not health_ready:
+                try:
+                    health = get_func(f"{url}/health", timeout=2.0)
+                    health.raise_for_status()
+                except Exception as exc:
+                    last_reason = str(exc)
+                    time.sleep(0.25)
+                    continue
+                health_ready = True
+                durations["health_readiness"] = _elapsed_ms(health_phase_started_at)
+                models_phase_started_at = time.monotonic()
             try:
-                get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
-                health = get_func(f"{url}/health", timeout=2.0)
-                health.raise_for_status()
                 models = get_func(f"{url}/v1/models", timeout=2.0)
                 models.raise_for_status()
                 payload = models.json()
                 if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                    if models_phase_started_at is not None:
+                        durations["models_readiness"] = _elapsed_ms(models_phase_started_at)
                     return True, "health and /v1/models reachable"
                 last_reason = "/v1/models returned invalid payload"
             except Exception as exc:
                 last_reason = str(exc)
             time.sleep(0.25)
+    if health_ready and models_phase_started_at is not None:
+        durations["models_readiness"] = _elapsed_ms(models_phase_started_at)
+    else:
+        durations["health_readiness"] = _elapsed_ms(health_phase_started_at)
     return False, last_reason
+
+
+def _elapsed_ms(started_at: float) -> float:
+    return max(0.0, (time.monotonic() - started_at) * 1000.0)
