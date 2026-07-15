@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-14 23:44
+  - Host class(es): Windows AMD64
+  - Summary: Restored the live voice and continuity test fixes unintentionally omitted by the pooled desktop HTTP client commit, including production STT selection, current personality contracts, retrieval mocks, and live-service skip detection.
+  - Scope:
+    - `backend/tests/conftest.py`
+    - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
+    - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+  - Validation:
+    - `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_continuity_retrieval_live.py backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py -q` PASS (12 passed, 5 hardware-gated skips)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (737 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715044354-regression.txt`)
+
 - Timestamp: 2026-07-14 23:26
   - Host class(es): Windows AMD64
   - Summary: Reused one pooled HTTP client across the desktop backend bridge and reduced status polling churn with active, idle, and hidden-window schedules while preserving backend API contracts.
@@ -36,6 +48,17 @@
     - `backend/.venv/Scripts/python -m pytest backend/tests/unit/desktop/test_desktop_static_contract.py -q` PASS (33 passed)
     - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (737 passed, 1 skipped)
     - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715042607-regression.txt`)
+
+- Timestamp: 2026-07-14 21:17
+  - Host class(es): Windows AMD64
+  - Summary: Fixed WAV-backed live voice tests to use production host-priority STT selection, correct PersonalityProfile contracts, and resolved immediate-repeat / retrieve mock signature mismatches. Configured Ollama-dependent tests to automatically skip with a warning if the local Ollama service daemon is not running.
+  - Scope:
+    - `backend/tests/conftest.py`
+    - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
+    - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+  - Validation:
+    - `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_continuity_retrieval_live.py backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py` PASS (7 passed, 10 skipped cleanly)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (736 passed, 1 skipped)
 
 - Timestamp: 2026-07-14 21:10
   - Host class(es): Windows AMD64

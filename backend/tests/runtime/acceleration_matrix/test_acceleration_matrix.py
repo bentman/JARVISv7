@@ -105,14 +105,9 @@ def _matrix_for_current_host(profile: HardwareProfile, preflight: PreflightResul
         MatrixCell("stt", "qnn:whisper-base-en-qnn-snapdragon-x-elite", qnn_state, "QNN Whisper AI Hub artifact"),
         MatrixCell("stt", "qnn:whisper-qualcomm-qnn", qnn_state, "QNN Whisper side-by-side artifact"),
         MatrixCell("tts", "cpu", _cpu_import_state(preflight, "import:kokoro_onnx"), "import:kokoro_onnx"),
-        MatrixCell("tts", "cuda", "NOT-WIRED:provider-override-missing", "TTS CUDA not wired: provider-override-missing"),
-        MatrixCell(
-            "tts",
-            "directml",
-            "NOT-WIRED:provider-override-missing",
-            "TTS DirectML not wired: provider-override-missing",
-        ),
-        MatrixCell("tts", "qnn", "NOT-WIRED:provider-override-missing", "TTS QNN not wired: provider-override-missing"),
+        MatrixCell("tts", "cuda", _cuda_state(preflight), "ep:CUDAExecutionProvider"),
+        MatrixCell("tts", "directml", _directml_state(preflight), "ep:DmlExecutionProvider"),
+        MatrixCell("tts", "qnn", _qnn_state(profile, preflight), "QNN Kokoro ORT session"),
         MatrixCell("llm", "ollama/local", _ollama_state(), "OLLAMA_BASE_URL settings gate"),
         MatrixCell("llm", "cuda", "N/A", "LLM device is runtime, not EP"),
         MatrixCell("llm", "directml", "N/A", "LLM device is runtime, not EP"),
@@ -188,9 +183,9 @@ def _load_mono_pcm16_wav(path: Path) -> tuple[np.ndarray, int]:
     return np.frombuffer(raw_audio, dtype="<i2").astype(np.float32) / 32768.0, sample_rate
 
 
-def _build_voice_engine(device: str, reason: str) -> TurnEngine:
+def _build_voice_engine(stt, reason: str) -> TurnEngine:
     return TurnEngine(
-        stt=OnnxWhisperRuntime(device=device),
+        stt=stt,
         tts=NullTTSRuntime(reason=reason),
         llm=OllamaLLM(base_url=ollama_base_url()),
         personality=load_default_personality(),
@@ -251,9 +246,19 @@ def _assert_successful_voice_turn(
 @pytest.mark.requires_ollama
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
 @pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
-def test_voice_acceleration_matrix_live_smoke(case: VoiceSmokeCase) -> None:
+def test_voice_acceleration_matrix_live_smoke(
+    preflight_fixture, profiler_fixture, case: VoiceSmokeCase
+) -> None:
     audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
-    engine = _build_voice_engine(case.device, case.tts_reason)
+    if case.expected_device is None:
+        from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
+        stt = select_stt_runtime(preflight_fixture, profiler_fixture.profile)
+    else:
+        if case.device == "qnn":
+            stt = QnnWhisperRuntime(device="qnn", model_name="whisper-qualcomm-qnn")
+        else:
+            stt = OnnxWhisperRuntime(device=case.device)
+    engine = _build_voice_engine(stt, case.tts_reason)
 
     if not case.allow_qnn_cpu_fallback:
         _assert_successful_voice_turn(engine, audio, sample_rate, require_transcript=case.require_transcript)
@@ -268,7 +273,7 @@ def test_voice_acceleration_matrix_live_smoke(case: VoiceSmokeCase) -> None:
         assert getattr(engine.stt, "device", None) == case.expected_device
         return
 
-    fallback_engine = _build_voice_engine("cpu", "arm64 I.3 deterministic fallback proof after qnn path failure")
+    fallback_engine = _build_voice_engine(OnnxWhisperRuntime(device="cpu"), "arm64 I.3 deterministic fallback proof after qnn path failure")
     _assert_successful_voice_turn(fallback_engine, audio, sample_rate)
     assert getattr(fallback_engine.stt, "device", None) == "cpu"
 
@@ -326,17 +331,17 @@ def test_stt_acceleration_matrix_live_transcript(case: SttSmokeCase) -> None:
     [
         pytest.param(TtsSmokeCase(device="cpu"), id="tts-cpu"),
         pytest.param(
-            TtsSmokeCase(device="cuda", expected_error="provider-override-missing"),
+            TtsSmokeCase(device="cuda", expected_error=None),
             marks=[pytest.mark.cuda, pytest.mark.skipif(SKIP_UNLESS_CUDA, reason="requires CUDA execution provider readiness")],
-            id="tts-cuda-not-wired",
+            id="tts-cuda",
         ),
         pytest.param(
-            TtsSmokeCase(device="directml", expected_error="provider-override-missing"),
+            TtsSmokeCase(device="directml", expected_error=None),
             marks=[
                 pytest.mark.directml,
                 pytest.mark.skipif(SKIP_UNLESS_DIRECTML, reason="requires DirectML execution provider readiness"),
             ],
-            id="tts-directml-not-wired",
+            id="tts-directml",
         ),
     ],
 )
