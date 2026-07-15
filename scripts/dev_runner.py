@@ -407,15 +407,18 @@ def _registry_value(root, subkey: str, value_name: str) -> str | None:
 def _check_webview2() -> CheckResult:
     if platform.system().lower() != "windows":
         return _result("webview2", "WARN", "webview2-uncertain", "non-Windows host; WebView2 registry unavailable")
-    try:
-        import winreg
-    except ImportError:
-        return _result("webview2", "WARN", "webview2-uncertain", "winreg unavailable")
     subkeys = [
         rf"SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_RUNTIME_GUID}",
         rf"SOFTWARE\Microsoft\EdgeUpdate\Clients\{WEBVIEW2_RUNTIME_GUID}",
     ]
-    roots = [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]
+    try:
+        import winreg
+
+        roots = [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]
+    except ImportError:
+        # _registry_value handles winreg unavailability itself; keep the probe
+        # loop testable on non-Windows hosts.
+        roots = [None, None]
     for root in roots:
         for subkey in subkeys:
             version = _registry_value(root, subkey, "pv")

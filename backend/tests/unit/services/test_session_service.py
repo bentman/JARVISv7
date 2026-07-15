@@ -145,7 +145,7 @@ def test_status_reports_active_session_and_turn_count(tmp_path: Path) -> None:
     assert status.latest_turn.turn_id == result.turn_id
     assert status.latest_turn.input_modality == "text"
     assert status.latest_turn.runtime_context == {"llm": "fake-llm"}
-    assert status.latest_turn.artifact_path == str(tmp_path / "turns" / result.session_id / f"{result.turn_id}.json")
+    assert status.latest_turn.artifact_path == (tmp_path / "turns" / result.session_id / f"{result.turn_id}.json").as_posix()
 
 
 def test_status_reports_no_latest_turn_before_artifact_exists(tmp_path: Path) -> None:

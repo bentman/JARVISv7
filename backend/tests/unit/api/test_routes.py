@@ -664,7 +664,7 @@ def test_session_status_returns_latest_turn_summary() -> None:
         "degraded_reason": None,
         "tts_output_device": None,
         "raw_audio_path": None,
-        "artifact_path": f"data\\turns\\{session_id}\\turn-debug.json",
+        "artifact_path": f"data/turns/{session_id}/turn-debug.json",
         "runtime_context": {"llm": "fake-llm"},
         "phase_durations_ms": {},
         "failure_phase": None,

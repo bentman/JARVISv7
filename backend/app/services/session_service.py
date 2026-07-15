@@ -177,7 +177,7 @@ class SessionService:
             degraded_reason=degraded_reason,
             tts_output_device=latest.tts_output_device,
             raw_audio_path=latest.raw_audio_path,
-            artifact_path=str(artifact_path),
+            artifact_path=artifact_path.as_posix(),
             runtime_context=dict(latest.runtime_context),
             phase_durations_ms=dict(latest.phase_durations_ms),
             failure_phase=latest.failure_phase,

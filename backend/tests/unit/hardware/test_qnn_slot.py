@@ -62,13 +62,19 @@ def test_resolver_returns_qnn_extra_for_qualcomm_host() -> None:
     assert "hw-npu-qualcomm-qnn" in extras
 
 
-def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) -> None:
+def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch, tmp_path) -> None:
     preflight_module._CACHE.clear()
-    ort_root = Path("C:/site-packages/onnxruntime")
-    qnn_root = Path("C:/site-packages/onnxruntime_qnn")
+    site_packages = tmp_path.resolve()
+    ort_root = site_packages / "onnxruntime"
+    qnn_root = site_packages / "onnxruntime_qnn"
+    ort_root.mkdir()
+    qnn_root.mkdir()
     ort_file = ort_root / "__init__.py"
     qnn_file = qnn_root / "__init__.py"
     htp_path = qnn_root / "QnnHtp.dll"
+    ort_file.write_text("", encoding="utf-8")
+    qnn_file.write_text("", encoding="utf-8")
+    htp_path.write_bytes(b"")
 
     monkeypatch.setattr(preflight_module, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
     monkeypatch.setattr(
@@ -89,8 +95,6 @@ def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) ->
 
     monkeypatch.setattr(preflight_module.importlib, "import_module", fake_import)
     monkeypatch.setattr(preflight_module.importlib.metadata, "version", lambda name: "2.0.0")
-    monkeypatch.setattr(Path, "is_file", lambda self: self == htp_path)
-    monkeypatch.setattr(Path, "rglob", lambda self, pattern: iter([htp_path]) if self == qnn_root else iter(()))
 
     result = preflight_module.run_preflight(
         _profile(os_name="windows", arch="arm64", npu_available=True, npu_vendor="qualcomm"),
