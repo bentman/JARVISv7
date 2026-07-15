@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 00:12
+  - Host class(es): Windows AMD64; platform-neutral runtime behavior
+  - Summary: Removed per-turn llama.cpp readiness probes across managed, adopted, unmanaged, and fallback-selected completion paths. Healthy turns now send the completion request directly; managed sidecar recovery and one retry occur only after transport failure.
+  - Scope:
+    - `backend/app/runtimes/llm/local_runtime.py`
+    - `backend/tests/unit/runtimes/llm/test_llm_runtime.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/llm/test_llm_runtime.py -q` PASS (24 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (738 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715051215-regression.txt`)
+
 - Timestamp: 2026-07-14 23:44
   - Host class(es): Windows AMD64
   - Summary: Stabilized the backend conversation/runtime test path and desktop bridge as one delivery slice: cleaned staged API/engine construction, verified VAD and local-LLM target resolution, repaired live voice/continuity contracts and service gating, and reduced desktop/backend churn through a pooled HTTP client with adaptive polling.

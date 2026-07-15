@@ -79,17 +79,11 @@ class LlamaCppLLM(LLMBase):
         return False
 
     def generate(self, prompt: str, **kwargs: object) -> str:
-        if not self._ensure_sidecar_available_for_turn():
-            raise RuntimeError(f"llama.cpp chat completion failed: {self.reason}")
-
         payload = self._chat_payload(prompt)
         payload.update(kwargs)
         return self._generate_chat_payload(payload)
 
     def generate_envelope(self, envelope: PromptEnvelope, **kwargs: object) -> str:
-        if not self._ensure_sidecar_available_for_turn():
-            raise RuntimeError(f"llama.cpp chat completion failed: {self.reason}")
-
         chat_prompt = render_chat_prompt(envelope)
         payload = self._chat_payload_from_messages(chat_prompt.messages)
         payload.update(chat_prompt.generation)
@@ -99,14 +93,16 @@ class LlamaCppLLM(LLMBase):
     def _generate_chat_payload(self, payload: dict[str, Any]) -> str:
         try:
             data = self._post_chat_completion(payload)
-        except Exception as exc:
-            if self._recover_sidecar() and self.is_available():
+        except httpx.TransportError as exc:
+            if self._recover_sidecar():
                 try:
                     data = self._post_chat_completion(payload)
                 except Exception as retry_exc:
                     raise RuntimeError(f"llama.cpp chat completion failed after sidecar recovery: {retry_exc}") from retry_exc
             else:
                 raise RuntimeError(f"llama.cpp chat completion failed: {exc}") from exc
+        except Exception as exc:
+            raise RuntimeError(f"llama.cpp chat completion failed: {exc}") from exc
 
         generated = _chat_completion_text(data)
         if not generated.strip():
@@ -155,15 +151,6 @@ class LlamaCppLLM(LLMBase):
             return False
         self._apply_sidecar_status(status)
         return True
-
-    def _ensure_sidecar_available_for_turn(self) -> bool:
-        if self.sidecar_status is None:
-            return True
-        if self.is_available():
-            return True
-        if not self._recover_sidecar():
-            return False
-        return self.is_available()
 
     def _post_chat_completion(self, payload: dict[str, Any]) -> Any:
         post_func = httpx.post if httpx.post is not _ORIGINAL_POST else self.client.post

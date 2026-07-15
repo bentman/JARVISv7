@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+import httpx
 import pytest
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
@@ -140,10 +141,14 @@ def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
     ]
 
 
-def test_local_runtime_generate_recovers_managed_sidecar_before_post(monkeypatch):
+def test_local_runtime_generate_skips_sidecar_probe_before_successful_post(monkeypatch):
+    readiness_gets = []
     recoveries = []
-    status_ref = {
-        "status": SimpleNamespace(
+    status_checks = []
+
+    def status():
+        status_checks.append("status")
+        return SimpleNamespace(
             running=False,
             base_url="http://test",
             model_id="assistant-small-q4",
@@ -153,28 +158,10 @@ def test_local_runtime_generate_recovers_managed_sidecar_before_post(monkeypatch
             degraded_reason="sidecar stopped",
             last_error=None,
         )
-    }
-
-    def recover():
-        recoveries.append("restart")
-        status_ref["status"] = SimpleNamespace(
-            running=True,
-            base_url="http://test",
-            model_id="assistant-small-q4",
-            route="voice_chat",
-            serve_profile_id="windows_amd64_cpu",
-            accelerator="gpu.cuda",
-            degraded_reason=None,
-            last_error=None,
-        )
-        return status_ref["status"]
 
     monkeypatch.setattr(
         "backend.app.runtimes.llm.local_runtime.httpx.get",
-        lambda *args, **kwargs: SimpleNamespace(
-            raise_for_status=lambda: None,
-            json=lambda: {"data": [{"id": "assistant-small-q4"}]},
-        ),
+        lambda *args, **kwargs: readiness_gets.append(args[0]),
     )
     monkeypatch.setattr(
         "backend.app.runtimes.llm.local_runtime.httpx.post",
@@ -185,14 +172,17 @@ def test_local_runtime_generate_recovers_managed_sidecar_before_post(monkeypatch
     )
 
     runtime = LlamaCppLLM(
-        sidecar_status=lambda: status_ref["status"],
-        sidecar_recover=recover,
+        base_url="http://test",
+        model="assistant-small-q4",
+        sidecar_status=status,
+        sidecar_recover=lambda: recoveries.append("restart"),
         managed=True,
     )
 
     assert runtime.generate("hello") == "ready"
-    assert recoveries == ["restart"]
-    assert runtime.accelerator == "gpu.cuda"
+    assert readiness_gets == []
+    assert status_checks == []
+    assert recoveries == []
 
 
 def test_local_runtime_generate_retries_after_connection_failure_with_managed_recovery(monkeypatch):
@@ -209,18 +199,16 @@ def test_local_runtime_generate_retries_after_connection_failure_with_managed_re
         last_error=None,
     )
 
+    readiness_gets = []
     monkeypatch.setattr(
         "backend.app.runtimes.llm.local_runtime.httpx.get",
-        lambda *args, **kwargs: SimpleNamespace(
-            raise_for_status=lambda: None,
-            json=lambda: {"data": [{"id": "assistant-small-q4"}]},
-        ),
+        lambda *args, **kwargs: readiness_gets.append(args[0]),
     )
 
     def fake_post(*args, **kwargs):
         posts.append(args[0])
         if len(posts) == 1:
-            raise RuntimeError("connection refused")
+            raise httpx.ConnectError("connection refused", request=httpx.Request("POST", args[0]))
         return SimpleNamespace(
             raise_for_status=lambda: None,
             json=lambda: {"choices": [{"message": {"content": "ready after restart"}}]},
@@ -229,6 +217,8 @@ def test_local_runtime_generate_retries_after_connection_failure_with_managed_re
     monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
 
     runtime = LlamaCppLLM(
+        base_url="http://test",
+        model="assistant-small-q4",
         sidecar_status=lambda: running_status,
         sidecar_recover=lambda: recoveries.append("restart") or running_status,
         managed=True,
@@ -237,10 +227,34 @@ def test_local_runtime_generate_retries_after_connection_failure_with_managed_re
     assert runtime.generate("hello") == "ready after restart"
     assert recoveries == ["restart"]
     assert posts == ["http://test/v1/chat/completions", "http://test/v1/chat/completions"]
+    assert readiness_gets == []
+
+
+def test_local_runtime_generate_does_not_recover_application_error(monkeypatch):
+    recoveries = []
+    request = httpx.Request("POST", "http://test/v1/chat/completions")
+    response = httpx.Response(400, request=request)
+
+    def fake_post(*args, **kwargs):
+        raise httpx.HTTPStatusError("bad request", request=request, response=response)
+
+    monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+    runtime = LlamaCppLLM(
+        base_url="http://test",
+        model="assistant-small-q4",
+        sidecar_recover=lambda: recoveries.append("restart"),
+        managed=True,
+    )
+
+    with pytest.raises(RuntimeError, match="bad request"):
+        runtime.generate("hello")
+    assert recoveries == []
 
 
 def test_local_runtime_generate_envelope_sends_role_separated_chat_payload(monkeypatch):
     calls = []
+    readiness_gets = []
+    recoveries = []
 
     def fake_post(url, *, json, timeout):
         calls.append((url, json, timeout))
@@ -250,6 +264,10 @@ def test_local_runtime_generate_envelope_sends_role_separated_chat_payload(monke
         )
 
     monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.get",
+        lambda *args, **kwargs: readiness_gets.append(args[0]),
+    )
     runtime = LlamaCppLLM(
         base_url="http://test",
         model="assistant-qwen3-4b-q4-portable",
@@ -259,6 +277,9 @@ def test_local_runtime_generate_envelope_sends_role_separated_chat_payload(monke
             "temperature": 0,
             "chat_template_kwargs": {"enable_thinking": False},
         },
+        sidecar_status=lambda: SimpleNamespace(running=True),
+        sidecar_recover=lambda: recoveries.append("restart"),
+        managed=True,
     )
     envelope = PromptEnvelope(
         segments=(
@@ -292,6 +313,8 @@ def test_local_runtime_generate_envelope_sends_role_separated_chat_payload(monke
     )
 
     assert runtime.generate_envelope(envelope) == "ready"
+    assert readiness_gets == []
+    assert recoveries == []
     payload = calls[0][1]
     assert calls[0][0] == "http://test/v1/chat/completions"
     assert payload["messages"] == [
@@ -554,8 +577,6 @@ def test_local_runtime_uses_owned_client(monkeypatch):
         )
 
     monkeypatch.setattr(runtime.client, "post", fake_post)
-    monkeypatch.setattr(runtime, "_ensure_sidecar_available_for_turn", lambda: True)
-
     assert runtime.generate("hello") == "ready"
     assert called == ["http://test/v1/chat/completions"]
 
