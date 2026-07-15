@@ -322,10 +322,14 @@ class UtteranceSegmenter:
         return max(0.0, float(getattr(self.vad, "speech_rms_threshold", 0.0)))
 
     def _effective_speech_threshold(self, noise_floor_rms: float) -> float:
+        # Calibrates the VAD speech detection threshold dynamically during stream-time
+        # based on the computed noise floor and configured multiplier/margin.
         adaptive_threshold = noise_floor_rms * max(0.0, self.noise_floor_multiplier) + max(0.0, self.noise_floor_margin)
         return max(self._base_speech_threshold(), adaptive_threshold)
 
     def _update_noise_floor(self, current: float, chunks: int, rms: float) -> float:
+        # Dynamically tracks the background noise floor prior to speech onset
+        # by updating the running average of RMS values for non-speech chunks.
         if chunks <= 0:
             return rms
         return ((current * chunks) + rms) / float(chunks + 1)

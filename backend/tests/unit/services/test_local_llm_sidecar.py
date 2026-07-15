@@ -49,7 +49,7 @@ def _write_file(path: Path, content: bytes = b"x") -> Path:
 def _default_unhealthy_endpoint_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
-        lambda base_url: (False, f"endpoint unavailable:{base_url}"),
+        lambda base_url, target_model_id=None: (False, f"endpoint unavailable:{base_url}"),
     )
 
 
@@ -554,7 +554,7 @@ def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(
     )
 
     # Mock the endpoint probe to return healthy
-    def fake_probe(base_url: str) -> tuple[bool, str]:
+    def fake_probe(base_url: str, target_model_id: str | None = None) -> tuple[bool, str]:
         return True, f"adopted existing endpoint at {base_url}"
 
     monkeypatch.setattr(
@@ -588,7 +588,7 @@ def test_endpoint_adoption_status_remains_running_while_endpoint_is_healthy(
 
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
-        lambda base_url: (True, f"adopted existing endpoint at {base_url}"),
+        lambda base_url, target_model_id=None: (True, f"adopted existing endpoint at {base_url}"),
     )
     resolution = _resolution(tmp_path, base_url="http://127.0.0.1:18080")
 
@@ -617,7 +617,7 @@ def test_endpoint_adoption_status_reports_stopped_when_endpoint_becomes_unhealth
 
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
-        lambda base_url: (True, f"adopted existing endpoint at {base_url}"),
+        lambda base_url, target_model_id=None: (True, f"adopted existing endpoint at {base_url}"),
     )
     resolution = _resolution(tmp_path, base_url="http://127.0.0.1:18080")
 
@@ -645,7 +645,7 @@ def test_endpoint_adoption_stop_clears_adoption_without_reaping_external_process
 
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
-        lambda base_url: (True, f"adopted existing endpoint at {base_url}"),
+        lambda base_url, target_model_id=None: (True, f"adopted existing endpoint at {base_url}"),
     )
     resolution = _resolution(tmp_path)
 
@@ -676,7 +676,7 @@ def test_endpoint_adoption_spawns_when_endpoint_unhealthy(
     # Mock the endpoint probe to return unhealthy
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
-        lambda base_url: (False, "endpoint unreachable"),
+        lambda base_url, target_model_id=None: (False, "endpoint unreachable"),
     )
 
     resolution = _resolution(tmp_path)
@@ -688,3 +688,59 @@ def test_endpoint_adoption_spawns_when_endpoint_unhealthy(
     assert status.pid == 4321
     assert len(calls) == 1  # Spawn occurred
     assert calls[0][0].endswith("llama-server.exe")
+
+
+def test_endpoint_adoption_verifies_model_matching_successfully(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[list[str]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),
+    )
+
+    # Mock the endpoint probe to return healthy and match model ID
+    def fake_probe(base_url: str, target_model_id: str | None = None) -> tuple[bool, str]:
+        if target_model_id == "assistant-small-q4":
+            return True, f"adopted existing endpoint at {base_url} with model {target_model_id}"
+        return False, "model mismatch"
+
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        fake_probe,
+    )
+
+    resolution = _resolution(tmp_path)
+    status = service.start(resolution)
+
+    assert status.state == "running"
+    assert status.running is True
+    assert status.pid is None
+    assert status.health_ready is True
+    assert "adopted existing endpoint" in status.health_reason
+    assert len(calls) == 0
+
+
+def test_endpoint_adoption_fails_when_model_mismatches(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    calls: list[list[str]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=999),
+    )
+
+    # Mock the endpoint probe to return model mismatch
+    def fake_probe(base_url: str, target_model_id: str | None = None) -> tuple[bool, str]:
+        return False, "endpoint model mismatch"
+
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
+        fake_probe,
+    )
+
+    resolution = _resolution(tmp_path)
+    status = service.start(resolution)
+
+    assert status.state == "running"
+    assert status.running is True
+    assert status.pid == 999
+    assert len(calls) == 1

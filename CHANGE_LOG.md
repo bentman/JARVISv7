@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-14 21:10
+  - Host class(es): Windows AMD64
+  - Summary: Inspected VAD noise-floor calibration and implemented model-verified target resolution matching during local LLM sidecar endpoint adoption, with corresponding unit tests.
+  - Scope:
+    - `backend/app/services/utterance_segmenter.py`
+    - `backend/app/services/local_llm_sidecar.py`
+    - `backend/tests/unit/services/test_local_llm_sidecar.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_local_llm_sidecar.py backend/tests/unit/services/test_utterance_segmenter.py` PASS (40 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (736 passed, 1 skipped)
+
 - Timestamp: 2026-07-14 21:02
   - Host class(es): Windows AMD64
   - Summary: Removed duplicated import block in TurnEngine and replaced temporary None assignments in ApiState initialization with a type-safe staged-construction pattern.

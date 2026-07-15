@@ -159,7 +159,7 @@ class LocalLLMSidecarService:
 
         # Check if endpoint is already served by an existing llama-server process
         base_url = resolution.base_url.rstrip("/")
-        endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url)
+        endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url, resolution.model_id)
         if endpoint_ready:
             # Endpoint is already healthy - adopt it without spawning
             self._last_resolution = resolution
@@ -258,7 +258,8 @@ class LocalLLMSidecarService:
                 return self._health_probe(self._adopted_endpoint_base_url)
             except Exception as exc:
                 return False, str(exc)
-        return _probe_endpoint_healthy(self._adopted_endpoint_base_url)
+        target_model_id = self._last_resolution.model_id if self._last_resolution else None
+        return _probe_endpoint_healthy(self._adopted_endpoint_base_url, target_model_id)
 
     def _same_running_target(self, resolution: LLMServeProfileResolution) -> bool:
         if self._last_resolution is None:
@@ -302,15 +303,58 @@ class LocalLLMSidecarService:
         )
 
 
-def _probe_endpoint_healthy(base_url: str) -> tuple[bool, str]:
-    """Probe if the llama.cpp endpoint is already healthy.
+def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -> tuple[bool, str]:
+    """Probe if the llama.cpp endpoint is already healthy and serving the target model if specified.
 
-    Returns (True, reason) if endpoint responds to /health or /v1/models.
-    Returns (False, reason) if endpoint is unreachable or unhealthy.
+    Returns (True, reason) if endpoint responds to /health or /v1/models (and matches target_model_id if provided).
+    Returns (False, reason) if endpoint is unreachable, unhealthy, or model mismatch.
     This is a non-blocking single-probe check (no retry loop).
     """
     url = base_url.rstrip("/")
     with httpx.Client() as client:
+        if target_model_id is not None:
+            try:
+                # Must query /v1/models to verify the model ID matches
+                get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
+                models = get_func(f"{url}/v1/models", timeout=1.0)
+                models.raise_for_status()
+                payload = models.json()
+                if isinstance(payload, dict) and isinstance(payload.get("data"), list):
+                    model_ids: list[str] = []
+                    for item in payload["data"]:
+                        if isinstance(item, dict) and "id" in item:
+                            mid = item["id"]
+                            if isinstance(mid, str):
+                                model_ids.append(mid)
+                    
+                    matched = False
+                    for mid in model_ids:
+                        if mid == target_model_id:
+                            matched = True
+                            break
+                        # Basename or name matching to handle paths or extensions
+                        try:
+                            mid_path = Path(mid)
+                            if mid_path.name == target_model_id or mid_path.stem == target_model_id:
+                                matched = True
+                                break
+                            target_path = Path(target_model_id)
+                            if target_path.name == mid or target_path.stem == mid:
+                                matched = True
+                                break
+                        except Exception:
+                            pass
+                        if target_model_id in mid or mid in target_model_id:
+                            matched = True
+                            break
+
+                    if matched:
+                        return True, f"endpoint healthy at {base_url} serving model {target_model_id}"
+                    return False, f"endpoint model mismatch: expected {target_model_id}, found {model_ids}"
+                return False, "endpoint returned invalid /v1/models payload"
+            except Exception as exc:
+                return False, f"endpoint unreachable or models check failed: {exc}"
+
         try:
             # Try /health first (quickest check)
             get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
