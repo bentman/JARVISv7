@@ -96,23 +96,48 @@ def _text_engine(llm: LlamaCppLLM, *, session_manager: SessionManager | None = N
     )
 
 
-def _engine(tmp_path: Path) -> tuple[TurnEngine, SessionManager]:
+def _engine(tmp_path: Path, preflight, profile) -> tuple[TurnEngine, SessionManager]:
     session_manager = SessionManager(
         session_id="runtime-multiturn-session",
         turns_base_dir=tmp_path / "turns",
         sessions_base_dir=tmp_path / "sessions",
     )
+    from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
+    from backend.app.personality.schema import (
+        PersonalityExample,
+        PersonalityProfile,
+        PersonalityStyle,
+        PersonalityTraits,
+    )
+    stt = select_stt_runtime(preflight, profile)
     engine = TurnEngine(
-        stt=OnnxWhisperRuntime(device="cpu"),
+        stt=stt,
         tts=NullTTSRuntime(reason="C.4 continuity test uses explicit TTS degradation"),
         llm=OllamaLLM(base_url=ollama_base_url()),
         personality=PersonalityProfile(
             profile_id="runtime-c4",
             display_name="JARVIS",
-            tone="professional",
-            brevity="concise",
-            formality="semi-formal",
-            system_prompt_addendum="For every user message in this validation test, reply with exactly: ready",
+            description="Balanced assistant.",
+            locale="en",
+            system="For every user message in this validation test, reply with exactly: ready",
+            style=PersonalityStyle(
+                max_words_default=120,
+                structure="Answer first.",
+                do=("Lead with the answer.",),
+                avoid=("Filler.",),
+            ),
+            traits=PersonalityTraits(
+                warmth="medium", assertiveness="medium", detail="medium", humor="light"
+            ),
+            examples=(PersonalityExample(user="Status?", assistant="Ready."),),
+            generation={
+                "temperature": 0.5,
+                "top_p": 0.9,
+                "top_k": 40,
+                "repeat_penalty": 1.08,
+                "max_tokens": 120,
+                "stop": ["\nUser:", "\nAssistant:"],
+            },
         ),
         session_manager=session_manager,
         write_policy=WritePolicy(max_working_memory_entries=10),
@@ -120,21 +145,25 @@ def _engine(tmp_path: Path) -> tuple[TurnEngine, SessionManager]:
     return engine, session_manager
 
 
-def _run_two_spoken_turns(tmp_path: Path) -> tuple[TurnResult, TurnResult, SessionManager]:
-    engine, session_manager = _engine(tmp_path)
+def _run_two_spoken_turns(
+    tmp_path: Path, preflight, profile
+) -> tuple[TurnResult, TurnResult, SessionManager]:
+    engine, session_manager = _engine(tmp_path, preflight, profile)
     audio, sample_rate = _load_mono_pcm16_wav(FIXTURE_PATH)
-
     first = engine.run_voice_turn(audio, sample_rate)
-    second = engine.run_voice_turn(audio, sample_rate)
+
+    second_audio_path = FIXTURE_PATH.parent / "hey_jarvis.wav"
+    second_audio, second_sample_rate = _load_mono_pcm16_wav(second_audio_path)
+    second = engine.run_voice_turn(second_audio, second_sample_rate)
 
     return first, second, session_manager
 
 
-def _assert_completed_degraded_voice_turn(result: TurnResult) -> None:
+def _assert_completed_degraded_voice_turn(result: TurnResult, expected_substring: str = "hello") -> None:
     assert result.final_state == ConversationState.IDLE
     assert result.failure_reason is None
     assert result.transcript is not None
-    assert "hello" in result.transcript.lower()
+    assert expected_substring in result.transcript.lower()
     assert result.response_text is not None
     assert result.response_text.strip()
     assert result.tts_degraded is True
@@ -173,11 +202,13 @@ def test_text_turn_latest_request_beats_prior_turn_with_continuity(live_llama_cp
 @pytest.mark.requires_ollama
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
 @pytest.mark.skipif(SKIP_UNLESS_OLLAMA, reason="OLLAMA_BASE_URL not set")
-def test_two_spoken_turns_in_one_session_write_artifacts_and_inject_memory(tmp_path: Path):
-    first, second, session_manager = _run_two_spoken_turns(tmp_path)
+def test_two_spoken_turns_in_one_session_write_artifacts_and_inject_memory(
+    preflight_fixture, profiler_fixture, tmp_path: Path
+):
+    first, second, session_manager = _run_two_spoken_turns(tmp_path, preflight_fixture, profiler_fixture.profile)
 
-    _assert_completed_degraded_voice_turn(first)
-    _assert_completed_degraded_voice_turn(second)
+    _assert_completed_degraded_voice_turn(first, "hello")
+    _assert_completed_degraded_voice_turn(second, "jarvis")
     assert len(session_manager.turn_artifacts) == 2
     assert (tmp_path / "turns" / session_manager.session_id / f"{first.turn_id}.json").exists()
     assert (tmp_path / "turns" / session_manager.session_id / f"{second.turn_id}.json").exists()
@@ -275,7 +306,7 @@ def test_retrieval_memory_paths(case: RetrievalCase, tmp_path: Path) -> None:
         episodic=episodic,
     )
 
-    engine.retrieval.retrieve = lambda query, n=3, cache_manager=None, episodic=None: [
+    engine.retrieval.retrieve = lambda query, n=3, **kwargs: [
         RetrievedFact(
             turn_id="prior-turn",
             session_id="prior-session",

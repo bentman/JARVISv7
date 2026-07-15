@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-14 21:17
+  - Host class(es): Windows AMD64
+  - Summary: Fixed WAV-backed live voice tests to use production host-priority STT selection, correct PersonalityProfile contracts, and resolved immediate-repeat / retrieve mock signature mismatches. Configured Ollama-dependent tests to automatically skip with a warning if the local Ollama service daemon is not running.
+  - Scope:
+    - `backend/tests/conftest.py`
+    - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
+    - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
+  - Validation:
+    - `$env:JARVISV7_LIVE_TESTS="true"; backend/.venv/Scripts/python -m pytest backend/tests/runtime/turn/test_continuity_retrieval_live.py backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py` PASS (7 passed, 10 skipped cleanly)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (736 passed, 1 skipped)
+
 - Timestamp: 2026-07-14 21:10
   - Host class(es): Windows AMD64
   - Summary: Inspected VAD noise-floor calibration and implemented model-verified target resolution matching during local LLM sidecar endpoint adoption, with corresponding unit tests.
