@@ -33,6 +33,11 @@ class BargeInDetector:
         self._started_at = self._now()
         self._speech_samples = 0
         self._speech_chunks = 0
+        # Stateful VAD runtimes (e.g. SileroVADRuntime) carry recurrent state
+        # and buffered samples between chunks; clear them per playback.
+        reset_vad = getattr(self.vad, "reset", None)
+        if callable(reset_vad):
+            reset_vad()
 
     def detect(self, audio_chunk: np.ndarray) -> bool:
         samples = np.asarray(audio_chunk, dtype=np.float32)
@@ -40,10 +45,13 @@ class BargeInDetector:
             return False
         if self._started_at is not None and self._now() - self._started_at < self.guard_time_s:
             return False
+        rms = float(np.sqrt(np.mean(np.square(samples))))
         if self.vad is not None:
-            speech = self.vad.detect(samples, self.sample_rate).speech
+            # Loudness floor on top of the VAD decision: quiet speaker bleed
+            # of the assistant's own TTS output is speech to a VAD, but a
+            # genuine barge-in from a user near the mic clears the RMS gate.
+            speech = rms >= self.energy_threshold and self.vad.detect(samples, self.sample_rate).speech
         else:
-            rms = float(np.sqrt(np.mean(np.square(samples))))
             speech = rms >= self.energy_threshold
         if not speech:
             self._speech_samples = 0

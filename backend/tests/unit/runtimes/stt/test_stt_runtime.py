@@ -494,6 +494,29 @@ def test_barge_in_detector_requires_minimum_speech_duration_with_vad() -> None:
     assert detector.detect(np.ones(10, dtype=np.float32)) is True
 
 
+def test_barge_in_detector_vad_speech_below_energy_floor_does_not_interrupt() -> None:
+    class AlwaysSpeechVAD:
+        def detect(self, samples: np.ndarray, sample_rate: int):
+            _ = samples, sample_rate
+            return SimpleNamespace(speech=True)
+
+    detector = BargeInDetector(
+        energy_threshold=0.02,
+        guard_time_s=0.0,
+        min_speech_s=0.0,
+        sample_rate=1000,
+        vad=AlwaysSpeechVAD(),  # type: ignore[arg-type]
+        time_source=lambda: 1.0,
+    )
+    detector.reset()
+
+    # Quiet speaker bleed of the assistant's own TTS is "speech" to a VAD
+    # but must not clear the loudness floor and interrupt playback.
+    assert detector.detect(np.full(10, 0.005, dtype=np.float32)) is False
+    # A user speaking near the mic clears the floor and interrupts.
+    assert detector.detect(np.full(10, 0.1, dtype=np.float32)) is True
+
+
 def test_barge_in_detector_requires_consecutive_speech_chunks_when_configured() -> None:
     detector = BargeInDetector(
         energy_threshold=0.02,
@@ -508,6 +531,32 @@ def test_barge_in_detector_requires_consecutive_speech_chunks_when_configured() 
     assert detector.detect(np.full(10, 0.0, dtype=np.float32)) is False
     assert detector.detect(np.full(10, 0.1, dtype=np.float32)) is False
     assert detector.detect(np.full(10, 0.1, dtype=np.float32)) is True
+
+
+def test_barge_in_detector_reset_clears_stateful_vad() -> None:
+    class StatefulVAD:
+        def __init__(self) -> None:
+            self.reset_calls = 0
+
+        def detect(self, samples: np.ndarray, sample_rate: int):
+            _ = samples, sample_rate
+            return SimpleNamespace(speech=True)
+
+        def reset(self) -> None:
+            self.reset_calls += 1
+
+    vad = StatefulVAD()
+    detector = BargeInDetector(
+        guard_time_s=0.0,
+        min_speech_s=0.0,
+        sample_rate=1000,
+        vad=vad,  # type: ignore[arg-type]
+        time_source=lambda: 1.0,
+    )
+
+    detector.reset()
+
+    assert vad.reset_calls == 1
 
 
 def test_barge_in_detector_resets_speech_accumulator_on_non_speech() -> None:
