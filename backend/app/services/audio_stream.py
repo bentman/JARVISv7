@@ -87,6 +87,10 @@ class ResidentAudioStream:
             last_error=self._last_error,
         )
 
+    def is_running(self) -> bool:
+        thread = self._thread
+        return thread is not None and thread.is_alive()
+
     def buffered_chunks(self) -> list[AudioChunk]:
         with self._lock:
             return list(self._buffer)

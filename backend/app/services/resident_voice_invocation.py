@@ -215,12 +215,12 @@ class ResidentVoiceInvocationService:
             return False
         if self._resident_stream is None or self._utterance_segmenter is None:
             return False
-        return not self._resident_stream.status().running
+        return not self._resident_stream.is_running()
 
     def _capture_streamed_request(self, request: ResidentInvocationRequest) -> ResidentInvocationRequest:
         if self._resident_stream is None or self._utterance_segmenter is None:
             return request
-        if not self._resident_stream.status().running:
+        if not self._resident_stream.is_running():
             return request
 
         subscriber = self._resident_stream.subscribe(include_buffer=request.source == "ptt")
@@ -283,7 +283,7 @@ class ResidentVoiceInvocationService:
 
 
 def _subscriber_chunks(subscriber: queue.Queue[AudioChunk], resident_stream: ResidentAudioStream) -> Iterable[AudioChunk]:
-    while resident_stream.status().running:
+    while resident_stream.is_running():
         try:
             yield subscriber.get(timeout=0.5)
         except queue.Empty:
@@ -308,7 +308,7 @@ def default_utterance_segmenter() -> UtteranceSegmenter:
 
 
 def resident_interruption_chunks(resident_stream: ResidentAudioStream | None) -> Iterable[np.ndarray] | None:
-    if resident_stream is None or not resident_stream.status().running:
+    if resident_stream is None or not resident_stream.is_running():
         return None
     return _resident_interruption_chunks(resident_stream)
 
@@ -316,7 +316,7 @@ def resident_interruption_chunks(resident_stream: ResidentAudioStream | None) ->
 def _resident_interruption_chunks(resident_stream: ResidentAudioStream) -> Iterable[np.ndarray]:
     subscriber = resident_stream.subscribe()
     try:
-        while resident_stream.status().running:
+        while resident_stream.is_running():
             try:
                 chunk = subscriber.get(timeout=0.1)
             except queue.Empty:

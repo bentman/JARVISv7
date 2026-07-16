@@ -38,11 +38,13 @@ def test_stream_starts_stops_and_reports_status_with_fake_source() -> None:
 
     status = stream.start()
     assert status.running is True
+    assert stream.is_running() is True
 
     _wait_for(lambda: stream.status().sequence == 2)
     stopped = stream.stop()
 
     assert stopped.running is False
+    assert stream.is_running() is False
     assert stopped.sample_rate == 16000
     assert stopped.chunk_samples == 4
     assert stopped.sequence == 2
