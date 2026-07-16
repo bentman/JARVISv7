@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 00:35
+  - Host class(es): Windows AMD64; platform-neutral llama.cpp sidecar lifecycle behavior
+  - Summary: Added a bounded TCP listener gate before llama.cpp endpoint adoption, bypassing the model-aware HTTP timeout when no server is listening while preserving model verification for reachable endpoints.
+  - Scope:
+    - `backend/app/services/local_llm_sidecar.py`
+    - `backend/tests/unit/services/test_local_llm_sidecar.py`
+  - Validation:
+    - No-listener adoption probe timing at `http://127.0.0.1:65534`: 1223.879 ms before; 110.0 ms after
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_local_llm_sidecar.py backend/tests/unit/services/test_local_llm_startup.py -q` PASS (37 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (749 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716053515-regression.txt`)
+
 - Timestamp: 2026-07-15 23:55
   - Host class(es): Windows AMD64; platform-neutral resident stream lifecycle behavior
   - Summary: Preserved the active TurnEngine across resident audio start/stop controls. Stream transitions now update only the existing engine's interruption source, retaining all session, runtime, memory, personality, cache, and barge-in detector instances.

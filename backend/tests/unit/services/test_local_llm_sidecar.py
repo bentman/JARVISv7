@@ -9,6 +9,8 @@ from backend.app.models.llm_profiles import LLMServeProfileResolution
 from backend.app.services import local_llm_sidecar
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, build_llama_server_command
 
+_ENDPOINT_LISTENER_AVAILABLE = local_llm_sidecar._endpoint_listener_available
+
 
 class _FakeProcess:
     def __init__(self, pid: int = 1234) -> None:
@@ -47,6 +49,10 @@ def _write_file(path: Path, content: bytes = b"x") -> Path:
 
 @pytest.fixture(autouse=True)
 def _default_unhealthy_endpoint_probe(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.services.local_llm_sidecar._endpoint_listener_available",
+        lambda base_url: True,
+    )
     monkeypatch.setattr(
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
         lambda base_url, target_model_id=None: (False, f"endpoint unavailable:{base_url}"),
@@ -561,6 +567,41 @@ def test_startup_status_exposes_all_bounded_phase_durations(
         "health_readiness": 0.0,
         "models_readiness": 0.0,
     }
+
+
+def test_endpoint_adoption_skips_http_probe_when_no_listener_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    http_probes: list[tuple[str, str | None]] = []
+    monkeypatch.setattr(local_llm_sidecar, "_endpoint_listener_available", lambda base_url: False)
+    monkeypatch.setattr(
+        local_llm_sidecar,
+        "_probe_endpoint_healthy",
+        lambda base_url, target_model_id=None: http_probes.append((base_url, target_model_id)),
+    )
+    service = LocalLLMSidecarService(process_factory=lambda argv: _FakeProcess(pid=4321))
+
+    status = service.start(_resolution(tmp_path))
+
+    assert status.running is True
+    assert status.pid == 4321
+    assert http_probes == []
+
+
+def test_endpoint_listener_check_uses_bounded_connect_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempts: list[tuple[tuple[str, int], float]] = []
+
+    def refuse_connection(address: tuple[str, int], timeout: float):
+        attempts.append((address, timeout))
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(local_llm_sidecar.socket, "create_connection", refuse_connection)
+
+    assert _ENDPOINT_LISTENER_AVAILABLE("http://127.0.0.1:8080") is False
+    assert attempts == [(('127.0.0.1', 8080), 0.1)]
 
 
 def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(

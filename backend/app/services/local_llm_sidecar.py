@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import subprocess
 import time
 from dataclasses import dataclass, field
@@ -13,6 +14,7 @@ import psutil
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 
 _ORIGINAL_GET = httpx.get
+_ENDPOINT_LISTENER_TIMEOUT_SECONDS = 0.1
 
 
 class SidecarProcess(Protocol):
@@ -182,7 +184,10 @@ class LocalLLMSidecarService:
         base_url = resolution.base_url.rstrip("/")
         phase_started_at = time.monotonic()
         try:
-            endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url, resolution.model_id)
+            if _endpoint_listener_available(base_url):
+                endpoint_ready, endpoint_reason = _probe_endpoint_healthy(base_url, resolution.model_id)
+            else:
+                endpoint_ready, endpoint_reason = False, f"no listener at {base_url}"
         finally:
             self._record_startup_phase("endpoint_adoption_probe", phase_started_at)
         if endpoint_ready:
@@ -357,6 +362,15 @@ def _empty_startup_phase_durations() -> dict[str, float]:
 
 def _elapsed_ms(started_at: float) -> float:
     return max(0.0, (time.monotonic() - started_at) * 1000.0)
+
+
+def _endpoint_listener_available(base_url: str) -> bool:
+    try:
+        host, port = _host_port(base_url)
+        with socket.create_connection((host, port), timeout=_ENDPOINT_LISTENER_TIMEOUT_SECONDS):
+            return True
+    except (OSError, ValueError):
+        return False
 
 
 def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -> tuple[bool, str]:
