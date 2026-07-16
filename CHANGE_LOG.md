@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 06:09
+  - Host class(es): Windows AMD64; platform-neutral wake-command capture behavior
+  - Summary: Preserved the complete 0.8-second wake-command endpoint window in STT audio, preventing VAD-negative quiet final words from being trimmed without changing endpoint latency or detection behavior.
+  - Scope:
+    - `backend/app/services/utterance_segmenter.py`
+    - `backend/tests/unit/services/test_utterance_segmenter.py`, `backend/tests/unit/api/test_routes.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_utterance_segmenter.py backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/api/test_routes.py::test_build_startup_state_uses_runtime_selector_for_llm -q` PASS (110 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (760 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716110910-regression.txt`)
+  - Notes:
+    - Wake silence endpoint and retained endpoint audio are both 0.8 seconds; pre-roll, the 80 ms wake bridge, VAD decisions, and non-wake segmenters are unchanged.
+
 - Timestamp: 2026-07-16 05:30
   - Host class(es): Windows AMD64; platform-neutral resident interruption-source lifecycle
   - Summary: Replaced the reusable resident interruption generator with a per-playback factory. Each TTS playback now owns and closes a fresh resident-audio subscription after completion, interruption, or failure.

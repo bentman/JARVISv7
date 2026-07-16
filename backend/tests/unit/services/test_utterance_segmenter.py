@@ -223,7 +223,7 @@ def test_segmenter_keeps_brief_hesitation_inside_utterance() -> None:
     assert result.audio.shape == (20,)
 
 
-def test_wake_endpoint_keeps_natural_pause_and_trailing_audio_pad() -> None:
+def test_wake_endpoint_keeps_natural_pause_and_complete_endpoint_window() -> None:
     sample_rate = 10
     segmenter = UtteranceSegmenter(
         vad=EnergyVADRuntime(speech_rms_threshold=0.05),
@@ -247,11 +247,42 @@ def test_wake_endpoint_keeps_natural_pause_and_trailing_audio_pad() -> None:
 
     assert result.reason == "silence"
     assert result.speech_chunks == 2
-    assert result.audio.shape == (11,)
-    assert np.array_equal(result.audio[-3:-1], np.full(2, 0.2, dtype=np.float32))
-    assert result.audio[-1] == 0.0
-    assert result.diagnostics.sample_count == 11
-    assert result.diagnostics.duration_s == 1.1
+    assert result.audio.shape == (18,)
+    assert np.array_equal(result.audio[-10:-8], np.full(2, 0.2, dtype=np.float32))
+    assert np.array_equal(result.audio[-8:], np.zeros(8, dtype=np.float32))
+    assert result.diagnostics.sample_count == 18
+    assert result.diagnostics.duration_s == 1.8
+
+
+def test_wake_endpoint_retains_vad_negative_low_amplitude_final_samples() -> None:
+    sample_rate = 10
+    segmenter = UtteranceSegmenter(
+        vad=EnergyVADRuntime(speech_rms_threshold=0.05),
+        sample_rate=sample_rate,
+        pre_roll_s=0.0,
+        speech_start_s=0.1,
+        min_speech_s=0.2,
+        silence_end_s=WAKE_COMMAND_SILENCE_END_S,
+        trailing_pad_s=WAKE_COMMAND_TRAILING_PAD_S,
+        max_duration_s=8.0,
+        no_speech_timeout_s=3.0,
+    )
+    speech = np.full(2, 0.2, dtype=np.float32)
+    quiet_final_samples = np.full(8, 0.01, dtype=np.float32)
+
+    result = segmenter.capture(
+        [
+            AudioChunk(speech, sample_rate, 1, 1.0),
+            AudioChunk(quiet_final_samples, sample_rate, 2, 2.0),
+        ]
+    )
+
+    assert result.reason == "silence"
+    assert result.speech_chunks == 1
+    assert np.array_equal(result.audio, np.concatenate([speech, quiet_final_samples]))
+    assert np.array_equal(result.audio[-8:], quiet_final_samples)
+    assert result.diagnostics.sample_count == 10
+    assert result.diagnostics.duration_s == 1.0
 
 
 def test_segmenter_reports_stream_ended_after_confirmed_speech_without_endpoint() -> None:

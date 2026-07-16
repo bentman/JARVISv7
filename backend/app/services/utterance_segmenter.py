@@ -10,7 +10,7 @@ from backend.app.services.audio_stream import AudioChunk
 
 
 WAKE_COMMAND_SILENCE_END_S = 0.8
-WAKE_COMMAND_TRAILING_PAD_S = 0.12
+WAKE_COMMAND_TRAILING_PAD_S = WAKE_COMMAND_SILENCE_END_S
 
 
 @dataclass(frozen=True, slots=True)
