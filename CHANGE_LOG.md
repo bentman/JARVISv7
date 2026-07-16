@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 06:24
+  - Host class(es): Windows AMD64; platform-neutral wake-monitor lifecycle behavior
+  - Summary: Prevented timed-out wake stop and pause operations from discarding a live worker or clearing its stop signal. Worker ownership now remains exclusive until the existing run-loop cleanup observes actual exit.
+  - Scope:
+    - `backend/app/services/wake_monitor.py`
+    - `backend/tests/unit/services/test_wake_monitor.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/services/test_audio_stream.py backend/tests/unit/api/test_routes.py -q` PASS (111 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (762 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716112537-regression.txt`)
+  - Notes:
+    - The join remains bounded at one second. Stop disposes the runtime after worker exit; pause retains it for a later resume, and resident audio stream state is unchanged.
+
 - Timestamp: 2026-07-16 06:09
   - Host class(es): Windows AMD64; platform-neutral wake-command capture behavior
   - Summary: Preserved the complete 0.8-second wake-command endpoint window in STT audio, preventing VAD-negative quiet final words from being trimmed without changing endpoint latency or detection behavior.

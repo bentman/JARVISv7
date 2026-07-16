@@ -67,6 +67,109 @@ def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
     assert stopped.monitoring is False
 
 
+def test_wake_monitor_stop_retains_live_worker_ownership_until_blocked_source_exits(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    first_source_entered = threading.Event()
+    release_first_source = threading.Event()
+    source_threads: list[threading.Thread] = []
+
+    def source(stop_event):
+        source_threads.append(threading.current_thread())
+        if len(source_threads) == 1:
+            first_source_entered.set()
+            release_first_source.wait()
+        while not stop_event.is_set():
+            time.sleep(0.01)
+            if False:
+                yield np.zeros(4)
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(),
+        chunk_source=source,
+    )
+
+    monitor.start()
+    assert first_source_entered.wait(timeout=1.0)
+    first_thread = monitor._thread
+    first_runtime = monitor._runtime
+
+    stopped = monitor.stop()
+
+    assert stopped.monitoring is False
+    assert first_thread is not None and first_thread.is_alive()
+    assert monitor._thread is first_thread
+    assert monitor._runtime is first_runtime
+    assert monitor._stop_event.is_set()
+    assert monitor.start().monitoring is False
+    assert monitor._thread is first_thread
+    assert len(source_threads) == 1
+
+    release_first_source.set()
+    _wait_for(lambda: monitor._thread is None)
+    assert monitor._stop_event.is_set() is False
+    assert monitor._runtime is None
+
+    restarted = monitor.start()
+    _wait_for(lambda: len(source_threads) == 2)
+    assert restarted.monitoring is True
+    assert monitor._thread is not first_thread
+    monitor.stop()
+
+
+def test_wake_monitor_pause_resume_waits_for_blocked_worker_exit(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    first_source_entered = threading.Event()
+    release_first_source = threading.Event()
+    source_threads: list[threading.Thread] = []
+
+    def source(stop_event):
+        source_threads.append(threading.current_thread())
+        if len(source_threads) == 1:
+            first_source_entered.set()
+            release_first_source.wait()
+        while not stop_event.is_set():
+            time.sleep(0.01)
+            if False:
+                yield np.zeros(4)
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(),
+        chunk_source=source,
+    )
+
+    monitor.start()
+    assert first_source_entered.wait(timeout=1.0)
+    first_thread = monitor._thread
+    first_runtime = monitor._runtime
+
+    should_resume = monitor.pause_for_voice_invocation()
+    paused = service.wake_status()
+    immediate_resume = monitor.resume_after_voice_invocation(should_resume)
+
+    assert should_resume is True
+    assert paused.active is True
+    assert paused.monitoring is False
+    assert immediate_resume.monitoring is False
+    assert first_thread is not None and first_thread.is_alive()
+    assert monitor._thread is first_thread
+    assert monitor._runtime is first_runtime
+    assert monitor._stop_event.is_set()
+    assert len(source_threads) == 1
+
+    release_first_source.set()
+    _wait_for(lambda: monitor._thread is None)
+    assert monitor._stop_event.is_set() is False
+    assert monitor._runtime is first_runtime
+
+    resumed = monitor.resume_after_voice_invocation(should_resume)
+    _wait_for(lambda: len(source_threads) == 2)
+    assert resumed.monitoring is True
+    assert monitor._thread is not first_thread
+    monitor.stop()
+
+
 def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> None:
     service = _service(tmp_path)
     invocations: list[tuple[str, np.ndarray | None, int | None, dict[str, object] | None]] = []

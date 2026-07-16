@@ -65,6 +65,7 @@ class WakeMonitorService:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._runtime: WakeBase | None = None
+        self._discard_runtime_on_exit = False
         self._last_idle_signature: tuple[str, float | None, float | None] | None = None
         self._last_idle_recorded_at: float | None = None
 
@@ -106,6 +107,7 @@ class WakeMonitorService:
                     pass
             self._stop_event.clear()
             self._runtime = runtime
+            self._discard_runtime_on_exit = False
             self._session_service.start_wake_monitor(provider=self._provider, available=True, reason="wake monitoring active")
             self._thread = threading.Thread(target=self._run, args=(runtime,), name="jarvis-wake-monitor", daemon=True)
             self._thread.start()
@@ -114,15 +116,17 @@ class WakeMonitorService:
     def stop(self) -> WakeMonitorStatus:
         with self._lock:
             self._reset_idle_telemetry()
+            self._discard_runtime_on_exit = True
             self._stop_event.set()
             thread = self._thread
+            if thread is None:
+                self._runtime = None
+                self._discard_runtime_on_exit = False
+                self._stop_event.clear()
         if thread is not None and thread.is_alive():
             thread.join(timeout=1.0)
-        with self._lock:
-            if self._thread is thread:
-                self._thread = None
-                self._runtime = None
-            self._stop_event.clear()
+            if thread.is_alive():
+                return self._session_service.stop_wake_monitor()
         return self._session_service.stop_wake_monitor()
 
     def pause_for_voice_invocation(self) -> bool:
@@ -130,14 +134,17 @@ class WakeMonitorService:
             self._reset_idle_telemetry()
             status = self._session_service.wake_status()
             should_resume = status.active or status.monitoring
+            self._discard_runtime_on_exit = False
             self._stop_event.set()
             thread = self._thread
+            if thread is None:
+                self._stop_event.clear()
         if thread is not None and thread.is_alive() and thread is not threading.current_thread():
             thread.join(timeout=1.0)
-        with self._lock:
-            if self._thread is thread:
-                self._thread = None
-            self._stop_event.clear()
+            if thread.is_alive():
+                if should_resume:
+                    self._session_service.pause_wake_monitor()
+                return should_resume
         if should_resume:
             self._session_service.pause_wake_monitor()
         return should_resume
@@ -199,6 +206,10 @@ class WakeMonitorService:
             with self._lock:
                 if self._thread is threading.current_thread():
                     self._thread = None
+                    if self._discard_runtime_on_exit:
+                        self._runtime = None
+                    self._discard_runtime_on_exit = False
+                    self._stop_event.clear()
 
     def _record_wake_idle_if_due(self, runtime: WakeBase) -> None:
         signature = (WAKE_IDLE_REASON, _runtime_score(runtime), _runtime_threshold(runtime))
