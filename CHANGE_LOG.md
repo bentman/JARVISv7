@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 22:00
+  - Host class(es): Linux ARM64
+  - Summary: Made episodic retrieval skip an individual corrupt or truncated artifact file instead of aborting the entire retrieval with an empty result.
+  - Scope:
+    - backend/app/memory/episodic.py (per-file parse guard in _retrieve)
+    - backend/tests/unit/memory/test_episodic.py (three new corrupt/truncated-artifact tests)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_episodic.py -q PASS (11 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - One torn artifact (e.g., from an interrupted write) previously blanked recency and keyword retrieval for all sessions until manually removed.
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.
