@@ -23,6 +23,20 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 14:59
+  - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
+  - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.
+  - Scope:
+    - desktop/src-tauri/src/backend.rs, desktop/src-tauri/tauri.conf.json
+    - desktop/src-tauri/icons/icon.png
+    - Existing desktop static-contract and launcher-path tests
+  - Validation:
+    - CARGO_HOME="$PWD/cache/cargo" cargo test --manifest-path desktop/src-tauri/Cargo.toml backend::tests:: -- --test-threads=1 PASS (3 passed; Linux manager health, Linux path, Windows path)
+    - npm --prefix desktop test PASS
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS (772 passed, 1 skipped); git diff --check PASS
+  - Notes:
+    - Reminder: Cargo reports pre-existing non-Windows unused-variable warnings for backend.rs port and pid; they were not changed in this work.
+
 - Timestamp: 2026-07-16 14:13
   - Host class(es): Linux AMD64 (WSL2); Linux ARM64 resolution coverage; Windows AMD64/ARM64 preservation coverage
   - Summary: Restored the existing ONNX OpenWakeWord runtime on Linux. Provisioning now installs its Linux-compatible runtime dependencies normally and installs OpenWakeWord 0.6.0 without the unavailable TFLite dependency.

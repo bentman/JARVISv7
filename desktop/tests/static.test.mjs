@@ -90,6 +90,9 @@ assert.ok(apiClient.includes('invoke("invoke_resident_ptt")'), "desktop API clie
 assert.ok(!backend.includes("application/octet-stream"), "desktop voice must not use raw upload bytes");
 assert.ok(!backend.toLowerCase().includes("multipart"), "voice upload must not use multipart");
 assert.ok(!main.toLowerCase().includes("websocket"), "desktop must not use WebSockets");
+assert.ok(backend.includes("python_path_for_host"), "desktop launcher must resolve its interpreter through the platform helper");
+assert.ok(backend.includes('venv_root.join("Scripts").join("python.exe")'), "desktop launcher must preserve the Windows venv interpreter path");
+assert.ok(backend.includes('venv_root.join("bin").join("python")'), "desktop launcher must resolve the Linux venv interpreter path");
 assert.ok(backend.includes("/session/status"), "backend bridge must call /session/status");
 assert.ok(backend.includes("/status/desktop"), "backend bridge must call the consolidated desktop status endpoint");
 assert.ok(lib.includes("http_client: Client"), "desktop state must own one shared HTTP client");

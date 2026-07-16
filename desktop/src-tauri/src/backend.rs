@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
@@ -23,7 +23,6 @@ pub struct BackendDiagnostics {
     pub stdout_log: String,
     pub stderr_log: String,
 }
-
 #[derive(Debug, Deserialize, Serialize)]
 pub struct SessionCreateResponse {
     pub session_id: String,
@@ -154,11 +153,20 @@ impl BackendProcessManager {
     }
 
     fn python_path(&self) -> PathBuf {
-        self.repo_root.join("backend").join(".venv").join("Scripts").join("python.exe")
+        python_path_for_host(&self.repo_root, cfg!(windows))
     }
 
     fn backend_script_path(&self) -> PathBuf {
         self.repo_root.join("scripts").join("run_backend.py")
+    }
+}
+
+fn python_path_for_host(repo_root: &Path, is_windows: bool) -> PathBuf {
+    let venv_root = repo_root.join("backend").join(".venv");
+    if is_windows {
+        venv_root.join("Scripts").join("python.exe")
+    } else {
+        venv_root.join("bin").join("python")
     }
 }
 
@@ -409,5 +417,42 @@ fn kill_process_by_pid(pid: u32) {
         command.args(&["/F", "/PID", &pid.to_string()]);
         command.creation_flags(CREATE_NO_WINDOW);
         let _ = command.status();
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{python_path_for_host, BackendProcessManager, Client, Duration};
+    use std::path::Path;
+
+    #[test]
+    fn resolves_windows_backend_interpreter_path() {
+        assert_eq!(
+            python_path_for_host(Path::new("/repo"), true),
+            Path::new("/repo/backend/.venv/Scripts/python.exe")
+        );
+    }
+
+    #[test]
+    fn resolves_linux_backend_interpreter_path() {
+        assert_eq!(
+            python_path_for_host(Path::new("/repo"), false),
+            Path::new("/repo/backend/.venv/bin/python")
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_backend_manager_reaches_health() {
+        let mut manager = BackendProcessManager::new().expect("backend manager");
+        assert!(manager.python_path().is_file());
+        manager.spawn_backend().expect("backend launch");
+
+        let client = Client::builder().build().expect("health client");
+        let base_url = manager.base_url();
+        let result = super::wait_healthy(&client, &base_url, Duration::from_secs(90), || manager.exited_status());
+        manager.kill_backend();
+        result.expect("desktop-launched backend health");
     }
 }

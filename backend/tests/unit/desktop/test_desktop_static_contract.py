@@ -42,6 +42,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/src-tauri/src/main.rs",
         "desktop/src-tauri/src/lib.rs",
         "desktop/src-tauri/src/backend.rs",
+        "desktop/src-tauri/icons/icon.png",
         "desktop/src-tauri/icons/icon.ico",
     ]:
         assert (REPO_ROOT / relative_path).is_file(), relative_path
@@ -52,7 +53,7 @@ def test_tauri_config_uses_desktop_icon_and_tray_code_exists() -> None:
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     cargo_toml = _read("desktop/src-tauri/Cargo.toml")
     assert "icons/icon.ico" in config
-    assert "\"icon\": [\"icons/icon.ico\"]" in config
+    assert "\"icon\": [\"icons/icon.png\", \"icons/icon.ico\"]" in config
     assert "tray-icon" in cargo_toml
     assert "TrayIconBuilder" in lib_rs
     for label in ["Start Backend", "Stop Backend", "Show Window", "Quit"]:
@@ -852,7 +853,6 @@ def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
     ]:
         assert selector in style_css
     assert " style=" not in index_html
-
 
 
 
