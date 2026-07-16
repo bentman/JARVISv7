@@ -173,14 +173,9 @@ class SemanticMemory:
         """Writes a fully constructed SemanticEntry to the store, performing deduplication on text_hash."""
         try:
             with self._get_conn() as conn:
-                # Deduplication check
-                existing = conn.execute(
-                    "SELECT fact_id FROM semantic_fact WHERE text_hash = ?", (entry.text_hash,)
-                ).fetchone()
-                if existing is not None:
-                    return cast(str, existing["fact_id"])
-
                 metadata_json = json.dumps(entry.metadata)
+                # Deduplication rides on the unique text_hash index so a concurrent
+                # same-text writer cannot slip between a check and the insert.
                 cursor = conn.execute(
                     """
                     INSERT INTO semantic_fact (
@@ -188,6 +183,7 @@ class SemanticMemory:
                         created_at, updated_at, kind, confidence, metadata_json,
                         vectorizer_id, vector_dim, vector_blob, text_hash
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(text_hash) DO NOTHING
                     """,
                     (
                         entry.fact_id,
@@ -206,6 +202,14 @@ class SemanticMemory:
                         entry.text_hash,
                     ),
                 )
+                if cursor.rowcount == 0:
+                    existing = conn.execute(
+                        "SELECT fact_id FROM semantic_fact WHERE text_hash = ?", (entry.text_hash,)
+                    ).fetchone()
+                    if existing is None:
+                        return None
+                    return cast(str, existing["fact_id"])
+
                 rowid = cursor.lastrowid
                 if self.supports_fts and rowid is not None:
                     try:

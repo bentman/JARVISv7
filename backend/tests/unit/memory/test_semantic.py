@@ -224,3 +224,46 @@ def test_auto_vectorization_on_write(tmp_path: Path):
     assert len(results) == 1
     assert results[0][0].text == "Auto vectorized test fact"
     assert pytest.approx(results[0][1]) == 1.0
+
+
+def test_write_entry_returns_existing_fact_id_when_hash_row_already_present(tmp_path: Path):
+    """A row inserted by another writer between any check and the insert must dedup, not fail."""
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+
+    first_id = memory.write_fact(text="the same fact")
+    assert first_id is not None
+
+    second_id = memory.write_fact(text="THE   same fact  ")  # normalizes to identical hash
+    assert second_id == first_id
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM semantic_fact").fetchone()["c"]
+    assert count == 1
+
+
+def test_concurrent_same_text_writes_yield_one_row_and_one_fact_id(tmp_path: Path):
+    import threading
+
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+
+    results: list[str | None] = [None] * 8
+    barrier = threading.Barrier(8)
+
+    def _write(slot: int) -> None:
+        barrier.wait()
+        results[slot] = memory.write_fact(text="racy duplicate fact")
+
+    threads = [threading.Thread(target=_write, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert all(r is not None for r in results)
+    assert len(set(results)) == 1
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM semantic_fact").fetchone()["c"]
+    assert count == 1

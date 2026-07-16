@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 22:12
+  - Host class(es): Linux ARM64
+  - Summary: Made semantic fact deduplication conflict-safe by moving it onto the unique text_hash index (INSERT ... ON CONFLICT DO NOTHING) instead of a check-then-insert sequence that raced concurrent writers into spurious write failures.
+  - Scope:
+    - backend/app/memory/semantic.py (write_entry dedup restructured; no schema change)
+    - backend/tests/unit/memory/test_semantic.py (pre-existing-hash dedup test; eight-thread same-text race test)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_semantic.py -q PASS (12 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Previously a same-hash insert landing between the SELECT and the INSERT raised IntegrityError on idx_semantic_fact_hash, which the outer handler reported as a failed write (None) even though the fact exists.
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.
