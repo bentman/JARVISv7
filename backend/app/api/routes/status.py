@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from backend.app.api.app import ApiState, bind_session
+from backend.app.api.app import ApiState, update_resident_interruption_source
 from backend.app.api.dependencies import get_api_state
 from backend.app.api.schemas.status import (
     DesktopStatusSnapshotResponse,
@@ -59,8 +59,7 @@ def start_resident_voice_stream(state: ApiState = Depends(get_api_state)) -> Res
     if state.resident_audio_stream is None:
         raise HTTPException(status_code=409, detail="resident audio stream is not configured")
     state.resident_audio_stream.start()
-    bind_session(state, state.session_manager)
-    state.session_service.replace_engine(state.engine)
+    update_resident_interruption_source(state)
     return build_resident_voice_status(state)
 
 
@@ -69,8 +68,7 @@ def stop_resident_voice_stream(state: ApiState = Depends(get_api_state)) -> Resi
     if state.resident_audio_stream is None:
         raise HTTPException(status_code=409, detail="resident audio stream is not configured")
     state.resident_audio_stream.stop()
-    bind_session(state, state.session_manager)
-    state.session_service.replace_engine(state.engine)
+    update_resident_interruption_source(state)
     return build_resident_voice_status(state)
 
 

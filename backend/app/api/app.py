@@ -101,6 +101,10 @@ def bind_session(state: ApiState, session_manager: SessionManager) -> TurnEngine
     return state.engine
 
 
+def update_resident_interruption_source(state: ApiState) -> None:
+    state.engine.interruption_audio_chunks = resident_interruption_chunks(state.resident_audio_stream)
+
+
 def build_startup_state() -> ApiState:
     startup = load_startup_context()
     report = startup.report

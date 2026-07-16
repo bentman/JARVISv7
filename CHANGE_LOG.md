@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 23:55
+  - Host class(es): Windows AMD64; platform-neutral resident stream lifecycle behavior
+  - Summary: Preserved the active TurnEngine across resident audio start/stop controls. Stream transitions now update only the existing engine's interruption source, retaining all session, runtime, memory, personality, cache, and barge-in detector instances.
+  - Scope:
+    - `backend/app/api/app.py`, `backend/app/api/routes/status.py`
+    - `backend/tests/unit/api/test_routes.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/api/test_routes.py backend/tests/unit/services/test_session_service.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/conversation/test_engine.py -q` PASS (157 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (747 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260716045512-regression.txt`)
+
 - Timestamp: 2026-07-15 23:43
   - Host class(es): Windows AMD64; platform-neutral resident audio behavior
   - Summary: Added a lightweight resident-stream running-state check and used it throughout resident capture, follow-up, and interruption control loops, avoiding repeated full status snapshot construction while preserving the status contract.

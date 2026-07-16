@@ -174,6 +174,10 @@ class _FakeSessionManager:
 class _FakeEngine:
     personality = _personality()
 
+    def __init__(self) -> None:
+        self.barge_in_detector = object()
+        self.interruption_audio_chunks = None
+
     def run_text_turn(self, text: str) -> TurnResult:
         return TurnResult(
             turn_id="turn-text",
@@ -1071,6 +1075,16 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
 
     state.resident_audio_stream = ResidentAudioStream(chunk_source_factory=_wake_source)
     state.utterance_segmenter = default_utterance_segmenter()
+    engine = state.engine
+    session_engine = state.session_service.engine()
+    session_manager = state.session_manager
+    stt = state.stt
+    tts = state.tts
+    llm = state.llm
+    personality = state.personality
+    cache_manager = state.cache_manager
+    semantic_memory = state.semantic_memory
+    barge_in_detector = state.engine.barge_in_detector
     client = TestClient(create_app(state))
 
     started = client.post("/status/resident-voice/start")
@@ -1083,6 +1097,16 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert started_payload["barge_in_supported"] is False
     assert started_payload["barge_in_wired"] is True
     assert started_payload["stream"]["running"] is True
+    assert state.engine is engine
+    assert state.session_service.engine() is session_engine is engine
+    assert state.session_manager is session_manager
+    assert state.stt is stt
+    assert state.tts is tts
+    assert state.llm is llm
+    assert state.personality is personality
+    assert state.cache_manager is cache_manager
+    assert state.semantic_memory is semantic_memory
+    assert state.engine.barge_in_detector is barge_in_detector
     assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is not None
 
     stopped = client.post("/status/resident-voice/stop")
@@ -1094,6 +1118,16 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert stopped_payload["barge_in_supported"] is False
     assert stopped_payload["barge_in_wired"] is False
     assert stopped_payload["stream"]["running"] is False
+    assert state.engine is engine
+    assert state.session_service.engine() is session_engine is engine
+    assert state.session_manager is session_manager
+    assert state.stt is stt
+    assert state.tts is tts
+    assert state.llm is llm
+    assert state.personality is personality
+    assert state.cache_manager is cache_manager
+    assert state.semantic_memory is semantic_memory
+    assert state.engine.barge_in_detector is barge_in_detector
     assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None
 
 
