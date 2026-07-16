@@ -22,6 +22,7 @@ from backend.app.hardware.provisioning import (
 
 
 REQUIREMENTS_PATH = APP_REPO_ROOT / "backend" / "requirements.txt"
+OPENWAKEWORD_PACKAGE = "openwakeword"
 
 
 def _load_profiler():
@@ -161,6 +162,40 @@ def _build_pip_install_command(extras: list[str], include_porcupine: bool = Fals
     return [sys.executable, "-m", "pip", "install", "-e", f".[{extras_spec}]"]
 
 
+def _linux_openwakeword_requirement(profile: HardwareProfile, include_porcupine: bool) -> str:
+    requirements = [
+        requirement.split(";", 1)[0].strip()
+        for requirement in _selected_requirement_specs(profile, include_porcupine)
+        if _normalize_requirement_name(requirement) == OPENWAKEWORD_PACKAGE
+    ]
+    if len(requirements) != 1:
+        raise ValueError("Linux OpenWakeWord provisioning requires exactly one declared package")
+    return requirements[0]
+
+
+def _install_commands(
+    profile: HardwareProfile,
+    extras: list[str],
+    include_porcupine: bool,
+) -> list[list[str]]:
+    editable_command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
+    if profile.os_name != "linux":
+        return [editable_command]
+
+    openwakeword_requirement = _linux_openwakeword_requirement(profile, include_porcupine)
+    requirements = [
+        requirement
+        for requirement in _selected_requirement_specs(profile, include_porcupine)
+        if _normalize_requirement_name(requirement) != OPENWAKEWORD_PACKAGE
+    ]
+    return [
+        [sys.executable, "-m", "pip", "uninstall", "-y", OPENWAKEWORD_PACKAGE],
+        [*editable_command, "--no-deps"],
+        [sys.executable, "-m", "pip", "install", *requirements],
+        [sys.executable, "-m", "pip", "install", "--no-deps", openwakeword_requirement],
+    ]
+
+
 def _write_requirements_lockfile(path: Path | None = None) -> None:
     if path is None:
         path = REQUIREMENTS_PATH
@@ -248,10 +283,10 @@ def _expected_exact_distribution_versions(
 
 
 def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine: bool) -> int:
-    command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
-    install_rc = _run_pip_install(command)
-    if install_rc != 0:
-        return install_rc
+    for command in _install_commands(profile, extras, include_porcupine):
+        install_rc = _run_pip_install(command)
+        if install_rc != 0:
+            return install_rc
 
     cuda_profile = (
         profile.arch == "amd64"
@@ -327,8 +362,8 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.command == "dry-run":
-        command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
-        print(" ".join(command))
+        for command in _install_commands(profile, extras, include_porcupine):
+            print(" ".join(command))
         for extra, reason in explain_required_extras(profile, include_porcupine=include_porcupine):
             print(f"{extra}: {reason}")
         return 0
@@ -337,8 +372,8 @@ def main(argv: list[str] | None = None) -> int:
         return _run_verify(profile, extras, include_porcupine=include_porcupine)
 
     if args.command == "install":
-        command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
-        print(" ".join(command))
+        for command in _install_commands(profile, extras, include_porcupine=include_porcupine):
+            print(" ".join(command))
         if args.dry_run:
             return 0
         return _run_install(profile, extras, include_porcupine=include_porcupine)

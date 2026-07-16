@@ -201,12 +201,11 @@ def test_ensure_llm_single_file_huggingface_dry_run_uses_catalog_file(tmp_path: 
     assert result["ready"] is True
 
 
-def test_ensure_family_skips_model_unsupported_on_linux_host(monkeypatch) -> None:
+def test_ensure_family_acquires_wake_model_on_linux_host(monkeypatch) -> None:
     entry = ensure_models.ModelEntry(
         family="wake",
         name="openwakeword-hey-jarvis",
         config={
-            "supported_hosts": ["windows_amd64", "windows_arm64"],
             "source": {"type": "url", "files": {}},
             "local_path": "models/wake/openwakeword",
         },
@@ -215,7 +214,13 @@ def test_ensure_family_skips_model_unsupported_on_linux_host(monkeypatch) -> Non
     monkeypatch.setattr(
         ensure_models,
         "_ensure_entry",
-        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unsupported model fetched")),
+        lambda entry, dry_run: {
+            "family": entry.family,
+            "model": entry.name,
+            "acquired": ["hey_jarvis_v0.1.onnx"],
+            "missing": [],
+            "ready": True,
+        },
     )
 
     code, result = ensure_models._ensure_family(
@@ -226,9 +231,5 @@ def test_ensure_family_skips_model_unsupported_on_linux_host(monkeypatch) -> Non
     )
 
     assert code == 0
-    assert result["models"][0]["state"] == "skipped"
-    assert result["models"][0]["degraded_reason"] == "SKIP-unsupported-host:linux_amd64"
-    assert ensure_models._unsupported_host_reason(
-        entry,
-        HardwareProfile(os_name="windows", arch="amd64"),
-    ) is None
+    assert result["models"][0]["ready"] is True
+    assert result["models"][0]["acquired"] == ["hey_jarvis_v0.1.onnx"]

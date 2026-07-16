@@ -167,13 +167,13 @@ def test_preflight_ep_probe_emits_ep_tokens_when_onnxruntime_available(monkeypat
     assert "ep:DmlExecutionProvider" in result.tokens
 
 
-def test_preflight_skips_linux_openwakeword_import(monkeypatch) -> None:
+def test_preflight_probes_linux_openwakeword_import(monkeypatch) -> None:
     preflight._CACHE.clear()
     calls: list[str] = []
 
     def fake_import(name: str):
         calls.append(name)
-        if name in {"onnxruntime", "onnx_asr", "kokoro_onnx"}:
+        if name in {"onnxruntime", "onnx_asr", "kokoro_onnx", "openwakeword"}:
             return _make_module()
         raise ModuleNotFoundError(name)
 
@@ -182,8 +182,8 @@ def test_preflight_skips_linux_openwakeword_import(monkeypatch) -> None:
 
     result = preflight.run_preflight(_make_profile(os_name="linux", arch="amd64"), ["hw-x64-base"])
 
-    assert "openwakeword" not in calls
-    assert "openwakeword" not in result.probe_errors
+    assert "openwakeword" in calls
+    assert "import:openwakeword" in result.tokens
 
 
 def test_preflight_ep_probe_skipped_when_onnxruntime_not_imported(monkeypatch) -> None:

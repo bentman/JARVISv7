@@ -112,21 +112,86 @@ def test_base_requirements_keep_sounddevice_without_soundfile() -> None:
     assert "soundfile" not in requirement_names
 
 
-def test_verify_uses_pep508_markers_for_linux_and_windows_hosts() -> None:
-    requirement = "openwakeword>=0.6; sys_platform=='win32' and platform_machine=='AMD64'"
+def test_openwakeword_requirement_applies_to_supported_linux_and_windows_hosts() -> None:
+    requirement = "openwakeword==0.6.0; sys_platform=='win32' or sys_platform=='linux'"
 
+    assert provision._requirement_applies_to_profile(
+        requirement,
+        HardwareProfile(os_name="linux", arch="amd64"),
+    )
+    assert provision._requirement_applies_to_profile(
+        requirement,
+        HardwareProfile(os_name="linux", arch="arm64"),
+    )
     assert provision._requirement_applies_to_profile(
         requirement,
         HardwareProfile(os_name="windows", arch="amd64"),
     )
-    assert not provision._requirement_applies_to_profile(
+    assert provision._requirement_applies_to_profile(
         requirement,
         HardwareProfile(os_name="windows", arch="arm64"),
     )
     assert not provision._requirement_applies_to_profile(
         requirement,
-        HardwareProfile(os_name="linux", arch="amd64"),
+        HardwareProfile(os_name="darwin", arch="amd64"),
     )
+
+
+def test_linux_install_uses_no_deps_only_for_openwakeword(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    profile = HardwareProfile(os_name="linux", arch="amd64")
+    extras = ["hw-cpu-base", "hw-x64-base", "dev"]
+    requirements = [
+        "fastapi>=0.110",
+        "onnxruntime>=1.17; platform_machine=='AMD64' or platform_machine=='x86_64'",
+        "openwakeword==0.6.0; sys_platform=='win32' or sys_platform=='linux'",
+    ]
+    monkeypatch.setattr(provision, "_selected_requirement_specs", lambda *args: requirements)
+    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
+
+    exit_code = provision._run_install(profile, extras, include_porcupine=False)
+
+    assert exit_code == 0
+    assert commands == [
+        [provision.sys.executable, "-m", "pip", "uninstall", "-y", "openwakeword"],
+        [*provision._build_pip_install_command(extras), "--no-deps"],
+        [provision.sys.executable, "-m", "pip", "install", *requirements[:-1]],
+        [provision.sys.executable, "-m", "pip", "install", "--no-deps", "openwakeword==0.6.0"],
+    ]
+
+
+def test_linux_arm64_resolves_openwakeword_without_x64_requirements() -> None:
+    requirements = provision._selected_requirement_specs(
+        HardwareProfile(os_name="linux", arch="arm64"),
+        include_porcupine=False,
+    )
+    names = {provision._normalize_requirement_name(requirement) for requirement in requirements}
+
+    assert {
+        "onnxruntime",
+        "onnx_asr",
+        "kokoro_onnx",
+        "openwakeword",
+        "tqdm",
+        "scipy",
+        "scikit_learn",
+        "requests",
+    } <= names
+    assert "onnxruntime_gpu" not in names
+    assert "tflite_runtime" not in names
+
+
+def test_windows_openwakeword_resolution_keeps_the_editable_install_path() -> None:
+    for arch, extra in (("amd64", "hw-x64-base"), ("arm64", "hw-arm64-base")):
+        profile = HardwareProfile(os_name="windows", arch=arch)
+        requirements = provision._selected_requirement_specs(profile, include_porcupine=False)
+        names = {provision._normalize_requirement_name(requirement) for requirement in requirements}
+
+        assert "openwakeword" in names
+        assert {"scipy", "scikit_learn", "tflite_runtime"} & names == set()
+        assert provision._install_commands(profile, ["hw-cpu-base", extra, "dev"], False) == [
+            provision._build_pip_install_command(["hw-cpu-base", extra, "dev"])
+        ]
 
 
 def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) -> None:

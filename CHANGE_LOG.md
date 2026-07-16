@@ -23,6 +23,21 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 14:13
+  - Host class(es): Linux AMD64 (WSL2); Linux ARM64 resolution coverage; Windows AMD64/ARM64 preservation coverage
+  - Summary: Restored the existing ONNX OpenWakeWord runtime on Linux. Provisioning now installs its Linux-compatible runtime dependencies normally and installs OpenWakeWord 0.6.0 without the unavailable TFLite dependency.
+  - Scope:
+    - pyproject.toml, scripts/provision.py, backend/app/hardware/preflight.py
+    - config/models/wake.yaml
+    - Existing provisioning, preflight, model-acquisition, wake-runtime, and Windows-profile tests
+  - Validation:
+    - backend/.venv/bin/python scripts/provision.py install PASS; backend/.venv/bin/python scripts/provision.py verify PASS
+    - backend/.venv/bin/python -c "import openwakeword; print('openwakeword import: PASS')" PASS; backend/.venv/bin/python scripts/ensure_models.py --family wake PASS (three ONNX artifacts acquired)
+    - backend/.venv/bin/python -m pytest backend/tests/unit/runtimes/wake/test_wake_runtime.py::test_openwakeword_runtime_detects_reference_fixture_with_real_model -q PASS (1 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS (772 passed, 1 skipped)
+  - Notes:
+    - Linux ARM64 and Windows AMD64/ARM64 resolution/path-preservation coverage passed in the focused suite (53 passed). The Linux OpenWakeWord command is backend/.venv/bin/python -m pip install --no-deps openwakeword==0.6.0.
+
 - Timestamp: 2026-07-16 11:48
   - Host class(es): Linux AMD64 (WSL2); Windows AMD64/ARM64 coverage retained
   - Summary: Made provisioning, preflight, and model acquisition evaluate effective host support so WSL/Linux can provision without selecting Windows-only OpenWakeWord or QNN runtime artifacts.

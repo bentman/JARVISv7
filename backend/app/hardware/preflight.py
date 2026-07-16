@@ -67,10 +67,7 @@ def _restore(snapshot: _Snapshot) -> PreflightResult:
 
 
 def _import_names_for_extra(extra: str, profile: HardwareProfile) -> tuple[str, ...]:
-    imports = _EXTRA_IMPORTS.get(extra, ())
-    if profile.os_name == "linux":
-        return tuple(import_name for import_name in imports if import_name != "openwakeword")
-    return imports
+    return _EXTRA_IMPORTS.get(extra, ())
 
 
 def _ordered_import_names(installed_extras: list[str], profile: HardwareProfile) -> list[str]:
