@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 15:47
+  - Host class(es): Linux ARM64
+  - Summary: Removed wake-monitor mutation from GET status routes. `GET /status/desktop` and `GET /status/resident-voice` no longer stop the wake monitor when resident mode is `ptt-only`; they now report the actual (possibly inconsistent) wake state. The explicit stop remains in the `PUT /status/resident-voice/mode` transition path.
+  - Scope:
+    - backend/app/api/routes/status.py (removed `_reconcile_resident_wake`; observation paths read wake status without side effects)
+    - backend/tests/unit/api/test_routes.py (updated the two tests that pinned stop-on-poll behavior to assert truthful reporting and no mutation)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/api/test_routes.py -q PASS (57 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS (771 passed, 2 skipped; second skip is absent wake model files on this host)
+  - Notes:
+    - Carries forward reusable finding 9 from PR #1 review. State transitions now occur only in explicit command/mode-transition paths; polling can no longer stop a running wake monitor as a side effect.
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.

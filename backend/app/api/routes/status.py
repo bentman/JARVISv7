@@ -26,7 +26,7 @@ def wake_status(state: ApiState = Depends(get_api_state)) -> WakeStatusResponse:
 @router.get("/status/desktop", response_model=DesktopStatusSnapshotResponse)
 def desktop_status(state: ApiState = Depends(get_api_state)) -> DesktopStatusSnapshotResponse:
     mode = state.resident_voice.mode() if state.resident_voice is not None else "ptt-only"
-    wake = _reconcile_resident_wake(state, _configured_wake_status(state), mode=mode)
+    wake = _configured_wake_status(state)
     return DesktopStatusSnapshotResponse(
         session=build_session_status_response(state.session_service.status()),
         resident_voice=build_resident_voice_status(state, wake=wake, mode=mode),
@@ -124,7 +124,7 @@ def build_resident_voice_status(
     if stream is not None and not stream_running:
         degraded_reasons.append("resident audio stream is stopped")
     mode = mode or (state.resident_voice.mode() if state.resident_voice is not None else "ptt-only")
-    wake = _reconcile_resident_wake(state, wake or state.session_service.wake_status(), mode=mode)
+    wake = wake or state.session_service.wake_status()
     follow_up = state.resident_voice.follow_up_status() if state.resident_voice is not None else None
     barge_in_wired = bool(
         stream_running
@@ -176,18 +176,6 @@ def build_resident_voice_status(
 def _configured_wake_status(state: ApiState) -> WakeMonitorStatus:
     _device, available, reason = state.readiness["wake"]
     return state.session_service.configure_wake_status(provider="openwakeword", available=available, reason=reason)
-
-
-def _reconcile_resident_wake(
-    state: ApiState,
-    wake: WakeMonitorStatus,
-    *,
-    mode: str | None = None,
-) -> WakeMonitorStatus:
-    resident_mode = mode or (state.resident_voice.mode() if state.resident_voice is not None else "ptt-only")
-    if resident_mode == "ptt-only" and (wake.active or wake.monitoring):
-        return state.wake_monitor.stop()
-    return wake
 
 
 def _wake_response(status) -> WakeStatusResponse:
