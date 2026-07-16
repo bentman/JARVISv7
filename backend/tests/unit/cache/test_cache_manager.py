@@ -59,3 +59,73 @@ def test_set_stores_value_with_ttl(monkeypatch) -> None:
     monkeypatch.setattr("backend.app.cache.manager.get_client", lambda: fake)
     assert CacheManager().set("k", "v", 60) is True
     assert fake.store["k"] == "v"
+
+
+def _reset_redis_client_state(monkeypatch) -> None:
+    from backend.app.cache import redis_client
+
+    monkeypatch.setattr(redis_client, "_CLIENT", None)
+    monkeypatch.setattr(redis_client, "_NEXT_RETRY_AT", None)
+
+
+def test_get_client_retries_after_cooldown_when_startup_connect_failed(monkeypatch) -> None:
+    from backend.app.cache import redis_client
+
+    _reset_redis_client_state(monkeypatch)
+    clock = {"now": 1000.0}
+    monkeypatch.setattr(redis_client.time, "monotonic", lambda: clock["now"])
+
+    attempts = {"count": 0}
+
+    class _DownThenUpRedis(_FakeRedis):
+        def __init__(self, **kwargs) -> None:
+            super().__init__()
+            attempts["count"] += 1
+            if attempts["count"] == 1:
+                raise ConnectionError("redis down at startup")
+
+    monkeypatch.setattr(redis_client.redis, "Redis", _DownThenUpRedis)
+
+    # Startup failure disables the cache.
+    assert redis_client.get_client() is None
+    assert attempts["count"] == 1
+
+    # Within the cooldown window: no reconnect attempt.
+    clock["now"] += redis_client._RETRY_COOLDOWN_SECONDS / 2
+    assert redis_client.get_client() is None
+    assert attempts["count"] == 1
+
+    # After the cooldown: exactly one bounded retry, which succeeds and latches.
+    clock["now"] += redis_client._RETRY_COOLDOWN_SECONDS
+    client = redis_client.get_client()
+    assert client is not None
+    assert attempts["count"] == 2
+
+    # Established client is reused without further connection attempts.
+    assert redis_client.get_client() is client
+    assert attempts["count"] == 2
+
+
+def test_get_client_does_not_hammer_redis_while_it_stays_down(monkeypatch) -> None:
+    from backend.app.cache import redis_client
+
+    _reset_redis_client_state(monkeypatch)
+    clock = {"now": 5000.0}
+    monkeypatch.setattr(redis_client.time, "monotonic", lambda: clock["now"])
+
+    attempts = {"count": 0}
+
+    class _AlwaysDownRedis:
+        def __init__(self, **kwargs) -> None:
+            attempts["count"] += 1
+            raise ConnectionError("redis still down")
+
+    monkeypatch.setattr(redis_client.redis, "Redis", _AlwaysDownRedis)
+
+    for _ in range(10):
+        assert redis_client.get_client() is None
+    assert attempts["count"] == 1
+
+    clock["now"] += redis_client._RETRY_COOLDOWN_SECONDS + 1
+    assert redis_client.get_client() is None
+    assert attempts["count"] == 2

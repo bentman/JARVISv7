@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 22:24
+  - Host class(es): Linux ARM64
+  - Summary: Bounded Redis reconnection after a failed startup connect: the cache client now retries at most once per 30-second cooldown window instead of permanently disabling the cache for the process lifetime.
+  - Scope:
+    - backend/app/cache/redis_client.py (replaced the one-shot _INITIALIZED latch with a monotonic-clock retry window)
+    - backend/tests/unit/cache/test_cache_manager.py (two new reconnection tests with a fake clock)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/cache/ -q PASS (9 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Reconnection is bounded, not per-call: while Redis stays down, repeated get_client calls inside the window make zero connection attempts (covered by test).
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.
