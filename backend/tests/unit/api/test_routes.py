@@ -198,7 +198,14 @@ class _FakeEngine:
             profile_epoch=0,
         )
 
-    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        turn_runtime_context: dict[str, object] | None = None,
+    ) -> TurnResult:
+        _ = turn_runtime_context
         assert sample_rate == 16000
         assert audio.size > 0
         return TurnResult(

@@ -81,9 +81,17 @@ class ResidentVoiceInvocationService:
         source: str,
         audio: np.ndarray | None = None,
         sample_rate: int | None = None,
+        capture_diagnostics: dict[str, object] | None = None,
     ) -> SessionStatus:
         normalized_source = source.strip().lower() or "voice"
-        self._queue.put(ResidentInvocationRequest(source=normalized_source, audio=audio, sample_rate=sample_rate))
+        self._queue.put(
+            ResidentInvocationRequest(
+                source=normalized_source,
+                audio=audio,
+                sample_rate=sample_rate,
+                capture_diagnostics=dict(capture_diagnostics) if capture_diagnostics is not None else None,
+            )
+        )
         self._ensure_worker()
         return self._session_service.status()
 
@@ -184,8 +192,8 @@ class ResidentVoiceInvocationService:
                 audio=request.audio,
                 sample_rate=request.sample_rate,
                 audio_capture=self._audio_capture,
+                capture_diagnostics=request.capture_diagnostics,
             )
-            self._record_capture_diagnostics(request)
             if result.interrupted and request.source != "barge_in" and self._mode not in RESIDENT_BARGE_IN_DISABLED_MODES:
                 self._enqueue_barge_in_follow_up()
             if result.failure_reason:

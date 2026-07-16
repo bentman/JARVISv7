@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -25,7 +26,14 @@ class _FakeEngine:
         self.calls = calls
         self.result = result
 
-    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        turn_runtime_context: dict[str, object] | None = None,
+    ) -> TurnResult:
+        _ = turn_runtime_context
         self.calls.append((audio, sample_rate))
         if self.result is not None:
             return self.result
@@ -432,7 +440,14 @@ def test_non_barge_mode_temporarily_disables_engine_interruption_monitor(tmp_pat
         barge_in_detector = marker_detector
         interruption_audio_chunks = marker_chunks
 
-        def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+        def run_voice_turn(
+            self,
+            audio: np.ndarray,
+            sample_rate: int,
+            *,
+            turn_runtime_context: dict[str, object] | None = None,
+        ) -> TurnResult:
+            _ = turn_runtime_context
             assert self.barge_in_detector is None
             assert self.interruption_audio_chunks is None
             return super().run_voice_turn(audio, sample_rate)
@@ -535,6 +550,75 @@ def test_wake_invocation_uses_provided_audio_without_new_capture(tmp_path: Path)
     event_types = [event.event_type for event in resident.last_realtime_events()]
     assert RealtimeEventType.AUDIO_CAPTURE_STARTED not in event_types
     assert RealtimeEventType.AUDIO_CAPTURE_COMPLETED in event_types
+
+
+def test_queued_wake_diagnostics_remain_bound_to_matching_turn_and_waveform(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    first_invocation_started = threading.Event()
+    release_first_invocation = threading.Event()
+
+    def hold_first_invocation() -> None:
+        if not first_invocation_started.is_set():
+            first_invocation_started.set()
+            assert release_first_invocation.wait(timeout=1.0)
+
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=service.engine,
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("wake audio must remain queued")),
+        before_invocation=hold_first_invocation,
+    )
+    first_audio = np.linspace(-0.2, 0.2, 160, dtype=np.float32)
+    second_audio = np.linspace(-0.3, 0.3, 320, dtype=np.float32)
+    first_diagnostics = {
+        "reason": "silence",
+        "chunks": 11,
+        "speech_chunks": 7,
+        "sample_count": 120,
+        "duration_s": 0.0075,
+        "rms": 0.11,
+        "peak": 0.2,
+        "noise_floor_rms": 0.01,
+        "effective_speech_threshold": 0.03,
+    }
+    second_diagnostics = {
+        "reason": "stream-ended",
+        "chunks": 22,
+        "speech_chunks": 15,
+        "sample_count": 280,
+        "duration_s": 0.0175,
+        "rms": 0.21,
+        "peak": 0.3,
+        "noise_floor_rms": 0.02,
+        "effective_speech_threshold": 0.06,
+    }
+
+    resident.enqueue("wake", first_audio, 16000, first_diagnostics)
+    assert first_invocation_started.wait(timeout=1.0)
+    resident.enqueue("wake", second_audio, 16000, second_diagnostics)
+    release_first_invocation.set()
+
+    _wait_for(lambda: service.status().turn_count == 2)
+    artifacts = service.session_manager.turn_artifacts
+    for artifact, diagnostics, expected_samples in zip(
+        artifacts,
+        (first_diagnostics, second_diagnostics),
+        (first_audio.size, second_audio.size),
+        strict=True,
+    ):
+        assert artifact.runtime_context["invocation_source"] == "wake"
+        assert artifact.runtime_context["wake_capture_diagnostics"] == diagnostics
+        assert artifact.runtime_context["stt_input"] == {
+            "sample_count": expected_samples,
+            "sample_rate": 16000,
+            "duration_s": expected_samples / 16000.0,
+        }
+        assert artifact.transcript == "hello"
+        assert artifact.raw_audio_path is not None
+        assert Path(artifact.raw_audio_path).stem == artifact.turn_id
+        with wave.open(artifact.raw_audio_path, "rb") as wav_file:
+            assert wav_file.getnframes() == expected_samples
+            assert wav_file.getframerate() == 16000
 
 
 def test_capture_failure_records_failed_voice_status(tmp_path: Path) -> None:

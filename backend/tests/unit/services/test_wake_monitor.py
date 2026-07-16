@@ -69,7 +69,7 @@ def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
 
 def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> None:
     service = _service(tmp_path)
-    invocations: list[tuple[str, np.ndarray | None, int | None]] = []
+    invocations: list[tuple[str, np.ndarray | None, int | None, dict[str, object] | None]] = []
 
     def source(stop_event):
         yield np.zeros(4)
@@ -79,8 +79,13 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
         while not stop_event.is_set():
             time.sleep(0.01)
 
-    def invoke(source_name: str, audio: np.ndarray | None = None, sample_rate: int | None = None) -> None:
-        invocations.append((source_name, audio, sample_rate))
+    def invoke(
+        source_name: str,
+        audio: np.ndarray | None = None,
+        sample_rate: int | None = None,
+        capture_diagnostics: dict[str, object] | None = None,
+    ) -> None:
+        invocations.append((source_name, audio, sample_rate, capture_diagnostics))
 
     monitor = WakeMonitorService(
         session_service=service,
@@ -98,12 +103,13 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
     assert status.detection_count == 1
     assert status.threshold == 0.5
     assert len(invocations) == 1
-    source_name, audio, sample_rate = invocations[0]
+    source_name, audio, sample_rate, capture_diagnostics = invocations[0]
     assert source_name == "wake"
     assert sample_rate == 16000
     assert audio is not None
     assert audio.dtype == np.float32
     assert audio.size >= 8
+    assert capture_diagnostics is None
 
 
 def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(monkeypatch, tmp_path: Path) -> None:
@@ -112,12 +118,17 @@ def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(mon
         lambda samples: (_ for _ in ()).throw(AssertionError("resident frames must use cached PCM16")),
     )
     service = _service(tmp_path)
-    invocations: list[tuple[str, np.ndarray | None, int | None]] = []
+    invocations: list[tuple[str, np.ndarray | None, int | None, dict[str, object] | None]] = []
     stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
     stream.start()
 
-    def invoke(source_name: str, audio: np.ndarray | None = None, sample_rate: int | None = None) -> None:
-        invocations.append((source_name, audio, sample_rate))
+    def invoke(
+        source_name: str,
+        audio: np.ndarray | None = None,
+        sample_rate: int | None = None,
+        capture_diagnostics: dict[str, object] | None = None,
+    ) -> None:
+        invocations.append((source_name, audio, sample_rate, capture_diagnostics))
 
     monitor = WakeMonitorService(
         session_service=service,
@@ -142,7 +153,7 @@ def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(mon
     monitor.stop()
     stream.stop()
 
-    source_name, audio, sample_rate = invocations[0]
+    source_name, audio, sample_rate, capture_diagnostics = invocations[0]
     assert source_name == "wake"
     assert sample_rate == 16000
     assert audio is not None
@@ -151,13 +162,20 @@ def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(mon
     assert np.array_equal(audio[:4], published[1].samples)
     assert np.array_equal(audio[4:8], published[2].samples)
     assert not np.array_equal(audio[:4], published[0].samples)
+    assert capture_diagnostics is not None
+    assert capture_diagnostics["reason"] == "silence"
+    assert capture_diagnostics["chunks"] == 4
+    assert capture_diagnostics["speech_chunks"] == 2
+    for key in (
+        "sample_count",
+        "duration_s",
+        "rms",
+        "peak",
+        "noise_floor_rms",
+        "effective_speech_threshold",
+    ):
+        assert key in capture_diagnostics
     assert stream.status().running is False
-    diagnostics = service.status().voice_capture_diagnostics
-    assert diagnostics is not None
-    assert diagnostics["source"] == "wake"
-    assert diagnostics["stage"] == "segment"
-    assert diagnostics["reason"] == "silence"
-    assert diagnostics["speech_chunks"] >= 1
 
 
 def test_wake_monitor_does_not_start_competing_fallback_when_resident_stream_is_stopped(tmp_path: Path) -> None:
@@ -182,7 +200,7 @@ def test_wake_monitor_does_not_start_competing_fallback_when_resident_stream_is_
 
 def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Path) -> None:
     service = _service(tmp_path)
-    invocations: list[tuple[str, np.ndarray | None, int | None]] = []
+    invocations: list[tuple[str, np.ndarray | None, int | None, dict[str, object] | None]] = []
 
     def source(stop_event):
         yield np.ones(4, dtype=np.int16)
@@ -195,7 +213,9 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
         session_service=service,
         runtime_factory=lambda: _FakeWakeRuntime(detections=[True]),
         chunk_source=source,
-        invocation_callback=lambda source_name, audio, sample_rate: invocations.append((source_name, audio, sample_rate)),
+        invocation_callback=lambda source_name, audio, sample_rate, diagnostics: invocations.append(
+            (source_name, audio, sample_rate, diagnostics)
+        ),
         utterance_segmenter=_segmenter(),
     )
 
@@ -207,8 +227,8 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
     assert invocations[0][1] is not None
     assert invocations[0][1].size == 0
     assert invocations[0][2] == 16000
-    assert service.status().voice_capture_diagnostics is not None
-    assert service.status().voice_capture_diagnostics["reason"] == "no-speech"
+    assert invocations[0][3] is not None
+    assert invocations[0][3]["reason"] == "no-speech"
 
 
 def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:

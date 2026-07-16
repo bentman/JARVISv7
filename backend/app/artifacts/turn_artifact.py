@@ -39,7 +39,7 @@ class TurnArtifact:
     tts_degraded: bool = False
     tts_degraded_reason: str | None = None
     tts_output_device: str | None = None
-    runtime_context: dict[str, str] = field(default_factory=dict)
+    runtime_context: dict[str, Any] = field(default_factory=dict)
     phase_timestamps: dict[str, str] = field(default_factory=dict)
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
     failure_phase: str | None = None

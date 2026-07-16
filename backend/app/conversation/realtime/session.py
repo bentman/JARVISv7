@@ -58,12 +58,19 @@ class RealtimeConversationSession:
         audio_capture: AudioCapture,
         audio: np.ndarray | None = None,
         sample_rate: int | None = None,
+        capture_diagnostics: dict[str, object] | None = None,
     ) -> TurnResult:
         source = source.strip().lower() or "voice"
         self.ledger.append(RealtimeEventType.SESSION_ACTIVE, source=source, state=ConversationState.IDLE)
         self.ledger.append(RealtimeEventType.INVOCATION_RECEIVED, source=source)
         self._session_service.begin_voice_invocation(source)
         try:
+            if capture_diagnostics is not None:
+                self._session_service.record_voice_capture_diagnostics(
+                    source=source,
+                    stage="segment",
+                    diagnostics=capture_diagnostics,
+                )
             if not has_committable_audio(audio, sample_rate):
                 self.ledger.append(RealtimeEventType.AUDIO_CAPTURE_STARTED, source=source, state=ConversationState.LISTENING)
                 capture_started_at = time.perf_counter()
@@ -86,7 +93,12 @@ class RealtimeConversationSession:
             self.ledger.append(RealtimeEventType.USER_TURN_COMMITTED, source=source)
             self._session_service.mark_voice_transient_state(ConversationState.TRANSCRIBING)
             self.ledger.append(RealtimeEventType.TRANSCRIBING, source=source, state=ConversationState.TRANSCRIBING)
-            result = self._run_engine_with_live_status(audio, sample_rate)
+            result = self._run_engine_with_live_status(
+                audio,
+                sample_rate,
+                source=source,
+                capture_diagnostics=capture_diagnostics,
+            )
             if source == "wake" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
                 result = replace(result, failure_reason=WAKE_NO_SPEECH_REASON)
             if source == "barge_in" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
@@ -149,12 +161,26 @@ class RealtimeConversationSession:
         self.ledger.append(RealtimeEventType.TURN_COMPLETED, source=source, turn_id=result.turn_id, state=result.final_state)
         self.ledger.append(RealtimeEventType.SESSION_IDLE, source=source, turn_id=result.turn_id, state=ConversationState.IDLE)
 
-    def _run_engine_with_live_status(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def _run_engine_with_live_status(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        source: str,
+        capture_diagnostics: dict[str, object] | None,
+    ) -> TurnResult:
         engine = self._engine_provider()
         previous_observer = getattr(engine, "phase_observer", None)
         setattr(engine, "phase_observer", self._observe_live_phase)
+        turn_runtime_context: dict[str, object] = {"invocation_source": source}
+        if source == "wake" and capture_diagnostics is not None:
+            turn_runtime_context["wake_capture_diagnostics"] = dict(capture_diagnostics)
         try:
-            return engine.run_voice_turn(audio, sample_rate)
+            return engine.run_voice_turn(
+                audio,
+                sample_rate,
+                turn_runtime_context=turn_runtime_context,
+            )
         finally:
             setattr(engine, "phase_observer", previous_observer)
 

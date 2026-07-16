@@ -23,7 +23,7 @@ class LatestTurnSummary(BaseModel):
     tts_output_device: str | None = None
     raw_audio_path: str | None = None
     artifact_path: str | None = None
-    runtime_context: dict[str, str] | None = None
+    runtime_context: dict[str, object] | None = None
     phase_durations_ms: dict[str, float] | None = None
     failure_phase: str | None = None
 

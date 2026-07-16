@@ -14,11 +14,19 @@ from backend.tests.unit.services.test_session_service import _service
 class _FakeEngine:
     def __init__(self, result: TurnResult | None = None) -> None:
         self.calls: list[tuple[np.ndarray, int]] = []
+        self.runtime_contexts: list[dict[str, object] | None] = []
         self.result = result
         self.phase_observer = None
 
-    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        turn_runtime_context: dict[str, object] | None = None,
+    ) -> TurnResult:
         self.calls.append((audio, sample_rate))
+        self.runtime_contexts.append(turn_runtime_context)
         if self.result is not None:
             return self.result
         return TurnResult(
@@ -36,7 +44,13 @@ class _PhaseReportingEngine(_FakeEngine):
         self.service = service
         self.status_samples: list[str] = []
 
-    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        turn_runtime_context: dict[str, object] | None = None,
+    ) -> TurnResult:
         assert self.phase_observer is not None
         for state in [
             ConversationState.REASONING,
@@ -45,7 +59,7 @@ class _PhaseReportingEngine(_FakeEngine):
         ]:
             self.phase_observer(state)
             self.status_samples.append(self.service.status().state)
-        return super().run_voice_turn(audio, sample_rate)
+        return super().run_voice_turn(audio, sample_rate, turn_runtime_context=turn_runtime_context)
 
 
 def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tmp_path: Path) -> None:
@@ -152,8 +166,39 @@ def test_realtime_wake_audio_uses_payload_without_capture(tmp_path: Path) -> Non
 
     assert len(engine.calls) == 1
     assert np.array_equal(engine.calls[0][0], wake_audio)
+    assert engine.runtime_contexts == [{"invocation_source": "wake"}]
     assert RealtimeEventType.AUDIO_CAPTURE_STARTED not in session.ledger.event_types()
     assert RealtimeEventType.AUDIO_CAPTURE_COMPLETED in session.ledger.event_types()
+
+
+def test_realtime_wake_passes_capture_diagnostics_with_exact_invocation(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    engine = _FakeEngine()
+    session = RealtimeConversationSession(
+        session_service=service,
+        engine_provider=lambda: engine,  # type: ignore[return-value]
+    )
+    diagnostics = {"reason": "silence", "chunks": 7, "speech_chunks": 4}
+
+    session.run_voice_invocation(
+        source="wake",
+        audio=np.arange(6, dtype=np.float32),
+        sample_rate=16000,
+        audio_capture=lambda: (_ for _ in ()).throw(AssertionError("capture should not run")),
+        capture_diagnostics=diagnostics,
+    )
+
+    assert engine.runtime_contexts == [
+        {
+            "invocation_source": "wake",
+            "wake_capture_diagnostics": diagnostics,
+        }
+    ]
+    assert service.status().voice_capture_diagnostics == {
+        "source": "wake",
+        "stage": "segment",
+        **diagnostics,
+    }
 
 
 def test_realtime_wake_empty_transcript_maps_no_speech_failure(tmp_path: Path) -> None:

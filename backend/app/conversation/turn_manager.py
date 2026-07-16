@@ -24,6 +24,7 @@ class TurnContext:
     state: ConversationState = ConversationState.IDLE
     started_at: datetime = field(default_factory=utc_now)
     phase_timestamps: dict[str, datetime] = field(default_factory=dict)
+    runtime_context: dict[str, object] = field(default_factory=dict)
     phase_observer: PhaseObserver | None = None
 
     def __post_init__(self) -> None:

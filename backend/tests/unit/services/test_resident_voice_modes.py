@@ -20,7 +20,14 @@ class _FakeEngine:
     def __init__(self, calls: list[tuple[np.ndarray, int]]) -> None:
         self.calls = calls
 
-    def run_voice_turn(self, audio: np.ndarray, sample_rate: int) -> TurnResult:
+    def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        turn_runtime_context: dict[str, object] | None = None,
+    ) -> TurnResult:
+        _ = turn_runtime_context
         self.calls.append((audio, sample_rate))
         return TurnResult(
             turn_id=f"turn-{len(self.calls)}",

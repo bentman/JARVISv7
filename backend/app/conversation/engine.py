@@ -114,11 +114,19 @@ class TurnEngine:
         *,
         tool_name: str | None = None,
         tool_input: dict[str, object] | None = None,
+        turn_runtime_context: dict[str, object] | None = None,
     ) -> TurnResult:
         context = self._create_context("voice")
         voice_turn_started_at = time.perf_counter()
         phase_durations_ms: dict[str, float] = {}
         samples = np.asarray(audio, dtype=np.float32).reshape(-1)
+        if turn_runtime_context is not None:
+            context.runtime_context.update(turn_runtime_context)
+            context.runtime_context["stt_input"] = {
+                "sample_count": int(samples.size),
+                "sample_rate": int(sample_rate),
+                "duration_s": int(samples.size) / float(sample_rate) if sample_rate else 0.0,
+            }
         raw_audio_path = None
         try:
             context.advance(ConversationState.LISTENING)
@@ -772,9 +780,9 @@ class TurnEngine:
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
 
-    def _runtime_context(self, context: TurnContext, result: TurnResult) -> dict[str, str]:
+    def _runtime_context(self, context: TurnContext, result: TurnResult) -> dict[str, object]:
         phases = set(context.phase_timestamps)
-        runtime_context: dict[str, str] = {}
+        runtime_context = dict(context.runtime_context)
         if context.modality == "voice" and "TRANSCRIBING" in phases:
             runtime_context["stt"] = _runtime_device_label(self.stt)
         if "REASONING" in phases:

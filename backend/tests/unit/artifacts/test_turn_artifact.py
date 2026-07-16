@@ -43,6 +43,34 @@ def test_turn_artifact_roundtrips_via_storage(tmp_path):
     assert loaded == artifact
 
 
+def test_turn_artifact_roundtrips_nested_voice_runtime_context(tmp_path):
+    artifact = TurnArtifact(
+        turn_id="wake-turn",
+        session_id="session-1",
+        input_modality="voice",
+        final_state="IDLE",
+        raw_audio_path="turns/session-1/wake-turn.wav",
+        runtime_context={
+            "invocation_source": "wake",
+            "wake_capture_diagnostics": {
+                "reason": "silence",
+                "chunks": 8,
+                "speech_chunks": 5,
+            },
+            "stt_input": {
+                "sample_count": 16000,
+                "sample_rate": 16000,
+                "duration_s": 1.0,
+            },
+        },
+    )
+
+    storage.write_turn_artifact(artifact, tmp_path)
+    loaded = storage.read_turn_artifact("session-1", "wake-turn", tmp_path)
+
+    assert loaded == artifact
+
+
 def test_storage_write_creates_expected_turn_file_path(tmp_path):
     artifact_path = storage.write_turn_artifact(_turn_artifact(), tmp_path)
 

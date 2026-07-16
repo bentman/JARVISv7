@@ -15,7 +15,7 @@ from backend.app.services.wake_status import WakeMonitorStatus
 
 WakeRuntimeFactory = Callable[[], WakeBase]
 WakeChunkSource = Callable[[threading.Event], Iterable[np.ndarray]]
-InvocationCallback = Callable[[str, np.ndarray | None, int | None], object]
+InvocationCallback = Callable[[str, np.ndarray | None, int | None, dict[str, object] | None], object]
 WAKE_SAMPLE_RATE = 16000
 WAKE_COMMAND_SECONDS = 3.0
 WAKE_IDLE_REASON = "wake listening"
@@ -172,12 +172,17 @@ class WakeMonitorService:
                         threshold=_runtime_threshold(runtime),
                     )
                     if self._invocation_callback is not None:
-                        command_audio = self._collect_command_audio(source)
+                        command_audio, capture_diagnostics = self._collect_command_audio(source)
                         if command_audio is None:
                             command_audio = np.asarray([], dtype=np.float32)
                         else:
                             command_audio = _chunks_to_stt_audio([chunk, command_audio])
-                        self._invocation_callback("wake", command_audio, WAKE_SAMPLE_RATE)
+                        self._invocation_callback(
+                            "wake",
+                            command_audio,
+                            WAKE_SAMPLE_RATE,
+                            capture_diagnostics,
+                        )
                 else:
                     self._record_wake_idle_if_due(runtime)
         except Exception as exc:
@@ -214,18 +219,17 @@ class WakeMonitorService:
         self._last_idle_signature = None
         self._last_idle_recorded_at = None
 
-    def _collect_command_audio(self, source: Iterator[WakeAudioChunk]) -> np.ndarray | None:
+    def _collect_command_audio(
+        self,
+        source: Iterator[WakeAudioChunk],
+    ) -> tuple[np.ndarray | None, dict[str, object] | None]:
         if self._utterance_segmenter is None:
-            return _chunks_to_stt_audio(self._collect_post_wake_chunks(source))
+            return _chunks_to_stt_audio(self._collect_post_wake_chunks(source)), None
         segment = self._utterance_segmenter.capture(_wake_audio_chunks(source))
-        self._session_service.record_voice_capture_diagnostics(
-            source="wake",
-            stage="segment",
-            diagnostics=segment.diagnostics.as_dict(),
-        )
+        diagnostics = segment.diagnostics.as_dict()
         if not segment.speech_started or segment.audio.size == 0:
-            return None
-        return segment.audio
+            return None, diagnostics
+        return segment.audio, diagnostics
 
     def _collect_post_wake_chunks(self, source: Iterator[WakeAudioChunk]) -> list[WakeAudioChunk]:
         chunks: list[WakeAudioChunk] = []

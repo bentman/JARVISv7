@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 01:30
+  - Host class(es): Windows AMD64; platform-neutral wake-turn artifact behavior
+  - Summary: Correlated wake segmentation diagnostics with the exact queued voice turn, transcript, and persisted STT waveform. Turn runtime context now records invocation source, wake capture evidence, and final STT input dimensions without changing voice processing.
+  - Scope:
+    - `backend/app/services/wake_monitor.py`, `backend/app/services/resident_voice_invocation.py`, `backend/app/services/session_service.py`
+    - `backend/app/conversation/realtime/session.py`, `backend/app/conversation/turn_manager.py`, `backend/app/conversation/engine.py`
+    - `backend/app/artifacts/turn_artifact.py`, `backend/app/api/schemas/session.py`
+    - Existing wake, resident-voice, realtime-session, artifact, engine, session, and API tests
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/conversation/realtime/test_session.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/conversation/test_session_manager.py backend/tests/unit/artifacts/test_turn_artifact.py backend/tests/unit/services/test_session_service.py backend/tests/unit/api/test_routes.py -q` PASS (197 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (752 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716062938-regression.txt`)
+
 - Timestamp: 2026-07-16 00:56
   - Host class(es): Windows AMD64; platform-neutral wake-command audio behavior
   - Summary: Removed the one-second wake-detection history from command STT audio while retaining the 80 ms detection chunk as a bridge for commands beginning immediately after the wake phrase.
