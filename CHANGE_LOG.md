@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 22:05
+  - Host class(es): Linux ARM64
+  - Summary: Made turn/session/timeline artifact, trace, and episodic entry writes atomic (temp file + fsync + rename) so a crash mid-write can no longer leave a torn file at the destination path.
+  - Scope:
+    - backend/app/artifacts/storage.py (write_text_atomic helper; three writers converted)
+    - backend/app/artifacts/trace_writer.py, backend/app/memory/episodic.py (converted to helper)
+    - backend/tests/unit/artifacts/test_turn_artifact.py (three new atomicity tests)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/artifacts/ backend/tests/unit/memory/test_episodic.py -q PASS (21 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Temp files use a .tmp suffix beside the destination, so *.json globs never observe them; a simulated failed rename leaves prior content intact (covered by test).
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.

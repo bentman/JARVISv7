@@ -153,3 +153,35 @@ def test_session_schema_fields_unchanged():
         "continuity_summary",
         "memory_curation_candidate",
     )
+
+
+def test_write_text_atomic_replaces_content_and_leaves_no_temp_file(tmp_path):
+    target = tmp_path / "artifact.json"
+    storage.write_text_atomic(target, "first")
+    storage.write_text_atomic(target, "second")
+
+    assert target.read_text(encoding="utf-8") == "second"
+    assert list(tmp_path.iterdir()) == [target]
+
+
+def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, monkeypatch):
+    target = tmp_path / "artifact.json"
+    target.write_text("intact", encoding="utf-8")
+
+    def _boom(src, dst):
+        raise OSError("simulated crash before rename")
+
+    monkeypatch.setattr(storage.os, "replace", _boom)
+    try:
+        storage.write_text_atomic(target, "torn")
+    except OSError:
+        pass
+
+    assert target.read_text(encoding="utf-8") == "intact"
+
+
+def test_write_turn_artifact_leaves_no_temp_file(tmp_path):
+    storage.write_turn_artifact(_turn_artifact(), tmp_path)
+
+    session_dir = tmp_path / "session-1"
+    assert sorted(p.name for p in session_dir.iterdir()) == ["turn-1.json"]
