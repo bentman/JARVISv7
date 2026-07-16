@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 04:54
+  - Host class(es): Windows AMD64; platform-neutral streaming TTS playback behavior
+  - Summary: Prevented temporary synthesis queue underruns from ending streaming TTS playback. Completion now requires the end-of-input sentinel plus complete queue and current-buffer drain, with bounded no-progress termination.
+  - Scope:
+    - `backend/app/runtimes/tts/playback.py`
+    - `backend/tests/unit/runtimes/tts/test_tts_runtime.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/runtimes/tts/test_tts_runtime.py backend/tests/unit/conversation/test_engine.py -q` PASS (75 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (755 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716095401-regression.txt`)
+  - Notes:
+    - Default wait termination occurs after 5 seconds without queue, buffer, or end-of-input progress; explicit `timeout_s` overrides that stall interval.
+
 - Timestamp: 2026-07-16 01:30
   - Host class(es): Windows AMD64; platform-neutral wake-turn artifact behavior
   - Summary: Correlated wake segmentation diagnostics with the exact queued voice turn, transcript, and persisted STT waveform. Turn runtime context now records invocation source, wake capture evidence, and final STT input dimensions without changing voice processing.

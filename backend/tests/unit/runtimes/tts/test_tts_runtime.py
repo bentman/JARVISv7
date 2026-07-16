@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
-import time
 
 import numpy as np
 import pytest
@@ -332,6 +333,95 @@ def test_playback_wait_error_is_propagated(monkeypatch):
 
     with pytest.raises(RuntimeError, match="playback wait failed"):
         playback.play(np.zeros(4, dtype=np.float32), 24000)
+
+
+def test_iterable_player_wait_survives_underrun_until_sentinel_and_buffer_drain(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    class CallbackStop(Exception):
+        pass
+
+    class Default:
+        device = [0, 1]
+
+    playback._sounddevice = SimpleNamespace(
+        CallbackStop=CallbackStop,
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+    )
+    playback._sounddevice_error = None
+    player = playback.IterablePlayer(sample_rate=16000)
+    first = np.array([0.1, 0.2], dtype=np.float32)
+    second = np.array([0.3, 0.4], dtype=np.float32)
+    player.put(first)
+    first_output = np.zeros((2, 1), dtype=np.float32)
+    player._callback(first_output, 2, None, None)
+
+    waiter = threading.Thread(target=player.wait, kwargs={"timeout_s": 1.0})
+    waiter.start()
+    time.sleep(0.05)
+
+    assert waiter.is_alive()
+    assert player.active is True
+
+    player.put(second)
+    second_output = np.zeros((2, 1), dtype=np.float32)
+    player._callback(second_output, 2, None, None)
+    assert waiter.is_alive()
+    player.put(None)
+    with pytest.raises(CallbackStop):
+        player._callback(np.zeros((2, 1), dtype=np.float32), 2, None, None)
+    waiter.join(timeout=1.0)
+
+    assert not waiter.is_alive()
+    assert np.array_equal(first_output[:, 0], first)
+    assert np.array_equal(second_output[:, 0], second)
+    assert player.active is False
+
+
+def test_iterable_player_wait_times_out_when_producer_never_sends_sentinel(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    class Default:
+        device = [0, 1]
+
+    playback._sounddevice = SimpleNamespace(
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+    )
+    playback._sounddevice_error = None
+    player = playback.IterablePlayer(sample_rate=16000)
+    player.put(np.array([0.1, 0.2], dtype=np.float32))
+    player._callback(np.zeros((2, 1), dtype=np.float32), 2, None, None)
+
+    started_at = time.monotonic()
+    player.wait(timeout_s=0.05)
+
+    assert time.monotonic() - started_at < 0.5
+    assert player.active is False
+
+
+def test_iterable_player_explicit_stop_releases_waiter(monkeypatch):
+    import backend.app.runtimes.tts.playback as playback
+
+    class Default:
+        device = [0, 1]
+
+    playback._sounddevice = SimpleNamespace(
+        default=Default(),
+        query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
+    )
+    playback._sounddevice_error = None
+    player = playback.IterablePlayer(sample_rate=16000)
+    waiter = threading.Thread(target=player.wait, kwargs={"timeout_s": 1.0})
+    waiter.start()
+    time.sleep(0.05)
+
+    player.stop()
+    waiter.join(timeout=0.5)
+
+    assert not waiter.is_alive()
+    assert player.active is False
 
 
 def test_describe_output_device_falls_back_when_default_is_unavailable():

@@ -11,6 +11,7 @@ import numpy as np
 _sounddevice: Any | None = None
 _sounddevice_error: Exception | None = None
 _last_output_device: str | None = None
+_STREAMING_PLAYBACK_STALL_TIMEOUT_S = 5.0
 
 
 def _load_sounddevice() -> Any:
@@ -121,6 +122,7 @@ class IterablePlayer:
         self.total_samples = 0
         self._current_chunk = np.array([], dtype=np.float32)
         self._current_idx = 0
+        self._end_of_input_received = threading.Event()
         self._stream = None
         global _last_output_device
         _last_output_device = describe_output_device(self.sounddevice)
@@ -137,7 +139,7 @@ class IterablePlayer:
                         break
                     self._current_chunk = next_chunk.reshape(-1)
                     self._current_idx = 0
-                except Exception:
+                except queue.Empty:
                     break
             
             chunk_left = len(self._current_chunk) - self._current_idx
@@ -164,6 +166,8 @@ class IterablePlayer:
         if chunk is not None:
             self.total_samples += chunk.size
         self.q.put(chunk)
+        if chunk is None:
+            self._end_of_input_received.set()
 
     def stop(self) -> None:
         self.active = False
@@ -184,10 +188,35 @@ class IterablePlayer:
 
     def wait(self, timeout_s: float | None = None) -> None:
         if timeout_s is None:
-            timeout_s = (self.total_samples / self.sample_rate) + 0.5
-        start_time = time.time()
-        while self.active and (not self.q.empty() or self._current_idx < len(self._current_chunk)):
-            if time.time() - start_time > timeout_s:
+            timeout_s = _STREAMING_PLAYBACK_STALL_TIMEOUT_S
+        last_progress_at = time.monotonic()
+        progress = self._progress_snapshot()
+        while True:
+            if self._playback_complete() or not self.active:
+                break
+            if self._stream is not None and not self._stream.active:
+                break
+            next_progress = self._progress_snapshot()
+            now = time.monotonic()
+            if next_progress != progress:
+                progress = next_progress
+                last_progress_at = now
+            elif now - last_progress_at >= timeout_s:
                 break
             time.sleep(0.01)
         self.stop()
+
+    def _playback_complete(self) -> bool:
+        return (
+            self._end_of_input_received.is_set()
+            and self.q.empty()
+            and self._current_idx >= len(self._current_chunk)
+        )
+
+    def _progress_snapshot(self) -> tuple[int, int, int, bool]:
+        return (
+            self.total_samples,
+            self.q.qsize(),
+            self._current_idx,
+            self._end_of_input_received.is_set(),
+        )
