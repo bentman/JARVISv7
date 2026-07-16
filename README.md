@@ -25,15 +25,16 @@ JARVISv7 exists because v6 proved the vision was mostly right and the implementa
 
 ## 🚀 Quick Start
 
-Fresh-clone setup lives in [docs/QuickStart.md](docs/QuickStart.md). That guide is the right place for commands, prerequisites, and the current repo-run desktop preview flow. The short version is: create `backend\.venv`, run `scripts\bootstrap.py`, install desktop dependencies, then launch the desktop shell with `npm --prefix desktop run dev`. The desktop starts the backend and displays readiness, services, resident voice, wake, session, and error state.
+Fresh-clone setup lives in the platform quick-start guides below. They are the right place for commands, prerequisites, and the current repo-run desktop preview flow. The short version is: create `backend\.venv`, run `scripts\bootstrap.py`, install desktop dependencies, then launch the desktop shell with `npm --prefix desktop run dev`. The desktop starts the backend and displays readiness, services, resident voice, wake, session, and error state.
 
 Useful entry points:
 
-* [docs/QuickStart.md](docs/QuickStart.md) — first setup and repo-run desktop launch
 * [ProjectVision.md](ProjectVision.md) — target product behavior
 * [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) — what is actually observable now
 * [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
+* [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
+* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup, currently with more optimism than evidence
 
 The README is intentionally not the technical manual. Nobody wins when the front page becomes an installation crime scene.
 

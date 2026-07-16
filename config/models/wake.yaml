@@ -5,6 +5,9 @@ models:
     family: wake
     runtime: openwakeword
     provider: openwakeword
+    supported_hosts:
+      - windows_amd64
+      - windows_arm64
     model: hey_jarvis_v0.1
     threshold: 0.5
     device: cpu

@@ -62,10 +62,10 @@ def test_resolver_returns_qnn_extra_for_qualcomm_host() -> None:
     assert "hw-npu-qualcomm-qnn" in extras
 
 
-def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch) -> None:
+def test_preflight_emits_qnn_import_token_when_package_installed(monkeypatch, tmp_path) -> None:
     preflight_module._CACHE.clear()
-    ort_root = Path("C:/site-packages/onnxruntime")
-    qnn_root = Path("C:/site-packages/onnxruntime_qnn")
+    ort_root = tmp_path / "site-packages" / "onnxruntime"
+    qnn_root = tmp_path / "site-packages" / "onnxruntime_qnn"
     ort_file = ort_root / "__init__.py"
     qnn_file = qnn_root / "__init__.py"
     htp_path = qnn_root / "QnnHtp.dll"

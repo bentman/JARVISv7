@@ -112,6 +112,23 @@ def test_base_requirements_keep_sounddevice_without_soundfile() -> None:
     assert "soundfile" not in requirement_names
 
 
+def test_verify_uses_pep508_markers_for_linux_and_windows_hosts() -> None:
+    requirement = "openwakeword>=0.6; sys_platform=='win32' and platform_machine=='AMD64'"
+
+    assert provision._requirement_applies_to_profile(
+        requirement,
+        HardwareProfile(os_name="windows", arch="amd64"),
+    )
+    assert not provision._requirement_applies_to_profile(
+        requirement,
+        HardwareProfile(os_name="windows", arch="arm64"),
+    )
+    assert not provision._requirement_applies_to_profile(
+        requirement,
+        HardwareProfile(os_name="linux", arch="amd64"),
+    )
+
+
 def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) -> None:
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("amd64")))
     monkeypatch.setattr(provision, "_installed_distribution_versions", lambda: {"fastapi": "1.0", "uvicorn": "1.0"})

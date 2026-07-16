@@ -4,7 +4,7 @@ The desktop shell is the durable user-facing surface for JARVISv7. It is built w
 
 Use this folder for the native shell, UI presentation, tray/window behavior, hotkeys, and backend lifecycle bridge. Do not move backend policy or runtime decisions into desktop code.
 
-For repo-wide setup, start with [docs/QuickStart.md](../docs/QuickStart.md). For desktop-specific contributor/agent rules, use [desktop/AGENTS.md](AGENTS.md).
+For repo-wide setup, start with the [Windows](../docs/QuickStart-windows.md) or [Linux/WSL](../docs/QuickStart-linux.md) quick-start guide. For desktop-specific contributor/agent rules, use [desktop/AGENTS.md](AGENTS.md).
 
 ## Commands
 

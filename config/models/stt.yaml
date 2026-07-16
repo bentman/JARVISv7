@@ -25,6 +25,8 @@ models:
   whisper-base-en-qnn-snapdragon-x-elite:
     family: stt
     runtime: qnn_whisper
+    supported_hosts:
+      - windows_arm64
     devices: [qnn]
     decode:
       language: ""
@@ -41,6 +43,8 @@ models:
   whisper-qualcomm-qnn:
     family: stt
     runtime: qnn_whisper
+    supported_hosts:
+      - windows_arm64
     devices: [qnn]
     decode:
       language: ""

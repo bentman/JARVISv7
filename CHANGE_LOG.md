@@ -23,6 +23,21 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 11:48
+  - Host class(es): Linux AMD64 (WSL2); Windows AMD64/ARM64 coverage retained
+  - Summary: Made provisioning, preflight, and model acquisition evaluate effective host support so WSL/Linux can provision without selecting Windows-only OpenWakeWord or QNN runtime artifacts.
+  - Scope:
+    - `pyproject.toml`, `scripts/provision.py`, `backend/app/hardware/preflight.py`, `scripts/ensure_models.py`
+    - `config/models/wake.yaml`, `config/models/stt.yaml`, `docs/QuickStart-linux.md`
+    - Existing provisioning, preflight, model, bootstrap, and platform-portability tests
+  - Validation:
+    - `backend/.venv/bin/python scripts/provision.py install` PASS; `backend/.venv/bin/python scripts/provision.py verify` PASS
+    - `backend/.venv/bin/python scripts/bootstrap.py` PASS through profile, provision, models, preflight, and validation checkpoints
+    - `backend/.venv/bin/python -m pytest backend/tests/unit/hardware/test_provisioning.py backend/tests/unit/hardware/test_preflight.py backend/tests/unit/hardware/test_qnn_slot.py backend/tests/unit/scripts/test_provision_script.py backend/tests/unit/scripts/test_ensure_models_script.py backend/tests/unit/scripts/test_bootstrap_script.py -q` PASS (57 passed)
+    - `backend/.venv/bin/python scripts/validate_backend.py unit` PASS (768 passed, 2 skipped); `git diff --check` PASS
+  - Notes:
+    - Windows AMD64/ARM64 LLM profile regressions passed (2 passed). Bootstrap required no code change; it already invokes child Python commands through `sys.executable`.
+
 - Timestamp: 2026-07-16 06:24
   - Host class(es): Windows AMD64; platform-neutral wake-monitor lifecycle behavior
   - Summary: Prevented timed-out wake stop and pause operations from discarding a live worker or clearing its stop signal. Worker ownership now remains exclusive until the existing run-loop cleanup observes actual exit.

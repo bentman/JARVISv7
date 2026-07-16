@@ -18,7 +18,6 @@ from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.provisioning import (
     explain_required_extras,
     resolve_required_extras,
-    resolve_required_requirement_names,
 )
 
 
@@ -86,6 +85,58 @@ def _normalize_requirement_name(requirement: str) -> str:
         if separator in candidate:
             candidate = candidate.split(separator, 1)[0]
     return _canonicalize_package_name(candidate)
+
+
+def _marker_environment(profile: HardwareProfile) -> dict[str, str]:
+    try:
+        from packaging.markers import default_environment
+    except ImportError:
+        from pip._vendor.packaging.markers import default_environment
+
+    environment = default_environment()
+    environment.update(
+        {
+            "sys_platform": {"windows": "win32", "linux": "linux", "darwin": "darwin"}.get(
+                profile.os_name, profile.os_name
+            ),
+            "platform_system": {
+                "windows": "Windows",
+                "linux": "Linux",
+                "darwin": "Darwin",
+            }.get(profile.os_name, profile.os_name),
+            "platform_machine": {
+                ("windows", "amd64"): "AMD64",
+                ("windows", "arm64"): "ARM64",
+                ("linux", "amd64"): "x86_64",
+                ("linux", "arm64"): "aarch64",
+            }.get((profile.os_name, profile.arch), profile.arch),
+        }
+    )
+    return environment
+
+
+def _requirement_applies_to_profile(requirement: str, profile: HardwareProfile) -> bool:
+    _specifier, separator, marker = requirement.partition(";")
+    if not separator:
+        return True
+    try:
+        from packaging.markers import Marker
+    except ImportError:
+        from pip._vendor.packaging.markers import Marker
+
+    return Marker(marker.strip()).evaluate(_marker_environment(profile))
+
+
+def _selected_requirement_specs(profile: HardwareProfile, include_porcupine: bool) -> list[str]:
+    extras = resolve_required_extras(profile, include_porcupine=include_porcupine)
+    return [
+        requirement
+        for requirement in [
+            *_read_base_requirements(),
+            *(requirement for extra in extras for requirement in _read_extra_requirements(extra)),
+        ]
+        if _requirement_applies_to_profile(requirement, profile)
+    ]
 
 
 def _exact_requirement_version(requirement: str) -> tuple[str, str] | None:
@@ -175,17 +226,11 @@ def _provision_context(include_porcupine: bool) -> tuple[HardwareProfile, list[s
 
 
 def _expected_distribution_names(profile: HardwareProfile, include_porcupine: bool) -> set[str]:
-    expected = {
+    return {
         _normalize_requirement_name(requirement)
-        for requirement in _read_base_requirements()
+        for requirement in _selected_requirement_specs(profile, include_porcupine)
         if _normalize_requirement_name(requirement)
     }
-    expected.update(
-        _canonicalize_package_name(name)
-        for name in resolve_required_requirement_names(profile, include_porcupine=include_porcupine)
-        if _canonicalize_package_name(name)
-    )
-    return expected
 
 
 def _expected_exact_distribution_versions(
@@ -193,12 +238,7 @@ def _expected_exact_distribution_versions(
     include_porcupine: bool,
 ) -> dict[str, str]:
     expected: dict[str, str] = {}
-    extras = resolve_required_extras(profile, include_porcupine=include_porcupine)
-    requirement_specs = [
-        *_read_base_requirements(),
-        *(requirement for extra in extras for requirement in _read_extra_requirements(extra)),
-    ]
-    for requirement in requirement_specs:
+    for requirement in _selected_requirement_specs(profile, include_porcupine):
         exact = _exact_requirement_version(requirement)
         if exact is None:
             continue

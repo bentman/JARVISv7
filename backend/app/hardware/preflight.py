@@ -66,15 +66,18 @@ def _restore(snapshot: _Snapshot) -> PreflightResult:
     )
 
 
-def _import_names_for_extra(extra: str) -> tuple[str, ...]:
-    return _EXTRA_IMPORTS.get(extra, ())
+def _import_names_for_extra(extra: str, profile: HardwareProfile) -> tuple[str, ...]:
+    imports = _EXTRA_IMPORTS.get(extra, ())
+    if profile.os_name == "linux":
+        return tuple(import_name for import_name in imports if import_name != "openwakeword")
+    return imports
 
 
-def _ordered_import_names(installed_extras: list[str]) -> list[str]:
+def _ordered_import_names(installed_extras: list[str], profile: HardwareProfile) -> list[str]:
     ordered: list[str] = []
     seen: set[str] = set()
     for extra in installed_extras:
-        for import_name in _import_names_for_extra(extra):
+        for import_name in _import_names_for_extra(extra, profile):
             if import_name not in seen:
                 ordered.append(import_name)
                 seen.add(import_name)
@@ -193,8 +196,9 @@ def _probe_imports(
     installed_extras: list[str],
     tokens: list[str],
     probe_errors: dict[str, str],
+    profile: HardwareProfile,
 ) -> None:
-    for import_name in _ordered_import_names(installed_extras):
+    for import_name in _ordered_import_names(installed_extras, profile):
         token = f"import:{import_name}"
         try:
             importlib.import_module(import_name)
@@ -373,7 +377,7 @@ def run_preflight(profile: HardwareProfile, installed_extras: list[str]) -> Pref
 
     _bootstrap_windows_dlls(profile, tokens, dll_discovery_log)
     _probe_adreno_opencl_sidecar(profile, tokens, dll_discovery_log)
-    _probe_imports(installed_extras, tokens, probe_errors)
+    _probe_imports(installed_extras, tokens, probe_errors, profile)
 
     if "import:onnxruntime" in tokens:
         _activate_qnn_execution_provider_if_applicable(

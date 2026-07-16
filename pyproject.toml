@@ -97,7 +97,7 @@ hw-cpu-base = []
 hw-x64-base = [
   "onnx-asr>=0.8; platform_machine=='AMD64' or platform_machine=='x86_64'",
   "kokoro-onnx>=0.4; platform_machine=='AMD64' or platform_machine=='x86_64'",
-  "openwakeword>=0.6; platform_machine=='AMD64' or platform_machine=='x86_64'",
+  "openwakeword>=0.6; sys_platform=='win32' and platform_machine=='AMD64'",
 ]
 
 # x64 CPU ONNX Runtime baseline.
@@ -111,7 +111,7 @@ hw-x64-ort-cpu = [
 hw-arm64-base = [
   "onnx-asr>=0.8; platform_machine=='ARM64' or platform_machine=='aarch64'",
   "kokoro-onnx>=0.4; platform_machine=='ARM64' or platform_machine=='aarch64'",
-  "openwakeword>=0.6; platform_machine=='ARM64' or platform_machine=='aarch64'",
+  "openwakeword>=0.6; sys_platform=='win32' and platform_machine=='ARM64'",
 ]
 
 # ARM64 CPU ONNX Runtime baseline.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -155,6 +156,11 @@ def test_missing_pnpm_is_warn_only(monkeypatch) -> None:
 
 def test_webview2_registry_pv_value_passes(monkeypatch) -> None:
     monkeypatch.setattr(dev_runner.platform, "system", lambda: "Windows")
+    monkeypatch.setitem(
+        sys.modules,
+        "winreg",
+        SimpleNamespace(HKEY_LOCAL_MACHINE=object(), HKEY_CURRENT_USER=object()),
+    )
     monkeypatch.setattr(dev_runner, "_registry_value", lambda root, subkey, value_name: "123.0")
     result = dev_runner._check_webview2()
     assert result.status == "PASS"
@@ -164,6 +170,11 @@ def test_webview2_registry_pv_value_passes(monkeypatch) -> None:
 def test_webview2_inconclusive_state_warns(monkeypatch) -> None:
     monkeypatch.setattr(dev_runner.platform, "system", lambda: "Windows")
     monkeypatch.setattr(dev_runner.platform, "release", lambda: "11")
+    monkeypatch.setitem(
+        sys.modules,
+        "winreg",
+        SimpleNamespace(HKEY_LOCAL_MACHINE=object(), HKEY_CURRENT_USER=object()),
+    )
     monkeypatch.setattr(dev_runner, "_registry_value", lambda root, subkey, value_name: None)
     result = dev_runner._check_webview2()
     assert result.status == "WARN"
@@ -173,6 +184,11 @@ def test_webview2_inconclusive_state_warns(monkeypatch) -> None:
 def test_definitive_webview2_absence_can_fail(monkeypatch) -> None:
     monkeypatch.setattr(dev_runner.platform, "system", lambda: "Windows")
     monkeypatch.setattr(dev_runner.platform, "release", lambda: "8")
+    monkeypatch.setitem(
+        sys.modules,
+        "winreg",
+        SimpleNamespace(HKEY_LOCAL_MACHINE=object(), HKEY_CURRENT_USER=object()),
+    )
     monkeypatch.setattr(dev_runner, "_registry_value", lambda root, subkey, value_name: None)
     result = dev_runner._check_webview2()
     assert result.status == "FAIL"

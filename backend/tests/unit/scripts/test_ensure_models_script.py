@@ -4,6 +4,7 @@ import io
 import zipfile
 from pathlib import Path
 
+from backend.app.core.capabilities import HardwareProfile
 from scripts import ensure_models
 
 
@@ -198,3 +199,36 @@ def test_ensure_llm_single_file_huggingface_dry_run_uses_catalog_file(tmp_path: 
     assert result["dry_run"] is True
     assert result["acquired"] == ["model-q4.gguf"]
     assert result["ready"] is True
+
+
+def test_ensure_family_skips_model_unsupported_on_linux_host(monkeypatch) -> None:
+    entry = ensure_models.ModelEntry(
+        family="wake",
+        name="openwakeword-hey-jarvis",
+        config={
+            "supported_hosts": ["windows_amd64", "windows_arm64"],
+            "source": {"type": "url", "files": {}},
+            "local_path": "models/wake/openwakeword",
+        },
+    )
+    monkeypatch.setattr(ensure_models, "list_models", lambda family: {entry.name: entry.config})
+    monkeypatch.setattr(
+        ensure_models,
+        "_ensure_entry",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("unsupported model fetched")),
+    )
+
+    code, result = ensure_models._ensure_family(
+        "wake",
+        None,
+        dry_run=False,
+        hardware_profile=HardwareProfile(os_name="linux", arch="amd64"),
+    )
+
+    assert code == 0
+    assert result["models"][0]["state"] == "skipped"
+    assert result["models"][0]["degraded_reason"] == "SKIP-unsupported-host:linux_amd64"
+    assert ensure_models._unsupported_host_reason(
+        entry,
+        HardwareProfile(os_name="windows", arch="amd64"),
+    ) is None

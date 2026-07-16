@@ -53,7 +53,7 @@ def test_preflight_is_idempotent_in_same_process(monkeypatch) -> None:
     def fake_bootstrap(profile, tokens, log):
         calls["bootstrap"] += 1
 
-    def fake_imports(installed_extras, tokens, probe_errors):
+    def fake_imports(installed_extras, tokens, probe_errors, profile):
         calls["imports"] += 1
         tokens.append("import:pytest")
 
@@ -165,6 +165,25 @@ def test_preflight_ep_probe_emits_ep_tokens_when_onnxruntime_available(monkeypat
     assert "import:onnxruntime" in result.tokens
     assert "ep:CUDAExecutionProvider" in result.tokens
     assert "ep:DmlExecutionProvider" in result.tokens
+
+
+def test_preflight_skips_linux_openwakeword_import(monkeypatch) -> None:
+    preflight._CACHE.clear()
+    calls: list[str] = []
+
+    def fake_import(name: str):
+        calls.append(name)
+        if name in {"onnxruntime", "onnx_asr", "kokoro_onnx"}:
+            return _make_module()
+        raise ModuleNotFoundError(name)
+
+    monkeypatch.setattr(preflight.importlib, "import_module", fake_import)
+    monkeypatch.setattr(preflight, "_bootstrap_windows_dlls", lambda profile, tokens, log: None)
+
+    result = preflight.run_preflight(_make_profile(os_name="linux", arch="amd64"), ["hw-x64-base"])
+
+    assert "openwakeword" not in calls
+    assert "openwakeword" not in result.probe_errors
 
 
 def test_preflight_ep_probe_skipped_when_onnxruntime_not_imported(monkeypatch) -> None:

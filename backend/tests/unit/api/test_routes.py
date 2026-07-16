@@ -350,6 +350,58 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     assert state.engine.interruption_audio_chunks is None
 
 
+def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> None:
+    profile = HardwareProfile(os_name="linux", arch="amd64", profile_id="profile-linux-test")
+    report = FullCapabilityReport(profile=profile, flags=CapabilityFlags())
+    preflight = PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={})
+    policy = {"llm": {"cloud_enabled": False}}
+    selected_llm = _FakeLLM()
+    selector_calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile, object]] = []
+    degraded_reason = "LLM model 'assistant-small-q4' has no CPU serve profile for linux/amd64"
+
+    monkeypatch.setattr(
+        app_module,
+        "load_startup_context",
+        lambda: StartupContext(
+            report=report,
+            profile=profile,
+            extras=["dev"],
+            preflight=preflight,
+            readiness={
+                "stt": ("cpu", True, "stt ready"),
+                "tts": ("cpu", True, "tts ready"),
+                "llm": ("cpu", False, degraded_reason),
+                "wake": ("cpu", True, "wake ready"),
+            },
+        ),
+    )
+    monkeypatch.setattr(app_module, "_load_runtime_policy", lambda: policy)
+    monkeypatch.setattr(app_module, "load_default_personality", lambda: _FakeEngine.personality)
+    monkeypatch.setattr(app_module, "select_stt_runtime", lambda preflight, profile: _FakeSTT())
+    monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
+    monkeypatch.setattr(
+        app_module,
+        "prepare_managed_local_llm",
+        lambda runtime_profile, runtime_preflight, *, flags: type(
+            "PreparedLocal",
+            (),
+            {"runtime": None, "sidecar": None, "degraded_reason": degraded_reason},
+        )(),
+    )
+
+    def fake_select_llm(runtime_policy, runtime_preflight, runtime_profile, *, local=None):
+        selector_calls.append((runtime_policy, runtime_preflight, runtime_profile, local))
+        return selected_llm, object()
+
+    monkeypatch.setattr(app_module, "select_llm", fake_select_llm)
+
+    state = app_module.build_startup_state()
+
+    assert state.llm is selected_llm
+    assert state.local_llm_sidecar is None
+    assert selector_calls == [(policy, preflight, profile, None)]
+
+
 def test_build_engine_injects_resident_interruption_chunks_when_stream_running() -> None:
     state = _state()
     assert state.resident_audio_stream is None
@@ -675,7 +727,7 @@ def test_session_status_returns_latest_turn_summary() -> None:
         "degraded_reason": None,
         "tts_output_device": None,
         "raw_audio_path": None,
-        "artifact_path": f"data\\turns\\{session_id}\\turn-debug.json",
+        "artifact_path": str(Path("data") / "turns" / session_id / "turn-debug.json"),
         "runtime_context": {"llm": "fake-llm"},
         "phase_durations_ms": {},
         "failure_phase": None,

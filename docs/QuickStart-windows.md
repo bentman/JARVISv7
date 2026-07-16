@@ -1,4 +1,4 @@
-# Quick Start
+# Quick Start — Windows
 
 This guide sets up and launches the repo-run JARVISv7 desktop preview on Windows using repo-owned commands.
 
@@ -69,10 +69,11 @@ The desktop shell starts the backend, creates or resumes a session, loads readin
 ```powershell
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
-$env:TEMP = "$PWD\cache\temp"
-$env:TMP = "$PWD\cache\temp"
-$env:TMPDIR = "$PWD\cache\temp"
-$env:PIP_CACHE_DIR = "$PWD\cache\pip"
+$repoRoot = (git rev-parse --show-toplevel).Trim()
+$env:TEMP = "$repoRoot\cache\temp"
+$env:TMP = "$repoRoot\cache\temp"
+$env:TMPDIR = "$repoRoot\cache\temp"
+$env:PIP_CACHE_DIR = "$repoRoot\cache\pip"
 New-Item -ItemType Directory -Force $env:TEMP, $env:PIP_CACHE_DIR | Out-Null
 ```
 

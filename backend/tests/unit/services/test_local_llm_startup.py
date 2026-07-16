@@ -7,7 +7,7 @@ import pytest
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings
 from backend.app.hardware.preflight import PreflightResult
-from backend.app.models.catalog import ModelEntry
+from backend.app.models.catalog import ModelCatalogError, ModelEntry
 from backend.app.models.llm_profiles import LLMServeProfileResolution
 from backend.app.services import local_llm_startup
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
@@ -99,6 +99,72 @@ def test_prepare_managed_local_llm_reports_profile_degraded_reason(
     assert result.runtime is None
     assert result.sidecar is None
     assert result.degraded_reason == "Degraded-no-local-model-artifact"
+
+
+def test_prepare_managed_local_llm_degrades_when_linux_cpu_profile_is_missing() -> None:
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="linux", arch="amd64"),
+        _preflight(),
+        settings=_settings(),
+    )
+
+    assert result.runtime is None
+    assert result.sidecar is None
+    assert result.resolution is None
+    assert result.degraded_reason == (
+        "LLM model 'assistant-small-q4' has no CPU serve profile for linux/amd64"
+    )
+    assert "windows" not in result.degraded_reason
+    assert ".exe" not in result.degraded_reason
+
+
+def test_prepare_managed_local_llm_degrades_for_expected_profile_metadata_error(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        local_llm_startup,
+        "resolve_llm_serve_profile",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            ModelCatalogError("LLM model 'assistant-small-q4' has invalid serve_profiles metadata")
+        ),
+    )
+    monkeypatch.setattr(
+        local_llm_startup,
+        "select_llm_model",
+        lambda *args, **kwargs: type("Selection", (), {"model_id": "assistant-small-q4"})(),
+    )
+
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="linux", arch="amd64"),
+        _preflight(),
+        settings=_settings(),
+    )
+
+    assert result.runtime is None
+    assert result.sidecar is None
+    assert result.degraded_reason == (
+        "LLM model 'assistant-small-q4' has invalid serve_profiles metadata"
+    )
+
+
+def test_prepare_managed_local_llm_propagates_unexpected_profile_error(monkeypatch) -> None:
+    monkeypatch.setattr(
+        local_llm_startup,
+        "resolve_llm_serve_profile",
+        lambda *args, **kwargs: (_ for _ in ()).throw(ValueError("unexpected profile bug")),
+    )
+    monkeypatch.setattr(
+        local_llm_startup,
+        "select_llm_model",
+        lambda *args, **kwargs: type("Selection", (), {"model_id": "assistant-small-q4"})(),
+    )
+
+    with pytest.raises(ValueError, match="unexpected profile bug"):
+        prepare_managed_local_llm(
+            HardwareProfile(os_name="linux", arch="amd64"),
+            _preflight(),
+            settings=_settings(),
+        )
 
 
 def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runtime(

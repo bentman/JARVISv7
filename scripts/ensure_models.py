@@ -3,19 +3,22 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
 import shutil
 import sys
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
-import httpx
-from huggingface_hub import hf_hub_download
-
 SCRIPT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = SCRIPT_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
+
+os.environ.setdefault("HF_HOME", str(REPO_ROOT / "cache" / "huggingface"))
+
+import httpx  # noqa: E402
+from huggingface_hub import hf_hub_download  # noqa: E402
 
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
@@ -96,6 +99,34 @@ def _missing_artifact_reason(entry: ModelEntry, missing: list[str]) -> str | Non
     if entry.family == "llm" and missing:
         return "Degraded-no-local-model-artifact"
     return None
+
+
+def _unsupported_host_reason(entry: ModelEntry, profile: HardwareProfile | None) -> str | None:
+    if profile is None:
+        return None
+    supported_hosts = entry.config.get("supported_hosts")
+    if supported_hosts is None:
+        return None
+    if not isinstance(supported_hosts, list) or not all(
+        isinstance(host, str) and host.strip() for host in supported_hosts
+    ):
+        raise ValueError(f"model '{entry.name}' has invalid supported_hosts metadata")
+    host_id = f"{profile.os_name}_{profile.arch}"
+    if host_id in supported_hosts:
+        return None
+    return f"SKIP-unsupported-host:{host_id}"
+
+
+def _skipped_entry(entry: ModelEntry, reason: str) -> dict[str, Any]:
+    return {
+        "family": entry.family,
+        "model": entry.name,
+        "acquired": [],
+        "missing": [],
+        "ready": True,
+        "state": "skipped",
+        "degraded_reason": reason,
+    }
 
 
 def _hardware_profiles(entry: ModelEntry) -> dict[str, dict[str, Any]]:
@@ -590,7 +621,12 @@ def _verify_family(
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
         selected_policy = None
 
-    results = [_verify_entry(entry) for entry in entries]
+    results = [
+        _skipped_entry(entry, reason)
+        if (reason := _unsupported_host_reason(entry, hardware_profile)) is not None
+        else _verify_entry(entry)
+        for entry in entries
+    ]
     runtime_results = [
         _verify_runtime_artifacts(
             entry,
@@ -752,7 +788,12 @@ def _ensure_family(
         entries = [ModelEntry(family=family, name=name, config=config) for name, config in list_models(family).items()]
         selected_policy = None
 
-    results = [_ensure_entry(entry, dry_run) for entry in entries]
+    results = [
+        _skipped_entry(entry, reason)
+        if (reason := _unsupported_host_reason(entry, hardware_profile)) is not None
+        else _ensure_entry(entry, dry_run)
+        for entry in entries
+    ]
     runtime_results: list[dict[str, Any]] = []
     if family == "llm":
         if runtime_fetch_allowed:
