@@ -1,7 +1,9 @@
 # YYYYMMDD_slice-template.md
 ## Slice {Group} — {Short Title}
 
-Status: planned. This document is an implementation contract for a coding agent. It is not completion evidence.
+> Status: planned.  
+> This document is an implementation contract for a coding agent.  
+> It is not completion evidence.
 
 ---
 
