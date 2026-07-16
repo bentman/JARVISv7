@@ -321,8 +321,10 @@ sudo apt-get update
 ```
 
 ```bash
-sudo apt-get install --yes build-essential pkg-config curl ca-certificates xz-utils libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev libncursesw5-dev tk-dev uuid-dev
+sudo apt-get install --yes build-essential pkg-config curl ca-certificates xz-utils libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev libffi-dev liblzma-dev libncursesw5-dev tk-dev uuid-dev libasound2-plugins
 ```
+
+For WSLg audio, `libasound2-plugins` enables PortAudio's PulseAudio device. Without it, JARVIS may see only the invalid default device `-1`.
 
 ### Build and install Python 3.12.10
 
