@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 00:56
+  - Host class(es): Windows AMD64; platform-neutral wake-command audio behavior
+  - Summary: Removed the one-second wake-detection history from command STT audio while retaining the 80 ms detection chunk as a bridge for commands beginning immediately after the wake phrase.
+  - Scope:
+    - `backend/app/services/wake_monitor.py`
+    - `backend/tests/unit/services/test_wake_monitor.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/services/test_utterance_segmenter.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/services/test_voice_service.py backend/tests/unit/conversation/test_engine.py -q` PASS (112 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (749 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716055605-regression.txt`)
+
 - Timestamp: 2026-07-16 00:35
   - Host class(es): Windows AMD64; platform-neutral llama.cpp sidecar lifecycle behavior
   - Summary: Added a bounded TCP listener gate before llama.cpp endpoint adoption, bypassing the model-aware HTTP timeout when no server is listening while preserving model verification for reachable endpoints.

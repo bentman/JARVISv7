@@ -106,7 +106,7 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
     assert audio.size >= 8
 
 
-def test_wake_monitor_consumes_shared_stream_and_vad_delimits_command(monkeypatch, tmp_path: Path) -> None:
+def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(
         "backend.app.services.wake_monitor._float_to_int16",
         lambda samples: (_ for _ in ()).throw(AssertionError("resident frames must use cached PCM16")),
@@ -147,7 +147,10 @@ def test_wake_monitor_consumes_shared_stream_and_vad_delimits_command(monkeypatc
     assert sample_rate == 16000
     assert audio is not None
     assert audio.dtype == np.float32
-    assert np.array_equal(audio, np.concatenate([chunk.samples for chunk in published[:4]]))
+    assert np.array_equal(audio, np.concatenate([chunk.samples for chunk in published[1:4]]))
+    assert np.array_equal(audio[:4], published[1].samples)
+    assert np.array_equal(audio[4:8], published[2].samples)
+    assert not np.array_equal(audio[:4], published[0].samples)
     assert stream.status().running is False
     diagnostics = service.status().voice_capture_diagnostics
     assert diagnostics is not None

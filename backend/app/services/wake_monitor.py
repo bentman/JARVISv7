@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import threading
-from collections import deque
 from collections.abc import Callable, Iterable, Iterator
 from time import monotonic
 
@@ -18,7 +17,6 @@ WakeRuntimeFactory = Callable[[], WakeBase]
 WakeChunkSource = Callable[[threading.Event], Iterable[np.ndarray]]
 InvocationCallback = Callable[[str, np.ndarray | None, int | None], object]
 WAKE_SAMPLE_RATE = 16000
-WAKE_PREROLL_SECONDS = 1.0
 WAKE_COMMAND_SECONDS = 3.0
 WAKE_IDLE_REASON = "wake listening"
 WAKE_IDLE_REFRESH_SECONDS = 1.0
@@ -158,7 +156,6 @@ class WakeMonitorService:
     def _run(self, runtime: WakeBase) -> None:
         subscriber = None
         try:
-            pre_roll: deque[WakeAudioChunk] = deque(maxlen=_chunk_count(WAKE_PREROLL_SECONDS))
             if self._resident_stream is not None and self._resident_stream.status().running:
                 subscriber = self._resident_stream.subscribe()
                 source = _resident_wake_chunks(subscriber, self._stop_event)
@@ -168,7 +165,6 @@ class WakeMonitorService:
                 if self._stop_event.is_set():
                     break
                 chunk_audio = _wake_detection_audio(chunk)
-                pre_roll.append(chunk)
                 if runtime.detect(chunk_audio):
                     self._reset_idle_telemetry()
                     self._session_service.record_wake_detection(
@@ -176,13 +172,11 @@ class WakeMonitorService:
                         threshold=_runtime_threshold(runtime),
                     )
                     if self._invocation_callback is not None:
-                        command_chunks = list(pre_roll)
                         command_audio = self._collect_command_audio(source)
                         if command_audio is None:
                             command_audio = np.asarray([], dtype=np.float32)
                         else:
-                            command_chunks.append(command_audio)
-                            command_audio = _chunks_to_stt_audio(command_chunks)
+                            command_audio = _chunks_to_stt_audio([chunk, command_audio])
                         self._invocation_callback("wake", command_audio, WAKE_SAMPLE_RATE)
                 else:
                     self._record_wake_idle_if_due(runtime)
