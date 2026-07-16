@@ -90,6 +90,77 @@ models:
         - "Assistant:"
     serve_profiles:
       hardware_profiles:
+        linux_amd64_cpu:
+          profile_id: linux_amd64_cpu
+          os: linux
+          arch: amd64
+          provisioning_extras:
+            - hw-cpu-base
+            - hw-x64-base
+            - hw-x64-ort-cpu
+          accelerator: cpu
+          runtime_artifact:
+            source:
+              type: url_tar_gz
+              release: b9704
+              asset: llama-b9704-bin-ubuntu-x64.tar.gz
+              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-ubuntu-x64.tar.gz
+            binary_path: runtimes/llama.cpp/linux-amd64-cpu/llama-server
+            required_files:
+              - llama-server
+          binary_path: runtimes/llama.cpp/linux-amd64-cpu/llama-server
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-not-validated
+          launch:
+            ctx_size: 4096
+            threads: 6
+            threads_batch: 12
+            batch_size: 512
+            ubatch_size: 128
+            gpu_layers: 0
+            cache_type_k: q8_0
+            cache_type_v: q8_0
+            parallel: 1
+            cont_batching: true
+            warmup: true
+        linux_arm64_cpu:
+          profile_id: linux_arm64_cpu
+          os: linux
+          arch: arm64
+          provisioning_extras:
+            - hw-cpu-base
+            - hw-arm64-base
+            - hw-arm64-ort-cpu
+          accelerator: cpu
+          runtime_artifact:
+            source:
+              type: url_tar_gz
+              release: b9704
+              asset: llama-b9704-bin-ubuntu-arm64.tar.gz
+              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-ubuntu-arm64.tar.gz
+            binary_path: runtimes/llama.cpp/linux-arm64-cpu/llama-server
+            required_files:
+              - llama-server
+          binary_path: runtimes/llama.cpp/linux-arm64-cpu/llama-server
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-not-validated
+          launch:
+            ctx_size: 4096
+            threads: 4
+            threads_batch: 8
+            batch_size: 512
+            ubatch_size: 128
+            gpu_layers: 0
+            cache_type_k: q4_0
+            cache_type_v: q4_0
+            cache_ram_mb: 4096
+            parallel: 1
+            cont_batching: true
+            warmup: true
         windows_amd64_cpu:
           profile_id: windows_amd64_cpu
           os: windows

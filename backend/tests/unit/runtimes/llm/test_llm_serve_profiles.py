@@ -241,6 +241,27 @@ def _settings() -> Settings:
     )
 
 
+def _with_linux_cpu_profiles(entry: ModelEntry, tmp_path: Path) -> ModelEntry:
+    profiles = entry.config["serve_profiles"]["hardware_profiles"]
+    for arch in ("amd64", "arm64"):
+        binary_path = tmp_path / "bin" / f"linux-{arch}-cpu" / "llama-server"
+        profiles[f"linux_{arch}_cpu"] = {
+            "profile_id": f"linux_{arch}_cpu",
+            "os": "linux",
+            "arch": arch,
+            "accelerator": "cpu",
+            "runtime_artifact": {
+                "source": {"type": "url_tar_gz", "url": "https://example.invalid/llama.tar.gz"},
+                "binary_path": str(binary_path),
+                "required_files": ["llama-server"],
+            },
+            "binary_path": str(binary_path),
+            "base_url": "http://127.0.0.1:8080",
+            "launch": {"ctx_size": 4096, "gpu_layers": 0},
+        }
+    return entry
+
+
 def _preflight(tokens: list[str] | None = None) -> PreflightResult:
     return PreflightResult(tokens=tokens or [], dll_discovery_log=[], probe_errors={})
 
@@ -289,6 +310,30 @@ def test_resolve_windows_arm64_cpu_profile_first(tmp_path: Path) -> None:
         "Degraded-no-local-model-artifact",
         "Degraded-no-sidecar-binary",
     ]
+
+
+@pytest.mark.parametrize("arch", ["amd64", "arm64"])
+def test_resolve_linux_cpu_profile_with_existing_artifacts(tmp_path: Path, arch: str) -> None:
+    entry = _with_linux_cpu_profiles(_entry(tmp_path), tmp_path)
+    entry.local_path.parent.mkdir(parents=True)
+    entry.local_path.write_bytes(b"gguf")
+    binary_path = tmp_path / "bin" / f"linux-{arch}-cpu" / "llama-server"
+    binary_path.parent.mkdir(parents=True)
+    binary_path.write_bytes(b"server")
+    binary_path.chmod(0o755)
+
+    resolution = resolve_llm_serve_profile(
+        "voice_chat",
+        HardwareProfile(os_name="linux", arch=arch),
+        _preflight(),
+        settings=_settings(),
+        entry=entry,
+    )
+
+    assert resolution.serve_profile_id == f"linux_{arch}_cpu"
+    assert resolution.accelerator == "cpu"
+    assert resolution.binary_path == binary_path
+    assert resolution.degraded_reason is None
 
 
 def test_resolve_reports_amd64_cuda_as_degraded_until_evidence_exists(tmp_path: Path) -> None:

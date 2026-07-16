@@ -457,8 +457,16 @@ def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
     assert "voice_chat" in entry.config["routes"]
 
     profiles = entry.config["serve_profiles"]["hardware_profiles"]
+    assert "linux_amd64_cpu" in profiles
+    assert "linux_arm64_cpu" in profiles
     assert "windows_amd64_cpu" in profiles
     assert "windows_arm64_cpu" in profiles
+    assert profiles["linux_amd64_cpu"]["binary_path"].endswith(
+        "runtimes/llama.cpp/linux-amd64-cpu/llama-server"
+    )
+    assert profiles["linux_arm64_cpu"]["binary_path"].endswith(
+        "runtimes/llama.cpp/linux-arm64-cpu/llama-server"
+    )
     assert profiles["windows_amd64_cpu"]["binary_path"].endswith(
         "runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe"
     )

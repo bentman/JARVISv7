@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import sys
+import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -227,6 +228,8 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
     missing: list[str] = []
     if not binary_path.is_file() or binary_path.stat().st_size <= 0:
         missing.append(binary_path.name)
+    elif source.get("type") == "url_tar_gz" and not os.access(binary_path, os.X_OK):
+        missing.append(f"{binary_path.name} (not executable)")
     for file_name in required_files:
         if file_name not in discovered_names and file_name not in missing:
             missing.append(file_name)
@@ -407,6 +410,27 @@ def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run:
     return extracted
 
 
+def _download_runtime_url_tar_gz(profile_id: str, profile: dict[str, Any], dry_run: bool) -> list[str]:
+    source = _runtime_source(profile)
+    if _runtime_source_type(profile) != "url_tar_gz":
+        raise ValueError(f"LLM serve profile '{profile_id}' has unsupported runtime source type")
+    url = source.get("url")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid runtime url_tar_gz source")
+    if dry_run:
+        return _runtime_required_files(profile_id, profile)
+
+    binary_path = _runtime_binary_path(profile_id, profile)
+    binary_path.parent.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(follow_redirects=True, timeout=300.0) as client:
+        response = client.get(url)
+        response.raise_for_status()
+        extracted = _extract_runtime_tar_gz_payload(response.content, binary_path.parent)
+    if not extracted:
+        raise RuntimeError(f"runtime artifact source for profile '{profile_id}' extracted no files")
+    return extracted
+
+
 def _runtime_source_archives(profile_id: str, source: dict[str, Any]) -> list[dict[str, str]]:
     source_type = source.get("type")
     if source_type == "url_zip":
@@ -448,6 +472,35 @@ def _extract_runtime_zip_payload(payload: bytes, target_root: Path) -> list[str]
     return extracted
 
 
+def _extract_runtime_tar_gz_payload(payload: bytes, target_root: Path) -> list[str]:
+    extracted: list[str] = []
+    with tarfile.open(fileobj=io.BytesIO(payload), mode="r:gz") as archive:
+        members = archive.getmembers()
+        strip_prefix = _tar_common_file_prefix(members)
+        for member in members:
+            if member.isdir():
+                continue
+            if not member.isfile() and not member.issym():
+                raise RuntimeError(f"unsafe tar member type: {member.name}")
+            target_name = _tar_member_target(member.name, strip_prefix)
+            if target_name is None:
+                continue
+            target = target_root / target_name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if member.issym():
+                target.symlink_to(_safe_tar_link_target(member.linkname))
+                extracted.append(str(target_name).replace("\\", "/"))
+                continue
+            source = archive.extractfile(member)
+            if source is None:
+                raise RuntimeError(f"unable to read tar member: {member.name}")
+            with source, target.open("wb") as destination:
+                shutil.copyfileobj(source, destination)
+            target.chmod(member.mode & 0o777)
+            extracted.append(str(target_name).replace("\\", "/"))
+    return extracted
+
+
 def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: bool) -> dict[str, Any]:
     source = _runtime_source(profile)
     source_type = _runtime_source_type(profile)
@@ -458,6 +511,10 @@ def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: b
         return {**existing, "acquired": []}
     if source_type in {"url_zip", "url_zip_set"}:
         acquired = _download_runtime_url_zip(profile_id, profile, dry_run=False)
+        verify = _verify_runtime_profile(profile_id, profile)
+        return {**verify, "acquired": acquired}
+    if source_type == "url_tar_gz":
+        acquired = _download_runtime_url_tar_gz(profile_id, profile, dry_run=False)
         verify = _verify_runtime_profile(profile_id, profile)
         return {**verify, "acquired": acquired}
     return {
@@ -531,6 +588,41 @@ def _zip_member_target(member_name: str, strip_prefix: str | None) -> Path | Non
         parts = parts[1:]
     if not parts:
         return None
+    return Path(*parts)
+
+
+def _tar_common_file_prefix(members: list[tarfile.TarInfo]) -> str | None:
+    file_parts = [_tar_member_parts(member.name) for member in members if member.isfile()]
+    if not file_parts or not all(len(parts) > 1 for parts in file_parts):
+        return None
+    prefix = file_parts[0][0]
+    if all(parts[0] == prefix for parts in file_parts):
+        return prefix
+    return None
+
+
+def _tar_member_parts(member_name: str) -> tuple[str, ...]:
+    path = PurePosixPath(member_name)
+    parts = tuple(part for part in path.parts if part not in {"", "."})
+    if not parts or any(part == ".." for part in parts) or path.is_absolute():
+        raise RuntimeError(f"unsafe tar member path: {member_name}")
+    return parts
+
+
+def _tar_member_target(member_name: str, strip_prefix: str | None) -> Path | None:
+    parts = _tar_member_parts(member_name)
+    if strip_prefix and len(parts) > 1 and parts[0] == strip_prefix:
+        parts = parts[1:]
+    if not parts:
+        return None
+    return Path(*parts)
+
+
+def _safe_tar_link_target(link_name: str) -> Path:
+    path = PurePosixPath(link_name)
+    parts = tuple(part for part in path.parts if part not in {"", "."})
+    if not parts or any(part == ".." for part in parts) or path.is_absolute():
+        raise RuntimeError(f"unsafe tar link target: {link_name}")
     return Path(*parts)
 
 
@@ -741,6 +833,17 @@ def _download_url_zip(entry: ModelEntry, dry_run: bool) -> list[str]:
 
 
 def _ensure_entry(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
+    if not dry_run:
+        existing = _verify_entry(entry)
+        if existing["ready"]:
+            return {
+                "family": entry.family,
+                "model": entry.name,
+                "dry_run": False,
+                "acquired": [],
+                "ready": True,
+                "missing": [],
+            }
     source_type = entry.source.get("type")
     if source_type == "huggingface":
         acquired = _download_huggingface(entry, dry_run)

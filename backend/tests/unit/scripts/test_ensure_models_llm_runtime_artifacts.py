@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import tarfile
 import zipfile
 from pathlib import Path
 
@@ -17,6 +18,17 @@ def _zip_bytes(entries: dict[str, bytes]) -> bytes:
     with zipfile.ZipFile(buffer, mode="w") as archive:
         for name, payload in entries.items():
             archive.writestr(name, payload)
+    return buffer.getvalue()
+
+
+def _tar_gz_bytes(entries: dict[str, tuple[bytes, int]]) -> bytes:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        for name, (payload, mode) in entries.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(payload)
+            member.mode = mode
+            archive.addfile(member, io.BytesIO(payload))
     return buffer.getvalue()
 
 
@@ -420,6 +432,66 @@ def test_runtime_url_zip_set_acquisition_extracts_split_archives(
     ]
 
 
+def test_runtime_url_tar_gz_acquisition_preserves_llama_server_executable_mode(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    payload = _tar_gz_bytes(
+        {
+            "llama-b9704/llama-server": (b"server", 0o755),
+            "llama-b9704/libggml.so": (b"library", 0o644),
+        }
+    )
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: _FakeClient(payload))
+    binary_path = tmp_path / "runtimes" / "llama.cpp" / "linux-amd64-cpu" / "llama-server"
+    profile = {
+        "runtime_artifact": {
+            "source": {"type": "url_tar_gz", "url": "https://example.invalid/llama.tar.gz"},
+            "binary_path": str(binary_path),
+            "required_files": ["llama-server"],
+        },
+        "binary_path": str(binary_path),
+    }
+
+    result = ensure_models._ensure_runtime_profile("linux_amd64_cpu", profile, dry_run=False)
+
+    assert result["ready"] is True
+    assert result["state"] == "ready"
+    assert result["acquired"] == ["llama-server", "libggml.so"]
+    assert binary_path.is_file()
+    assert binary_path.stat().st_mode & 0o111
+
+
+def test_runtime_url_tar_gz_rejects_path_traversal(tmp_path: Path) -> None:
+    payload = _tar_gz_bytes({"../llama-server": (b"server", 0o755)})
+
+    with pytest.raises(RuntimeError, match="unsafe tar member path"):
+        ensure_models._extract_runtime_tar_gz_payload(payload, tmp_path)
+
+
+def test_runtime_url_tar_gz_preserves_safe_relative_symbolic_links(tmp_path: Path) -> None:
+    buffer = io.BytesIO()
+    with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
+        server = tarfile.TarInfo("llama-b9704/llama-server")
+        server.size = len(b"server")
+        server.mode = 0o755
+        archive.addfile(server, io.BytesIO(b"server"))
+        library = tarfile.TarInfo("llama-b9704/libmtmd.so.0")
+        library.size = len(b"library")
+        library.mode = 0o644
+        archive.addfile(library, io.BytesIO(b"library"))
+        link = tarfile.TarInfo("llama-b9704/libmtmd.so")
+        link.type = tarfile.SYMTYPE
+        link.linkname = "libmtmd.so.0"
+        archive.addfile(link)
+
+    ensure_models._extract_runtime_tar_gz_payload(buffer.getvalue(), tmp_path)
+
+    link_path = tmp_path / "libmtmd.so"
+    assert link_path.is_symlink()
+    assert link_path.readlink() == Path("libmtmd.so.0")
+
+
 def test_runtime_dry_run_reports_planned_required_files_without_writing(tmp_path: Path) -> None:
     entry = _entry(tmp_path, source_type="url_zip")
 
@@ -463,12 +535,27 @@ def test_runtime_source_metadata_rejects_invalid_url_zip_source(tmp_path: Path) 
         ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
 
 
-def test_catalog_cpu_runtime_profiles_use_pinned_url_zip_sources() -> None:
+def test_catalog_cpu_runtime_profiles_use_pinned_url_sources() -> None:
     entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
     profiles = ensure_models._hardware_profiles(entry)
 
     amd64_source = profiles["windows_amd64_cpu"]["runtime_artifact"]["source"]
     arm64_source = profiles["windows_arm64_cpu"]["runtime_artifact"]["source"]
+    linux_amd64_source = profiles["linux_amd64_cpu"]["runtime_artifact"]["source"]
+    linux_arm64_source = profiles["linux_arm64_cpu"]["runtime_artifact"]["source"]
+
+    assert linux_amd64_source == {
+        "type": "url_tar_gz",
+        "release": "b9704",
+        "asset": "llama-b9704-bin-ubuntu-x64.tar.gz",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-ubuntu-x64.tar.gz",
+    }
+    assert linux_arm64_source == {
+        "type": "url_tar_gz",
+        "release": "b9704",
+        "asset": "llama-b9704-bin-ubuntu-arm64.tar.gz",
+        "url": "https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-ubuntu-arm64.tar.gz",
+    }
 
     assert amd64_source == {
         "type": "url_zip",

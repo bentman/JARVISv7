@@ -128,6 +128,34 @@ def test_verify_llm_single_file_artifact_reports_present_when_file_exists(tmp_pa
     assert result["degraded_reason"] is None
 
 
+def test_ensure_entry_skips_ready_llm_artifact(tmp_path: Path, monkeypatch) -> None:
+    model_file = tmp_path / "models" / "llm" / "assistant-small-q4" / "model-q4.gguf"
+    model_file.parent.mkdir(parents=True)
+    model_file.write_bytes(b"gguf")
+    entry = ensure_models.ModelEntry(
+        family="llm",
+        name="assistant-small-q4",
+        config={
+            "local_path": str(model_file),
+            "source": {
+                "type": "huggingface",
+                "repo_id": "Qwen/Qwen2.5-0.5B-Instruct-GGUF",
+                "file": "qwen2.5-0.5b-instruct-q4_k_m.gguf",
+            },
+        },
+    )
+    monkeypatch.setattr(
+        ensure_models,
+        "_download_huggingface",
+        lambda entry, dry_run: (_ for _ in ()).throw(AssertionError("ready model must not be downloaded")),
+    )
+
+    result = ensure_models._ensure_entry(entry, dry_run=False)
+
+    assert result["ready"] is True
+    assert result["acquired"] == []
+
+
 def test_verify_entry_directory_with_dot_in_name_reports_present_files(tmp_path: Path) -> None:
     model_root = tmp_path / "models" / "tts" / "kokoro-v1.0-onnx"
     model_root.mkdir(parents=True)

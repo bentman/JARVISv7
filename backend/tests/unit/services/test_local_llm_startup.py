@@ -28,6 +28,7 @@ def _settings(*, use_local_model: bool = True, managed: bool = True) -> Settings
     return Settings(
         use_local_model=use_local_model,
         llama_cpp_managed=managed,
+        llama_cpp_managed_explicit=True,
         llama_cpp_base_url="",
         llama_cpp_model_path=None,
         llama_cpp_binary_path=None,
@@ -101,21 +102,41 @@ def test_prepare_managed_local_llm_reports_profile_degraded_reason(
     assert result.degraded_reason == "Degraded-no-local-model-artifact"
 
 
-def test_prepare_managed_local_llm_degrades_when_linux_cpu_profile_is_missing() -> None:
+def test_prepare_managed_local_llm_uses_linux_amd64_cpu_profile(monkeypatch, tmp_path: Path) -> None:
+    resolution = LLMServeProfileResolution(
+        model_id="assistant-small-q4",
+        route="voice_chat",
+        serve_profile_id="linux_amd64_cpu",
+        local_model_path=tmp_path / "model.gguf",
+        binary_path=tmp_path / "llama-server",
+        base_url="http://127.0.0.1:8080",
+        accelerator="cpu",
+        launch={"gpu_layers": 0},
+        generation_defaults={},
+        selected_reason="selected current-host CPU serve profile linux_amd64_cpu",
+    )
+    monkeypatch.setattr(local_llm_startup, "resolve_llm_serve_profile", lambda *args, **kwargs: resolution)
+    monkeypatch.setattr(
+        local_llm_startup,
+        "select_llm_model",
+        lambda *args, **kwargs: type(
+            "Selection",
+            (),
+            {"model_id": "assistant-small-q4", "mode": "dev", "policy": "auto", "role": "dev", "reason": "test"},
+        )(),
+    )
+
     result = prepare_managed_local_llm(
         HardwareProfile(os_name="linux", arch="amd64"),
         _preflight(),
-        settings=_settings(),
+        settings=_settings(managed=False),
     )
 
-    assert result.runtime is None
+    assert result.runtime is not None
     assert result.sidecar is None
-    assert result.resolution is None
-    assert result.degraded_reason == (
-        "LLM model 'assistant-small-q4' has no CPU serve profile for linux/amd64"
-    )
-    assert "windows" not in result.degraded_reason
-    assert ".exe" not in result.degraded_reason
+    assert result.resolution is not None
+    assert result.resolution.serve_profile_id == "linux_amd64_cpu"
+    assert result.degraded_reason is None
 
 
 def test_prepare_managed_local_llm_degrades_for_expected_profile_metadata_error(
