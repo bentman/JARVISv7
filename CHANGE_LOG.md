@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 22:16
+  - Host class(es): Linux ARM64
+  - Summary: Included backend availability (episodic/semantic presence) in the retrieval cache key so results computed while a memory backend was unavailable are not served for up to the cache TTL after the backend recovers.
+  - Scope:
+    - backend/app/memory/retrieval.py (_cache_key gains a backends token; call site passes both availabilities)
+    - backend/tests/unit/memory/test_retrieval.py (degraded-then-recovered scenario test; key-distinctness test)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_retrieval.py -q PASS (8 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Worst prior case: recency retrieval with episodic unavailable cached [] under the same key used when episodic is present, masking real memory for DEFAULT_RETRIEVAL_TTL (300 s) after recovery. Old-format keys simply expire via TTL; no migration needed.
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.

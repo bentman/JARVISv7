@@ -236,3 +236,46 @@ def test_redis_unavailable_fallback(tmp_path: Path):
     facts = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
     assert len(facts) == 1
     assert facts[0].content == "Redis down response."
+
+
+def test_cached_result_from_missing_backend_not_served_after_backend_returns(tmp_path: Path):
+    """A recency result cached while episodic was unavailable must not mask real entries later."""
+    episodic_dir = tmp_path / "episodic"
+    episodic = EpisodicMemory(base_dir=episodic_dir, sessions_base_dir=tmp_path / "sessions")
+    semantic = SemanticMemory(tmp_path / "memory.sqlite")
+    episodic.write_entry(
+        TurnArtifact(
+            turn_id="t-1",
+            session_id="s-1",
+            input_modality="text",
+            final_state="completed",
+            transcript="hello there",
+            response_text="General Kenobi, a long enough response.",
+            tools_invoked=[],
+        ),
+        WritePolicy(),
+    )
+
+    cache = MockCacheManager(available=True)
+    retrieval = RetrievalManager()
+
+    # Episodic backend down: recency retrieval computes (and caches) an empty result.
+    degraded = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=None, semantic=semantic)
+    assert degraded == []
+
+    # Episodic backend back: the degraded cached empty result must not be served.
+    recovered = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    assert len(recovered) == 1
+    assert recovered[0].turn_id == "t-1"
+
+
+def test_cache_key_distinguishes_backend_availability():
+    manager = RetrievalManager()
+    keys = {
+        manager._cache_key(query=None, n=3, has_episodic=True, has_semantic=True),
+        manager._cache_key(query=None, n=3, has_episodic=False, has_semantic=True),
+        manager._cache_key(query="q", n=3, has_episodic=True, has_semantic=True),
+        manager._cache_key(query="q", n=3, has_episodic=False, has_semantic=True),
+        manager._cache_key(query="q", n=3, has_episodic=True, has_semantic=False),
+    }
+    assert len(keys) == 5
