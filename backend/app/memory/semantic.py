@@ -208,13 +208,12 @@ class SemanticMemory:
                 )
                 rowid = cursor.lastrowid
                 if self.supports_fts and rowid is not None:
-                    try:
-                        conn.execute(
-                            "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
-                            (rowid, entry.text),
-                        )
-                    except Exception:
-                        pass
+                    # A failed FTS insert must abort the enclosing transaction so the
+                    # fact row and its FTS row commit together or not at all.
+                    conn.execute(
+                        "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
+                        (rowid, entry.text),
+                    )
                 return entry.fact_id
         except Exception:
             return None

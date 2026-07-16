@@ -23,6 +23,18 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 22:08
+  - Host class(es): Linux ARM64
+  - Summary: Made the semantic fact insert and its FTS index insert commit together or not at all; a failed FTS insert now rolls back the fact row instead of silently committing a fact invisible to lexical search.
+  - Scope:
+    - backend/app/memory/semantic.py (removed exception swallow around the FTS insert inside the write transaction)
+    - backend/tests/unit/memory/test_semantic.py (two new consistency tests)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_semantic.py -q PASS (12 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Previously a swallowed FTS failure left the fact permanently unfindable via FTS while supports_fts remained true, with no repair path; the LIKE fallback only engages when FTS itself errors at query time.
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.
