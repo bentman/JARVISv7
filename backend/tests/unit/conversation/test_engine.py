@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 import wave
 
@@ -220,7 +221,7 @@ def _engine(
     session_manager: SessionManager | None = None,
     write_policy: WritePolicy | None = None,
     barge_in_detector: BargeInDetector | None = None,
-    interruption_audio_chunks: list[np.ndarray] | None = None,
+    interruption_audio_chunks: Callable[[], Iterable[np.ndarray] | None] | Iterable[np.ndarray] | None = None,
     playback_api: FakePlayback | None = None,
     tool_registry: FakeToolRegistry | None = None,
     episodic: FakeEpisodic | None = None,
@@ -930,6 +931,98 @@ def test_interruption_monitor_exits_when_playback_finishes_with_live_like_source
     assert result.interrupted is False
 
 
+def test_each_non_streaming_playback_resolves_and_closes_a_fresh_interruption_source():
+    created: list[TrackingInterruptionIterator] = []
+
+    class TrackingInterruptionIterator(Iterator[np.ndarray]):
+        def __init__(self) -> None:
+            self._chunks = iter([np.zeros(8, dtype=np.float32)])
+            self.closed = False
+
+        def __next__(self) -> np.ndarray:
+            return next(self._chunks)
+
+        def close(self) -> None:
+            self.closed = True
+
+    def create_chunks() -> TrackingInterruptionIterator:
+        chunks = TrackingInterruptionIterator()
+        created.append(chunks)
+        return chunks
+
+    engine = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=BargeInDetector(
+            energy_threshold=0.02,
+            guard_time_s=0.0,
+            min_speech_s=0.0,
+            time_source=lambda: 1.0,
+        ),
+        interruption_audio_chunks=create_chunks,
+        playback_api=FakePlayback(),
+    )
+
+    first = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+    second = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert first.interrupted is False
+    assert second.interrupted is False
+    assert len(created) == 2
+    assert created[0] is not created[1]
+    assert all(chunks.closed for chunks in created)
+
+
+def test_non_streaming_interruption_source_closes_after_interruption_and_playback_failure():
+    created: list[TrackingInterruptionIterator] = []
+
+    class TrackingInterruptionIterator(Iterator[np.ndarray]):
+        def __init__(self, chunk: np.ndarray) -> None:
+            self._chunks = iter([chunk])
+            self.closed = False
+
+        def __next__(self) -> np.ndarray:
+            return next(self._chunks)
+
+        def close(self) -> None:
+            self.closed = True
+
+    next_chunk = np.full(8, 0.1, dtype=np.float32)
+
+    def create_chunks() -> TrackingInterruptionIterator:
+        chunks = TrackingInterruptionIterator(next_chunk)
+        created.append(chunks)
+        return chunks
+
+    detector = BargeInDetector(
+        energy_threshold=0.02,
+        guard_time_s=0.0,
+        min_speech_s=0.0,
+        time_source=lambda: 1.0,
+    )
+    interrupted = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=create_chunks,
+        playback_api=FakePlayback(),
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    class FailingPlayback(FakePlayback):
+        def start(self, audio: np.ndarray, sample_rate: int) -> None:
+            raise RuntimeError("playback start failed")
+
+    failed = _engine(
+        tts=FakeTTS(available=True),
+        barge_in_detector=detector,
+        interruption_audio_chunks=create_chunks,
+        playback_api=FailingPlayback(),
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert interrupted.interrupted is True
+    assert failed.failure_reason == "playback start failed"
+    assert len(created) == 2
+    assert all(chunks.closed for chunks in created)
+
+
 def test_tts_synthesis_resolves_before_playback_starts():
     execution_order = []
 
@@ -977,7 +1070,6 @@ def test_tts_synthesis_resolves_before_playback_starts():
 
 
 def test_partial_tts_playback_starts_before_synthesis_completes():
-    from collections.abc import Iterator
     import time
     
     events = []
@@ -1053,7 +1145,62 @@ def test_partial_tts_playback_starts_before_synthesis_completes():
     assert result.final_state == ConversationState.IDLE
 
 
+def test_streaming_playback_resolves_and_closes_fresh_interruption_source():
+    sources: list[TrackingInterruptionIterator] = []
+
+    class TrackingInterruptionIterator(Iterator[np.ndarray]):
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __next__(self) -> np.ndarray:
+            raise StopIteration
+
+        def close(self) -> None:
+            self.closed = True
+
+    def create_interruption_chunks() -> TrackingInterruptionIterator:
+        chunks = TrackingInterruptionIterator()
+        sources.append(chunks)
+        return chunks
+
+    class StreamingTTS(FakeTTS):
+        @property
+        def supports_streaming(self) -> bool:
+            return True
+
+        def synthesize_stream(self, text: str) -> Iterator[tuple[np.ndarray, int]]:
+            yield np.zeros(800, dtype=np.float32), 16000
+
+    result = _engine(
+        tts=StreamingTTS(available=True),
+        barge_in_detector=BargeInDetector(
+            energy_threshold=0.02,
+            guard_time_s=0.0,
+            min_speech_s=0.0,
+            time_source=lambda: 1.0,
+        ),
+        interruption_audio_chunks=create_interruption_chunks,
+        playback_api=FakePlayback(),
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.final_state == ConversationState.IDLE
+    assert len(sources) == 1
+    assert sources[0].closed is True
+
+
 def test_streaming_playback_start_failure_reports_playback_failure_phase():
+    class TrackingInterruptionIterator(Iterator[np.ndarray]):
+        def __init__(self) -> None:
+            self.closed = False
+
+        def __next__(self) -> np.ndarray:
+            raise StopIteration
+
+        def close(self) -> None:
+            self.closed = True
+
+    interruption_source = TrackingInterruptionIterator()
+
     class StreamingTTS(FakeTTS):
         @property
         def supports_streaming(self) -> bool:
@@ -1074,6 +1221,8 @@ def test_streaming_playback_start_failure_reports_playback_failure_phase():
 
     engine = _engine(
         tts=StreamingTTS(available=True),
+        barge_in_detector=BargeInDetector(),
+        interruption_audio_chunks=lambda: interruption_source,
         playback_api=FailingPlaybackAPI(),
     )
     result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
@@ -1081,3 +1230,4 @@ def test_streaming_playback_start_failure_reports_playback_failure_phase():
     assert result.final_state == ConversationState.FAILED
     assert result.failure_reason == "sounddevice start failed"
     assert result.failure_phase == "playback"
+    assert interruption_source.closed is True

@@ -1114,7 +1114,10 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert state.cache_manager is cache_manager
     assert state.semantic_memory is semantic_memory
     assert state.engine.barge_in_detector is barge_in_detector
-    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is not None
+    first_interruption_factory = (
+        client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks
+    )
+    assert callable(first_interruption_factory)
 
     stopped = client.post("/status/resident-voice/stop")
     assert stopped.status_code == 200
@@ -1136,6 +1139,34 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert state.semantic_memory is semantic_memory
     assert state.engine.barge_in_detector is barge_in_detector
     assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None
+
+    restarted = client.post("/status/resident-voice/start")
+    assert restarted.status_code == 200
+    assert restarted.json()["stream_running"] is True
+    second_interruption_factory = (
+        client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks
+    )
+    assert callable(second_interruption_factory)
+    assert second_interruption_factory is not first_interruption_factory
+    interruption_chunks = second_interruption_factory()
+    assert interruption_chunks is not None
+    assert state.resident_audio_stream.status().subscribers == 1
+    interruption_chunks.close()  # type: ignore[attr-defined]
+    assert state.resident_audio_stream.status().subscribers == 0
+    assert state.engine is engine
+    assert state.session_service.engine() is session_engine is engine
+    assert state.session_manager is session_manager
+    assert state.stt is stt
+    assert state.tts is tts
+    assert state.llm is llm
+    assert state.personality is personality
+    assert state.cache_manager is cache_manager
+    assert state.semantic_memory is semantic_memory
+    assert state.engine.barge_in_detector is barge_in_detector
+
+    restopped = client.post("/status/resident-voice/stop")
+    assert restopped.status_code == 200
+    assert restopped.json()["stream_running"] is False
 
 
 def test_resident_voice_hands_free_and_continuous_report_barge_in_supported_when_wired() -> None:

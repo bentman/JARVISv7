@@ -474,7 +474,7 @@ def test_resident_interruption_chunks_tolerates_short_empty_reads() -> None:
     _wait_for(lambda: stream.status().running)
     chunks = resident_interruption_chunks(stream)
     assert chunks is not None
-    iterator = iter(chunks)
+    iterator = iter(chunks() or [])
     received: list[np.ndarray] = []
     errors: list[BaseException] = []
 
@@ -492,12 +492,55 @@ def test_resident_interruption_chunks_tolerates_short_empty_reads() -> None:
         stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
         reader.join(timeout=1.0)
     finally:
+        close = getattr(iterator, "close", None)
+        if callable(close):
+            close()
         stream.stop()
 
     assert not reader.is_alive()
     assert errors == []
     assert len(received) == 1
     assert np.array_equal(received[0], np.full(4, 0.2, dtype=np.float32))
+    assert stream.status().subscribers == 0
+
+
+def test_resident_interruption_factory_uses_fresh_unbuffered_subscription_after_restart() -> None:
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4, chunk_source_factory=_blocking_source)
+    stream.start()
+    _wait_for(lambda: stream.is_running())
+    factory = resident_interruption_chunks(stream)
+    assert factory is not None
+
+    first = factory()
+    assert first is not None
+    assert stream.status().subscribers == 1
+    stream.publish_for_test(np.full(4, 0.1, dtype=np.float32))
+    assert np.array_equal(next(iter(first)), np.full(4, 0.1, dtype=np.float32))
+    first.close()  # type: ignore[attr-defined]
+    assert stream.status().subscribers == 0
+
+    stream.publish_for_test(np.full(4, 0.5, dtype=np.float32))
+    second = factory()
+    assert second is not None
+    assert second is not first
+    assert stream.status().subscribers == 1
+    stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
+    assert np.array_equal(next(iter(second)), np.full(4, 0.2, dtype=np.float32))
+    second.close()  # type: ignore[attr-defined]
+    assert stream.status().subscribers == 0
+
+    stream.stop()
+    assert factory() is None
+    stream.start()
+    _wait_for(lambda: stream.is_running())
+    after_restart = factory()
+    assert after_restart is not None
+    stream.publish_for_test(np.full(4, 0.3, dtype=np.float32))
+    assert np.array_equal(next(iter(after_restart)), np.full(4, 0.3, dtype=np.float32))
+    after_restart.close()  # type: ignore[attr-defined]
+    stream.stop()
+
+    assert stream.status().subscribers == 0
 
 
 def test_interrupted_barge_in_does_not_recursively_queue_follow_up(tmp_path: Path) -> None:

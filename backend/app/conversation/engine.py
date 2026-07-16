@@ -6,7 +6,7 @@ import wave
 import threading
 import queue
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable, Iterator
 from uuid import uuid4
 
 import numpy as np
@@ -68,7 +68,7 @@ class TurnEngine:
         session_manager: SessionManager | None = None,
         write_policy: WritePolicy | None = None,
         barge_in_detector: BargeInDetector | None = None,
-        interruption_audio_chunks: Iterable[np.ndarray] | None = None,
+        interruption_audio_chunks: Callable[[], Iterable[np.ndarray] | None] | Iterable[np.ndarray] | None = None,
         playback_api: Any | None = None,
         executor: ToolExecutor | None = None,
         tool_registry: Any | None = None,
@@ -418,19 +418,25 @@ class TurnEngine:
     ) -> TurnResult:
         context.advance(ConversationState.SPEAKING)
         if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
-            return self._play_with_interruption_monitor(
-                context,
-                transcript=transcript,
-                response_text=response_text,
-                final_prompt_text=final_prompt_text,
-                audio=audio,
-                sample_rate=sample_rate,
-                tool_results=tool_results,
-                retrieved_memory_refs=retrieved_memory_refs,
-                raw_audio_path=raw_audio_path,
-                phase_durations_ms=phase_durations_ms,
-                voice_turn_started_at=voice_turn_started_at,
-            )
+            interruption_chunks = self._resolve_interruption_audio_chunks()
+            if interruption_chunks is not None:
+                try:
+                    return self._play_with_interruption_monitor(
+                        context,
+                        transcript=transcript,
+                        response_text=response_text,
+                        final_prompt_text=final_prompt_text,
+                        audio=audio,
+                        sample_rate=sample_rate,
+                        interruption_chunks=interruption_chunks,
+                        tool_results=tool_results,
+                        retrieved_memory_refs=retrieved_memory_refs,
+                        raw_audio_path=raw_audio_path,
+                        phase_durations_ms=phase_durations_ms,
+                        voice_turn_started_at=voice_turn_started_at,
+                    )
+                finally:
+                    self._close_interruption_audio_chunks(interruption_chunks)
         playback_started_at = time.perf_counter()
         try:
             self.playback_api.play(audio, sample_rate)
@@ -482,8 +488,11 @@ class TurnEngine:
         stop_event = threading.Event()
         error_container: list[Exception] = []
         chunks_collected: list[np.ndarray] = []
+        vad_iter: Iterator[np.ndarray] | None = None
 
         try:
+            if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
+                vad_iter = self._resolve_interruption_audio_chunks()
             player = self.playback_api.IterablePlayer(sample_rate)
             player.start()
 
@@ -508,9 +517,8 @@ class TurnEngine:
             interrupted = False
             interruption_events = []
 
-            if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
+            if self.barge_in_detector is not None and vad_iter is not None:
                 self.barge_in_detector.reset()
-                vad_iter = iter(self.interruption_audio_chunks or [])
                 while player.is_playing() or thread.is_alive():
                     try:
                         if error_container:
@@ -568,6 +576,7 @@ class TurnEngine:
 
         finally:
             stop_event.set()
+            self._close_interruption_audio_chunks(vad_iter)
             if thread is not None:
                 thread.join(timeout=0.5)
 
@@ -614,6 +623,7 @@ class TurnEngine:
         final_prompt_text: str,
         audio: np.ndarray,
         sample_rate: int,
+        interruption_chunks: Iterator[np.ndarray],
         tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
@@ -625,10 +635,9 @@ class TurnEngine:
         self.barge_in_detector.reset()
         playback_started_at = time.perf_counter()
         self.playback_api.start(audio, sample_rate)
-        chunks = iter(self.interruption_audio_chunks or [])
         while self._playback_is_playing():
             try:
-                chunk = next(chunks)
+                chunk = next(interruption_chunks)
             except StopIteration:
                 break
             if self.barge_in_detector.detect(chunk):
@@ -690,6 +699,21 @@ class TurnEngine:
             retrieved_memory_refs=retrieved_memory_refs,
         )
         return result
+
+    def _resolve_interruption_audio_chunks(self) -> Iterator[np.ndarray] | None:
+        source = self.interruption_audio_chunks
+        if source is None:
+            return None
+        resolved = source() if callable(source) else source
+        if resolved is None:
+            return None
+        return iter(resolved)
+
+    @staticmethod
+    def _close_interruption_audio_chunks(chunks: Iterator[np.ndarray] | None) -> None:
+        close = getattr(chunks, "close", None)
+        if callable(close):
+            close()
 
     def _playback_is_playing(self) -> bool:
         is_playing = getattr(self.playback_api, "is_playing", None)

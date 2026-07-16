@@ -3,7 +3,7 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from contextlib import suppress
 from dataclasses import dataclass
 
@@ -20,6 +20,7 @@ from backend.app.services.utterance_segmenter import UtteranceSegmenter
 
 AudioCapture = Callable[[], tuple[np.ndarray, int]]
 EngineProvider = Callable[[], TurnEngine]
+InterruptionAudioFactory = Callable[[], Iterable[np.ndarray] | None]
 BeforeInvocation = Callable[[], object]
 AfterInvocation = Callable[[object], object]
 NO_SPEECH_PTT_REASON = "No speech detected during PTT"
@@ -315,20 +316,42 @@ def default_utterance_segmenter() -> UtteranceSegmenter:
     )
 
 
-def resident_interruption_chunks(resident_stream: ResidentAudioStream | None) -> Iterable[np.ndarray] | None:
+def resident_interruption_chunks(resident_stream: ResidentAudioStream | None) -> InterruptionAudioFactory | None:
     if resident_stream is None or not resident_stream.is_running():
         return None
-    return _resident_interruption_chunks(resident_stream)
+
+    def create_interruption_chunks() -> Iterable[np.ndarray] | None:
+        if not resident_stream.is_running():
+            return None
+        return _ResidentInterruptionIterator(resident_stream)
+
+    return create_interruption_chunks
 
 
-def _resident_interruption_chunks(resident_stream: ResidentAudioStream) -> Iterable[np.ndarray]:
-    subscriber = resident_stream.subscribe()
-    try:
-        while resident_stream.is_running():
+class _ResidentInterruptionIterator(Iterator[np.ndarray]):
+    def __init__(self, resident_stream: ResidentAudioStream) -> None:
+        self._resident_stream = resident_stream
+        self._subscriber: queue.Queue[AudioChunk] | None = resident_stream.subscribe()
+
+    def __iter__(self) -> _ResidentInterruptionIterator:
+        return self
+
+    def __next__(self) -> np.ndarray:
+        subscriber = self._subscriber
+        if subscriber is None:
+            raise StopIteration
+        while self._resident_stream.is_running():
             try:
                 chunk = subscriber.get(timeout=0.1)
             except queue.Empty:
                 continue
-            yield np.asarray(chunk.samples, dtype=np.float32).reshape(-1)
-    finally:
-        resident_stream.unsubscribe(subscriber)
+            return np.asarray(chunk.samples, dtype=np.float32).reshape(-1)
+        self.close()
+        raise StopIteration
+
+    def close(self) -> None:
+        subscriber = self._subscriber
+        if subscriber is None:
+            return
+        self._subscriber = None
+        self._resident_stream.unsubscribe(subscriber)

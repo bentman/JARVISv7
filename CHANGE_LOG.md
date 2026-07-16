@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 05:30
+  - Host class(es): Windows AMD64; platform-neutral resident interruption-source lifecycle
+  - Summary: Replaced the reusable resident interruption generator with a per-playback factory. Each TTS playback now owns and closes a fresh resident-audio subscription after completion, interruption, or failure.
+  - Scope:
+    - `backend/app/conversation/engine.py`, `backend/app/services/resident_voice_invocation.py`
+    - Existing engine, resident-voice, resident-audio, and API lifecycle tests
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/conversation/test_engine.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/services/test_audio_stream.py backend/tests/unit/api/test_routes.py -q` PASS (151 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (759 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed, 5 deselected; report `reports/validation/20260716103210-regression.txt`)
+  - Notes:
+    - Resident stream stop/start preserves the active engine and runtime identities while installing a new interruption factory for subsequent playback.
+
 - Timestamp: 2026-07-16 04:54
   - Host class(es): Windows AMD64; platform-neutral streaming TTS playback behavior
   - Summary: Prevented temporary synthesis queue underruns from ending streaming TTS playback. Completion now requires the end-of-input sentinel plus complete queue and current-buffer drain, with bounded no-progress termination.
