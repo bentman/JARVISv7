@@ -45,8 +45,8 @@ def prepare_managed_local_llm(
             degraded_reason="local model disabled",
         )
 
-    model_selection = select_llm_model(route, profile, settings=resolved_settings)
     try:
+        model_selection = select_llm_model(route, profile, settings=resolved_settings)
         resolution = resolve_llm_serve_profile(
             route,
             profile,
