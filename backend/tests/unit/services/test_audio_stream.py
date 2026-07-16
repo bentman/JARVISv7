@@ -68,6 +68,21 @@ def test_stream_buffers_chunks_and_replays_to_new_subscriber() -> None:
     assert stream.status().subscribers == 0
 
 
+def test_stream_publishes_canonical_float32_and_cached_pcm16_once() -> None:
+    stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
+    source = np.array([[-1.2, -0.5], [0.25, 1.2]], dtype=np.float64).T
+
+    chunk = stream.publish_for_test(source)
+
+    assert chunk.samples.dtype == np.float32
+    assert chunk.samples.flags.c_contiguous is True
+    assert np.array_equal(chunk.samples, np.array([-1.2, 0.25, -0.5, 1.2], dtype=np.float32))
+    assert chunk.pcm16 is not None
+    assert chunk.pcm16.dtype == np.int16
+    assert chunk.pcm16.flags.c_contiguous is True
+    assert np.array_equal(chunk.pcm16, np.array([-32767, 8191, -16383, 32767], dtype=np.int16))
+
+
 def test_stream_buffer_replay_keeps_newest_chunks_when_subscriber_queue_is_smaller() -> None:
     stream = ResidentAudioStream(buffer_chunks=4, subscriber_queue_size=2)
 

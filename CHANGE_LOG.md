@@ -23,6 +23,17 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 15:33
+  - Host class(es): Windows AMD64; platform-neutral resident audio behavior
+  - Summary: Canonicalized each published resident microphone frame once as contiguous mono float32 with a cached PCM16 representation. Wake detection now consumes cached PCM16 while wake segmentation and pre-roll reuse the same AudioChunk float32 data without a round trip.
+  - Scope:
+    - `backend/app/services/audio_stream.py`, `backend/app/services/wake_monitor.py`
+    - `backend/tests/unit/services/test_audio_stream.py`, `backend/tests/unit/services/test_wake_monitor.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_audio_stream.py backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/services/test_utterance_segmenter.py -q` PASS (62 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (746 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260715203249-regression.txt`)
+
 - Timestamp: 2026-07-15 13:56
   - Host class(es): Windows AMD64; platform-neutral wake capture behavior
   - Summary: Corrected premature wake-command endpointing by giving wake capture an isolated 0.8-second post-speech silence window and retaining 0.12 seconds of trailing audio. Resident/PTT endpointing and all existing capture bounds remained unchanged.

@@ -16,6 +16,7 @@ class AudioChunk:
     sample_rate: int
     sequence: int
     captured_at: float
+    pcm16: np.ndarray | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,7 +118,8 @@ class ResidentAudioStream:
                 self._last_error = str(exc)
 
     def _publish(self, samples: np.ndarray) -> AudioChunk:
-        array = np.asarray(samples).reshape(-1)
+        array = np.ascontiguousarray(np.array(samples, dtype=np.float32, copy=True).reshape(-1))
+        pcm16 = _float32_to_pcm16(array)
         with self._lock:
             self._sequence += 1
             chunk = AudioChunk(
@@ -125,6 +127,7 @@ class ResidentAudioStream:
                 sample_rate=self.sample_rate,
                 sequence=self._sequence,
                 captured_at=time.monotonic(),
+                pcm16=pcm16,
             )
             self._buffer.append(chunk)
             for subscriber in list(self._subscribers):
@@ -152,3 +155,8 @@ class ResidentAudioStream:
             while not stop_event.is_set():
                 data, _ = stream.read(self.chunk_samples)
                 yield np.asarray(data, dtype=np.float32).reshape(-1)
+
+
+def _float32_to_pcm16(samples: np.ndarray) -> np.ndarray:
+    clipped = np.clip(samples, -1.0, 1.0)
+    return np.ascontiguousarray((clipped * 32767.0).astype(np.int16))

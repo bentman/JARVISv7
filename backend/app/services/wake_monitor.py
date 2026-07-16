@@ -19,6 +19,7 @@ InvocationCallback = Callable[[str, np.ndarray | None, int | None], object]
 WAKE_SAMPLE_RATE = 16000
 WAKE_PREROLL_SECONDS = 1.0
 WAKE_COMMAND_SECONDS = 3.0
+WakeAudioChunk = AudioChunk | np.ndarray
 
 
 def _runtime_score(runtime: WakeBase) -> float | None:
@@ -34,11 +35,10 @@ def _chunk_count(duration_s: float) -> int:
     return max(1, (samples + WAKE_CHUNK_SAMPLES - 1) // WAKE_CHUNK_SAMPLES)
 
 
-def _chunks_to_stt_audio(chunks: list[np.ndarray]) -> np.ndarray:
+def _chunks_to_stt_audio(chunks: list[WakeAudioChunk]) -> np.ndarray:
     if not chunks:
         return np.asarray([], dtype=np.float32)
-    audio = np.concatenate([np.asarray(chunk, dtype=np.int16).reshape(-1) for chunk in chunks])
-    return audio.astype(np.float32) / 32768.0
+    return np.concatenate([_chunk_to_float32(chunk) for chunk in chunks]).astype(np.float32, copy=False)
 
 
 class WakeMonitorService:
@@ -150,7 +150,7 @@ class WakeMonitorService:
     def _run(self, runtime: WakeBase) -> None:
         subscriber = None
         try:
-            pre_roll: deque[np.ndarray] = deque(maxlen=_chunk_count(WAKE_PREROLL_SECONDS))
+            pre_roll: deque[WakeAudioChunk] = deque(maxlen=_chunk_count(WAKE_PREROLL_SECONDS))
             if self._resident_stream is not None and self._resident_stream.status().running:
                 subscriber = self._resident_stream.subscribe()
                 source = _resident_wake_chunks(subscriber, self._stop_event)
@@ -159,8 +159,8 @@ class WakeMonitorService:
             for chunk in source:
                 if self._stop_event.is_set():
                     break
-                chunk_audio = np.asarray(chunk, dtype=np.int16).reshape(-1)
-                pre_roll.append(chunk_audio)
+                chunk_audio = _wake_detection_audio(chunk)
+                pre_roll.append(chunk)
                 if runtime.detect(chunk_audio):
                     self._session_service.record_wake_detection(
                         last_score=_runtime_score(runtime),
@@ -194,7 +194,7 @@ class WakeMonitorService:
                 if self._thread is threading.current_thread():
                     self._thread = None
 
-    def _collect_command_audio(self, source: Iterator[np.ndarray]) -> np.ndarray | None:
+    def _collect_command_audio(self, source: Iterator[WakeAudioChunk]) -> np.ndarray | None:
         if self._utterance_segmenter is None:
             return _chunks_to_stt_audio(self._collect_post_wake_chunks(source))
         segment = self._utterance_segmenter.capture(_wake_audio_chunks(source))
@@ -205,10 +205,10 @@ class WakeMonitorService:
         )
         if not segment.speech_started or segment.audio.size == 0:
             return None
-        return _float_to_int16(segment.audio)
+        return segment.audio
 
-    def _collect_post_wake_chunks(self, source: Iterator[np.ndarray]) -> list[np.ndarray]:
-        chunks: list[np.ndarray] = []
+    def _collect_post_wake_chunks(self, source: Iterator[WakeAudioChunk]) -> list[WakeAudioChunk]:
+        chunks: list[WakeAudioChunk] = []
         for _ in range(_chunk_count(WAKE_COMMAND_SECONDS)):
             if self._stop_event.is_set():
                 break
@@ -216,23 +216,50 @@ class WakeMonitorService:
                 chunk = next(source)
             except StopIteration:
                 break
-            chunks.append(np.asarray(chunk, dtype=np.int16).reshape(-1))
+            chunks.append(chunk)
         return chunks
 
 
-def _resident_wake_chunks(subscriber, stop_event: threading.Event) -> Iterator[np.ndarray]:
+def _resident_wake_chunks(subscriber, stop_event: threading.Event) -> Iterator[AudioChunk]:
     while not stop_event.is_set():
         try:
             chunk = subscriber.get(timeout=0.1)
         except Exception:
             continue
-        yield _float_to_int16(chunk.samples)
+        yield chunk
 
 
-def _wake_audio_chunks(source: Iterator[np.ndarray]) -> Iterator[AudioChunk]:
+def _wake_audio_chunks(source: Iterator[WakeAudioChunk]) -> Iterator[AudioChunk]:
     for sequence, chunk in enumerate(source, start=1):
-        samples = np.asarray(chunk, dtype=np.int16).reshape(-1).astype(np.float32) / 32768.0
-        yield AudioChunk(samples=samples, sample_rate=WAKE_SAMPLE_RATE, sequence=sequence, captured_at=0.0)
+        if isinstance(chunk, AudioChunk):
+            yield chunk
+            continue
+        pcm16 = np.asarray(chunk, dtype=np.int16).reshape(-1)
+        samples = pcm16.astype(np.float32) / 32768.0
+        yield AudioChunk(
+            samples=samples,
+            sample_rate=WAKE_SAMPLE_RATE,
+            sequence=sequence,
+            captured_at=0.0,
+            pcm16=pcm16,
+        )
+
+
+def _wake_detection_audio(chunk: WakeAudioChunk) -> np.ndarray:
+    if isinstance(chunk, AudioChunk) and chunk.pcm16 is not None:
+        return chunk.pcm16
+    if isinstance(chunk, AudioChunk):
+        return _float_to_int16(chunk.samples)
+    return np.asarray(chunk, dtype=np.int16).reshape(-1)
+
+
+def _chunk_to_float32(chunk: WakeAudioChunk) -> np.ndarray:
+    if isinstance(chunk, AudioChunk):
+        return chunk.samples
+    audio = np.asarray(chunk).reshape(-1)
+    if np.issubdtype(audio.dtype, np.integer):
+        return audio.astype(np.float32) / 32768.0
+    return audio.astype(np.float32, copy=False)
 
 
 def _float_to_int16(samples: np.ndarray) -> np.ndarray:
