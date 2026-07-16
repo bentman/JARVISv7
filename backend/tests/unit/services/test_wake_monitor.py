@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.services import wake_monitor
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.app.services.wake_monitor import WakeMonitorService
@@ -348,4 +349,40 @@ def test_wake_monitor_start_resets_runtime(tmp_path: Path) -> None:
     monitor.start()
     assert runtime.reset_called is True
     monitor.stop()
+
+
+def test_wake_monitor_debounces_identical_idle_status_until_bounded_refresh(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    service = _service(tmp_path)
+    idle_calls: list[tuple[str, float | None, float | None]] = []
+    original_record_idle = service.record_wake_idle
+
+    def record_idle(reason="wake listening", *, last_score=None, threshold=None):
+        idle_calls.append((reason, last_score, threshold))
+        return original_record_idle(reason, last_score=last_score, threshold=threshold)
+
+    service.record_wake_idle = record_idle  # type: ignore[method-assign]
+    clock_values = iter((0.0, 0.2, 0.4, 0.6, 1.0, 1.1))
+    monkeypatch.setattr(wake_monitor, "monotonic", lambda: next(clock_values, 1.1))
+    runtime = _FakeWakeRuntime()
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: runtime,
+        chunk_source=lambda stop: [np.zeros(4, dtype=np.int16) for _ in range(5)],
+    )
+
+    monitor.start()
+    _wait_for(lambda: monitor._thread is None)
+    runtime.last_score = 0.3
+    monitor._record_wake_idle_if_due(runtime)
+
+    assert idle_calls == [
+        ("wake listening", 0.2, 0.5),
+        ("wake listening", 0.2, 0.5),
+        ("wake listening", 0.3, 0.5),
+    ]
+    assert service.wake_status().last_score == 0.3
+    assert service.wake_status().threshold == 0.5
 

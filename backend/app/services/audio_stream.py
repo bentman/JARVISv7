@@ -123,7 +123,7 @@ class ResidentAudioStream:
         with self._lock:
             self._sequence += 1
             chunk = AudioChunk(
-                samples=array.copy(),
+                samples=array,
                 sample_rate=self.sample_rate,
                 sequence=self._sequence,
                 captured_at=time.monotonic(),

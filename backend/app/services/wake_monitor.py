@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
+from time import monotonic
 
 import numpy as np
 from backend.app.runtimes.wake.base import WakeBase
@@ -19,6 +20,8 @@ InvocationCallback = Callable[[str, np.ndarray | None, int | None], object]
 WAKE_SAMPLE_RATE = 16000
 WAKE_PREROLL_SECONDS = 1.0
 WAKE_COMMAND_SECONDS = 3.0
+WAKE_IDLE_REASON = "wake listening"
+WAKE_IDLE_REFRESH_SECONDS = 1.0
 WakeAudioChunk = AudioChunk | np.ndarray
 
 
@@ -64,6 +67,8 @@ class WakeMonitorService:
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
         self._runtime: WakeBase | None = None
+        self._last_idle_signature: tuple[str, float | None, float | None] | None = None
+        self._last_idle_recorded_at: float | None = None
 
     def status(self) -> WakeMonitorStatus:
         return self._session_service.wake_status()
@@ -82,6 +87,7 @@ class WakeMonitorService:
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 return self._session_service.wake_status()
+            self._reset_idle_telemetry()
             if self._resident_stream is not None and not self._resident_stream.status().running:
                 return self._session_service.record_wake_unavailable(
                     "resident audio stream is stopped; start resident voice stream before wake monitoring"
@@ -109,6 +115,7 @@ class WakeMonitorService:
 
     def stop(self) -> WakeMonitorStatus:
         with self._lock:
+            self._reset_idle_telemetry()
             self._stop_event.set()
             thread = self._thread
         if thread is not None and thread.is_alive():
@@ -122,6 +129,7 @@ class WakeMonitorService:
 
     def pause_for_voice_invocation(self) -> bool:
         with self._lock:
+            self._reset_idle_telemetry()
             status = self._session_service.wake_status()
             should_resume = status.active or status.monitoring
             self._stop_event.set()
@@ -162,6 +170,7 @@ class WakeMonitorService:
                 chunk_audio = _wake_detection_audio(chunk)
                 pre_roll.append(chunk)
                 if runtime.detect(chunk_audio):
+                    self._reset_idle_telemetry()
                     self._session_service.record_wake_detection(
                         last_score=_runtime_score(runtime),
                         threshold=_runtime_threshold(runtime),
@@ -176,12 +185,10 @@ class WakeMonitorService:
                             command_audio = _chunks_to_stt_audio(command_chunks)
                         self._invocation_callback("wake", command_audio, WAKE_SAMPLE_RATE)
                 else:
-                    self._session_service.record_wake_idle(
-                        last_score=_runtime_score(runtime),
-                        threshold=_runtime_threshold(runtime),
-                    )
+                    self._record_wake_idle_if_due(runtime)
         except Exception as exc:
             if not self._stop_event.is_set():
+                self._reset_idle_telemetry()
                 self._session_service.record_wake_error(
                     exc,
                     last_score=_runtime_score(runtime),
@@ -193,6 +200,25 @@ class WakeMonitorService:
             with self._lock:
                 if self._thread is threading.current_thread():
                     self._thread = None
+
+    def _record_wake_idle_if_due(self, runtime: WakeBase) -> None:
+        signature = (WAKE_IDLE_REASON, _runtime_score(runtime), _runtime_threshold(runtime))
+        recorded_at = self._last_idle_recorded_at
+        now = monotonic()
+        if signature == self._last_idle_signature and recorded_at is not None:
+            if now - recorded_at < WAKE_IDLE_REFRESH_SECONDS:
+                return
+        self._session_service.record_wake_idle(
+            WAKE_IDLE_REASON,
+            last_score=signature[1],
+            threshold=signature[2],
+        )
+        self._last_idle_signature = signature
+        self._last_idle_recorded_at = now
+
+    def _reset_idle_telemetry(self) -> None:
+        self._last_idle_signature = None
+        self._last_idle_recorded_at = None
 
     def _collect_command_audio(self, source: Iterator[WakeAudioChunk]) -> np.ndarray | None:
         if self._utterance_segmenter is None:

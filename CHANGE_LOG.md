@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-15 22:46
+  - Host class(es): Windows AMD64; platform-neutral wake status behavior
+  - Summary: Debounced unchanged wake-idle telemetry while preserving immediate lifecycle, detection, error, and value-change updates. Removed the redundant second float32 copy from resident frame publication.
+  - Scope:
+    - `backend/app/services/wake_monitor.py`, `backend/app/services/audio_stream.py`
+    - `backend/tests/unit/services/test_wake_monitor.py`, `backend/tests/unit/services/test_audio_stream.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/services/test_wake_monitor.py backend/tests/unit/services/test_session_service.py backend/tests/unit/services/test_audio_stream.py backend/tests/unit/services/test_resident_voice_invocation.py backend/tests/unit/services/test_resident_voice_modes.py backend/tests/unit/api/test_routes.py -q` PASS (129 passed)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` PASS (747 passed, 1 skipped)
+    - `backend/.venv/Scripts/python scripts/validate_backend.py regression` PASS (155 passed; report `reports/validation/20260716034557-regression.txt`)
+  - Notes:
+    - Idle telemetry writes on the first idle frame, whenever reason/score/threshold changes, or on the first frame at least 1.0 second after the prior identical write.
+
 - Timestamp: 2026-07-15 15:33
   - Host class(es): Windows AMD64; platform-neutral resident audio behavior
   - Summary: Canonicalized each published resident microphone frame once as contiguous mono float32 with a cached PCM16 representation. Wake detection now consumes cached PCM16 while wake segmentation and pre-roll reuse the same AudioChunk float32 data without a round trip.

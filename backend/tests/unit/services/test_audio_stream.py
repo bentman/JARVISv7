@@ -76,6 +76,7 @@ def test_stream_publishes_canonical_float32_and_cached_pcm16_once() -> None:
 
     assert chunk.samples.dtype == np.float32
     assert chunk.samples.flags.c_contiguous is True
+    assert np.shares_memory(chunk.samples, source) is False
     assert np.array_equal(chunk.samples, np.array([-1.2, 0.25, -0.5, 1.2], dtype=np.float32))
     assert chunk.pcm16 is not None
     assert chunk.pcm16.dtype == np.int16
