@@ -224,3 +224,77 @@ def test_auto_vectorization_on_write(tmp_path: Path):
     assert len(results) == 1
     assert results[0][0].text == "Auto vectorized test fact"
     assert pytest.approx(results[0][1]) == 1.0
+
+
+def test_write_entry_rolls_back_fact_when_fts_insert_fails(tmp_path: Path):
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+    if not memory.supports_fts:
+        pytest.skip("FTS5 unavailable on this host")
+
+    # Break the FTS table after init so the FTS insert fails while the fact insert succeeds.
+    with memory._get_conn() as conn:
+        conn.execute("DROP TABLE semantic_fact_fts")
+
+    fact_id = memory.write_fact(text="fact that must not commit half-indexed")
+    assert fact_id is None
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM semantic_fact").fetchone()["c"]
+    assert count == 0
+
+
+def test_written_fact_is_visible_to_fts_lexical_search(tmp_path: Path):
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+    if not memory.supports_fts:
+        pytest.skip("FTS5 unavailable on this host")
+
+    fact_id = memory.write_fact(text="the reactor core is stable")
+    assert fact_id is not None
+
+    results = memory.search_lexical("reactor")
+    assert [entry.fact_id for entry in results] == [fact_id]
+
+
+def test_write_entry_returns_existing_fact_id_when_hash_row_already_present(tmp_path: Path):
+    """A row inserted by another writer between any check and the insert must dedup, not fail."""
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+
+    first_id = memory.write_fact(text="the same fact")
+    assert first_id is not None
+
+    second_id = memory.write_fact(text="THE   same fact  ")  # normalizes to identical hash
+    assert second_id == first_id
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM semantic_fact").fetchone()["c"]
+    assert count == 1
+
+
+def test_concurrent_same_text_writes_yield_one_row_and_one_fact_id(tmp_path: Path):
+    import threading
+
+    db_path = tmp_path / "memory.sqlite"
+    memory = SemanticMemory(db_path)
+
+    results: list[str | None] = [None] * 8
+    barrier = threading.Barrier(8)
+
+    def _write(slot: int) -> None:
+        barrier.wait()
+        results[slot] = memory.write_fact(text="racy duplicate fact")
+
+    threads = [threading.Thread(target=_write, args=(i,)) for i in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert all(r is not None for r in results)
+    assert len(set(results)) == 1
+
+    with memory._get_conn() as conn:
+        count = conn.execute("SELECT COUNT(*) AS c FROM semantic_fact").fetchone()["c"]
+    assert count == 1

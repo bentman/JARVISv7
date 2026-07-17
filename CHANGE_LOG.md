@@ -23,6 +23,41 @@
 
 ## Change Entries
 
+<<<<<<< HEAD
+- Timestamp: 2026-07-16 22:08
+  - Host class(es): Linux ARM64
+  - Summary: Made the semantic fact insert and its FTS index insert commit together or not at all; a failed FTS insert now rolls back the fact row instead of silently committing a fact invisible to lexical search.
+  - Scope:
+    - backend/app/memory/semantic.py (removed exception swallow around the FTS insert inside the write transaction)
+    - backend/tests/unit/memory/test_semantic.py (two new consistency tests)
+=======
+- Timestamp: 2026-07-16 22:12
+  - Host class(es): Linux ARM64
+  - Summary: Made semantic fact deduplication conflict-safe by moving it onto the unique text_hash index (INSERT ... ON CONFLICT DO NOTHING) instead of a check-then-insert sequence that raced concurrent writers into spurious write failures.
+  - Scope:
+    - backend/app/memory/semantic.py (write_entry dedup restructured; no schema change)
+    - backend/tests/unit/memory/test_semantic.py (pre-existing-hash dedup test; eight-thread same-text race test)
+>>>>>>> pr-8
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_semantic.py -q PASS (12 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+<<<<<<< HEAD
+    - Previously a swallowed FTS failure left the fact permanently unfindable via FTS while supports_fts remained true, with no repair path; the LIKE fallback only engages when FTS itself errors at query time.
+
+- Timestamp: 2026-07-16 22:05
+  - Host class(es): Linux ARM64
+  - Summary: Made turn/session/timeline artifact, trace, and episodic entry writes atomic (temp file + fsync + rename) so a crash mid-write can no longer leave a torn file at the destination path.
+  - Scope:
+    - backend/app/artifacts/storage.py (write_text_atomic helper; three writers converted)
+    - backend/app/artifacts/trace_writer.py, backend/app/memory/episodic.py (converted to helper)
+    - backend/tests/unit/artifacts/test_turn_artifact.py (three new atomicity tests)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/artifacts/ backend/tests/unit/memory/test_episodic.py -q PASS (21 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Temp files use a .tmp suffix beside the destination, so *.json globs never observe them; a simulated failed rename leaves prior content intact (covered by test).
+
 - Timestamp: 2026-07-16 22:00
   - Host class(es): Linux ARM64
   - Summary: Made episodic retrieval skip an individual corrupt or truncated artifact file instead of aborting the entire retrieval with an empty result.
@@ -71,6 +106,9 @@
     - backend/.venv/bin/python scripts/validate_backend.py unit PASS (772 passed, 2 skipped; second skip is absent wake model files on this host)
   - Notes:
     - Carries forward reusable finding 5 from PR #1 review; the missing-profile degradation paths were already fixed on main — this covers the operator override path only.
+=======
+    - Previously a same-hash insert landing between the SELECT and the INSERT raised IntegrityError on idx_semantic_fact_hash, which the outer handler reported as a failed write (None) even though the fact exists.
+>>>>>>> pr-8
 
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage

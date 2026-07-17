@@ -81,7 +81,7 @@ class EpisodicMemory:
             session_dir = self.base_dir / artifact.session_id
             session_dir.mkdir(parents=True, exist_ok=True)
             entry_path = session_dir / f"{artifact.turn_id}.json"
-            entry_path.write_text(entry.to_json() + "\n", encoding="utf-8")
+            storage.write_text_atomic(entry_path, entry.to_json() + "\n")
             self._prune_sessions(policy)
             return entry
         except Exception:
