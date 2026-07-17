@@ -35,6 +35,18 @@
   - Notes:
     - One torn artifact (e.g., from an interrupted write) previously blanked recency and keyword retrieval for all sessions until manually removed.
 
+- Timestamp: 2026-07-16 15:41
+  - Host class(es): Linux ARM64
+  - Summary: Hardened operator `.env` writes: values containing CR/LF are rejected instead of corrupting the file or injecting keys, and the masked secret value `***` is treated as unchanged instead of overwriting the stored secret.
+  - Scope:
+    - backend/app/api/routes/config.py (value validation in `write_operator_config`)
+    - backend/tests/unit/api/test_routes.py (line-break rejection and masked-secret round-trip tests)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/api/test_routes.py -q -k operator_config PASS (7 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS (773 passed, 2 skipped; second skip is absent wake model files on this host)
+  - Notes:
+    - Carries forward reusable finding 8 from PR #1 review. Before this change, a posted value such as `false\nINJECTED_KEY=oops` was written verbatim into `.env`, and a UI round-trip of the masked `***` secret replaced the real key.
+
 - Timestamp: 2026-07-16 15:38
   - Host class(es): Linux ARM64
   - Summary: Made managed local-LLM startup degrade instead of crash when the operator model override (`LLM_MODEL_ID`) does not exist in the catalog. Model selection errors now yield a degraded local-LLM readiness result while the rest of startup proceeds.

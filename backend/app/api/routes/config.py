@@ -140,10 +140,18 @@ def write_operator_config(request: OperatorConfigWriteRequest) -> OperatorConfig
     _require_env_file()
     written: list[str] = []
     rejected: list[OperatorConfigRejectedField] = []
-    accepted = {key: value for key, value in request.fields.items() if key in _OPERATOR_FIELDS}
-    for key in request.fields:
-        if key not in _OPERATOR_FIELDS:
+    accepted: dict[str, str] = {}
+    for key, value in request.fields.items():
+        spec = _OPERATOR_FIELDS.get(key)
+        if spec is None:
             rejected.append(OperatorConfigRejectedField(key=key, reason="not_allowlisted"))
+            continue
+        if "\r" in value or "\n" in value:
+            rejected.append(OperatorConfigRejectedField(key=key, reason="value_contains_line_break"))
+            continue
+        if spec.secret and value == "***":
+            continue
+        accepted[key] = value
 
     lines = ENV_FILE.read_text(encoding="utf-8").splitlines(keepends=True)
     remaining = dict(accepted)

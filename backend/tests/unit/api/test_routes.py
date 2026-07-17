@@ -1535,6 +1535,50 @@ def test_operator_config_write_appends_missing_allowlisted_key_without_creating_
     assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=true\nREDIS_HOST=127.0.0.1\n"
 
 
+def test_operator_config_write_rejects_values_containing_line_breaks(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    original = "USE_OLLAMA=true\nREDIS_HOST=localhost\n"
+    env_file.write_text(original, encoding="utf-8")
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().post(
+        "/config/operator",
+        json={
+            "fields": {
+                "USE_OLLAMA": "false\nINJECTED_KEY=oops",
+                "REDIS_HOST": "victim\r\nINJECTED=1",
+                "REDIS_PORT": "6380",
+            }
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "written": ["REDIS_PORT"],
+        "rejected": [
+            {"key": "USE_OLLAMA", "reason": "value_contains_line_break"},
+            {"key": "REDIS_HOST", "reason": "value_contains_line_break"},
+        ],
+    }
+    assert env_file.read_text(encoding="utf-8") == original + "REDIS_PORT=6380\n"
+    assert "INJECTED" not in env_file.read_text(encoding="utf-8")
+
+
+def test_operator_config_write_treats_masked_secret_as_unchanged(tmp_path: Path, monkeypatch) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("USE_OLLAMA=true\nTAVILY_API_KEY=real-secret\n", encoding="utf-8")
+    monkeypatch.setattr(config_route, "ENV_FILE", env_file)
+
+    response = _client().post(
+        "/config/operator",
+        json={"fields": {"USE_OLLAMA": "false", "TAVILY_API_KEY": "***"}},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"written": ["USE_OLLAMA"], "rejected": []}
+    assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=false\nTAVILY_API_KEY=real-secret\n"
+
+
 def test_operator_config_exposes_llama_cpp_sidecar_controls(tmp_path: Path, monkeypatch) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
