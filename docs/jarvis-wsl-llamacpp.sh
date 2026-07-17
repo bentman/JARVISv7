@@ -1,9 +1,5 @@
 #!/usr/bin/env bash
 # Build and stage the JARVIS WSL2 Linux AMD64 NVIDIA CUDA llama.cpp sidecar.
-#
-# Uses the pinned b9704 source archive declared by the JARVIS CUDA profile.
-# It never installs or changes NVIDIA drivers, CUDA toolkits, PATH, shell
-# files, Docker, or other system configuration.
 
 set -Eeuo pipefail
 
@@ -17,6 +13,12 @@ LLAMA_URL="https://github.com/ggml-org/llama.cpp/archive/refs/tags/b9704.tar.gz"
 LLAMA_SHA256="bb288a8045a8fda3fc3be6ffa0e02161ed70d45788b360107fba55a331f93741"
 CUDA_COMPILER="/usr/local/cuda-13.3/bin/nvcc"
 CUDA_TOOLKIT_ROOT="/usr/local/cuda-13.3"
+
+# Select CUDA 13.3 for this process before any host checks or build commands.
+export PATH="$CUDA_TOOLKIT_ROOT/bin${PATH:+:$PATH}"
+export LD_LIBRARY_PATH="$CUDA_TOOLKIT_ROOT/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CUDA_HOME="$CUDA_TOOLKIT_ROOT"
+export CUDACXX="$CUDA_COMPILER"
 
 jarvis_root="$DEFAULT_JARVIS_ROOT"
 install_build_prereqs=false
@@ -62,6 +64,8 @@ has g++ || missing="$missing build-essential"
 has curl || missing="$missing curl"
 has sha256sum || missing="$missing coreutils"
 has tar || missing="$missing tar"
+has readelf || missing="$missing binutils"
+has ldd || missing="$missing libc-bin"
 missing="$(printf '%s\n' $missing | awk 'NF && !seen[$0]++')"
 
 if [[ -n "$missing" && "$install_build_prereqs" == true ]]; then
@@ -79,7 +83,7 @@ fi
 
 log "Verify WSL2 NVIDIA/CUDA readiness"
 run nvidia-smi
-run "$CUDA_COMPILER" --version
+run nvcc --version
 run cmake --version
 run gcc --version
 run g++ --version
@@ -122,6 +126,9 @@ run cmake -S "$source_root" -B "$build_root" \
     -DCMAKE_CUDA_COMPILER="$CUDA_COMPILER" \
     -DCUDAToolkit_ROOT="$CUDA_TOOLKIT_ROOT" \
     -DCMAKE_CUDA_ARCHITECTURES=86 \
+    -DCMAKE_BUILD_RPATH_USE_ORIGIN=ON \
+    '-DCMAKE_BUILD_RPATH=$ORIGIN' \
+    '-DCMAKE_INSTALL_RPATH=$ORIGIN' \
     -DLLAMA_BUILD_TESTS=OFF \
     -DLLAMA_BUILD_TOOLS=ON \
     -DLLAMA_BUILD_EXAMPLES=OFF \
@@ -148,9 +155,22 @@ for library in "$build_bin"/*.so "$build_bin"/*.so.*; do
 done
 "$found_library" || die "Build produced no adjacent shared libraries"
 
-for required in llama-server libggml.so libggml-base.so libggml-cpu.so libggml-cuda.so libllama.so libmtmd.so; do
+for required in \
+    llama-server \
+    libllama-server-impl.so \
+    libllama-common.so.0 \
+    libggml.so libggml-base.so libggml-cpu.so libggml-cuda.so \
+    libllama.so libmtmd.so; do
     [[ -f "$runtime_stage/$required" ]] || die "Required staged file missing: $required"
 done
+
+log "Verify staged runtime is self-contained"
+run readelf -d "$runtime_stage/llama-server"
+staged_ldd="$(ldd "$runtime_stage/llama-server")"
+printf '%s\n' "$staged_ldd"
+grep -Fq "$build_root" <<<"$staged_ldd" && die "Staged runtime still resolves libraries from build cache"
+grep -Fq 'not found' <<<"$staged_ldd" && die "Staged runtime has unresolved shared libraries"
+readelf -d "$runtime_stage/llama-server" | grep -Fq '[$ORIGIN]' || die 'Staged llama-server RUNPATH is not $ORIGIN'
 
 if [[ -d "$runtime_root" ]]; then
     backup_root="$runtime_root.previous.$(date +%Y%m%d%H%M%S)"
@@ -159,10 +179,12 @@ if [[ -d "$runtime_root" ]]; then
 fi
 mv -- "$runtime_stage" "$runtime_root"
 
-log "Verify staged runtime"
+log "Verify installed runtime"
 run "$jarvis_root/backend/.venv/bin/python" "$jarvis_root/scripts/ensure_models.py" --family llm --verify-only
 run ldd "$runtime_root/llama-server"
+if ldd "$runtime_root/llama-server" | grep -Fq "$build_root"; then
+    die "Installed runtime still resolves libraries from build cache"
+fi
 printf 'Staged runtime: %s\n' "$runtime_root"
 printf 'Pinned source: %s (%s), SHA-256 %s\n' "$LLAMA_RELEASE" "$LLAMA_COMMIT" "$LLAMA_SHA256"
 printf 'Next: run managed LLM CUDA validation and prove device/layer offload from server output.\n'
-
