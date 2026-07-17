@@ -35,6 +35,7 @@
   - Notes:
     - Redis tests use a mocked client and fake monotonic clock; no running Redis service or sleeps are required.
     - Backend unit tests need platform adjustment for `test_runtime_url_tar_gz_acquisition_preserves_llama_server_executable_mode` and `test_runtime_url_tar_gz_preserves_safe_relative_symbolic_links` before Windows unit closeout can pass.
+    - Windows unit closeout now passes after platform-gating the two Linux/POSIX filesystem-semantics tests; backend/.venv/Scripts/python scripts/validate_backend.py unit completed with 793 passed and 3 skipped
 
 - Timestamp: 2026-07-17 04:26
   - Host class(es): Windows AMD64; Linux ARM64

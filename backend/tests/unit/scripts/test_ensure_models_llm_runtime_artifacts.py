@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import os
 import tarfile
 import zipfile
 from pathlib import Path
@@ -432,6 +433,7 @@ def test_runtime_url_zip_set_acquisition_extracts_split_archives(
     ]
 
 
+@pytest.mark.skipif(os.name == "nt", reason="validates Linux/POSIX executable-mode filesystem semantics")
 def test_runtime_url_tar_gz_acquisition_preserves_llama_server_executable_mode(
     tmp_path: Path,
     monkeypatch,
@@ -469,6 +471,7 @@ def test_runtime_url_tar_gz_rejects_path_traversal(tmp_path: Path) -> None:
         ensure_models._extract_runtime_tar_gz_payload(payload, tmp_path)
 
 
+@pytest.mark.skipif(os.name == "nt", reason="validates Linux/POSIX symbolic-link filesystem semantics")
 def test_runtime_url_tar_gz_preserves_safe_relative_symbolic_links(tmp_path: Path) -> None:
     buffer = io.BytesIO()
     with tarfile.open(fileobj=buffer, mode="w:gz") as archive:
