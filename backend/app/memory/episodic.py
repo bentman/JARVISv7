@@ -118,8 +118,11 @@ class EpisodicMemory:
                 if not session_dir.is_dir():
                     continue
                 for file_path in session_dir.glob("*.json"):
-                    payload = json.loads(file_path.read_text(encoding="utf-8"))
-                    entry = EpisodicEntry.from_dict(payload)
+                    try:
+                        payload = json.loads(file_path.read_text(encoding="utf-8"))
+                        entry = EpisodicEntry.from_dict(payload)
+                    except Exception:
+                        continue
                     entries.append(entry)
             entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
             return entries[:n]

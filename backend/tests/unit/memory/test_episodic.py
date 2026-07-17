@@ -70,3 +70,32 @@ def test_retrieve_by_keyword_matches_transcript_and_response_case_insensitive(tm
     assert mem.retrieve_by_keyword("apple")
     assert mem.retrieve_by_keyword("BANANA")
     assert mem.retrieve_by_keyword("nomatch") == []
+
+
+def test_retrieve_recent_skips_corrupt_artifact_and_returns_valid_entries(tmp_path: Path) -> None:
+    root = tmp_path / "episodic" / "session-1"
+    root.mkdir(parents=True)
+    (root / "good.json").write_text(json.dumps({"turn_id":"good","session_id":"s","session_started_at":"x","transcript":"t","response_text":"r","tools_invoked":[],"written_at":"2026-01-01T00:00:00+00:00"}))
+    (root / "corrupt.json").write_text("{ this is not valid json")
+    out = EpisodicMemory(base_dir=tmp_path / "episodic").retrieve_recent()
+    assert [e.turn_id for e in out] == ["good"]
+
+
+def test_retrieve_recent_skips_truncated_artifact_across_sessions(tmp_path: Path) -> None:
+    session_a = tmp_path / "episodic" / "session-a"
+    session_b = tmp_path / "episodic" / "session-b"
+    session_a.mkdir(parents=True)
+    session_b.mkdir(parents=True)
+    (session_a / "a.json").write_text(json.dumps({"turn_id":"a","session_id":"sa","session_started_at":"x","transcript":"t","response_text":"r","tools_invoked":[],"written_at":"2026-01-01T00:00:00+00:00"}))
+    (session_b / "b.json").write_text('{"turn_id": "b", "session_id')
+    out = EpisodicMemory(base_dir=tmp_path / "episodic").retrieve_recent()
+    assert [e.turn_id for e in out] == ["a"]
+
+
+def test_retrieve_by_keyword_skips_corrupt_artifact(tmp_path: Path) -> None:
+    root = tmp_path / "episodic" / "session-1"
+    root.mkdir(parents=True)
+    (root / "good.json").write_text(json.dumps({"turn_id":"good","session_id":"s","session_started_at":"x","transcript":"apple pie","response_text":"r","tools_invoked":[],"written_at":"2026-01-01T00:00:00+00:00"}))
+    (root / "corrupt.json").write_text("")
+    out = EpisodicMemory(base_dir=tmp_path / "episodic").retrieve_by_keyword("apple")
+    assert [e.turn_id for e in out] == ["good"]
