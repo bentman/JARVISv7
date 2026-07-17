@@ -13,7 +13,6 @@ LLAMA_COMMIT="10786217e9d40c848ac0133cbe9c5f22a52421bb"
 LLAMA_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
 CUDA_ROOT="/usr/local/cuda-13.3"
 CUDA_ARCHITECTURE="86"
-PROFILE_ID="linux_amd64_gpu_nvidia_cuda"
 
 jarvis_root="$DEFAULT_JARVIS_ROOT"
 dev_root="$DEFAULT_DEV_ROOT"
@@ -35,8 +34,6 @@ Options:
   -h, --help               Show this help.
 
 The helper never installs or changes NVIDIA drivers or CUDA packages.
-It always configures a provenance-specific build tree outside JARVIS and stages
-only validated runtime artifacts into runtimes/llama.cpp/linux-amd64-cuda.
 USAGE
 }
 
@@ -44,6 +41,10 @@ log() { printf '\n==> %s\n' "$*"; }
 die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 run() { printf '+'; printf ' %q' "$@"; printf '\n'; "$@"; }
 has() { command -v "$1" >/dev/null 2>&1; }
+cache_value() {
+    local key="$1" cache="$2"
+    awk -F= -v key="$key" '$1 ~ ("^" key ":[^=]+$") { print substr($0, index($0, "=") + 1); exit }' "$cache"
+}
 
 while (($#)); do
     case "$1" in
@@ -81,13 +82,9 @@ has readelf || missing_packages+=(binutils)
 has ldd || missing_packages+=(libc-bin)
 has sha256sum || missing_packages+=(coreutils)
 has flock || missing_packages+=(util-linux)
-
 if ((${#missing_packages[@]})); then
     mapfile -t missing_packages < <(printf '%s\n' "${missing_packages[@]}" | awk '!seen[$0]++')
-    if [[ "$install_build_prereqs" != true ]]; then
-        die "Missing build prerequisites: ${missing_packages[*]}. Re-run with --install-build-prereqs."
-    fi
-    has apt-get || die "apt-get is unavailable"
+    [[ "$install_build_prereqs" == true ]] || die "Missing build prerequisites: ${missing_packages[*]}. Re-run with --install-build-prereqs."
     run sudo apt-get update
     run sudo apt-get install --yes "${missing_packages[@]}"
 fi
@@ -132,6 +129,7 @@ printf 'Transcript: %s\n' "$transcript_path"
 printf 'llama.cpp: %s (%s)\n' "$LLAMA_TAG" "$LLAMA_COMMIT"
 printf 'CUDA toolkit: %s\n' "$CUDA_ROOT"
 printf 'CUDA architecture: %s\n' "$CUDA_ARCHITECTURE"
+printf 'Build workspace: %s\n' "$build_root"
 
 log "Verify Linux/WSL NVIDIA CUDA prerequisites"
 run nvidia-smi
@@ -153,26 +151,22 @@ resolved_commit="$(git -C "$source_root" rev-parse "refs/tags/$LLAMA_TAG^{commit
 run git -C "$source_root" checkout --detach --force "$LLAMA_COMMIT"
 [[ -z "$(git -C "$source_root" status --porcelain --untracked-files=no)" ]] || die "Pinned source checkout is modified"
 
-compiler_identity="$(gcc -dumpfullversion -dumpversion)"
-nvcc_identity="$($CUDA_COMPILER --version | tail -n 1)"
-cmake_identity="$(cmake --version | head -n 1)"
 fingerprint="$(cat <<EOF
 llama_tag=$LLAMA_TAG
 llama_commit=$LLAMA_COMMIT
 llama_build_number=$LLAMA_BUILD_NUMBER
 cuda_root=$CUDA_ROOT
 cuda_compiler=$(readlink -f "$CUDA_COMPILER")
-nvcc=$nvcc_identity
+nvcc=$($CUDA_COMPILER --version | tail -n 1)
 cuda_architecture=$CUDA_ARCHITECTURE
 host_compiler=$(readlink -f "$(command -v gcc)")
-host_compiler_version=$compiler_identity
-cmake=$cmake_identity
+host_compiler_version=$(gcc -dumpfullversion -dumpversion)
+cmake=$(cmake --version | head -n 1)
 generator=Ninja
 build_type=Release
 shared_libraries=ON
 EOF
 )"
-
 if [[ -d "$build_root" ]]; then
     recorded_fingerprint=""
     [[ -f "$fingerprint_path" ]] && recorded_fingerprint="$(cat "$fingerprint_path")"
@@ -207,9 +201,16 @@ run cmake -S "$source_root" -B "$build_root" -G Ninja \
     -DLLAMA_USE_PREBUILT_UI=OFF
 
 log "Verify configured CUDA backend"
-grep -Eq '^GGML_CUDA:BOOL=ON$' "$build_root/CMakeCache.txt" || die "CMake did not enable GGML_CUDA"
-grep -Eq "^CMAKE_CUDA_COMPILER:FILEPATH=$(printf '%s' "$CUDA_COMPILER" | sed 's/[.[\*^$()+?{|]/\\&/g')$" "$build_root/CMakeCache.txt" || die "CMake selected an unexpected CUDA compiler"
-grep -Eq "^CMAKE_CUDA_ARCHITECTURES:STRING=$CUDA_ARCHITECTURE$" "$build_root/CMakeCache.txt" || die "CMake selected an unexpected CUDA architecture"
+cache="$build_root/CMakeCache.txt"
+[[ -f "$cache" ]] || die "CMake cache was not created: $cache"
+[[ "$(cache_value GGML_CUDA "$cache")" == "ON" ]] || die "CMake did not enable GGML_CUDA"
+configured_cuda_compiler="$(cache_value CMAKE_CUDA_COMPILER "$cache")"
+[[ -n "$configured_cuda_compiler" ]] || die "CMake cache does not record a CUDA compiler"
+[[ "$(readlink -f "$configured_cuda_compiler")" == "$(readlink -f "$CUDA_COMPILER")" ]] || die "CMake selected CUDA compiler '$configured_cuda_compiler', expected '$CUDA_COMPILER'"
+[[ "$(cache_value CMAKE_CUDA_ARCHITECTURES "$cache")" == "$CUDA_ARCHITECTURE" ]] || die "CMake selected an unexpected CUDA architecture"
+grep -Fq 'GGML_AVAILABLE_BACKENDS:INTERNAL=' "$cache" || true
+printf 'Configured CUDA compiler: %s\n' "$configured_cuda_compiler"
+printf 'Configured CUDA architecture: %s\n' "$(cache_value CMAKE_CUDA_ARCHITECTURES "$cache")"
 
 log "Build llama-server"
 run cmake --build "$build_root" --target llama-server --parallel "$(nproc)"
@@ -228,17 +229,7 @@ while IFS= read -r -d '' artifact; do
     cp -a -- "$artifact" "$runtime_stage/"
 done < <(find "$build_bin" -maxdepth 1 \( -type f -o -type l \) \( -name '*.so' -o -name '*.so.*' \) -print0)
 
-required_files=(
-    llama-server
-    libllama-server-impl.so
-    libllama-common.so.0
-    libggml.so
-    libggml-base.so
-    libggml-cpu.so
-    libggml-cuda.so
-    libllama.so
-    libmtmd.so
-)
+required_files=(llama-server libllama-server-impl.so libllama-common.so.0 libggml.so libggml-base.so libggml-cpu.so libggml-cuda.so libllama.so libmtmd.so)
 for required in "${required_files[@]}"; do
     [[ -e "$runtime_stage/$required" ]] || die "Required staged file missing: $required"
 done
@@ -248,15 +239,13 @@ version_output="$("$runtime_stage/llama-server" --version 2>&1)"
 printf '%s\n' "$version_output"
 grep -Fq "$LLAMA_BUILD_NUMBER" <<<"$version_output" || die "Staged llama-server does not report build $LLAMA_BUILD_NUMBER"
 grep -Fq "${LLAMA_COMMIT:0:8}" <<<"$version_output" || grep -Fq "$LLAMA_COMMIT" <<<"$version_output" || die "Staged llama-server does not report pinned commit $LLAMA_COMMIT"
-
-for versioned_library in libllama.so.0.0."$LLAMA_BUILD_NUMBER" libllama-common.so.0.0."$LLAMA_BUILD_NUMBER" libmtmd.so.0.0."$LLAMA_BUILD_NUMBER"; do
-    [[ -e "$runtime_stage/$versioned_library" ]] || die "Expected versioned library missing: $versioned_library"
+for library in libllama.so.0.0."$LLAMA_BUILD_NUMBER" libllama-common.so.0.0."$LLAMA_BUILD_NUMBER" libmtmd.so.0.0."$LLAMA_BUILD_NUMBER"; do
+    [[ -e "$runtime_stage/$library" ]] || die "Expected versioned library missing: $library"
 done
 
 readelf_output="$(readelf -d "$runtime_stage/llama-server")"
 printf '%s\n' "$readelf_output"
 grep -Eq 'Library (rpath|runpath): \[[^]]*\$ORIGIN(:|])' <<<"$readelf_output" || die 'Staged llama-server RUNPATH does not include $ORIGIN'
-
 ldd_output="$(ldd "$runtime_stage/llama-server")"
 printf '%s\n' "$ldd_output"
 grep -Fq 'not found' <<<"$ldd_output" && die "Staged runtime has unresolved shared libraries"
