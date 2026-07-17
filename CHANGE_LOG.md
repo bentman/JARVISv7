@@ -22,6 +22,20 @@
 ---
 
 ## Change Entries
+- Timestamp: 2026-07-17 06:10
+  - Host class(es): Windows AMD64; platform-neutral Redis connection behavior
+  - Summary: Replaced the permanent failed-initialization latch with bounded Redis reconnection. Failed connections now permit one new attempt after a fixed 30-second monotonic cooldown, while successful clients remain cached and reused.
+  - Scope:
+    - `backend/app/cache/redis_client.py`
+    - `backend/tests/unit/cache/test_cache_manager.py`
+  - Validation:
+    - `backend/.venv/Scripts/python -m pytest backend/tests/unit/cache/test_cache_manager.py backend/tests/unit/memory/test_retrieval.py -q` PASS (17 passed)
+    - `git diff --check` PASS
+    - `backend/.venv/Scripts/python scripts/validate_backend.py unit` FAIL (793 passed, 2 failed, 1 skipped; failures confined to Linux tar executable-mode and symbolic-link tests running on Windows)
+  - Notes:
+    - Redis tests use a mocked client and fake monotonic clock; no running Redis service or sleeps are required.
+    - Backend unit tests need platform adjustment for `test_runtime_url_tar_gz_acquisition_preserves_llama_server_executable_mode` and `test_runtime_url_tar_gz_preserves_safe_relative_symbolic_links` before Windows unit closeout can pass.
+
 - Timestamp: 2026-07-17 04:26
   - Host class(es): Windows AMD64; Linux ARM64
   - Summary: Included backend availability in retrieval cache identity so results computed while a memory backend was unavailable are not reused after that backend recovers.
