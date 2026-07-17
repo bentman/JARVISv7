@@ -117,3 +117,13 @@ docs/jarvis-wsl-llamacpp.sh
 ```
 
 Do not remove models, the Linux CPU runtime, CUDA installations, drivers, or system packages as part of this recovery.
+
+# Appendix
+## Prepend CUDA 3.13 Paths
+
+```bash
+export PATH="/usr/local/cuda-13.3/bin:$PATH"
+export LD_LIBRARY_PATH="/usr/local/cuda-13.3/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+export CUDA_HOME="/usr/local/cuda-13.3"
+export CUDACXX="/usr/local/cuda-13.3/bin/nvcc"
+```

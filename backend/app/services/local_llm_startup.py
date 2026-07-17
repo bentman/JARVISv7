@@ -55,6 +55,24 @@ def prepare_managed_local_llm(
             flags=flags,
             model_name=model_selection.model_id,
         )
+        if (
+            resolution.accelerator == "cpu"
+            and not getattr(model_selection, "override", False)
+            and model_selection.role != "portable"
+        ):
+            model_selection = select_llm_model(
+                route,
+                HardwareProfile(os_name=profile.os_name, arch=profile.arch),
+                settings=resolved_settings,
+            )
+            resolution = resolve_llm_serve_profile(
+                route,
+                profile,
+                preflight,
+                settings=resolved_settings,
+                flags=flags,
+                model_name=model_selection.model_id,
+            )
     except ModelCatalogError as exc:
         return ManagedLocalLLMStartup(
             runtime=None,

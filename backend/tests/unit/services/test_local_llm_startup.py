@@ -139,6 +139,49 @@ def test_prepare_managed_local_llm_uses_linux_amd64_cpu_profile(monkeypatch, tmp
     assert result.degraded_reason is None
 
 
+def test_prepare_managed_local_llm_reselects_portable_model_for_cuda_cpu_fallback(monkeypatch, tmp_path: Path) -> None:
+    model_path = tmp_path / "model.gguf"
+    binary_path = tmp_path / "llama-server"
+    model_path.write_bytes(b"gguf")
+    binary_path.write_bytes(b"server")
+    selections = iter(
+        (
+            type("Selection", (), {
+                "model_id": "assistant-qwen3-8b-q5-balanced", "mode": "prod", "policy": "auto",
+                "role": "balanced", "reason": "CUDA selected balanced", "override": False,
+            })(),
+            type("Selection", (), {
+                "model_id": "assistant-qwen3-4b-q4-portable", "mode": "prod", "policy": "auto",
+                "role": "portable", "reason": "CPU selected portable", "override": False,
+            })(),
+        )
+    )
+    requested_models: list[str] = []
+    monkeypatch.setattr(local_llm_startup, "select_llm_model", lambda *args, **kwargs: next(selections))
+
+    def resolve(*args, **kwargs):
+        requested_models.append(kwargs["model_name"])
+        return LLMServeProfileResolution(
+            model_id=kwargs["model_name"], route="voice_chat", serve_profile_id="linux_amd64_cpu",
+            local_model_path=model_path, binary_path=binary_path, base_url="http://127.0.0.1:8080",
+            accelerator="cpu", launch={"gpu_layers": 0}, generation_defaults={},
+            selected_reason="selected current-host CPU serve profile linux_amd64_cpu",
+        )
+
+    monkeypatch.setattr(local_llm_startup, "resolve_llm_serve_profile", resolve)
+
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="linux", arch="amd64", gpu_available=True, gpu_vendor="nvidia", cuda_available=True),
+        _preflight(),
+        settings=_settings(managed=False),
+    )
+
+    assert requested_models == ["assistant-qwen3-8b-q5-balanced", "assistant-qwen3-4b-q4-portable"]
+    assert result.resolution is not None
+    assert result.resolution.model_id == "assistant-qwen3-4b-q4-portable"
+    assert result.resolution.model_role == "portable"
+
+
 def test_prepare_managed_local_llm_degrades_when_model_override_is_unknown() -> None:
     result = prepare_managed_local_llm(
         HardwareProfile(os_name="linux", arch="arm64"),

@@ -225,7 +225,6 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
     required_extensions = _runtime_required_extensions(profile_id, profile)
     root = binary_path.parent
     discovered_files = [path for path in root.rglob("*") if path.is_file() and path.stat().st_size > 0]
-    discovered_names = {path.name for path in discovered_files}
     discovered_exts = {path.suffix.lower() for path in discovered_files}
 
     missing: list[str] = []
@@ -234,12 +233,17 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
     elif source.get("type") in {"url_tar_gz", _SOURCE_BUILD_RUNTIME_TYPE} and not os.access(binary_path, os.X_OK):
         missing.append(f"{binary_path.name} (not executable)")
     for file_name in required_files:
-        if file_name not in discovered_names and file_name not in missing:
+        required_path = root / file_name
+        if (not required_path.is_file() or required_path.stat().st_size <= 0) and file_name not in missing:
             missing.append(file_name)
     for extension in required_extensions:
         normalized = extension.lower()
         if normalized not in discovered_exts:
             missing.append(f"*{normalized}")
+
+    linkage_error = _linux_cuda_linkage_error(profile_id, profile, binary_path)
+    if linkage_error is not None:
+        missing.append(linkage_error)
 
     present = sorted(str(path.relative_to(root)).replace("\\", "/") for path in discovered_files)
     reason = _runtime_missing_reason(profile, source, missing)
@@ -256,6 +260,42 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
         "state": state,
         "degraded_reason": reason,
     }
+
+
+def _linux_cuda_linkage_error(
+    profile_id: str,
+    profile: dict[str, Any],
+    binary_path: Path,
+) -> str | None:
+    if profile.get("accelerator") != "gpu.cuda" or not profile_id.startswith("linux_"):
+        return None
+    if not binary_path.is_file() or binary_path.stat().st_size <= 0:
+        return None
+    try:
+        result = subprocess.run(
+            ["ldd", str(binary_path)],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except OSError as exc:
+        return f"ldd unavailable: {exc}"
+    if result.returncode != 0:
+        return "ldd failed"
+
+    runtime_root = binary_path.parent.resolve()
+    for line in result.stdout.splitlines():
+        name, separator, resolved = line.partition(" => ")
+        if not separator or not name.startswith(("libggml", "libllama", "libmtmd")):
+            continue
+        resolved_path = resolved.strip().split(" ", 1)[0]
+        if resolved_path == "not":
+            return f"unresolved llama.cpp library: {name.strip()}"
+        try:
+            Path(resolved_path).resolve().relative_to(runtime_root)
+        except ValueError:
+            return f"llama.cpp library outside staged runtime: {name.strip()}"
+    return None
 
 
 def _runtime_profile_matches_host(
@@ -525,6 +565,14 @@ def _build_runtime_from_source(profile_id: str, profile: dict[str, Any]) -> list
         raise RuntimeError(f"LLM serve profile '{profile_id}' CUDA build prerequisite is unavailable")
     if not isinstance(cuda_toolkit_root, str) or not (Path(cuda_toolkit_root) / "include").is_dir():
         raise RuntimeError(f"LLM serve profile '{profile_id}' CUDA toolkit prerequisite is unavailable")
+    cuda_root = Path(cuda_toolkit_root)
+    build_env = os.environ.copy()
+    build_env["PATH"] = os.pathsep.join([str(cuda_root / "bin"), build_env.get("PATH", "")])
+    build_env["LD_LIBRARY_PATH"] = os.pathsep.join(
+        [str(cuda_root / "lib64"), build_env.get("LD_LIBRARY_PATH", "")]
+    )
+    build_env["CUDA_HOME"] = str(cuda_root)
+    build_env["CUDACXX"] = cuda_compiler
     archive_path = _download_source_build_archive(profile_id, source)
     source_root = _extract_source_build_archive(profile_id, source, archive_path)
     _archive_path, _source_cache, build_root = _source_build_cache_paths(profile_id, source)
@@ -532,12 +580,17 @@ def _build_runtime_from_source(profile_id: str, profile: dict[str, Any]) -> list
         "cmake", "-S", str(source_root), "-B", str(build_root), "-DGGML_CUDA=ON",
         "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_CUDA_COMPILER={cuda_compiler}",
         f"-DCUDAToolkit_ROOT={cuda_toolkit_root}", "-DCMAKE_CUDA_ARCHITECTURES=86",
+        "-DCMAKE_BUILD_RPATH=$ORIGIN", "-DCMAKE_INSTALL_RPATH=$ORIGIN",
         "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_TOOLS=ON", "-DLLAMA_BUILD_EXAMPLES=OFF",
         "-DLLAMA_BUILD_SERVER=ON", "-DLLAMA_BUILD_APP=OFF", "-DLLAMA_BUILD_UI=OFF",
         "-DLLAMA_USE_PREBUILT_UI=OFF",
     ]
-    subprocess.run(configure, check=True)
-    subprocess.run(["cmake", "--build", str(build_root), "--config", "Release", "--target", "llama-server"], check=True)
+    subprocess.run(configure, check=True, env=build_env)
+    subprocess.run(
+        ["cmake", "--build", str(build_root), "--config", "Release", "--target", "llama-server"],
+        check=True,
+        env=build_env,
+    )
 
     binary_path = _runtime_binary_path(profile_id, profile)
     built_binary = build_root / "bin" / binary_path.name

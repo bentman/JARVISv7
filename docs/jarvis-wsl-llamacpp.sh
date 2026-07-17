@@ -170,8 +170,9 @@ staged_ldd="$(ldd "$runtime_stage/llama-server")"
 printf '%s\n' "$staged_ldd"
 grep -Fq "$build_root" <<<"$staged_ldd" && die "Staged runtime still resolves libraries from build cache"
 grep -Fq 'not found' <<<"$staged_ldd" && die "Staged runtime has unresolved shared libraries"
-readelf -d "$runtime_stage/llama-server" | grep -Fq '[$ORIGIN]' || die 'Staged llama-server RUNPATH is not $ORIGIN'
-
+readelf -d "$runtime_stage/llama-server" |
+    grep -Eq 'Library (rpath|runpath): \[[^]]*\$ORIGIN(:|])' ||
+    die 'Staged llama-server RUNPATH does not include $ORIGIN'
 if [[ -d "$runtime_root" ]]; then
     backup_root="$runtime_root.previous.$(date +%Y%m%d%H%M%S)"
     mv -- "$runtime_root" "$backup_root"

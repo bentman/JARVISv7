@@ -112,6 +112,8 @@ linux_amd64_serve_profiles: &linux_amd64_serve_profiles
       binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
       required_files:
         - llama-server
+        - libllama-server-impl.so
+        - libllama-common.so.0
         - libggml.so
         - libggml-base.so
         - libggml-cpu.so
@@ -268,6 +270,8 @@ models:
             binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
             required_files:
               - llama-server
+              - libllama-server-impl.so
+              - libllama-common.so.0
               - libggml.so
               - libggml-base.so
               - libggml-cpu.so

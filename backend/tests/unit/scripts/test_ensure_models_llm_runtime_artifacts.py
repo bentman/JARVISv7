@@ -515,19 +515,40 @@ def test_runtime_source_build_verifies_provenance_and_stages_shared_libraries(tm
                 "cuda_toolkit_root": str(tmp_path / "cuda"),
             },
             "binary_path": str(binary_path),
-            "required_files": ["llama-server", "libggml.so", "libggml-cuda.so"],
+            "required_files": [
+                "llama-server",
+                "libllama-server-impl.so",
+                "libllama-common.so.0",
+                "libggml.so",
+                "libggml-cuda.so",
+            ],
         },
         "binary_path": str(binary_path),
     }
     (tmp_path / "nvcc").write_bytes(b"compiler")
     (tmp_path / "cuda" / "include").mkdir(parents=True)
 
-    def fake_run(command, check):
+    def fake_run(command, check, **kwargs):
         assert check is True
+        if command[0] == "ldd":
+            return type("Result", (), {"returncode": 0, "stdout": ""})()
+        assert kwargs["env"]["CUDA_HOME"] == str(tmp_path / "cuda")
+        assert kwargs["env"]["CUDACXX"] == str(tmp_path / "nvcc")
+        assert kwargs["env"]["PATH"].startswith(f"{tmp_path / 'cuda' / 'bin'}{os.pathsep}")
+        assert kwargs["env"]["LD_LIBRARY_PATH"].startswith(f"{tmp_path / 'cuda' / 'lib64'}{os.pathsep}")
+        if command[0] == "cmake" and "--build" not in command:
+            assert "-DCMAKE_BUILD_RPATH=$ORIGIN" in command
+            assert "-DCMAKE_INSTALL_RPATH=$ORIGIN" in command
         if "--build" in command:
             build_bin = Path(command[2]) / "bin"
             build_bin.mkdir(parents=True)
-            for name in ("llama-server", "libggml.so", "libggml-cuda.so"):
+            for name in (
+                "llama-server",
+                "libllama-server-impl.so",
+                "libllama-common.so.0",
+                "libggml.so",
+                "libggml-cuda.so",
+            ):
                 (build_bin / name).write_bytes(name.encode())
             (build_bin / "llama-server").chmod(0o755)
         return None
@@ -543,9 +564,67 @@ def test_runtime_source_build_verifies_provenance_and_stages_shared_libraries(tm
 
     assert result["ready"] is True
     assert result["state"] == "ready"
-    assert result["acquired"] == ["libggml-cuda.so", "libggml.so", "llama-server"]
+    assert result["acquired"] == [
+        "libggml-cuda.so",
+        "libggml.so",
+        "libllama-common.so.0",
+        "libllama-server-impl.so",
+        "llama-server",
+    ]
     assert binary_path.stat().st_mode & 0o111
     assert (tmp_path / "cache" / "llama.cpp" / "linux_amd64_gpu_nvidia_cuda" / "source" / ".managed-source-commit").read_text().strip() == "1" * 40
+
+
+def test_linux_cuda_runtime_verification_rejects_llama_libraries_outside_staging(tmp_path: Path, monkeypatch) -> None:
+    binary_path = tmp_path / "runtimes" / "llama.cpp" / "linux-amd64-cuda" / "llama-server"
+    binary_path.parent.mkdir(parents=True)
+    binary_path.write_bytes(b"server")
+    binary_path.chmod(0o755)
+    profile = {
+        "accelerator": "gpu.cuda",
+        "runtime_artifact": {
+            "source": {"type": "source_tar_gz_build"},
+            "binary_path": str(binary_path),
+            "required_files": ["llama-server"],
+        },
+    }
+    monkeypatch.setattr(
+        ensure_models.subprocess,
+        "run",
+        lambda *args, **kwargs: type(
+            "Result",
+            (),
+            {"returncode": 0, "stdout": "libllama.so.0 => /tmp/build/libllama.so.0 (0x0)\n"},
+        )(),
+    )
+
+    result = ensure_models._verify_runtime_profile("linux_amd64_gpu_nvidia_cuda", profile)
+
+    assert result["ready"] is False
+    assert result["missing"] == ["llama.cpp library outside staged runtime: libllama.so.0"]
+
+
+def test_runtime_verification_requires_libraries_adjacent_to_the_server(tmp_path: Path) -> None:
+    binary_path = tmp_path / "runtimes" / "llama.cpp" / "linux-amd64-cuda" / "llama-server"
+    binary_path.parent.mkdir(parents=True)
+    binary_path.write_bytes(b"server")
+    binary_path.chmod(0o755)
+    nested_library = binary_path.parent / "cache" / "libllama-common.so.0"
+    nested_library.parent.mkdir()
+    nested_library.write_bytes(b"library")
+    profile = {
+        "accelerator": "cpu",
+        "runtime_artifact": {
+            "source": {"type": "url_tar_gz"},
+            "binary_path": str(binary_path),
+            "required_files": ["llama-server", "libllama-common.so.0"],
+        },
+    }
+
+    result = ensure_models._verify_runtime_profile("linux_amd64_cpu", profile)
+
+    assert result["ready"] is False
+    assert result["missing"] == ["libllama-common.so.0"]
 
 
 def test_runtime_source_build_rejects_checksum_mismatch(tmp_path: Path, monkeypatch) -> None:
@@ -695,6 +774,13 @@ def test_catalog_cuda_runtime_profile_uses_pinned_split_archives() -> None:
         "cublas64_13.dll",
         "cublasLt64_13.dll",
     ]
+
+
+def test_catalog_linux_cuda_runtime_profile_requires_server_implementation_and_common_library() -> None:
+    profiles = ensure_models._hardware_profiles(ensure_models.get_model_entry("llm", "assistant-small-q4"))
+
+    assert "libllama-server-impl.so" in profiles["linux_amd64_gpu_nvidia_cuda"]["runtime_artifact"]["required_files"]
+    assert "libllama-common.so.0" in profiles["linux_amd64_gpu_nvidia_cuda"]["runtime_artifact"]["required_files"]
 
 
 def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> None:
