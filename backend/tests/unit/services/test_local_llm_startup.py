@@ -139,6 +139,26 @@ def test_prepare_managed_local_llm_uses_linux_amd64_cpu_profile(monkeypatch, tmp
     assert result.degraded_reason is None
 
 
+def test_prepare_managed_local_llm_degrades_when_model_override_is_unknown() -> None:
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="linux", arch="arm64"),
+        _preflight(),
+        settings=Settings(
+            use_local_model=True,
+            llama_cpp_managed=True,
+            llama_cpp_base_url="",
+            llama_cpp_model_path=None,
+            llama_cpp_binary_path=None,
+            llm_model_id="nonexistent-model",
+        ),
+    )
+
+    assert result.runtime is None
+    assert result.sidecar is None
+    assert result.resolution is None
+    assert result.degraded_reason == "model 'nonexistent-model' not found in family 'llm'"
+
+
 def test_prepare_managed_local_llm_degrades_for_expected_profile_metadata_error(
     monkeypatch,
 ) -> None:

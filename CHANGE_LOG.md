@@ -23,6 +23,19 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-16 15:38
+  - Host class(es): Linux ARM64
+  - Summary: Made managed local-LLM startup degrade instead of crash when the operator model override (`LLM_MODEL_ID`) does not exist in the catalog. Model selection errors now yield a degraded local-LLM readiness result while the rest of startup proceeds.
+  - Scope:
+    - backend/app/services/local_llm_startup.py (moved `select_llm_model` inside the existing `ModelCatalogError` handling)
+    - backend/tests/unit/services/test_local_llm_startup.py (new degraded-override test)
+  - Validation:
+    - Repro before fix: `prepare_managed_local_llm` with `llm_model_id="nonexistent-model"` raised `LLMSelectionError: model 'nonexistent-model' not found in family 'llm'` (startup crash path)
+    - backend/.venv/bin/python -m pytest backend/tests/unit/services/test_local_llm_startup.py -q PASS (8 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS (772 passed, 2 skipped; second skip is absent wake model files on this host)
+  - Notes:
+    - Carries forward reusable finding 5 from PR #1 review; the missing-profile degradation paths were already fixed on main — this covers the operator override path only.
+
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
   - Summary: Made the desktop backend launcher select the Linux virtual-environment interpreter while retaining the Windows interpreter path. Added the Linux PNG app icon by extracting the existing ICO’s native RGBA layer, unblocking Tauri context generation.
