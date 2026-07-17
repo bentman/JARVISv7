@@ -1016,7 +1016,7 @@ def test_desktop_status_snapshot_builds_each_underlying_status_once(monkeypatch)
     assert payload["session"]["session_id"] == "session-test"
     assert payload["resident_voice"]["mode"] == "ptt-only"
     assert payload["wake"]["available"] is True
-    assert payload["wake"]["active"] is False
+    assert payload["wake"]["active"] is True
     assert payload["resident_voice"]["wake_active"] == payload["wake"]["active"]
     assert calls == {"session": 1, "configure_wake": 1, "read_wake": 0, "tts": 1}
 
@@ -1288,7 +1288,7 @@ def test_resident_voice_wake_mode_keeps_wake_plus_ptt_available() -> None:
     assert payload["barge_in_supported"] is False
 
 
-def test_resident_voice_status_reconciles_ptt_only_with_active_wake() -> None:
+def test_resident_voice_status_reports_ptt_only_wake_inconsistency_without_mutation() -> None:
     client = _client()
     state = client.app.state.jarvis_state
     state.resident_voice.set_mode("ptt-only")
@@ -1301,8 +1301,14 @@ def test_resident_voice_status_reconciles_ptt_only_with_active_wake() -> None:
 
     assert response.status_code == 200
     assert payload["mode"] == "ptt-only"
-    assert payload["wake_active"] is False
-    assert payload["wake_monitoring"] is False
+    assert payload["wake_active"] is True
+    assert payload["wake_monitoring"] is True
+    assert client.get("/status/wake").json()["active"] is True
+    assert client.get("/status/desktop").json()["wake"]["active"] is True
+
+    mode_response = client.put("/status/resident-voice/mode", json={"mode": "ptt-only"})
+    assert mode_response.status_code == 200
+    assert mode_response.json()["wake_active"] is False
     assert client.get("/status/wake").json()["active"] is False
 
 
