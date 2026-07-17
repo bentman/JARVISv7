@@ -24,16 +24,16 @@
 ## Change Entries
 - Timestamp: 2026-07-17 04:26
   - Host class(es): Windows AMD64; Linux ARM64
-  - Summary: Combined: included backend availability in retrieval cache identity and bounded Redis reconnection after startup failure.
+  - Summary: Included backend availability in retrieval cache identity so results computed while a memory backend was unavailable are not reused after that backend recovers.
   - Scope:
-    - backend/app/memory/retrieval.py (_cache_key gains a backends token; call site passes both availabilities)
-    - backend/tests/unit/memory/test_retrieval.py (degraded-then-recovered scenario test)
-    - backend/app/cache/redis_client.py (bounded reconnect attempts on startup failure)
-    - backend/tests/unit/cache (reconnect behavior tests)
+    - backend/app/memory/retrieval.py (`_cache_key` gains an episodic/semantic backend-availability token; retrieval passes both availability states)
+    - backend/tests/unit/memory/test_retrieval.py (degraded-then-recovered scenario and cache-key distinctness tests)
   - Validation:
-    - backend/.venv/Scripts/python -m pytest backend/tests/unit/memory/test_retrieval.py backend/tests/unit/cache -q PASS
+    - backend/.venv/Scripts/python -m pytest backend/tests/unit/memory/test_retrieval.py -q PASS
   - Notes:
-    - Distinguishes cached results computed while a backend was unavailable; avoids long-running Redis reconnect loops at startup.
+    - Cached results now distinguish the backend set used to compute them.
+    - An empty result produced while episodic memory is unavailable can no longer mask recovered memory for `DEFAULT_RETRIEVAL_TTL`.
+    - Old-format cache keys require no migration and expire normally through their existing TTL.
 
 - Timestamp: 2026-07-16 22:08
   - Host class(es): Linux ARM64
