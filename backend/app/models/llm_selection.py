@@ -138,6 +138,9 @@ def _hardware_selectors(profile: HardwareProfile) -> list[str]:
             selectors.append("windows_amd64_gpu_amd")
         elif profile.gpu_vendor == "intel" and profile.gpu_available:
             selectors.append("windows_amd64_gpu_intel")
+    if profile.os_name == "linux" and profile.arch == "amd64":
+        if profile.gpu_vendor == "nvidia" and profile.gpu_available and profile.cuda_available:
+            selectors.append("linux_amd64_gpu_nvidia_cuda")
     if profile.os_name == "windows" and profile.arch == "arm64":
         if profile.gpu_vendor == "qualcomm" and profile.gpu_available:
             selectors.append("windows_arm64_gpu_qualcomm_adreno_opencl")

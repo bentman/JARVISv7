@@ -31,6 +31,8 @@ llm_selection:
       status: placeholder-no-vision-runtime
   policies:
     auto:
+      linux_amd64_gpu_nvidia_cuda: balanced
+      linux_amd64_cpu: portable
       windows_amd64_gpu_nvidia_cuda: balanced
       windows_amd64_cpu: portable
       windows_arm64_cpu: portable
@@ -42,15 +44,100 @@ llm_selection:
     portable:
       "*": portable
     balanced:
+      linux_amd64_gpu_nvidia_cuda: balanced
       windows_amd64_gpu_nvidia_cuda: balanced
       "*": portable
     quality:
+      linux_amd64_gpu_nvidia_cuda: quality
       windows_amd64_gpu_nvidia_cuda: quality
       "*": portable
     diagnostic:
       "*": diagnostic
     vision_preview:
       "*": vision_preview
+
+linux_amd64_serve_profiles: &linux_amd64_serve_profiles
+  linux_amd64_cpu:
+    profile_id: linux_amd64_cpu
+    os: linux
+    arch: amd64
+    provisioning_extras:
+      - hw-cpu-base
+      - hw-x64-base
+      - hw-x64-ort-cpu
+    accelerator: cpu
+    runtime_artifact:
+      source:
+        type: url_tar_gz
+        release: b9704
+        asset: llama-b9704-bin-ubuntu-x64.tar.gz
+        url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-ubuntu-x64.tar.gz
+      binary_path: runtimes/llama.cpp/linux-amd64-cpu/llama-server
+      required_files:
+        - llama-server
+    binary_path: runtimes/llama.cpp/linux-amd64-cpu/llama-server
+    host: 127.0.0.1
+    port: 8080
+    base_url: http://127.0.0.1:8080
+    validation_status: declared-not-validated
+    launch:
+      ctx_size: 4096
+      threads: 6
+      threads_batch: 12
+      batch_size: 512
+      ubatch_size: 128
+      gpu_layers: 0
+      cache_type_k: q8_0
+      cache_type_v: q8_0
+      parallel: 1
+      cont_batching: true
+      warmup: true
+  linux_amd64_gpu_nvidia_cuda:
+    profile_id: linux_amd64_gpu_nvidia_cuda
+    os: linux
+    arch: amd64
+    provisioning_extras:
+      - hw-gpu-nvidia-cuda
+    accelerator: gpu.cuda
+    runtime_artifact:
+      source:
+        type: source_tar_gz_build
+        release: b9704
+        commit: 10786217e9d40c848ac0133cbe9c5f22a52421bb
+        asset: llama.cpp-b9704.tar.gz
+        url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b9704.tar.gz
+        sha256: bb288a8045a8fda3fc3be6ffa0e02161ed70d45788b360107fba55a331f93741
+        cuda_compiler: /usr/local/cuda-13.3/bin/nvcc
+        cuda_toolkit_root: /usr/local/cuda-13.3
+      binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
+      required_files:
+        - llama-server
+        - libggml.so
+        - libggml-base.so
+        - libggml-cpu.so
+        - libggml-cuda.so
+        - libllama.so
+        - libmtmd.so
+    binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
+    host: 127.0.0.1
+    port: 8080
+    base_url: http://127.0.0.1:8080
+    validation_status: declared-not-validated
+    close_if_unavailable: Degraded-accelerator-unavailable
+    launch:
+      ctx_size: 8192
+      gpu_layers: all
+      split_mode: layer
+      main_gpu: 0
+      flash_attn: "on"
+      batch_size: 2048
+      ubatch_size: 512
+      cache_type_k: f16
+      cache_type_v: f16
+      cache_ram_mb: 8192
+      parallel: 1
+      cont_batching: true
+      warmup: true
 
 ollama:
   base_url: ${OLLAMA_BASE_URL}
@@ -158,6 +245,52 @@ models:
             cache_type_k: q4_0
             cache_type_v: q4_0
             cache_ram_mb: 4096
+            parallel: 1
+            cont_batching: true
+            warmup: true
+        linux_amd64_gpu_nvidia_cuda:
+          profile_id: linux_amd64_gpu_nvidia_cuda
+          os: linux
+          arch: amd64
+          provisioning_extras:
+            - hw-gpu-nvidia-cuda
+          accelerator: gpu.cuda
+          runtime_artifact:
+            source:
+              type: source_tar_gz_build
+              release: b9704
+              commit: 10786217e9d40c848ac0133cbe9c5f22a52421bb
+              asset: llama.cpp-b9704.tar.gz
+              url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b9704.tar.gz
+              sha256: bb288a8045a8fda3fc3be6ffa0e02161ed70d45788b360107fba55a331f93741
+              cuda_compiler: /usr/local/cuda-13.3/bin/nvcc
+              cuda_toolkit_root: /usr/local/cuda-13.3
+            binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
+            required_files:
+              - llama-server
+              - libggml.so
+              - libggml-base.so
+              - libggml-cpu.so
+              - libggml-cuda.so
+              - libllama.so
+              - libmtmd.so
+          binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
+          host: 127.0.0.1
+          port: 8080
+          base_url: http://127.0.0.1:8080
+          validation_status: declared-not-validated
+          close_if_unavailable: Degraded-accelerator-unavailable
+          launch:
+            ctx_size: 8192
+            gpu_layers: all
+            split_mode: layer
+            main_gpu: 0
+            flash_attn: "on"
+            batch_size: 2048
+            ubatch_size: 512
+            cache_type_k: f16
+            cache_type_v: f16
+            cache_ram_mb: 8192
             parallel: 1
             cont_batching: true
             warmup: true
@@ -504,6 +637,7 @@ models:
         - "Assistant:"
     serve_profiles:
       hardware_profiles:
+        <<: *linux_amd64_serve_profiles
         windows_amd64_cpu:
           profile_id: windows_amd64_cpu
           os: windows
@@ -846,6 +980,7 @@ models:
         - "Assistant:"
     serve_profiles:
       hardware_profiles:
+        <<: *linux_amd64_serve_profiles
         windows_amd64_cpu:
           profile_id: windows_amd64_cpu
           os: windows
@@ -1188,6 +1323,7 @@ models:
         - "Assistant:"
     serve_profiles:
       hardware_profiles:
+        <<: *linux_amd64_serve_profiles
         windows_amd64_cpu:
           profile_id: windows_amd64_cpu
           os: windows
@@ -1530,6 +1666,7 @@ models:
         - "Assistant:"
     serve_profiles:
       hardware_profiles:
+        <<: *linux_amd64_serve_profiles
         windows_amd64_cpu:
           profile_id: windows_amd64_cpu
           os: windows

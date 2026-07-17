@@ -7,7 +7,7 @@ import pytest
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
-from backend.app.models.catalog import get_model_entry
+from backend.app.models.catalog import get_model_entry, list_models
 from backend.app.personality.loader import load_personality_profile
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
@@ -470,6 +470,17 @@ def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
     assert profiles["windows_amd64_cpu"]["binary_path"].endswith(
         "runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe"
     )
+
+
+def test_llm_catalog_reuses_linux_cuda_profiles_for_every_selectable_model():
+    for model_config in list_models("llm").values():
+        profiles = model_config["serve_profiles"]["hardware_profiles"]
+        assert profiles["linux_amd64_cpu"]["binary_path"].endswith(
+            "runtimes/llama.cpp/linux-amd64-cpu/llama-server"
+        )
+        assert profiles["linux_amd64_gpu_nvidia_cuda"]["binary_path"].endswith(
+            "runtimes/llama.cpp/linux-amd64-cuda/llama-server"
+        )
 
 
 def test_cloud_provider_neutral_chat_payload_preserves_system_and_user_boundary():

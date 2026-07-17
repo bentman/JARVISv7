@@ -268,7 +268,6 @@ def _accelerator_degraded_reason(
             profile.gpu_vendor == "nvidia"
             and profile.cuda_available
             and (flags is None or flags.supports_cuda_llm)
-            and "ep:CUDAExecutionProvider" in preflight.tokens
         )
         if not cuda_ready:
             return str(close_reason or "Degraded-accelerator-unavailable")

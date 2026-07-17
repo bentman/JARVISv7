@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import os
 import tarfile
@@ -493,6 +494,84 @@ def test_runtime_url_tar_gz_preserves_safe_relative_symbolic_links(tmp_path: Pat
     link_path = tmp_path / "libmtmd.so"
     assert link_path.is_symlink()
     assert link_path.readlink() == Path("libmtmd.so.0")
+
+
+def test_runtime_source_build_verifies_provenance_and_stages_shared_libraries(tmp_path: Path, monkeypatch) -> None:
+    source_root_name = "llama.cpp-b9704"
+    payload = _tar_gz_bytes({f"{source_root_name}/CMakeLists.txt": (b"cmake_minimum_required(VERSION 3.14)", 0o644)})
+    sha256 = hashlib.sha256(payload).hexdigest()
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: _FakeClient(payload))
+
+    binary_path = tmp_path / "runtimes" / "llama.cpp" / "linux-amd64-cuda" / "llama-server"
+    profile = {
+        "runtime_artifact": {
+            "source": {
+                "type": "source_tar_gz_build",
+                "url": "https://example.invalid/llama.cpp-b9704.tar.gz",
+                "asset": "llama.cpp-b9704.tar.gz",
+                "sha256": sha256,
+                "commit": "1" * 40,
+                "cuda_compiler": str(tmp_path / "nvcc"),
+                "cuda_toolkit_root": str(tmp_path / "cuda"),
+            },
+            "binary_path": str(binary_path),
+            "required_files": ["llama-server", "libggml.so", "libggml-cuda.so"],
+        },
+        "binary_path": str(binary_path),
+    }
+    (tmp_path / "nvcc").write_bytes(b"compiler")
+    (tmp_path / "cuda" / "include").mkdir(parents=True)
+
+    def fake_run(command, check):
+        assert check is True
+        if "--build" in command:
+            build_bin = Path(command[2]) / "bin"
+            build_bin.mkdir(parents=True)
+            for name in ("llama-server", "libggml.so", "libggml-cuda.so"):
+                (build_bin / name).write_bytes(name.encode())
+            (build_bin / "llama-server").chmod(0o755)
+        return None
+
+    monkeypatch.setattr(ensure_models.subprocess, "run", fake_run)
+    monkeypatch.setattr(
+        ensure_models,
+        "REPO_ROOT",
+        tmp_path,
+    )
+
+    result = ensure_models._ensure_runtime_profile("linux_amd64_gpu_nvidia_cuda", profile, dry_run=False)
+
+    assert result["ready"] is True
+    assert result["state"] == "ready"
+    assert result["acquired"] == ["libggml-cuda.so", "libggml.so", "llama-server"]
+    assert binary_path.stat().st_mode & 0o111
+    assert (tmp_path / "cache" / "llama.cpp" / "linux_amd64_gpu_nvidia_cuda" / "source" / ".managed-source-commit").read_text().strip() == "1" * 40
+
+
+def test_runtime_source_build_rejects_checksum_mismatch(tmp_path: Path, monkeypatch) -> None:
+    payload = _tar_gz_bytes({"llama.cpp-b9704/CMakeLists.txt": (b"project(llama)", 0o644)})
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: _FakeClient(payload))
+    monkeypatch.setattr(ensure_models, "REPO_ROOT", tmp_path)
+    profile = {
+        "runtime_artifact": {
+            "source": {
+                "type": "source_tar_gz_build",
+                "url": "https://example.invalid/llama.cpp-b9704.tar.gz",
+                "asset": "llama.cpp-b9704.tar.gz",
+                "sha256": "0" * 64,
+                "commit": "1" * 40,
+                "cuda_compiler": str(tmp_path / "nvcc"),
+                "cuda_toolkit_root": str(tmp_path / "cuda"),
+            },
+            "binary_path": str(tmp_path / "runtimes" / "llama-server"),
+            "required_files": ["llama-server"],
+        }
+    }
+    (tmp_path / "nvcc").write_bytes(b"compiler")
+    (tmp_path / "cuda" / "include").mkdir(parents=True)
+
+    with pytest.raises(RuntimeError, match="checksum mismatch"):
+        ensure_models._ensure_runtime_profile("linux_amd64_gpu_nvidia_cuda", profile, dry_run=False)
 
 
 def test_runtime_dry_run_reports_planned_required_files_without_writing(tmp_path: Path) -> None:

@@ -66,6 +66,34 @@ def test_prod_auto_policy_maps_cuda_host_to_balanced_model() -> None:
     assert "role balanced" in selection.reason
 
 
+def test_prod_auto_policy_maps_linux_cuda_host_to_balanced_model() -> None:
+    selection = select_llm_model(
+        "voice_chat",
+        HardwareProfile(
+            os_name="linux",
+            arch="amd64",
+            gpu_vendor="nvidia",
+            gpu_available=True,
+            cuda_available=True,
+        ),
+        settings=_settings(mode="prod"),
+    )
+
+    assert selection.model_id == "assistant-qwen3-8b-q5-balanced"
+    assert selection.hardware_selector == "linux_amd64_gpu_nvidia_cuda"
+
+
+def test_prod_auto_policy_maps_linux_cpu_host_to_portable_model() -> None:
+    selection = select_llm_model(
+        "voice_chat",
+        HardwareProfile(os_name="linux", arch="amd64"),
+        settings=_settings(mode="prod"),
+    )
+
+    assert selection.model_id == "assistant-qwen3-4b-q4-portable"
+    assert selection.hardware_selector == "linux_amd64_cpu"
+
+
 def test_prod_auto_policy_maps_cpu_host_to_portable_model() -> None:
     selection = select_llm_model(
         "voice_chat",

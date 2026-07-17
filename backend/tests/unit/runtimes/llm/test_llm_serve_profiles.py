@@ -353,7 +353,7 @@ def test_resolve_reports_amd64_cuda_as_degraded_until_evidence_exists(tmp_path: 
     )
 
     assert [(candidate.profile_id, candidate.reason) for candidate in resolution.degraded_candidates] == [
-        ("windows_amd64_gpu_nvidia_cuda", "Degraded-accelerator-unavailable"),
+        ("windows_amd64_gpu_nvidia_cuda", "Degraded-no-sidecar-binary"),
         ("windows_amd64_gpu_amd", "Degraded-accelerator-unavailable"),
         ("windows_amd64_gpu_intel", "Degraded-accelerator-unavailable"),
     ]
@@ -420,7 +420,7 @@ def test_resolve_selects_amd64_cuda_when_runtime_evidence_exists(tmp_path: Path)
             gpu_vendor="nvidia",
             cuda_available=True,
         ),
-        _preflight(["ep:CUDAExecutionProvider"]),
+        _preflight(),
         settings=_settings(),
         flags=CapabilityFlags(supports_cuda_llm=True),
         entry=entry,

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tarfile
 import zipfile
@@ -31,6 +33,7 @@ from backend.app.hardware.provisioning import resolve_required_extras
 MODEL_FAMILIES = ("stt", "tts", "wake")
 ALL_FAMILIES = (*MODEL_FAMILIES, "llm")
 _PENDING_RUNTIME_SOURCE_TYPES = {"pending-pinned-release", "pending-viability", "build-required"}
+_SOURCE_BUILD_RUNTIME_TYPE = "source_tar_gz_build"
 
 
 def _load_profiler():
@@ -228,7 +231,7 @@ def _verify_runtime_profile(profile_id: str, profile: dict[str, Any]) -> dict[st
     missing: list[str] = []
     if not binary_path.is_file() or binary_path.stat().st_size <= 0:
         missing.append(binary_path.name)
-    elif source.get("type") == "url_tar_gz" and not os.access(binary_path, os.X_OK):
+    elif source.get("type") in {"url_tar_gz", _SOURCE_BUILD_RUNTIME_TYPE} and not os.access(binary_path, os.X_OK):
         missing.append(f"{binary_path.name} (not executable)")
     for file_name in required_files:
         if file_name not in discovered_names and file_name not in missing:
@@ -431,6 +434,126 @@ def _download_runtime_url_tar_gz(profile_id: str, profile: dict[str, Any], dry_r
     return extracted
 
 
+def _source_build_cache_paths(profile_id: str, source: dict[str, Any]) -> tuple[Path, Path, Path]:
+    asset = source.get("asset")
+    if not isinstance(asset, str) or not asset.endswith(".tar.gz"):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid source build asset")
+    cache_root = REPO_ROOT / "cache" / "llama.cpp" / profile_id
+    return cache_root / asset, cache_root / "source", cache_root / "build"
+
+
+def _source_build_metadata(profile_id: str, source: dict[str, Any]) -> tuple[str, str, str]:
+    url = source.get("url")
+    sha256 = source.get("sha256")
+    commit = source.get("commit")
+    if not isinstance(url, str) or not url.startswith("https://"):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid source build url")
+    if not isinstance(sha256, str) or len(sha256) != 64 or any(char not in "0123456789abcdef" for char in sha256):
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid source build sha256")
+    if not isinstance(commit, str) or len(commit) != 40:
+        raise ValueError(f"LLM serve profile '{profile_id}' has invalid source build commit")
+    return url, sha256, commit
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _download_source_build_archive(profile_id: str, source: dict[str, Any]) -> Path:
+    url, expected_sha256, _commit = _source_build_metadata(profile_id, source)
+    archive_path, _source_root, _build_root = _source_build_cache_paths(profile_id, source)
+    if archive_path.is_file() and _sha256(archive_path) == expected_sha256:
+        return archive_path
+    archive_path.parent.mkdir(parents=True, exist_ok=True)
+    with httpx.Client(follow_redirects=True, timeout=300.0) as client:
+        response = client.get(url)
+        response.raise_for_status()
+    temporary_path = archive_path.with_suffix(".part")
+    temporary_path.write_bytes(response.content)
+    if _sha256(temporary_path) != expected_sha256:
+        temporary_path.unlink(missing_ok=True)
+        raise RuntimeError(f"LLM serve profile '{profile_id}' source archive checksum mismatch")
+    temporary_path.replace(archive_path)
+    return archive_path
+
+
+def _extract_source_build_archive(profile_id: str, source: dict[str, Any], archive_path: Path) -> Path:
+    _url, _sha256_value, commit = _source_build_metadata(profile_id, source)
+    _archive_path, source_root, _build_root = _source_build_cache_paths(profile_id, source)
+    marker = source_root / ".managed-source-commit"
+    if marker.is_file() and marker.read_text(encoding="utf-8").strip() == commit:
+        return source_root
+    if source_root.exists():
+        shutil.rmtree(source_root)
+    source_root.mkdir(parents=True)
+    with tarfile.open(archive_path, mode="r:gz") as archive:
+        members = archive.getmembers()
+        prefix = _tar_common_file_prefix(members)
+        if prefix is None:
+            raise RuntimeError(f"LLM serve profile '{profile_id}' source archive has no single top-level directory")
+        for member in members:
+            if member.isdir():
+                continue
+            if not member.isfile():
+                raise RuntimeError(f"unsafe source tar member type: {member.name}")
+            target_name = _tar_member_target(member.name, prefix)
+            if target_name is None:
+                continue
+            target = source_root / target_name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            payload = archive.extractfile(member)
+            if payload is None:
+                raise RuntimeError(f"unable to read source tar member: {member.name}")
+            with payload, target.open("wb") as destination:
+                shutil.copyfileobj(payload, destination)
+            target.chmod(member.mode & 0o777)
+    marker.write_text(f"{commit}\n", encoding="utf-8")
+    return source_root
+
+
+def _build_runtime_from_source(profile_id: str, profile: dict[str, Any]) -> list[str]:
+    source = _runtime_source(profile)
+    if _runtime_source_type(profile) != _SOURCE_BUILD_RUNTIME_TYPE:
+        raise ValueError(f"LLM serve profile '{profile_id}' has unsupported source build type")
+    cuda_compiler = source.get("cuda_compiler")
+    cuda_toolkit_root = source.get("cuda_toolkit_root")
+    if not isinstance(cuda_compiler, str) or not Path(cuda_compiler).is_file():
+        raise RuntimeError(f"LLM serve profile '{profile_id}' CUDA build prerequisite is unavailable")
+    if not isinstance(cuda_toolkit_root, str) or not (Path(cuda_toolkit_root) / "include").is_dir():
+        raise RuntimeError(f"LLM serve profile '{profile_id}' CUDA toolkit prerequisite is unavailable")
+    archive_path = _download_source_build_archive(profile_id, source)
+    source_root = _extract_source_build_archive(profile_id, source, archive_path)
+    _archive_path, _source_cache, build_root = _source_build_cache_paths(profile_id, source)
+    configure = [
+        "cmake", "-S", str(source_root), "-B", str(build_root), "-DGGML_CUDA=ON",
+        "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_CUDA_COMPILER={cuda_compiler}",
+        f"-DCUDAToolkit_ROOT={cuda_toolkit_root}", "-DCMAKE_CUDA_ARCHITECTURES=86",
+        "-DLLAMA_BUILD_TESTS=OFF", "-DLLAMA_BUILD_TOOLS=ON", "-DLLAMA_BUILD_EXAMPLES=OFF",
+        "-DLLAMA_BUILD_SERVER=ON", "-DLLAMA_BUILD_APP=OFF", "-DLLAMA_BUILD_UI=OFF",
+        "-DLLAMA_USE_PREBUILT_UI=OFF",
+    ]
+    subprocess.run(configure, check=True)
+    subprocess.run(["cmake", "--build", str(build_root), "--config", "Release", "--target", "llama-server"], check=True)
+
+    binary_path = _runtime_binary_path(profile_id, profile)
+    built_binary = build_root / "bin" / binary_path.name
+    if not built_binary.is_file():
+        raise RuntimeError(f"LLM serve profile '{profile_id}' build produced no {binary_path.name}")
+    binary_path.parent.mkdir(parents=True, exist_ok=True)
+    staged: list[str] = []
+    for built_path in sorted((build_root / "bin").iterdir()):
+        if not built_path.is_file() or (built_path.name != binary_path.name and ".so" not in built_path.name):
+            continue
+        target = binary_path.parent / built_path.name
+        shutil.copy2(built_path, target)
+        staged.append(target.name)
+    return staged
+
+
 def _runtime_source_archives(profile_id: str, source: dict[str, Any]) -> list[dict[str, str]]:
     source_type = source.get("type")
     if source_type == "url_zip":
@@ -515,6 +638,10 @@ def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: b
         return {**verify, "acquired": acquired}
     if source_type == "url_tar_gz":
         acquired = _download_runtime_url_tar_gz(profile_id, profile, dry_run=False)
+        verify = _verify_runtime_profile(profile_id, profile)
+        return {**verify, "acquired": acquired}
+    if source_type == _SOURCE_BUILD_RUNTIME_TYPE:
+        acquired = _build_runtime_from_source(profile_id, profile)
         verify = _verify_runtime_profile(profile_id, profile)
         return {**verify, "acquired": acquired}
     return {
