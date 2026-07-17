@@ -22,27 +22,35 @@
 ---
 
 ## Change Entries
+- Timestamp: 2026-07-17 04:26
+  - Host class(es): Windows AMD64; Linux ARM64
+  - Summary: Combined: included backend availability in retrieval cache identity and bounded Redis reconnection after startup failure.
+  - Scope:
+    - backend/app/memory/retrieval.py (_cache_key gains a backends token; call site passes both availabilities)
+    - backend/tests/unit/memory/test_retrieval.py (degraded-then-recovered scenario test)
+    - backend/app/cache/redis_client.py (bounded reconnect attempts on startup failure)
+    - backend/tests/unit/cache (reconnect behavior tests)
+  - Validation:
+    - backend/.venv/Scripts/python -m pytest backend/tests/unit/memory/test_retrieval.py backend/tests/unit/cache -q PASS
+  - Notes:
+    - Distinguishes cached results computed while a backend was unavailable; avoids long-running Redis reconnect loops at startup.
 
-<<<<<<< HEAD
 - Timestamp: 2026-07-16 22:08
   - Host class(es): Linux ARM64
   - Summary: Made the semantic fact insert and its FTS index insert commit together or not at all; a failed FTS insert now rolls back the fact row instead of silently committing a fact invisible to lexical search.
   - Scope:
     - backend/app/memory/semantic.py (removed exception swallow around the FTS insert inside the write transaction)
     - backend/tests/unit/memory/test_semantic.py (two new consistency tests)
-=======
 - Timestamp: 2026-07-16 22:12
   - Host class(es): Linux ARM64
   - Summary: Made semantic fact deduplication conflict-safe by moving it onto the unique text_hash index (INSERT ... ON CONFLICT DO NOTHING) instead of a check-then-insert sequence that raced concurrent writers into spurious write failures.
   - Scope:
     - backend/app/memory/semantic.py (write_entry dedup restructured; no schema change)
     - backend/tests/unit/memory/test_semantic.py (pre-existing-hash dedup test; eight-thread same-text race test)
->>>>>>> pr-8
   - Validation:
     - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_semantic.py -q PASS (12 passed)
     - backend/.venv/bin/python scripts/validate_backend.py unit PASS
   - Notes:
-<<<<<<< HEAD
     - Previously a swallowed FTS failure left the fact permanently unfindable via FTS while supports_fts remained true, with no repair path; the LIKE fallback only engages when FTS itself errors at query time.
 
 - Timestamp: 2026-07-16 22:05
@@ -106,9 +114,18 @@
     - backend/.venv/bin/python scripts/validate_backend.py unit PASS (772 passed, 2 skipped; second skip is absent wake model files on this host)
   - Notes:
     - Carries forward reusable finding 5 from PR #1 review; the missing-profile degradation paths were already fixed on main — this covers the operator override path only.
-=======
     - Previously a same-hash insert landing between the SELECT and the INSERT raised IntegrityError on idx_semantic_fact_hash, which the outer handler reported as a failed write (None) even though the fact exists.
->>>>>>> pr-8
+- Timestamp: 2026-07-16 22:16
+  - Host class(es): Linux ARM64
+  - Summary: Included backend availability (episodic/semantic presence) in the retrieval cache key so results computed while a memory backend was unavailable are not served for up to the cache TTL after the backend recovers.
+  - Scope:
+    - backend/app/memory/retrieval.py (_cache_key gains a backends token; call site passes both availabilities)
+    - backend/tests/unit/memory/test_retrieval.py (degraded-then-recovered scenario test; key-distinctness test)
+  - Validation:
+    - backend/.venv/bin/python -m pytest backend/tests/unit/memory/test_retrieval.py -q PASS (8 passed)
+    - backend/.venv/bin/python scripts/validate_backend.py unit PASS
+  - Notes:
+    - Worst prior case: recency retrieval with episodic unavailable cached [] under the same key used when episodic is present, masking real memory for DEFAULT_RETRIEVAL_TTL (300 s) after recovery. Old-format keys simply expire via TTL; no migration needed.
 
 - Timestamp: 2026-07-16 14:59
   - Host class(es): Linux AMD64 (WSL2); Windows path-preservation coverage
@@ -1426,3 +1443,4 @@
     - `CHANGE_LOG.md`
   - Validation:
     - `cat .\CHANGE_LOG.md -head 1` produced `# CHANGE_LOG.md`.
+

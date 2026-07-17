@@ -27,12 +27,15 @@ class RetrievedFact:
 
 
 class RetrievalManager:
-    def _cache_key(self, query: str | None, n: int, has_semantic: bool = False) -> str:
+    def _cache_key(self, query: str | None, n: int, has_episodic: bool = False, has_semantic: bool = False) -> str:
+        # Backend availability is part of the cached result's identity: a result
+        # computed with a backend absent must not be served once it is back.
+        backends = f"e{int(has_episodic)}s{int(has_semantic)}"
         if query is None:
-            return make_key(NS_RETRIEVAL, "recency", str(n))
+            return make_key(NS_RETRIEVAL, "recency", backends, str(n))
         query_hash = hashlib.md5(query.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         suffix = "hybrid" if has_semantic else "keyword"
-        return make_key(NS_RETRIEVAL, suffix, query_hash, str(n))
+        return make_key(NS_RETRIEVAL, suffix, backends, query_hash, str(n))
 
     def _facts_from_cache_value(self, payload: str) -> list[RetrievedFact]:
         raw = json.loads(payload)
@@ -67,7 +70,12 @@ class RetrievalManager:
         if episodic is None and semantic is None:
             return []
 
-        key = self._cache_key(query=query, n=n, has_semantic=(semantic is not None))
+        key = self._cache_key(
+            query=query,
+            n=n,
+            has_episodic=(episodic is not None),
+            has_semantic=(semantic is not None),
+        )
         can_use_cache = False
         if cache_manager is not None:
             try:
