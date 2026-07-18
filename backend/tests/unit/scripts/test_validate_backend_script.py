@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 from pathlib import Path
 from dataclasses import dataclass
 from types import SimpleNamespace
@@ -184,6 +185,30 @@ def test_runtime_marker_expr_treats_cpu_as_baseline_device() -> None:
 
 def test_runtime_marker_expr_ignores_cpu_in_mixed_device_filters() -> None:
     assert validate_backend._runtime_marker_expr("stt", "cpu,cuda") == "live and (stt) and (cuda)"
+
+
+def test_llm_cuda_runtime_filter_selects_managed_llama_cpp_live_tests() -> None:
+    source = Path("backend/tests/runtime/voice/test_llm_llama_cpp_live.py").read_text(encoding="utf-8")
+    functions = {
+        node.name: node
+        for node in ast.parse(source).body
+        if isinstance(node, ast.FunctionDef)
+    }
+
+    for name in (
+        "test_llm_llama_cpp_sidecar_is_available",
+        "test_llm_llama_cpp_returns_deterministic_response_to_known_prompt",
+    ):
+        markers = {
+            decorator.attr
+            for decorator in functions[name].decorator_list
+            if isinstance(decorator, ast.Attribute)
+            and isinstance(decorator.value, ast.Attribute)
+            and isinstance(decorator.value.value, ast.Name)
+            and decorator.value.value.id == "pytest"
+            and decorator.value.attr == "mark"
+        }
+        assert {"live", "llm", "cuda"} <= markers
 
 
 def test_ci_subcommand_suppresses_live_markers(monkeypatch, capsys) -> None:

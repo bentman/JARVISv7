@@ -107,8 +107,8 @@ linux_amd64_serve_profiles: &linux_amd64_serve_profiles
         asset: llama.cpp-b9704.tar.gz
         url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b9704.tar.gz
         sha256: bb288a8045a8fda3fc3be6ffa0e02161ed70d45788b360107fba55a331f93741
-        cuda_compiler: /usr/local/cuda-13.3/bin/nvcc
-        cuda_toolkit_root: /usr/local/cuda-13.3
+        cuda_compiler: /usr/local/cuda-12.4/bin/nvcc
+        cuda_toolkit_root: /usr/local/cuda-12.4
       binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
       required_files:
         - llama-server
@@ -265,8 +265,8 @@ models:
               asset: llama.cpp-b9704.tar.gz
               url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b9704.tar.gz
               sha256: bb288a8045a8fda3fc3be6ffa0e02161ed70d45788b360107fba55a331f93741
-              cuda_compiler: /usr/local/cuda-13.3/bin/nvcc
-              cuda_toolkit_root: /usr/local/cuda-13.3
+              cuda_compiler: /usr/local/cuda-12.4/bin/nvcc
+              cuda_toolkit_root: /usr/local/cuda-12.4
             binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
             required_files:
               - llama-server

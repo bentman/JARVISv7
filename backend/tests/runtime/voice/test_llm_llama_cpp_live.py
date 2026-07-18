@@ -34,6 +34,7 @@ def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:
 
 @pytest.mark.live
 @pytest.mark.llm
+@pytest.mark.cuda
 @pytest.mark.requires_llama_cpp
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
 def test_llm_llama_cpp_sidecar_is_available(live_llama_cpp_sidecar):
@@ -57,6 +58,7 @@ def test_llm_llama_cpp_sidecar_is_available(live_llama_cpp_sidecar):
 
 @pytest.mark.live
 @pytest.mark.llm
+@pytest.mark.cuda
 @pytest.mark.requires_llama_cpp
 @pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
 def test_llm_llama_cpp_returns_deterministic_response_to_known_prompt(live_llama_cpp_sidecar):
