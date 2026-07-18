@@ -34,7 +34,7 @@ Useful entry points:
 * [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
 * [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
-* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup, currently with more optimism than evidence
+* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup; Linux AMD64 NVIDIA CUDA llama.cpp is verified in WSL2
 
 The README is intentionally not the technical manual. Nobody wins when the front page becomes an installation crime scene.
 
@@ -112,7 +112,7 @@ JARVISv7 treats hardware differences as architecture, not an embarrassing surpri
 Current runtime posture:
 
 * CPU fallback paths are expected and explicitly represented.
-* AMD64 CUDA local LLM sidecar work has live evidence where staged.
+* Linux AMD64 NVIDIA CUDA managed `llama.cpp` is live-proven in WSL2 using b9704 with CUDA 12.4; WSL2 is the proving environment, not a separate runtime identifier.
 * ARM64 Adreno OpenCL `llama.cpp` support is documented as an end-user/staged sidecar path.
 * Windows ARM64 Qualcomm QNN STT is verified through `QNNExecutionProvider` and `QnnHtp.dll` evidence.
 * AMD64 does not select QNN and does not pretend to.

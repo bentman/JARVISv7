@@ -31,6 +31,40 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-18 08:06
+  - State: Verified
+  - Host class(es): Linux AMD64
+  - Summary: Managed Linux AMD64 NVIDIA CUDA llama.cpp source-build and runtime verification, with portable-model CPU fallback when the CUDA serve profile is unavailable.
+  - Location:
+    - `scripts/ensure_models.py`
+    - `backend/app/services/local_llm_startup.py`
+    - `config/models/llm.yaml`
+    - `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`
+    - `backend/tests/unit/services/test_local_llm_startup.py`
+  - Evidence:
+    - Timestamp: 2026-07-18 08:06 - Hardened managed Linux CUDA llama.cpp source-build and sidecar verification, and corrected CPU fallback model reselection.
+  - Notes:
+    - CUDA toolkit selection is scoped to the build subprocess.
+    - No global CUDA path or system alternative is changed.
+
+- Timestamp: 2026-07-18 07:43
+  - State: Verified
+  - Host class(es): Linux AMD64
+  - Summary: Managed llama.cpp CUDA runtime for Linux AMD64 with CUDA-specific live validation and qualified CUDA 12.4 toolchain paths.
+  - Location:
+    - `backend/tests/runtime/voice/test_llm_llama_cpp_live.py`
+    - `backend/tests/unit/scripts/test_validate_backend_script.py`
+    - `config/models/llm.yaml`
+    - `docs/jarvis-wsl-llamacpp.md`
+    - `docs/jarvis-wsl-llamacpp.sh`
+    - `runtimes/llama.cpp/linux-amd64-cuda`
+  - Evidence:
+    - Timestamp: 2026-07-18 07:43 - Enabled and validated the managed llama.cpp CUDA runtime for Linux AMD64.
+  - Notes:
+    - Validated on WSL2 with an NVIDIA RTX 3060.
+    - Linux AMD64 CUDA uses `/usr/local/cuda-12.4`.
+    - WSL2 is the validation environment, not a distinct host class.
+
 - Timestamp: 2026-07-08 13:40
   - State: Verified
   - Host class(es): Windows x64 validated

@@ -1,7 +1,6 @@
 # Quick Start — Linux / WSL
 
-> **Preliminary and unvalidated:** this guide describes the intended Linux/WSL setup path.  
-> The repository still needs Linux-specific implementation and governance work before these commands can be treated as accurate or supported. Do not use this document as validation evidence yet.
+> **Verified exception:** Linux AMD64 NVIDIA CUDA has a managed llama.cpp production path verified in WSL2. WSL2 is the proving environment, not a separate runtime identifier. This guide does not claim broader Linux desktop, audio, wake, or non-CUDA accelerator support.
 
 This guide parallels the Windows repo-run desktop preview flow using Bash and Linux-style paths. Run commands from the repository root, and do not install Python packages globally.
 
@@ -99,7 +98,7 @@ python3.12 -m venv backend/.venv
 backend/.venv/bin/python -m pip install --upgrade pip
 ```
 
-> The repository governance currently names the Windows interpreter path (`backend/.venv/Scripts/python`) as the required command path. The Linux `bin/python` path above is the intended counterpart, but that governance and supporting scripts still need to be reconciled before Linux setup is considered supported.
+> Use `backend/.venv/bin/python` for the validated Linux AMD64 CUDA path.
 
 ### 3. Use starter settings
 
@@ -166,7 +165,9 @@ Drop `--verify-only` to request acquisition of a missing or mismatched artifact.
 
 ## Hardware acceleration
 
-Provisioning and model selection are intended to be hardware-aware, but the repository's recorded accelerator evidence is currently Windows-focused. Treat Linux CUDA, ROCm, Vulkan, OpenCL, and other device paths as unsupported until repository validation records say otherwise.
+Linux AMD64 NVIDIA CUDA is verified for the managed llama.cpp sidecar: b9704 / commit `10786217e9d40c848ac0133cbe9c5f22a52421bb` / build 9704, using `/usr/local/cuda-12.4` and `runtimes/llama.cpp/linux-amd64-cuda`. The live proof starts the managed sidecar, exercises health/models/completion, confirms CUDA offload, and leaves no `llama-server` process. See [Linux llama.cpp CUDA build](jarvis-wsl-llamacpp.md).
+
+ROCm, Vulkan, OpenCL, other Linux accelerator paths, and Linux desktop/audio behavior remain outside this verified claim.
 
 Useful intended diagnostics:
 
@@ -228,7 +229,7 @@ backend/.venv/bin/python scripts/run_jarvis.py --profile
 backend/.venv/bin/python scripts/run_jarvis.py --voice-only --turns 1
 ```
 
-Voice proving requires working Linux audio input/output and compatible STT/TTS runtimes; neither is established by this preliminary guide.
+Voice proving requires working Linux audio input/output and compatible STT/TTS runtimes; neither is established by this broader Linux guide.
 
 ## Development validation
 
@@ -262,7 +263,7 @@ export JARVISV7_LIVE_TESTS=1
 - Use repository provisioning and model-management scripts rather than ad hoc installs.
 - Keep generated models, runtimes, caches, and reports out of source commits unless explicitly required.
 - Record validation claims with exact command evidence.
-- Do not treat this guide itself as evidence that Linux or WSL works.
+- Do not treat this guide as evidence for Linux paths beyond the verified Linux AMD64 NVIDIA CUDA llama.cpp route.
 
 ## Common diagnostic starting points
 
@@ -300,7 +301,7 @@ npm --prefix desktop test
 
 ## Appendix: WSL2 host setup
 
-This appendix records the preliminary setup used for Ubuntu 22.04 under WSL2. It is not yet validated as a complete JARVISv7 runtime path.
+This appendix records setup used for Ubuntu 22.04 under WSL2, the proving environment for the verified Linux AMD64 NVIDIA CUDA llama.cpp route. It does not establish a complete Linux desktop or voice runtime path.
 
 ### Preserve Ubuntu's system Python
 

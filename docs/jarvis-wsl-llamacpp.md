@@ -8,6 +8,8 @@
 runtimes/llama.cpp/linux-amd64-cuda
 ```
 
+This is a verified Linux AMD64 NVIDIA CUDA path. WSL2 was the proving environment, not a separate runtime identifier.
+
 Source, build trees, failed stages, previous-runtime backups, locks, and transcripts remain outside the repository under:
 
 ```text
@@ -145,7 +147,13 @@ backend/.venv/bin/python scripts/ensure_models.py --family llm --verify-only
 backend/.venv/bin/python scripts/validate_backend.py runtime --families llm --devices cuda
 ```
 
-Completion still requires the actual managed sidecar to start, expose health/model endpoints, complete a real request, and show CUDA device use or GPU-layer offload. A successful compile alone is not completion.
+Managed production validation completed with the selected balanced GGUF: the sidecar started, health and `/v1/models` succeeded, a real completion succeeded with CUDA GPU-layer offload, and cleanup left no `llama-server` process. Reproduce the focused live proof with:
+
+```bash
+JARVISV7_LIVE_TESTS=true backend/.venv/bin/python scripts/validate_backend.py runtime --families llm --devices cuda
+```
+
+This verification applies only to Linux AMD64 NVIDIA CUDA with the staged runtime above; it does not establish other Linux accelerators or desktop/audio paths.
 
 ## Cleanup boundaries
 
