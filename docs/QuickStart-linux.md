@@ -155,6 +155,7 @@ Wake support remains evidence-dependent. On the current WSL2 proving host, OpenW
 npm --prefix desktop install
 npm --prefix desktop test
 npm --prefix desktop run dev
+# npm --prefix desktop run build
 ```
 
 Do not install Tauri globally. On the current WSL2/WSLg proving host, the shell built and launched, started the backend through `backend/.venv/bin/python scripts/run_backend.py`, created a session, loaded readiness, and polled the consolidated desktop status API. Audio inference and completed resident voice turns remain unvalidated.

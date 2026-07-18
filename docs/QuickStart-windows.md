@@ -139,6 +139,7 @@ If it fails, the checkpoint name and reason printed tells you which of the four 
 npm --prefix desktop install
 npm --prefix desktop test
 npm --prefix desktop run dev
+# npm --prefix desktop run build
 ```
 
 Do not install Tauri globally for this repo. Use repo-local desktop package commands.
