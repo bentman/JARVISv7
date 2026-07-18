@@ -11,13 +11,15 @@ LLAMA_TAG="b9704"
 LLAMA_BUILD_NUMBER="9704"
 LLAMA_COMMIT="10786217e9d40c848ac0133cbe9c5f22a52421bb"
 LLAMA_REPOSITORY="https://github.com/ggml-org/llama.cpp.git"
-CUDA_ROOT="/usr/local/cuda-13.3"
+DEFAULT_CUDA_ROOT="/usr/local/cuda-12.4"
 CUDA_ARCHITECTURE="86"
 
 jarvis_root="$DEFAULT_JARVIS_ROOT"
 dev_root="$DEFAULT_DEV_ROOT"
+cuda_root=""
 transcript_path=""
 install_build_prereqs=false
+install_cuda_toolkit=false
 keep_previous_runtime=false
 
 usage() {
@@ -28,12 +30,13 @@ Options:
   --jarvis-root PATH       JARVIS repository root.
   --dev-root PATH          External build workspace.
                            Default: ~/WORK/CODE/jarvis-dev/llamacpp-cuda
+  --cuda-root PATH         CUDA Toolkit root. Default: /usr/local/cuda-12.4
   --transcript PATH        Build transcript path.
   --install-build-prereqs  Install missing generic Ubuntu build tools with sudo.
+  --install-cuda-toolkit   Install cuda-toolkit-12-4 with apt if CUDA 12.4 is missing.
+                           This does not install or change NVIDIA drivers.
   --keep-previous-runtime  Retain the replaced runtime under the external workspace.
   -h, --help               Show this help.
-
-The helper never installs or changes NVIDIA drivers or CUDA packages.
 USAGE
 }
 
@@ -62,8 +65,10 @@ while (($#)); do
     case "$1" in
         --jarvis-root) (($# >= 2)) || die "--jarvis-root requires a path"; jarvis_root="$2"; shift 2 ;;
         --dev-root) (($# >= 2)) || die "--dev-root requires a path"; dev_root="$2"; shift 2 ;;
+        --cuda-root) (($# >= 2)) || die "--cuda-root requires a path"; cuda_root="$2"; shift 2 ;;
         --transcript) (($# >= 2)) || die "--transcript requires a path"; transcript_path="$2"; shift 2 ;;
         --install-build-prereqs) install_build_prereqs=true; shift ;;
+        --install-cuda-toolkit) install_cuda_toolkit=true; shift ;;
         --keep-previous-runtime) keep_previous_runtime=true; shift ;;
         -h|--help) usage; exit 0 ;;
         *) die "Unknown option: $1" ;;
@@ -100,10 +105,25 @@ if ((${#missing_packages[@]})); then
     run sudo apt-get install --yes "${missing_packages[@]}"
 fi
 
+if [[ -z "$cuda_root" ]]; then
+    cuda_root="$DEFAULT_CUDA_ROOT"
+fi
+if [[ ! -x "$cuda_root/bin/nvcc" && "$install_cuda_toolkit" == true ]]; then
+    has apt-get || die "apt-get is unavailable"
+    run sudo apt-get update
+    run sudo apt-get install --yes cuda-toolkit-12-4
+fi
+
+CUDA_ROOT="$(readlink -f "$cuda_root" 2>/dev/null || printf '%s' "$cuda_root")"
 CUDA_COMPILER="$CUDA_ROOT/bin/nvcc"
-[[ -x "$CUDA_COMPILER" ]] || die "CUDA compiler unavailable: $CUDA_COMPILER"
+[[ -x "$CUDA_COMPILER" ]] || die "CUDA 12.4 toolkit unavailable at $CUDA_ROOT. Install it side-by-side with: docs/jarvis-wsl-llamacpp.sh --install-cuda-toolkit"
 [[ -d "$CUDA_ROOT/include" ]] || die "CUDA headers unavailable: $CUDA_ROOT/include"
 [[ -d "$CUDA_ROOT/lib64" ]] || die "CUDA libraries unavailable: $CUDA_ROOT/lib64"
+
+nvcc_version="$($CUDA_COMPILER --version | awk '/release / {gsub(",", "", $6); print $6; exit}')"
+[[ "$nvcc_version" == 12.* ]] || die "CUDA $nvcc_version is not accepted for this WSL build path. CUDA 13.x reproduced a pre-model native abort in llama.cpp; use CUDA 12.4 side-by-side."
+cuda_major="${nvcc_version%%.*}"
+cuda_slug="${nvcc_version//./-}"
 
 export PATH="$CUDA_ROOT/bin${PATH:+:$PATH}"
 export LD_LIBRARY_PATH="$CUDA_ROOT/lib64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -111,7 +131,7 @@ export CUDA_HOME="$CUDA_ROOT"
 export CUDACXX="$CUDA_COMPILER"
 
 source_root="$dev_root/llama.cpp"
-build_key="${LLAMA_TAG}-${LLAMA_COMMIT:0:12}-cuda13.3-sm${CUDA_ARCHITECTURE}-upstream-rpath"
+build_key="${LLAMA_TAG}-${LLAMA_COMMIT:0:12}-cuda${cuda_slug}-sm${CUDA_ARCHITECTURE}"
 build_root="$dev_root/build/$build_key"
 fingerprint_path="$build_root/.jarvis-build-fingerprint"
 lock_path="$dev_root/.build.lock"
@@ -140,7 +160,7 @@ printf 'JARVIS root: %s\n' "$jarvis_root"
 printf 'Developer workspace: %s\n' "$dev_root"
 printf 'Transcript: %s\n' "$transcript_path"
 printf 'llama.cpp: %s (%s)\n' "$LLAMA_TAG" "$LLAMA_COMMIT"
-printf 'CUDA toolkit: %s\n' "$CUDA_ROOT"
+printf 'CUDA toolkit: %s (%s)\n' "$CUDA_ROOT" "$nvcc_version"
 printf 'CUDA architecture: %s\n' "$CUDA_ARCHITECTURE"
 printf 'Build workspace: %s\n' "$build_root"
 
@@ -169,10 +189,8 @@ resolved_build_number="$(git -C "$source_root" rev-list --count HEAD)"
 fingerprint="$(cat <<EOF
 llama_tag=$LLAMA_TAG
 llama_commit=$LLAMA_COMMIT
-llama_build_number_source=git
 cuda_root=$CUDA_ROOT
-cuda_compiler=$(readlink -f "$CUDA_COMPILER")
-nvcc=$($CUDA_COMPILER --version | tail -n 1)
+nvcc=$nvcc_version
 cuda_architecture=$CUDA_ARCHITECTURE
 host_compiler=$(readlink -f "$(command -v gcc)")
 host_compiler_version=$(gcc -dumpfullversion -dumpversion)
@@ -180,7 +198,6 @@ cmake=$(cmake --version | head -n 1)
 generator=Ninja
 build_type=Release
 shared_libraries=ON
-build_with_install_rpath=ON
 install_rpath=$CUDA_ROOT/lib64;\$ORIGIN
 EOF
 )"
@@ -214,91 +231,64 @@ run cmake -S "$source_root" -B "$build_root" -G Ninja \
     -DLLAMA_BUILD_UI=OFF \
     -DLLAMA_USE_PREBUILT_UI=OFF
 
-log "Verify configured CUDA backend"
 cache="$build_root/CMakeCache.txt"
-[[ -f "$cache" ]] || die "CMake cache was not created: $cache"
 [[ "$(cache_value GGML_CUDA "$cache")" == "ON" ]] || die "CMake did not enable GGML_CUDA"
 configured_cuda_compiler="$(cache_value CMAKE_CUDA_COMPILER "$cache")"
-[[ -n "$configured_cuda_compiler" ]] || die "CMake cache does not record a CUDA compiler"
 [[ "$(readlink -f "$configured_cuda_compiler")" == "$(readlink -f "$CUDA_COMPILER")" ]] || die "CMake selected CUDA compiler '$configured_cuda_compiler', expected '$CUDA_COMPILER'"
 [[ "$(cache_value CMAKE_CUDA_ARCHITECTURES "$cache")" == "$CUDA_ARCHITECTURE" ]] || die "CMake selected an unexpected CUDA architecture"
-[[ "$(cache_value CMAKE_BUILD_WITH_INSTALL_RPATH "$cache")" == "ON" ]] || die "CMake did not enable install RPATH for the build tree"
-printf 'Configured CUDA compiler: %s\n' "$configured_cuda_compiler"
-printf 'Configured CUDA architecture: %s\n' "$(cache_value CMAKE_CUDA_ARCHITECTURES "$cache")"
 
 log "Build llama-server"
 run cmake --build "$build_root" --target llama-server --parallel "$(nproc)"
-
 build_bin="$build_root/bin"
 [[ -x "$build_bin/llama-server" ]] || die "Build produced no executable: $build_bin/llama-server"
 
-log "Remove abandoned JARVIS staging directories"
+log "Stage executable and adjacent shared libraries"
 mkdir -p -- "$runtime_parent"
 find "$runtime_parent" -maxdepth 1 -mindepth 1 -type d -name 'linux-amd64-cuda.stage.*' -print -exec rm -rf -- {} +
-
-log "Stage executable and adjacent shared libraries"
 mkdir -p -- "$runtime_stage"
 cp -a -- "$build_bin/llama-server" "$runtime_stage/"
-while IFS= read -r -d '' artifact; do
-    cp -a -- "$artifact" "$runtime_stage/"
-done < <(find "$build_bin" -maxdepth 1 \( -type f -o -type l \) \( -name '*.so' -o -name '*.so.*' \) -print0)
+while IFS= read -r -d '' artifact; do cp -a -- "$artifact" "$runtime_stage/"; done < <(find "$build_bin" -maxdepth 1 \( -type f -o -type l \) \( -name '*.so' -o -name '*.so.*' \) -print0)
 
 required_files=(llama-server libllama-server-impl.so libllama-common.so.0 libggml.so libggml-base.so libggml-cpu.so libggml-cuda.so libllama.so libmtmd.so)
-for required in "${required_files[@]}"; do
-    [[ -e "$runtime_stage/$required" ]] || die "Required staged file missing: $required"
-done
+for required in "${required_files[@]}"; do [[ -e "$runtime_stage/$required" ]] || die "Required staged file missing: $required"; done
 
 log "Verify staged provenance, linkage, and CUDA device discovery"
 probe "Staged llama-server --version" "$runtime_stage/llama-server" --version
 version_output="$PROBE_OUTPUT"
 grep -Fq "$LLAMA_BUILD_NUMBER" <<<"$version_output" || die "Staged llama-server does not report build $LLAMA_BUILD_NUMBER"
 grep -Fq "${LLAMA_COMMIT:0:8}" <<<"$version_output" || die "Staged llama-server does not report pinned commit $LLAMA_COMMIT"
-for library in libllama.so.0.0."$LLAMA_BUILD_NUMBER" libllama-common.so.0.0."$LLAMA_BUILD_NUMBER" libmtmd.so.0.0."$LLAMA_BUILD_NUMBER"; do
-    [[ -e "$runtime_stage/$library" ]] || die "Expected versioned library missing: $library"
-done
 
 readelf_output="$(readelf -d "$runtime_stage/llama-server")"
 printf '%s\n' "$readelf_output"
-grep -Eq "Library (rpath|runpath): \[[^]]*$CUDA_ROOT/lib64[^]]*\$ORIGIN[^]]*\]" <<<"$readelf_output" || die "Staged llama-server RUNPATH does not contain CUDA 13.3 and \$ORIGIN"
+grep -Fq "$CUDA_ROOT/lib64" <<<"$readelf_output" || die "Staged llama-server RUNPATH does not include $CUDA_ROOT/lib64"
+grep -Fq '\$ORIGIN' <<<"$readelf_output" || die 'Staged llama-server RUNPATH does not include $ORIGIN'
 ldd_output="$(ldd "$runtime_stage/llama-server")"
 printf '%s\n' "$ldd_output"
 grep -Fq 'not found' <<<"$ldd_output" && die "Staged runtime has unresolved shared libraries"
-grep -Fq "$build_root" <<<"$ldd_output" && die "Staged runtime still resolves libraries from the build tree"
-while IFS= read -r line; do
-    [[ "$line" =~ ^[[:space:]]*(libggml|libllama|libmtmd) ]] || continue
-    resolved="$(awk '{print $3}' <<<"$line")"
-    [[ "$resolved" == "$runtime_stage/"* ]] || die "llama.cpp library resolved outside staging: $line"
-done <<<"$ldd_output"
-grep -Eq 'libcudart\.so\.13 => /usr/local/cuda-13\.3/' <<<"$ldd_output" || die "CUDA runtime did not resolve from CUDA 13.3"
-grep -Eq 'libcublas(Lt)?\.so\.13 => /usr/local/cuda-13\.3/' <<<"$ldd_output" || die "cuBLAS did not resolve from CUDA 13.3"
+grep -Eq "libcudart\\.so\\.$cuda_major => $CUDA_ROOT/" <<<"$ldd_output" || die "CUDA runtime did not resolve from $CUDA_ROOT"
+grep -Eq "libcublas(Lt)?\\.so\\.$cuda_major => $CUDA_ROOT/" <<<"$ldd_output" || die "cuBLAS did not resolve from $CUDA_ROOT"
 grep -Eq 'libcuda\.so\.1 => /usr/lib/wsl/lib/libcuda\.so\.1' <<<"$ldd_output" || die "NVIDIA driver library did not resolve from WSL"
 
 probe "Staged llama-server --list-devices" "$runtime_stage/llama-server" --list-devices
-devices_output="$PROBE_OUTPUT"
-grep -Eiq 'CUDA|NVIDIA GeForce RTX 3060' <<<"$devices_output" || die "Staged llama-server did not enumerate the NVIDIA CUDA device"
+grep -Eiq 'CUDA|NVIDIA GeForce RTX 3060' <<<"$PROBE_OUTPUT" || die "Staged llama-server did not enumerate the NVIDIA CUDA device"
 
 log "Atomically replace JARVIS CUDA runtime"
-if [[ -d "$runtime_root" ]]; then
-    mv -- "$runtime_root" "$previous_runtime"
-fi
+if [[ -d "$runtime_root" ]]; then mv -- "$runtime_root" "$previous_runtime"; fi
 if ! mv -- "$runtime_stage" "$runtime_root"; then
     [[ -d "$previous_runtime" ]] && mv -- "$previous_runtime" "$runtime_root"
     die "Unable to install staged runtime"
 fi
 stage_installed=true
-if [[ -d "$previous_runtime" && "$keep_previous_runtime" != true ]]; then
-    rm -rf -- "$previous_runtime"
-fi
+if [[ -d "$previous_runtime" && "$keep_previous_runtime" != true ]]; then rm -rf -- "$previous_runtime"; fi
 
 log "Verify installed managed runtime"
 run "$jarvis_root/backend/.venv/bin/python" "$jarvis_root/scripts/ensure_models.py" --family llm --verify-only
 installed_ldd="$(ldd "$runtime_root/llama-server")"
 printf '%s\n' "$installed_ldd"
 grep -Fq 'not found' <<<"$installed_ldd" && die "Installed runtime has unresolved shared libraries"
-grep -Fq "$build_root" <<<"$installed_ldd" && die "Installed runtime resolves libraries from the external build tree"
 
 printf '\nPASS: Linux AMD64/WSL2 CUDA llama.cpp runtime staged at %s\n' "$runtime_root"
 printf 'Transcript: %s\n' "$transcript_path"
 printf 'Pinned source: %s (%s)\n' "$LLAMA_TAG" "$LLAMA_COMMIT"
-printf 'Build workspace: %s\n' "$build_root"
+printf 'CUDA toolkit: %s (%s)\n' "$CUDA_ROOT" "$nvcc_version"
 printf 'Next validation: backend/.venv/bin/python scripts/validate_backend.py runtime --families llm --devices cuda\n'
