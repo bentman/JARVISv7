@@ -14,7 +14,7 @@ Backend setup:
 - Internet access for dependency and model acquisition
 
 WSL2 needs a few host-specific setup choices, especially around Python.  
-See [Appendix: WSL2 host setup](#appendix-wsl2-host-setup) before creating the repo environment.
+See [Appendix 2: WSL2 host setup](#appendix-2-wsl2-host-setup) before creating the repo environment.
 
 Desktop shell:
 
@@ -327,7 +327,60 @@ npm --prefix desktop install
 npm --prefix desktop test
 ```
 
-## Appendix: WSL2 host setup
+## Appendix 1: Cross-distribution desktop graphics and audio
+
+This appendix maps the native packages and session services commonly required to display the existing Tauri 2 shell and expose microphone/speaker devices. Package names vary by distribution, and these mappings are guidance rather than JARVIS validation evidence.
+
+### Graphics and tray prerequisites
+
+The desktop shell requires GTK 3, WebKitGTK 4.1, OpenSSL, librsvg, a C/C++ toolchain, `pkg-config`, and an AppIndicator implementation for the tray boundary. It also needs an active Wayland or X11 graphical session.
+
+| Distribution family | Typical package mapping |
+|---|---|
+| Debian / Ubuntu | `build-essential`, `pkg-config`, `libgtk-3-dev`, `libwebkit2gtk-4.1-dev`, `libssl-dev`, `librsvg2-dev`, `libayatana-appindicator3-dev` |
+| Fedora / RHEL | Development Tools, `pkgconf-pkg-config`, `gtk3-devel`, `webkit2gtk4.1-devel`, `openssl-devel`, `librsvg2-devel`, and the available Ayatana/AppIndicator development package |
+| Arch / Manjaro | `base-devel`, `pkgconf`, `gtk3`, `webkit2gtk-4.1`, `openssl`, `librsvg`, `libayatana-appindicator` |
+| openSUSE | C/C++ development pattern, `pkg-config`, GTK 3, WebKitGTK 4.1, OpenSSL, librsvg, and AppIndicator/Ayatana `-devel` packages |
+| Alpine | `build-base`, `pkgconf`, and the equivalent GTK, WebKitGTK 4.1, OpenSSL, librsvg, and AppIndicator `-dev` packages; musl-based builds require separate validation |
+| NixOS | Supply GTK, WebKitGTK, OpenSSL, librsvg, AppIndicator, Rust, Node.js, and native build tools through the project development shell rather than assuming system-wide packages |
+
+A minimal or headless installation does not become a supported desktop host merely because the libraries compile. It still needs a user graphical session and working compositor/display server.
+
+Check the active display transport before launch:
+
+```bash
+printf 'DISPLAY=%s\nWAYLAND_DISPLAY=%s\nXDG_SESSION_TYPE=%s\n' \
+  "$DISPLAY" "$WAYLAND_DISPLAY" "$XDG_SESSION_TYPE"
+```
+
+### Audio services and devices
+
+JARVIS audio ultimately depends on ALSA devices exposed through a working user audio service. Most current desktop distributions use PipeWire with WirePlumber and the `pipewire-pulse` compatibility service; older installations may use PulseAudio directly. `pactl` can work in either case because PipeWire provides a PulseAudio-compatible server.
+
+Typical host requirements are:
+
+- ALSA runtime and development libraries needed by native/Python audio dependencies;
+- PipeWire plus WirePlumber and `pipewire-pulse`, or a working PulseAudio user service;
+- PulseAudio client tools for diagnostics such as `pactl`;
+- a default input source and output sink;
+- user-session permission to access the microphone and speakers.
+
+Inspect the active audio path with:
+
+```bash
+pactl info
+pactl list short sources
+pactl list short sinks
+systemctl --user --no-pager status pipewire pipewire-pulse wireplumber
+```
+
+The `systemctl` command may report missing units on a PulseAudio-only system; in that case, confirm the PulseAudio user service instead. Successful transport checks establish device visibility only. They do not prove STT, TTS, wake detection, echo handling, or an end-to-end voice turn.
+
+### Cross-distribution validation boundary
+
+Each distribution family remains a separate proving target because package availability, WebKitGTK versions, tray behavior, sandboxing, and user audio defaults differ. Keep capability identifiers normalized by operating system, architecture, and device; do not introduce distribution-specific runtime identifiers solely for setup differences.
+
+## Appendix 2: WSL2 host setup
 
 This appendix records setup used for Ubuntu 22.04 under WSL2, the proving environment for the verified Linux AMD64 NVIDIA CUDA llama.cpp route. It does not establish a complete Linux desktop or voice runtime path.
 
