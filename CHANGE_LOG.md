@@ -22,6 +22,37 @@
 ---
 
 ## Change Entries
+- Timestamp: 2026-07-18 08:06
+  - Host class(es): Linux AMD64 (WSL2); CUDA source-build and runtime-verification coverage
+  - Summary: Hardened managed Linux CUDA llama.cpp source-build and sidecar verification, and made an unavailable CUDA serve profile reselect the portable model for genuine CPU fallback rather than silently running the balanced CUDA model on CPU.
+  - Scope:
+    - `scripts/ensure_models.py` (toolkit-scoped CMake environment, `$ORIGIN` RPATH, adjacent-library and staged-linkage checks)
+    - `backend/app/services/local_llm_startup.py` (portable-model reselection for non-overridden CPU fallback)
+    - `config/models/llm.yaml` and focused LLM/script/startup tests
+  - Validation:
+    - `backend/.venv/bin/python -m pytest backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py backend/tests/unit/services/test_local_llm_startup.py backend/tests/unit/models/test_llm_selection.py backend/tests/unit/runtimes/llm/test_llm_serve_profiles.py -q` PASS (65 passed)
+    - `backend/.venv/bin/python scripts/ensure_models.py --family llm --model assistant-qwen3-8b-q5-balanced --verify-only` PASS; selected GGUF and staged Linux CUDA runtime reported ready with direct-adjacent llama.cpp libraries.
+  - Notes:
+    - Build-toolkit selection is scoped to CMake subprocesses and does not alter global shell configuration.
+
+- Timestamp: 2026-07-18 07:43
+  - Host class(es): Linux AMD64; validated (on WSL2) with NVIDIA RTX 3060 CUDA
+  - Summary: Enabled and validated the managed llama.cpp CUDA runtime for Linux AMD64, including CUDA-specific runtime test selection and the qualified CUDA 12.4 toolchain path.
+  - Scope:
+    - `backend/tests/runtime/voice/test_llm_llama_cpp_live.py`
+    - `backend/tests/unit/scripts/test_validate_backend_script.py`
+    - `config/models/llm.yaml`
+    - `docs/jarvis-wsl-llamacpp.sh`
+  - Validation:
+    - `JARVISV7_LIVE_TESTS=true backend/.venv/bin/python scripts/validate_backend.py runtime --families llm --devices cuda` PASS
+    - Result: 2 passed, 0 skipped, 46 deselected, exit 0
+    - Resolved provisioning extras included `hw-gpu-nvidia-cuda`
+    - Final cleanup check confirmed no remaining `llama-server` process
+  - Notes:
+    - Linux AMD64 CUDA uses `/usr/local/cuda-12.4`.
+    - Windows AMD64 CUDA configuration remains unchanged.
+    - The runtime identifiers remain platform-normalized; WSL2 is the validation environment, not a distinct host class.
+
 - Timestamp: 2026-07-17 06:10
   - Host class(es): Windows AMD64; platform-neutral Redis connection behavior
   - Summary: Replaced the permanent failed-initialization latch with bounded Redis reconnection. Failed connections now permit one new attempt after a fixed 30-second monotonic cooldown, while successful clients remain cached and reused.
@@ -1458,4 +1489,3 @@
     - `CHANGE_LOG.md`
   - Validation:
     - `cat .\CHANGE_LOG.md -head 1` produced `# CHANGE_LOG.md`.
-
