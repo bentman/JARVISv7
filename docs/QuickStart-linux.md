@@ -1,6 +1,6 @@
 # Quick Start — Linux / WSL
 
-> **Verified exception:** Linux AMD64 NVIDIA CUDA has a managed llama.cpp production path verified in WSL2. WSL2 is the proving environment, not a separate runtime identifier. This guide does not claim broader Linux desktop, audio, wake, or non-CUDA accelerator support.
+> **Verified scope:** Linux AMD64 NVIDIA CUDA has a managed llama.cpp production path, and the existing Tauri desktop shell now has a build and backend-lifecycle proof under WSL2/WSLg. WSL2 is the proving environment, not a separate runtime identifier. This guide does not claim native-Linux coverage beyond that host, completed audio turns, wake detection, STT/TTS inference, or non-CUDA accelerator support.
 
 This guide parallels the Windows repo-run desktop preview flow using Bash and Linux-style paths. Run commands from the repository root, and do not install Python packages globally.
 
@@ -20,8 +20,17 @@ Desktop shell:
 
 - Node.js and npm
 - Rust toolchain
-- Tauri prerequisites for your distribution
+- C/C++ build tools and `pkg-config`
+- GTK 3, WebKitGTK 4.1, JavaScriptCoreGTK 4.1, OpenSSL, librsvg, and Ayatana AppIndicator development packages
 - A working graphical session; WSL additionally needs WSLg or another supported display path
+
+The current Ubuntu 22.04/WSLg proving host built Tauri 2 with these package-level prerequisites:
+
+```text
+build-essential pkg-config curl wget file
+libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev
+libayatana-appindicator3-dev librsvg2-dev
+```
 
 Optional local services:
 
@@ -138,7 +147,7 @@ Bootstrap is intended to run these checkpoints in order:
 
 Stop at the first failure and diagnose that checkpoint. Do not work around provisioning with global or ad hoc package installation.
 
-On current Linux/WSL hosts, the OpenWakeWord wake runtime and its model artifact are explicitly skipped because its required Python dependency is unavailable for this supported Python version. The backend remains in its existing PTT-only degraded posture for wake interaction.
+Wake support remains evidence-dependent. On the current WSL2 proving host, OpenWakeWord imported, reported ready, and its monitor ran over the resident stream. That establishes startup and monitoring only; it does not validate wake detection or a completed voice turn on Linux.
 
 ### 5. Install desktop dependencies and launch
 
@@ -148,7 +157,16 @@ npm --prefix desktop test
 npm --prefix desktop run dev
 ```
 
-Do not install Tauri globally. Linux desktop launch, audio integration, and WSLg behavior remain unvalidated.
+Do not install Tauri globally. On the current WSL2/WSLg proving host, the shell built and launched, started the backend through `backend/.venv/bin/python scripts/run_backend.py`, created a session, loaded readiness, and polled the consolidated desktop status API. Audio inference and completed resident voice turns remain unvalidated.
+
+For a compile-only proof before opening a window:
+
+```bash
+cargo check --manifest-path desktop/src-tauri/Cargo.toml
+npm --prefix desktop run build
+```
+
+The WSLg proof emitted two non-fatal GTK scale-factor diagnostics during startup. They did not terminate the shell or prevent the frontend/backend lifecycle. Tray construction completed, but WSLg tray presentation was not separately confirmed.
 
 ## Model acquisition
 
@@ -230,6 +248,16 @@ backend/.venv/bin/python scripts/run_jarvis.py --voice-only --turns 1
 ```
 
 Voice proving requires working Linux audio input/output and compatible STT/TTS runtimes; neither is established by this broader Linux guide.
+
+For WSLg transport inspection without claiming voice inference:
+
+```bash
+pactl info
+pactl list short sources
+pactl list short sinks
+```
+
+The proving host exposed `RDPSource` and `RDPSink`; the resident stream started without a reported audio error. This is transport/startup evidence only, not STT, TTS, wake-detection, or end-to-end voice evidence.
 
 ## Development validation
 
@@ -326,6 +354,21 @@ sudo apt-get install --yes build-essential pkg-config curl ca-certificates xz-ut
 ```
 
 For WSLg audio, `libasound2-plugins` enables PortAudio's PulseAudio device. Without it, JARVIS may see only the invalid default device `-1`.
+
+### Install Tauri desktop prerequisites
+
+The existing Tauri 2 shell uses GTK/WebKitGTK for its window and Ayatana AppIndicator for its tray boundary:
+
+```bash
+sudo apt-get install --yes build-essential pkg-config curl wget file libssl-dev libgtk-3-dev libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev
+```
+
+Verify the WSLg display and audio bridges before launching:
+
+```bash
+printf 'DISPLAY=%s\nWAYLAND_DISPLAY=%s\nPULSE_SERVER=%s\n' "$DISPLAY" "$WAYLAND_DISPLAY" "$PULSE_SERVER"
+pactl info
+```
 
 ### Build and install Python 3.12.10
 
