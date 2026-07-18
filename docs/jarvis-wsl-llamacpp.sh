@@ -105,9 +105,7 @@ if ((${#missing_packages[@]})); then
     run sudo apt-get install --yes "${missing_packages[@]}"
 fi
 
-if [[ -z "$cuda_root" ]]; then
-    cuda_root="$DEFAULT_CUDA_ROOT"
-fi
+[[ -n "$cuda_root" ]] || cuda_root="$DEFAULT_CUDA_ROOT"
 if [[ ! -x "$cuda_root/bin/nvcc" && "$install_cuda_toolkit" == true ]]; then
     has apt-get || die "apt-get is unavailable"
     run sudo apt-get update
@@ -120,8 +118,11 @@ CUDA_COMPILER="$CUDA_ROOT/bin/nvcc"
 [[ -d "$CUDA_ROOT/include" ]] || die "CUDA headers unavailable: $CUDA_ROOT/include"
 [[ -d "$CUDA_ROOT/lib64" ]] || die "CUDA libraries unavailable: $CUDA_ROOT/lib64"
 
-nvcc_version="$($CUDA_COMPILER --version | awk '/release / {gsub(",", "", $6); print $6; exit}')"
-[[ "$nvcc_version" == 12.* ]] || die "CUDA $nvcc_version is not accepted for this WSL build path. CUDA 13.x reproduced a pre-model native abort in llama.cpp; use CUDA 12.4 side-by-side."
+nvcc_output="$($CUDA_COMPILER --version)"
+nvcc_version="$(sed -nE 's/.*release ([0-9]+\.[0-9]+).*/\1/p' <<<"$nvcc_output" | head -n 1)"
+nvcc_build="$(sed -nE 's/.*V([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' <<<"$nvcc_output" | head -n 1)"
+[[ -n "$nvcc_version" ]] || die "Unable to parse CUDA release from $CUDA_COMPILER --version"
+[[ "$nvcc_version" == 12.4 ]] || die "CUDA $nvcc_version is not accepted for this WSL build path; expected CUDA 12.4."
 cuda_major="${nvcc_version%%.*}"
 cuda_slug="${nvcc_version//./-}"
 
@@ -160,13 +161,13 @@ printf 'JARVIS root: %s\n' "$jarvis_root"
 printf 'Developer workspace: %s\n' "$dev_root"
 printf 'Transcript: %s\n' "$transcript_path"
 printf 'llama.cpp: %s (%s)\n' "$LLAMA_TAG" "$LLAMA_COMMIT"
-printf 'CUDA toolkit: %s (%s)\n' "$CUDA_ROOT" "$nvcc_version"
+printf 'CUDA toolkit: %s (release %s, build %s)\n' "$CUDA_ROOT" "$nvcc_version" "${nvcc_build:-unknown}"
 printf 'CUDA architecture: %s\n' "$CUDA_ARCHITECTURE"
 printf 'Build workspace: %s\n' "$build_root"
 
 log "Verify Linux/WSL NVIDIA CUDA prerequisites"
 run nvidia-smi
-run "$CUDA_COMPILER" --version
+printf '%s\n' "$nvcc_output"
 run gcc --version
 run g++ --version
 run cmake --version
@@ -190,7 +191,8 @@ fingerprint="$(cat <<EOF
 llama_tag=$LLAMA_TAG
 llama_commit=$LLAMA_COMMIT
 cuda_root=$CUDA_ROOT
-nvcc=$nvcc_version
+nvcc_release=$nvcc_version
+nvcc_build=${nvcc_build:-unknown}
 cuda_architecture=$CUDA_ARCHITECTURE
 host_compiler=$(readlink -f "$(command -v gcc)")
 host_compiler_version=$(gcc -dumpfullversion -dumpversion)
@@ -232,8 +234,10 @@ run cmake -S "$source_root" -B "$build_root" -G Ninja \
     -DLLAMA_USE_PREBUILT_UI=OFF
 
 cache="$build_root/CMakeCache.txt"
+[[ -f "$cache" ]] || die "CMake cache was not created: $cache"
 [[ "$(cache_value GGML_CUDA "$cache")" == "ON" ]] || die "CMake did not enable GGML_CUDA"
 configured_cuda_compiler="$(cache_value CMAKE_CUDA_COMPILER "$cache")"
+[[ -n "$configured_cuda_compiler" ]] || die "CMake cache does not record a CUDA compiler"
 [[ "$(readlink -f "$configured_cuda_compiler")" == "$(readlink -f "$CUDA_COMPILER")" ]] || die "CMake selected CUDA compiler '$configured_cuda_compiler', expected '$CUDA_COMPILER'"
 [[ "$(cache_value CMAKE_CUDA_ARCHITECTURES "$cache")" == "$CUDA_ARCHITECTURE" ]] || die "CMake selected an unexpected CUDA architecture"
 
@@ -290,5 +294,5 @@ grep -Fq 'not found' <<<"$installed_ldd" && die "Installed runtime has unresolve
 printf '\nPASS: Linux AMD64/WSL2 CUDA llama.cpp runtime staged at %s\n' "$runtime_root"
 printf 'Transcript: %s\n' "$transcript_path"
 printf 'Pinned source: %s (%s)\n' "$LLAMA_TAG" "$LLAMA_COMMIT"
-printf 'CUDA toolkit: %s (%s)\n' "$CUDA_ROOT" "$nvcc_version"
+printf 'CUDA toolkit: %s (release %s, build %s)\n' "$CUDA_ROOT" "$nvcc_version" "${nvcc_build:-unknown}"
 printf 'Next validation: backend/.venv/bin/python scripts/validate_backend.py runtime --families llm --devices cuda\n'
