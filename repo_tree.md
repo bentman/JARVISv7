@@ -14,7 +14,7 @@ JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative c
 - External escalation providers (cloud LLMs, search fallbacks) get explicit runtime files because they are stable policy surfaces.
 - Search escalations live under their own provider domain, separate from LLM runtimes.
 - Artifacts, sessions, and turns are persisted separately from implementation code.
-- Frontend and desktop are product shells; conversation and runtime logic stay in backend domains.
+- Desktop is the product shell; conversation and runtime logic stay in backend domains.
 - **Provisioning is PEP 621 / PEP 508 native**: package sets live in `pyproject.toml` as extras with environment-marker gating where markers suffice; hardware-vendor gating that markers cannot express (NPU vendor, CUDA availability) lives in the profiler-driven resolver under `backend/app/hardware/provisioning.py`. `backend/requirements.txt` is a derived lockfile of the base extra, not a source of truth.
 - **Tests are arch-aware by design**, not arch-split by directory. Pytest markers + `conftest.py` skip conditions gate tests to the host classes / devices they target. Directory structure reflects test purpose (unit / integration / runtime) and functional domain (voice / turn / desktop / acceleration_matrix / agents / hardware).
 - Every voice-family runtime (STT/TTS/LLM/Wake) accepts `device` as a parameter (`cpu` / `cuda` / `directml` / `qnn` / etc.) from day one. New device support is a runtime-internal branch, never a new runtime family.
@@ -31,7 +31,6 @@ JARVISv7/
 ├─ data/                              # mutable runtime state: memory, sessions, turns, agents (ledger), temp
 ├─ desktop/                           # desktop shell (tauri/native integration, overlays, tray, hotkeys)
 ├─ docs/                              # architecture, runtime, and decision records
-├─ frontend/                          # web/debug/operator surface
 ├─ models/                            # local model artifacts and downloaded runtime assets (llm, stt, tts, wake)
 ├─ reports/                           # validation, diagnostics, benchmark outputs
 ├─ scripts/                           # provisioning, bootstrap, validation, packaging, utility scripts
@@ -262,16 +261,12 @@ config/
 │  ├─ policies.yaml                  # safety, fallback, LLM escalation, search escalation, execution,
 │  │                                 #   agent-opt-in, filesystem-sandbox-path policies
 │  └─ profiles.yaml                  # runtime profiles derived from capability flags
-├─ cache/
-│  └─ policies.yaml                  # application cache TTL / eviction / namespace policy (not Redis service config)
 ├─ redis/
 │  └─ redis.conf                     # Redis service configuration files (container/service ownership)
 ├─ search/                           # search escalation service config (Group E)
-│  ├─ searxng/                       # SearXNG service config (repo-owned; mounted into container)
-│  │  ├─ settings.yml                # SearXNG settings; JSON format enabled
-│  │  └─ cache/                      # SearXNG runtime cache (gitignored contents)
-│  ├─ ddgs/                          # DDGS config placeholder
-│  └─ tavily/                        # Tavily config placeholder
+│  └─ searxng/                       # SearXNG service config (repo-owned; mounted into container)
+│     ├─ settings.yml                # SearXNG settings; JSON format enabled
+│     └─ cache/                      # SearXNG runtime cache (gitignored contents)
 ├─ hardware/
 │  └─ notes.md                       # human-readable notes on system prerequisites (QAIRT SDK path, DirectML caveats,
 │                                    #   espeak-ng install, QNN quantization on x64, ARM64 Tauri toolchain)
