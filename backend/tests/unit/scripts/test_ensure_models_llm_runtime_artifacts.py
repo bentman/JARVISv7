@@ -496,6 +496,7 @@ def test_runtime_url_tar_gz_preserves_safe_relative_symbolic_links(tmp_path: Pat
     assert link_path.readlink() == Path("libmtmd.so.0")
 
 
+@pytest.mark.skipif(os.name == "nt", reason="validates Linux/POSIX source-build filesystem semantics")
 def test_runtime_source_build_verifies_provenance_and_stages_shared_libraries(tmp_path: Path, monkeypatch) -> None:
     source_root_name = "llama.cpp-b9704"
     payload = _tar_gz_bytes({f"{source_root_name}/CMakeLists.txt": (b"cmake_minimum_required(VERSION 3.14)", 0o644)})

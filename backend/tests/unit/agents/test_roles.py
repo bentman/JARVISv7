@@ -7,7 +7,7 @@ import pytest
 from backend.app.agents.roles import load_agent_roles, role_ids, role_payload
 
 
-def test_load_agent_roles_from_default_config() -> None:
+def test_load_agent_roles_from_default_specs() -> None:
     roles = load_agent_roles()
 
     assert role_ids(roles) == ["agent_creator", "critic", "curator", "executor", "learner", "planner"]

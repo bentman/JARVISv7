@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from backend.app.personality.adapter import apply_personality
 from backend.app.personality.loader import (
     list_personality_profiles,
     list_personality_profiles_with_errors,
@@ -81,12 +80,6 @@ def test_load_default_personality_returns_configured_profile():
     assert profile.profile_id == "default"
     assert profile.display_name == "Morgan"
     assert profile.description == "Balanced general assistant."
-
-
-def test_adapter_remains_noop():
-    profile = load_default_personality()
-
-    assert apply_personality("prompt", profile) == "prompt"
 
 
 def test_load_personality_profile_rejects_unknown_and_bad_id():

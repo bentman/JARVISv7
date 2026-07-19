@@ -6,10 +6,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field
 
-from backend.app.core.paths import CONFIG_DIR
 from backend.app.agents.specs import DEFAULT_SPECS_DIR, JarvisAgentSpec, load_agent_specs
-
-DEFAULT_ROLES_PATH = CONFIG_DIR / "agents" / "roles.yaml"
 
 
 class AgentRoleDefinition(BaseModel):
@@ -20,8 +17,8 @@ class AgentRoleDefinition(BaseModel):
     allowed_message_types: list[str] = Field(default_factory=list)
 
 
-def load_agent_roles(path: Path = DEFAULT_ROLES_PATH) -> dict[str, AgentRoleDefinition]:
-    if path == DEFAULT_ROLES_PATH:
+def load_agent_roles(path: Path | None = None) -> dict[str, AgentRoleDefinition]:
+    if path is None:
         return _roles_from_specs(load_agent_specs(DEFAULT_SPECS_DIR))
     if not path.exists():
         raise FileNotFoundError(f"agent roles config not found: {path}")

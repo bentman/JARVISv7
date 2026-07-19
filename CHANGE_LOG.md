@@ -22,6 +22,16 @@
 ---
 
 ## Change Entries
+- Timestamp: 2026-07-19 11:49
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed the confirmed repository cleanup, reconciled `repo_tree.md`, and corrected the Windows platform gate for the Linux/POSIX source-build filesystem test.
+  - Scope:
+    - Repository cleanup and structural-map reconciliation in `repo_tree.md`.
+    - Platform gate in `backend/tests/unit/scripts/test_ensure_models_llm_runtime_artifacts.py`.
+  - Validation:
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`801 passed, 4 skipped`).
+    - `git diff --check` PASS with line-ending notices only.
+
 - Timestamp: 2026-07-18 08:06
   - Host class(es): Linux AMD64 (WSL2); CUDA source-build and runtime-verification coverage
   - Summary: Hardened managed Linux CUDA llama.cpp source-build and sidecar verification, and made an unavailable CUDA serve profile reselect the portable model for genuine CPU fallback rather than silently running the balanced CUDA model on CPU.

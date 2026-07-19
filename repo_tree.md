@@ -68,8 +68,7 @@ backend/
 │  │  ├─ planner.py                  # planner dry-run/spec surface
 │  │  ├─ policy.py                   # disabled-by-default policy/status gate
 │  │  ├─ roles.py                    # validated role/spec identifier helpers
-│  │  ├─ specs.py                    # JarvisAgentSpec catalog loader/validator
-│  │  └─ trace.py                    # agent trace records
+│  │  └─ specs.py                    # JarvisAgentSpec catalog loader/validator
 │  ├─ api/
 │  │  ├─ dependencies.py             # route dependencies and shared request wiring
 │  │  ├─ routes/
@@ -100,7 +99,6 @@ backend/
 │  ├─ cache/                         # cache code layer (access, policy, client); distinct from top-level cache/ data directory
 │  │  ├─ keys.py                     # cache key naming and namespaces
 │  │  ├─ manager.py                  # cache access layer (fail-closed when Redis unavailable)
-│  │  ├─ policies.py                 # cache policy rules
 │  │  └─ redis_client.py             # redis integration
 │  ├─ cognition/
 │  │  ├─ executor.py                 # deterministic tool execution coordination (ACTING state owner, F.1)
@@ -151,7 +149,6 @@ backend/
 │  │  └─ manager.py                  # model verify/ensure authority (HF + release-URL acquisition)
 │  ├─ personality/
 │  │  ├─ acknowledgment.py           # personality-aware acknowledgment / playback guard surface
-│  │  ├─ adapter.py                  # applies personality as prompt-assembly input (never bypasses policy)
 │  │  ├─ loader.py                   # loads personality profiles from config/personality/
 │  │  ├─ resolver.py                 # resolves active personality for runtime/session
 │  │  └─ schema.py                   # structured personality schema
@@ -248,7 +245,6 @@ backend/
 ```text
 config/
 ├─ agents/
-│  ├─ roles.yaml                     # legacy role policy/config surface retained for compatibility
 │  └─ specs/                         # durable repo-owned disabled JarvisAgentSpec catalog
 │     ├─ agent_creator.yaml
 │     ├─ critic.yaml
