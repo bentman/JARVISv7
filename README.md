@@ -34,7 +34,7 @@ Useful entry points:
 * [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
 * [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
-* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup; Linux AMD64 NVIDIA CUDA llama.cpp is verified in WSL2
+* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup
 
 The README is intentionally not the technical manual. Nobody wins when the front page becomes an installation crime scene.
 
@@ -52,7 +52,7 @@ The intended progression is simple, even when the engineering is not:
 * establish one honest voice-and-text interaction loop
 * preserve continuity without hiding state inside the model
 * make memory useful without making it mysterious
-* allow action only through explicit, governed capability
+* allow action only through explicit capability boundaries
 * add reusable skills, integrations, plugins, and agents only after the foundation can support them
 
 That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.
@@ -75,7 +75,6 @@ Current working areas include:
 * managed local `llama.cpp` with Ollama fallback
 * disk-backed episodic memory, SQLite semantic memory, bounded working context, retrieval, and persisted turn/session artifacts
 * structured personality profiles applied through explicit prompt and response boundaries
-* disabled-by-default agent policy, spec catalog, local ledger, and read-only trace/status surfaces
 
 That is not victory. It is, however, enough functionality that remaining excuses now have to fill out paperwork.
 
@@ -89,14 +88,14 @@ Voice remains the primary objective. The project now has real voice infrastructu
 
 What is validated or materially present:
 
-* local STT and TTS runtime selection by host readiness
+* Windows AMD64 local voice paths, including validated CUDA and DirectML TTS execution where supported
+* Windows ARM64 Qualcomm QNN STT and TTS paths
+* Linux voice and runtime support where documented and validated
 * push-to-talk and wake paths over a shared stream
 * resident voice invocation and bounded follow-up windows
 * barge-in/interruption handling and playback coordination
 * live voice tests for selected host paths
 * desktop resident voice proof paths
-* Windows ARM64 Qualcomm QNN STT and TTS paths
-* Windows AMD64 CUDA and DirectML TTS paths
 
 What still needs work is the pleasant part: latency, timing, conversational smoothness, natural interruption, robustness, and the small matter of making it feel less like a stack of subsystems successfully pretending to be one organism.
 
@@ -106,16 +105,16 @@ What still needs work is the pleasant part: latency, timing, conversational smoo
 
 ## 🏃 Runtime and Hardware
 
-JARVISv7 treats hardware differences as architecture, not an embarrassing surprise to be patched later. Startup begins with profiling, provisioning, and readiness checks so runtime selection can be based on evidence instead of optimism. Windows AMD64, Windows ARM64, and selected Linux paths are treated as real targets rather than future apology letters.
+JARVISv7 treats hardware differences as architecture, not an embarrassing surprise to be patched later. Startup begins with profiling, provisioning, and readiness checks so runtime selection can be based on evidence instead of optimism.
 
 Current runtime posture:
 
-* CPU fallback paths are expected and explicitly represented.
-* Linux AMD64 NVIDIA CUDA managed `llama.cpp` is live-proven in WSL2 using CUDA 12.4; WSL2 is the proving environment, not a separate runtime identity.
+* Windows AMD64 is the broadest proving target, with CPU fallback and selected CUDA and DirectML paths.
+* Windows ARM64 is a first-class target, including validated Qualcomm QNN voice acceleration where supported.
+* Linux is supported enough to welcome contributors without claiming every path has achieved diplomatic immunity; Linux AMD64 NVIDIA CUDA managed `llama.cpp` is live-proven in WSL2 using CUDA 12.4.
 * ARM64 Adreno OpenCL `llama.cpp` support remains a documented staged path.
-* Windows ARM64 Qualcomm QNN acceleration is verified for supported voice paths.
 * AMD64 does not select QNN and does not pretend to.
-* DirectML, CUDA, QNN, and other accelerator claims remain bounded by what has actually been proven.
+* accelerator claims remain bounded by what has actually been proven.
 
 The technical helper docs are here when the hardware rabbit hole becomes unavoidable:
 
@@ -125,6 +124,24 @@ The technical helper docs are here when the hardware rabbit hole becomes unavoid
 Hardware acceleration is welcome. Hardware fan fiction is not.
 
 > Prove it, record it, then claim it. Preferably in that order.
+
+* * *
+
+## 🧬 Personality and Presentation
+
+Personality is treated as a subsystem, not seasoning. The assistant voice is configured, bounded, inspectable, and compatible with deterministic orchestration. Tone can exist without being allowed to override facts, policy, or basic survival instincts.
+
+What this means in practice:
+
+* personality profiles influence response presentation
+* prompt envelopes include structured personality context
+* rendering and cleanup paths keep text and voice output bounded
+* provenance and policy remain separate from persona
+* the assistant can be more consistent without being given root access to reality
+
+The end goal is not blandness. It is personality that survives validation.
+
+> Snark is acceptable. Hallucinated authority is not.
 
 * * *
 
@@ -147,63 +164,45 @@ This is a meaningful foundation, not the final form. Better retrieval, preferenc
 
 * * *
 
-## ⚖️ Agents, Tools, and Governance
-
-One reason v7 exists is that capable systems drift when rules are treated as decorative. JARVISv7 keeps governance close to the foundation: explicit policy, inspectable state, durable evidence, permission boundaries, and disabled-by-default agent surfaces.
-
-Where things stand now:
-
-* agent policy, specs, ledger records, and read-only trace/status boundaries exist
-* autonomous or background agent execution does not
-* general-purpose tool execution was intentionally removed until there is a real product path for it
-* future tools, skills, MCP connections, plugins, and agents are expected to compose through explicit capability and permission boundaries
-* inactive features are not granted honorary production status for showing up in a directory
-
-The destination is still ambitious: reusable skills, governed tools, external integrations, plugins, and opt-in agents that can act without replacing the core assistant or inventing a second orchestration system.
-
-This is not a lack of ambition. It is how the project avoids waking up with a self-important framework where a feature was requested.
-
-> The system is not trying to become more dramatic. The system is trying to become more correct.
-
-* * *
-
-## 🧬 Personality and Presentation
-
-Personality is treated as a subsystem, not seasoning. The assistant voice is configured, bounded, inspectable, and compatible with deterministic orchestration. Tone can exist without being allowed to override facts, policy, or basic survival instincts.
-
-What this means in practice:
-
-* personality profiles influence response presentation
-* prompt envelopes include structured personality context
-* rendering and cleanup paths keep text and voice output bounded
-* provenance and policy remain separate from persona
-* the assistant can be more consistent without being given root access to reality
-
-The end goal is not blandness. It is personality that survives validation.
-
-> Snark is acceptable. Hallucinated authority is not.
-
-* * *
-
 ## ⚠️ Remaining Work
 
 The main unanswered question is no longer what JARVIS should be. The answer is in [ProjectVision.md](ProjectVision.md): a local, voice-first, desktop-resident assistant that grows from a truthful runtime foundation into useful memory, governed action, reusable capability, and eventually opt-in agent behavior.
 
-Major remaining goals:
+The actual gaps are less theatrical and more useful:
 
-* improve real-time voice quality, latency, interruption, and conversational flow
-* strengthen desktop presence and user-facing state visibility
-* deepen memory into preferences, procedures, correction, and better long-term usefulness
-* introduce reusable skills and governed tools without loosening execution boundaries
-* support MCP connections, plugins, and external integrations through recognizable reusable shapes
-* introduce agents as opt-in orchestration over proven assistant capabilities
-* improve parity across supported host classes
-* prove more live runtime paths
-* reduce the number of places where “works” still requires a footnote
+* improve real-time voice latency, endpointing, interruption, recovery, and conversational smoothness
+* strengthen desktop presence, interaction polish, settings clarity, and user-facing state visibility
+* deepen memory into preference, procedural, correction, retention, and better retrieval behavior
+* connect useful external capability to the normal assistant path instead of leaving provider substrates isolated
+* introduce reusable instructions, prompts, and skills without turning them into hidden policy
+* establish honest tool execution, permissions, confirmations, cancellation, and audit behavior
+* support MCP connections, plugins, and integrations through recognizable reusable shapes
+* introduce agents only after tools, memory, permissions, and handoffs are proven beneath them
+* improve Windows AMD64 and Windows ARM64 parity, then broaden Linux contributor paths without over-claiming them
+* prove more live runtime paths and reduce the number of places where “works” still requires a footnote
 
 That is not a small list. It is also not a reason to restart the project again, which is character development.
 
 > The roadmap is increasingly engineering work rather than philosophical fog. Inconvenient, but healthy.
+
+* * *
+
+## 🧩 Skills, Tools, Integrations, Plugins, and Agents
+
+These are destination capabilities, not a disguised inventory of things that once had filenames.
+
+The intended order matters:
+
+* instructions and reusable prompts make behavior repeatable
+* skills package bounded procedural knowledge
+* tools provide explicit executable actions
+* MCP connections and integrations expose external context and capability
+* plugins bundle reusable capability without owning the whole application
+* agents coordinate proven capabilities for larger, opt-in work
+
+The normal assistant must remain useful without any of them. Extensions should add capability, not establish a parallel government in the basement.
+
+> First make the assistant dependable. Then let it delegate.
 
 * * *
 
@@ -218,5 +217,45 @@ Compared with v6, v7 emphasizes:
 * shared turn/session paths for text and voice
 * desktop as the durable surface
 * explicit personality, policy, memory, and capability boundaries
-* validation on target host classes instead of wishful portability
+* Windows AMD64 first, Windows ARM64 alongside it, and Linux paths expanded with evidence
 * truthful degraded states when a feature is unavailable
+
+* * *
+
+## 🤝 Contributions Welcome
+
+JARVISv7 is under active development. Contributions are welcome where they improve a real path, preserve truthful capability reporting, and arrive with enough evidence that the next person does not need to perform digital archaeology.
+
+Windows AMD64 and Windows ARM64 coverage are especially valuable. Linux contributions are also welcome, particularly where they make setup, runtime behavior, or validation less host-specific.
+
+Start with the quick-start guide, read [AGENTS.md](AGENTS.md), and keep changes narrow enough that reviewers can still remember why they opened the diff.
+
+> Pull requests are welcome. Surprise architecture is less welcome.
+
+* * *
+
+## 📜 License
+
+JARVISv7 is licensed under the [MIT License](LICENSE).
+
+Use it, modify it, learn from it, and improve it. The license does not include an arc reactor, a British synthetic voice, or legal permission to blame the repository for decisions made after midnight.
+
+* * *
+
+## 🙏 Acknowledgments
+
+JARVISv7 builds on a large open-source ecosystem spanning Python, FastAPI, Tauri, ONNX Runtime, llama.cpp, Ollama, openWakeWord, Kokoro, Redis, SearXNG, and the many projects that make local AI development possible without requiring a warehouse full of GPUs.
+
+The project also owes a recurring debt to every test failure that arrived before a confident release note.
+
+* * *
+
+## 🧾 Bottom Line
+
+JARVISv7 is not finished. It is no longer imaginary either.
+
+There is a real desktop shell, a real local conversation path, real voice infrastructure, real hardware-aware runtime selection, real personality handling, real continuity and memory foundations, and enough validation to distinguish progress from decorative confidence.
+
+The destination remains ambitious. The foundation is finally substantial enough that building upward is more sensible than starting over.
+
+> Not magic. Not done. Definitely in progress.
