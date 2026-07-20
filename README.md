@@ -14,17 +14,20 @@
 * Still not allowed to call vibes a validation strategy.
 * Now with enough runtime evidence that remaining problems have nowhere polite to hide.
 
-JARVISv7 is a local-first, voice-first personal assistant project built for real conversational interaction on user-owned hardware. The target is not a browser chat box with a microphone button taped to it. The target is a desktop-resident assistant that can listen, reason, respond, speak, remember useful context, expose what it is doing, and fail in ways humans can actually diagnose. 
+JARVISv7 is a local-first, voice-first personal assistant project built for real conversational interaction on user-owned hardware. The target is not a browser chat box with a microphone button taped to it. The target is a desktop-resident assistant that can listen, reason, respond, speak, remember useful context, expose what it is doing, and fail in ways humans can actually diagnose.
+
+That description is the destination. The reason this is version seven is the route taken to reach it.
+
 JARVISv7 exists because v6 taught two important lessons:
 
 > The vision was mostly right.  
 > The implementation was occasionally creative.  
 
-* Some architectural decisions worked exactly as intended - some did not.  
+* Some architectural decisions worked exactly as intended — some did not.  
 * Several worked just well enough to expose entirely different problems.  
 * Which, in hindsight, is indeed progress.  
 
-Since then, v7 has moved from "another restart with better rules" to "an actual construction site with permits, inspections, and a suspicious number of extension cords" - oh and still very hard to manage.
+Since then, v7 has moved from "another restart with better rules" to an actual construction site with permits, inspections, and a suspicious number of extension cords. It remains surprisingly difficult to manage.
 
 > A project that has finally become disciplined enough to discover how much work remains.
 
@@ -45,7 +48,7 @@ Useful entry points:
 * [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
 * [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
-* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup (kinda)
+* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup — usable, documented, and still earning its confidence
 
 The README is intentionally not the technical manual. Nobody wins when the front page becomes an installation crime scene.
 
@@ -68,17 +71,15 @@ The intended progression is simple, even when the engineering is not:
 
 That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.
 
-> [ProjectVision.md](ProjectVision.md) contains the destination.  
-> [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.
-
-
-> The goal is natural interaction without pretending the engineering underneath is simple.
+[ProjectVision.md](ProjectVision.md) contains the destination. [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered. The goal is natural interaction without pretending the engineering underneath is simple.
 
 * * *
 
 ## 🧱 What Exists Now
 
 JARVISv7 now has substantially more than scaffolding. It has a hardware-aware backend, a desktop shell, local voice runtimes, a working conversation path, resident voice behavior, session continuity, structured personality, several distinct memory layers, and verified runtime evidence across multiple host and accelerator paths. It is still under construction, but increasingly the problems are specific instead of mystical.
+
+It has enough functioning foundation that the remaining work is increasingly about quality, reach, and composition rather than proving the basic idea.
 
 Current working areas include:
 
@@ -110,7 +111,7 @@ What is validated or materially present:
 * desktop resident voice proof paths
 * Windows AMD64 local voice paths, including validated CUDA and DirectML TTS execution where supported
 * Windows ARM64 Qualcomm QNN STT and TTS paths
-* Linux voice and runtime support where documented and validated (fingers-crossed)
+* Linux voice and runtime paths where explicitly documented and validated — optimism sold separately
 
 What still needs work is the pleasant part: latency, timing, conversational smoothness, natural interruption, robustness, and the small matter of making it feel less like a stack of subsystems successfully pretending to be one organism.
 
@@ -122,18 +123,20 @@ What still needs work is the pleasant part: latency, timing, conversational smoo
 
 JARVISv7 treats hardware differences as architecture, not an embarrassing surprise to be patched later. Startup begins with profiling, provisioning, and readiness checks so runtime selection can be based on evidence instead of optimism.
 
-Current runtime posture:
+Proven runtime posture:
 
 * Windows AMD64 is the broadest proving target, with CPU fallback and selected CUDA and DirectML paths.
 * Windows ARM64 is a first-class target, including validated Qualcomm QNN voice acceleration where supported.
-* ARM64 Adreno OpenCL accelerated `llama.cpp` support remains side-loaded (compiled via helper doc).
-* ARM64 QNN accelerated `whisper` requires Qualcomm ID and binary download (detailed in another helper doc).
-* AMD64 QNN accelerated `llama.cpp` can also be side-loaded (you guessed it, compiled via helper doc).
-  * This is not in the "proven-live" stack, but there if you want to make it your chosen path.
-* All accelerator claims remain bounded by what has actually been proven.
 * Linux is supported enough to welcome contributors without claiming every path has achieved diplomatic immunity.
-* Linux AMD64 NVIDIA CUDA accelerated `llama.cpp` is side-loaded binary compiled from 12.4 (yet another helper doc).
+* Linux AMD64 NVIDIA CUDA accelerated `llama.cpp` is available through a side-loaded binary compiled against CUDA 12.4.
+* All accelerator claims remain bounded by what has actually been proven.
 
+Available but not baseline:
+
+* ARM64 Adreno OpenCL accelerated `llama.cpp` remains a side-loaded path compiled through a helper guide.
+* ARM64 QNN accelerated Whisper requires Qualcomm access and the corresponding binary download.
+* AMD64 QNN accelerated `llama.cpp` can also be side-loaded through its helper guide.
+* These alternatives are available for operators who choose them, but they are not represented as part of the proven default stack.
 
 The technical helper docs are here when the hardware rabbit hole becomes unavoidable:
 
@@ -179,7 +182,7 @@ That gives the assistant several useful forms of continuity without pretending t
 * semantic facts with durable storage
 * persisted artifacts for reconstruction and evidence
 
-This is a meaningful foundation, not the final form. Better retrieval, preference memory, procedural knowledge, correction workflows, and more useful long-term continuity still belong ahead.
+This is a meaningful foundation, not the final form. Better retrieval, preference memory, procedural knowledge, correction workflows, and genuinely useful long-term continuity still lie ahead.
 
 > It remembers more than before. It does not yet have a soul. Please stop checking.
 
@@ -208,7 +211,7 @@ That is not a small list. It is also not a reason to restart the project again, 
 
 * * *
 
-## 🧩 Skills, Tools, Integrations, Plugins, and Agents
+## 🧩 Extending JARVIS: Skills, Tools, Integrations, Plugins, and Agents
 
 These are destination capabilities, not a disguised inventory of things that once had filenames.
 
@@ -223,8 +226,7 @@ The intended order matters:
 
 The normal assistant must remain useful without any of them. Extensions should add capability, not establish a parallel government in the basement.
 
-> In other words: The roadmap increasingly consists of engineering problems rather than philosophical ones.  
-> Which is encouraging... and inconvenient.  
+> First make the assistant dependable. Then let it delegate.
 
 * * *
 
@@ -241,6 +243,7 @@ As a result, JARVISv7 places much greater emphasis on:
 * explicit personality, policy, memory, and capability boundaries
 * Windows AMD64 first, Windows ARM64 alongside it, and Linux paths expanded with evidence
 * truthful degraded states when a feature is unavailable
+
 > That sounds less exciting, but turns out to be far more useful.
 
 * * *
@@ -254,15 +257,16 @@ Contributions are welcome, particularly those that:
 * improve voice interaction
 * improve memory and retrieval systems
 * reduce complexity and improve reliability
-* improve platform support (did we mention donations, yet?)
-* improve agent boundaries without turning them into autonomous gremlins
+* improve Windows AMD64, Windows ARM64, and Linux platform support
+* shape future agent boundaries without turning them into autonomous gremlins
 * improve architecture parity without pretending one machine represents the species
-* improve hardware/runtime coverage (ok, we're pretty sure we have mentioned "donations")
+* improve hardware and runtime coverage — donations remain suspiciously effective
 * improve live runtime validation instead of just making tests feel emotionally supportive
-* advance RAG, MCP, skills, agents, and local/cloud escalation without pretending they are already finished
+* advance RAG, MCP, skills, tools, plugins, agents, and local/cloud escalation without pretending they are already finished
 
 **BONUS POINTS:** solving real problems without introducing three new ones.  
 **DOUBLE BONUS POINTS:** documenting what actually happened instead of what would have been nice if it happened.
+
 > Pull requests are welcome. Surprise architecture is less welcome.  
 > The rules are stricter now. [AGENTS.md](AGENTS.md) is no longer a suggestion.
 
@@ -270,15 +274,17 @@ Contributions are welcome, particularly those that:
 
 ## 📜 License
 
-Distributed under the MIT License.  
+Distributed under the MIT License.
 
-Use it, modify it, learn from it, and improve it. The license does not include an arc reactor or legal permission to blame the repository for decisions made after midnight. British synthetic voice is included (by defaults). Just remember that experimental software occasionally behaves experimentally.  
+Use it, modify it, learn from it, and improve it. The license does not include an arc reactor or legal permission to blame the repository for decisions made after midnight. A British synthetic voice may be the default. The accent is not part of the license. Just remember that experimental software occasionally behaves experimentally.
 
-> See [LICENSE](LICENSE) for "yada-yada" details.
+> See [LICENSE](LICENSE) for the legally competent version.
 
 * * *
 
 ## 🧱 Acknowledgments
+
+JARVISv7 did not appear fully formed. It accumulated through six earlier attempts, each of which solved something useful and uncovered something inconvenient.
 
 Built on the accumulated successes, mistakes, redesigns, overcorrections, and occasional moments of accidental competence from:
 
@@ -302,6 +308,7 @@ Built on the accumulated successes, mistakes, redesigns, overcorrections, and oc
 
 * [**JARVISv7 (Just Another Restart, Validated Iteratively System)**](README.md) << this one >>  
   The version proving that "under construction" and "making progress" can, occasionally, be the same thing.
+
 * * *
 
 ## 🧾 Bottom Line
@@ -312,4 +319,5 @@ There is a real desktop shell, a real local conversation path, real voice infras
 
 The destination remains ambitious. The foundation is finally substantial enough that building upward is more sensible than starting over.
 
-> "Sometimes you gotta run before you can walk." — Tony Stark
+> Not magic. Not done. Definitely in progress.  
+> “Sometimes you gotta run before you can walk.” — Tony Stark
