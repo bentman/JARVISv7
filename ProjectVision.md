@@ -1,19 +1,20 @@
-
 # JARVISv7 ProjectVision
 
 ## Vision
 
-JARVISv7 is a local-first, voice-first personal assistant designed for real conversational interaction on user-owned hardware. It is not a chatbot with voice added later. It is a real-time conversation engine with text as a fallback surface.
+JARVISv7 is a local-first, voice-first personal assistant designed for real conversational interaction on user-owned hardware. It is not a chatbot with voice added later. It is a real-time conversation system with text as a secondary ingress and control surface.
 
-The target experience is closer to J.A.R.V.I.S. than a browser chat app:
+The target experience is closer to J.A.R.V.I.S. than a browser chat application:
+
 - the user can speak naturally
 - the system listens, transcribes, reasons, responds, and speaks back
 - the user can interrupt
-- the system preserves turn continuity
-- the assistant has a defined personality
-- failures are explicit and degrade cleanly instead of silently collapsing
+- the system preserves continuity without hiding state inside the model
+- the assistant has a defined, inspectable personality
+- failures are explicit and degrade cleanly
+- capabilities can expand without replacing the stable conversational foundation
 
-JARVISv7 must be useful on day one in a minimal conversational loop, then expand toward richer memory, tool use, interruption handling, assistant presence, personality depth, and autonomous agent behavior.
+JARVISv7 must be useful in a minimal conversational loop first, then grow toward richer memory, reusable skills, governed tool use, external integrations, plugins, and opt-in agent behavior.
 
 ---
 
@@ -22,24 +23,25 @@ JARVISv7 must be useful on day one in a minimal conversational loop, then expand
 JARVISv7 is:
 
 - voice-first
-- desktop-first
+- desktop-first, with CLI-compatible capability surfaces where useful
 - hardware-aware from process start
-- cross-platform by design (x64 and ARM64 from the beginning)
+- cross-platform by design
 - local-first by default
 - deterministic in orchestration
-- explicit in memory and cognition
+- explicit in cognition, memory, policy, and execution
 - interruptible
 - personality-driven
+- extensible through reusable, inspectable capability shapes
 - agent-capable when the foundation is stable
-- text-capable, but not text-centered
 
 JARVISv7 is not:
 
-- a text chat system with optional voice buttons
-- a detached voice panel experiment
+- a text chat system with optional voice controls
 - a cloud-first assistant that happens to run locally
-- a collection of disconnected AI features without a primary interaction model
-- a personality-less command shell with speech bolted on
+- a collection of disconnected AI features
+- a personality-less command shell with speech attached
+- a system that hides durable state inside prompts or model sessions
+- a system that treats plugins, skills, tools, MCP servers, and agents as interchangeable concepts
 - a system that works on one hardware class and retrofits others later
 
 ---
@@ -48,797 +50,506 @@ JARVISv7 is not:
 
 Build a usable voice-first assistant whose core interaction loop works end-to-end in the real runtime across supported hardware:
 
-1. system profiles hardware at startup
-2. system provisions and verifies the correct runtime stack for the detected hardware
-3. system emits a capability profile used by all downstream subsystems
-4. user invokes the assistant
-5. assistant captures audio
-6. assistant transcribes locally by default
-7. assistant routes the turn through the same cognition and execution engine used by all modalities
-8. assistant returns a response aligned to the configured personality
-9. assistant speaks back locally when TTS is available
-10. user can interrupt and continue naturally
-11. all failure modes are visible and recoverable
+1. profile the host
+2. provision and verify the correct runtime stack
+3. emit evidence-backed capability and readiness facts
+4. accept voice or text input through one interaction model
+5. assemble explicit context from personality, memory, policy, and available capabilities
+6. reason through a selected local runtime by default
+7. act only through governed capabilities
+8. return a response aligned to the configured personality
+9. speak locally when TTS is available
+10. allow interruption and coherent continuation
+11. persist enough evidence to reconstruct what happened
+12. expose failures and degraded operation clearly
 
-This loop is the root acceptance path for the system.
-
-If this path does not work in the active runtime on any supported host class, the system is not considered complete regardless of subsystem tests.
-
----
-
-## Foundational Principle
-
-### Hardware Profiling and Provisioning Come First
-
-The first callable system capability in JARVISv7 is the hardware profiler.
-
-Before UI, before voice capture, before model selection, before orchestration, the system must detect the execution environment and emit a capability flags object.
-
-The second system capability is provisioning. The correct set of packages for the detected hardware must be resolved and installed through a single declarative authority. The profiler determines what gets installed. No developer edits a monolithic requirements file by hand. No voice-family package enters the base install. Hardware-specific packages enter through the profiler-driven provisioning layer.
-
-The third system capability is readiness. Correct packages installed does not imply usable inference. DLLs must load, execution providers must register, model artifacts must be discoverable. Every runtime-selection decision downstream consumes evidence-backed readiness claims.
-
-Hardware-authority rule: hardware-dependent runtime selection starts in the profiler. Config files define catalog and default metadata. Runtime modules execute the selected runtime, model, and device; they do not invent hardware policy locally.
-
-This profile and readiness chain is the root input for:
-- model selection
-- STT runtime and device selection
-- TTS runtime and device selection
-- LLM backend selection
-- wake word runtime selection
-- quantization strategy
-- concurrency limits
-- degraded-mode policy
-- wake-word support
-- desktop vs laptop behavior
-- power-aware behavior
-- personality and runtime presentation constraints where needed
-
-JARVISv7 should not guess what it can do.
-It should know.
+This loop is the root acceptance path. Higher-level capabilities must compose with it rather than create parallel application architectures.
 
 ---
 
-## Core Principles
+## Core Invariants
 
-### 1. Voice Is the Root Mode
+### 1. Hardware Truth Comes First
 
-Voice is not a late-stage feature.
-Voice defines the primary system architecture.
+The system must profile the execution environment before selecting runtimes or advertising capability.
 
-Text input is a fallback and debug path into the same turn engine.
+Provisioning translates hardware facts into installable package sets through one authority. Readiness verifies that packages, libraries, execution providers, services, and model artifacts are actually usable.
 
-### 2. Hardware-Aware Execution Starts at Boot
+Downstream systems consume shared capability and readiness facts. They do not invent hardware policy independently.
 
-JARVISv7 must begin with a hardware profiling pass that detects:
-- OS
-- CPU and architecture (x64 / ARM64)
-- GPU presence and vendor
-- CUDA availability
-- NPU availability and vendor
-- total and available memory
-- desktop vs laptop profile where practical
+### 2. Voice Is the Root Interaction Mode
 
-This detection must emit a callable profile object and capability flags object that downstream systems consume directly.
+Voice defines the primary interaction lifecycle. Text is a secondary ingress into the same conversation and cognition path.
 
-### 3. Cross-Platform from Day One
+The product must remain usable when a voice component is unavailable, but fallback behavior must not create a separate text-product architecture.
 
-JARVISv7 must support multiple hardware classes from the start, not retrofit them later. The provisioning model, runtime families, and test harness must all accommodate at minimum Windows x64 and Windows ARM64 before the first voice runtime is written.
+### 3. Local-First Is the Default Execution Posture
 
-Each voice-family runtime (STT, TTS, LLM, Wake) accepts device as a parameter. One runtime family per voice subsystem, with device selection driven by readiness evidence. New hardware acceleration is a device branch inside an existing runtime, not a new runtime family.
+Local execution is preferred for:
 
-### 4. Local-First by Default
-
-JARVISv7 should prefer local execution for:
-- STT
-- TTS
-- reasoning where hardware allows
+- speech recognition
+- speech generation
+- language-model reasoning
+- wake-word detection
 - memory
 - orchestration
-- artifacts and trace storage
-- wake word detection
+- artifacts and traces
+- configuration and policy
 
-Remote providers may be used only through explicit policy and only when local capability is unavailable or intentionally overridden.
+Remote capability may be added only as an explicit, inspectable, policy-controlled option. It must never be silently selected or represented as available before it works.
 
-### 5. Deterministic Orchestration
+### 4. Orchestration Is Deterministic
 
-LLMs provide reasoning, not control.
+Models provide interpretation and reasoning. They do not own application control flow.
 
-Control flow must be explicit and deterministic through a defined conversation and execution state machine.
-No hidden assistant behavior should exist only inside a prompt.
+State transitions, retries, interruption, approvals, tool execution, handoffs, and failure handling remain explicit and reconstructable.
 
-### 6. Externalized Cognition
+### 5. Cognition Is Externalized
 
-Memory, plans, artifacts, context, and tool traces must live outside the model.
-The model is stateless between calls unless context is explicitly supplied.
+The model is a stateless worker unless context is explicitly supplied.
 
-### 7. Personality Is a Core System Dimension
+Personality, memory, instructions, plans, capabilities, tool results, agent state, and artifacts remain outside the model and are independently inspectable.
 
-Personality is not cosmetic.
-It is part of the assistant contract.
+### 6. Memory Has Distinct Scopes
 
-JARVISv7 must define personality explicitly so that:
-- wording style is intentional
-- spoken response style is intentional
-- pacing and brevity can be tuned
-- persona does not drift unpredictably
-- tone survives across turns and modalities
-- personality settings remain compatible with deterministic orchestration and explicit policies
+Memory is not one undifferentiated database. Each memory class has a separate purpose, lifetime, authority, and write policy.
 
-Personality must be externally configured and inspectable, not left as vague prompt residue.
+No durable memory write is implicit. Retrieval does not imply permission to retain. Cache is not durable memory authority.
 
-### 8. Clear Failure States
+### 7. Capability Is Explicitly Declared
 
-JARVISv7 must never silently fail with empty output or unexplained states.
+A capability is usable only when it can be discovered, authorized, invoked, observed, and failed safely.
 
-Every major subsystem must fail closed and visibly:
-- profiler unavailable
-- provisioning failed
-- readiness unverified
-- STT unavailable
-- TTS unavailable
-- model missing
-- provider import failure
-- wake-word unavailable
-- interrupted response
-- execution failure
+Installed files or provider classes alone do not establish product capability.
 
-### 9. Live Runtime Validation Over Narrow Success
+### 8. Personality Is a Core System Dimension
 
-A feature is only complete if it works in the actual runtime used by the product on every host class the feature targets.
-Passing builds and narrow tests are necessary but not sufficient.
+Personality is structured, configurable, and applied consistently across text and voice. It shapes expression but never overrides truth, safety, policy, permissions, or deterministic orchestration.
 
-### 10. Agent-Capable Architecture
+### 9. Extension Is Layered, Not Entangled
 
-JARVISv7 should be designed so that role-separated agents can layer on top of the core turn engine when that foundation is stable.
+Instructions, prompts, skills, tools, MCP servers, hooks, plugins, and agents are different extension shapes. Each must have a narrow contract and compose through stable boundaries.
 
-Agents consume the turn engine, tool registry, memory, and LLM runtime — they do not replace them.
-Agent behavior is opt-in through explicit policy.
-Non-agent turns continue to work unchanged.
+### 10. Evidence Controls Completion
 
-This is not a requirement for the initial conversational loop; it is a structural commitment that prevents the architecture from closing off this capability.
+Live behavior on the targeted host and product path is decisive. Tests, logs, configuration, and documentation support that evidence but do not replace it.
 
 ---
 
-## Product Outcome
+## Stable Foundation Shape
 
-JARVISv7 should feel like a persistent local assistant, not like a web app with AI features.
+The stable foundation is the capability stack on which all later assistant and agent behavior depends.
 
-The user experience target is:
-- low-friction invocation
-- natural spoken interaction
-- immediate system feedback
-- visible state transitions
-- smooth degradation when a modality is unavailable
-- continuity across turns
-- recognizable assistant personality
-- tool-grounded answers when the assistant needs to act in the world
+### 1. Host Capability and Readiness
 
-The user should understand at all times whether JARVISv7 is:
-- profiling
+Purpose:
+
+- detect host and device capabilities
+- resolve required packages and runtime artifacts
+- verify actual runtime readiness
+- expose truthful available, degraded, and unavailable states
+
+This foundation informs model, STT, TTS, wake, concurrency, and degraded-mode selection.
+
+### 2. Runtime Substrate
+
+Purpose:
+
+- provide local STT, TTS, LLM, and wake execution
+- select device and model from readiness evidence and user policy
+- manage model artifacts and executable sidecars
+- expose consistent lifecycle, health, and failure boundaries
+
+Current runtime shape:
+
+- ONNX Whisper for STT
+- Kokoro ONNX for TTS
+- local llama.cpp as the preferred LLM runtime
+- Ollama as a local fallback
+- openWakeWord for wake detection
+
+Runtime families may evolve, but selection must remain evidence-based and local-first.
+
+### 3. Canonical Interaction and Session Model
+
+A session groups related turns for continuity, interruption recovery, active preferences, and bounded working context.
+
+A turn is one explicit interaction attempt. Voice and text enter the same lifecycle.
+
+Canonical states conceptually include:
+
+- startup and profiling
 - idle
-- listening
-- transcribing
-- thinking
-- speaking
-- interrupted
-- degraded
+- listening and transcribing
+- reasoning
+- acting
+- responding and speaking
+- interrupted and recovering
 - failed
 
----
+The exact state vocabulary may evolve. Explicit state ownership may not.
 
-## First System Capabilities
+### 4. Cognition and Context Assembly
 
-### Hardware Profiler
+Purpose:
 
-The hardware profiler is the first required implementation.
+- assemble the active instructions, personality, memory, retrieved context, user input, and capability facts
+- invoke the selected model runtime
+- constrain outputs through policy and response boundaries
+- keep planning and action requests separate from action execution
 
-**Purpose:** Detect host capabilities and return a normalized profile object that the rest of the system can call.
+Cognition must not silently gain authority from prompt text.
 
-**Required Detection Targets:**
-- operating system
-- architecture (x64 / ARM64)
-- CPU model and capabilities
-- GPU presence and vendor (NVIDIA, AMD, Intel, Qualcomm, other)
-- CUDA availability and version band
-- NPU presence and vendor (Qualcomm, Intel, AMD, other)
-- total and usable memory
-- storage constraints where practical
-- desktop vs laptop classification where practical
+### 5. Memory System
 
-**Required Output:** A normalized capability object and flags, conceptually:
-- `os`, `arch`, `cpu`, `gpu`, `gpu_vendor`, `cuda_available`, `npu_available`, `npu_vendor`, `memory_gb`, `device_class`
-- `supports_local_llm`, `supports_gpu_llm`, `supports_cuda_llm`, `supports_local_stt`, `supports_local_tts`, `supports_wake_word`, `supports_realtime_voice`, `supports_desktop_shell`, `requires_degraded_mode`, `qnn_available`, `directml_candidate`
+The memory foundation should distinguish at least these shapes:
 
-The exact schema can evolve, but the principle cannot:
-every major subsystem should consume a shared capability profile rather than inventing its own environment checks.
+#### Turn Context
 
-### Provisioning
+Ephemeral information required to complete the current turn. It expires with the turn unless explicitly promoted.
 
-The provisioning model is the second required implementation.
+#### Working Memory
 
-**Purpose:** Translate profiler output into the correct set of installed packages for the detected hardware, through one declarative authority.
+Bounded in-session context used for immediate continuity. It is replaceable, summarizable, and subject to strict size and relevance limits.
 
-The provisioning authority lives in the project's standard package metadata. Hardware-family packages are declared as optional extras gated by architecture and vendor. The profiler-driven resolver is the only place that translates hardware facts to package sets. Operators never edit a monolithic requirements file by hand.
+#### Session Memory
 
-Adding a new hardware family should require one new extra declaration and one new resolver branch — nothing else changes.
+Structured session timeline, decisions, interruptions, and closeout facts used to preserve continuity across related turns.
 
-### Readiness
+#### Episodic Memory
 
-The readiness rail is the third required implementation.
+Durable records of user interactions or events that may be recalled across sessions under explicit write and retrieval policy.
 
-**Purpose:** Verify that installed packages, DLLs, execution providers, and model artifacts are actually usable before runtime selectors act.
+#### Semantic Memory
 
-The readiness rail emits evidence-backed claims per voice family (STT, TTS, LLM, Wake) and per device (CPU, CUDA, DirectML, QNN). These claims carry the reasoning behind each selection so failures are traceable without re-running probes.
+Durable facts and concepts separated from the original event wording. Semantic memory requires provenance, conflict handling, and correction paths.
 
-**Non-Goals of the First Three Capabilities:**
-They do not:
-- present UI
-- load models for inference
-- invoke voice runtimes
-- choose final personality
-- execute assistant turns
+#### Procedural Memory
 
-They detect, provision, and verify.
-That is their contract.
+Reusable knowledge about how to perform tasks. Skills are the primary portable shape for procedural memory; procedures should not be hidden inside conversation history.
 
----
+#### Preference and Profile Memory
 
-## Voice Runtime Strategy
+Explicit user and assistant settings such as personality, voice, defaults, permissions, and interaction preferences. These are configuration-backed and directly editable.
 
-### One Family Per Subsystem, Device as Parameter
+#### Artifact and Audit Memory
 
-JARVISv7 should use one primary runtime family per voice subsystem across all supported hardware. Device (CPU, CUDA, DirectML, QNN) is a parameter of the runtime, not a reason to switch runtime families.
+Turn artifacts, traces, outputs, and evidence used for reconstruction, debugging, evaluation, and governance. These records are not automatically injected into model context.
 
-- **STT:** ONNX-based Whisper via `onnxruntime` as the primary cross-platform path. A secondary `onnx-asr` path for alternative model families (Parakeet, Canary, NeMo) when needed.
-- **TTS:** Kokoro via `kokoro-onnx` as the primary cross-platform path.
-- **LLM:** Local `llama.cpp` as the preferred local runtime, Ollama as tested fallback, cloud providers as explicit policy-gated escalation.
-- **Wake:** openWakeWord as the runtime (pre-trained "hey jarvis" model, architecture-independent).
+Memory writes must identify source, scope, retention, sensitivity, and authority. Redis or similar infrastructure may accelerate retrieval but does not become durable memory authority.
 
-This strategy should be decided before the first voice turn is implemented, and acceleration targets (CUDA, DirectML, QNN) should be exercised — at least at the readiness and probe level — before any turn-engine work begins.
+### 6. Personality and User Experience Policy
 
-### Acceleration Is Not a Retrofit
+Purpose:
 
-GPU, CUDA, NPU, and QNN acceleration must be defined as device slots from day one. The architecture must accommodate them structurally — in manifests, readiness tokens, capability flags, and runtime device enumerations — even when their inference code is activated later.
+- define assistant identity and interaction style
+- govern tone, brevity, formality, acknowledgments, interruption style, and spoken presentation
+- keep behavior consistent across modalities
+- allow selectable profiles without prompt residue or hidden state
 
-This prevents the "acceleration as retrofit" pattern where adding hardware support after the fact forces corrections across multiple layers simultaneously.
+### 7. Policy, Permissions, and Consent
 
----
+Purpose:
 
-## Personality System
+- define what the assistant may read, write, execute, transmit, remember, and delegate
+- distinguish read-only, reversible, destructive, local, and remote operations
+- require user confirmation where risk or external effect warrants it
+- keep credentials and secrets outside shareable capability definitions
 
-Personality must be a first-class subsystem in JARVIS.
+Policy applies equally to built-in capabilities and installed extensions.
 
-### Purpose
+### 8. Artifacts, Observability, and Recovery
 
-Define how JARVISv7 behaves, not just what it says.
+Every important interaction should leave enough structured evidence to explain:
 
-### Personality Scope
+- what the user requested
+- what context and capability facts were used
+- what state transitions occurred
+- which external actions were attempted
+- what results or errors occurred
+- what was retained
+- why the final response or failure was produced
 
-Personality should influence:
-- tone
-- brevity
-- assertiveness
-- warmth
-- humor policy
-- formality
-- spoken cadence targets
-- interruption handling style
-- acknowledgment style
-- confirmation style
-- assistant identity consistency
+Observability is part of product behavior, not only developer diagnostics.
 
-### Personality Constraints
+### 9. Product Surfaces
 
-Personality must not:
-- override safety or policy rules
-- invent facts
-- bypass deterministic orchestration
-- produce inconsistent behavior between text and voice
-- live only as an opaque system prompt fragment
+The desktop shell is the durable user-facing home of JARVISv7. CLI surfaces may expose the same capability contracts for setup, diagnostics, automation, or coding-agent use.
 
-### Personality Representation
-
-Personality should be externalized and configurable through structured settings, profiles, or policy artifacts.
-
-A minimal conceptual personality profile should look like:
-- `profile_id`, `display_name`, `identity_summary`
-- `tone`, `brevity`, `formality`, `warmth`, `assertiveness`, `humor_policy`
-- `response_style`, `acknowledgment_style`, `interruption_style`
-- `voice_pacing`, `voice_energy`
-- `safety_overrides`, `enabled`
-
-The exact schema can evolve, but the principle cannot:
-personality must be structured enough to persist, compare, validate, and apply consistently across text and voice paths.
-
-### Personality and Voice
-
-Voice output should reflect the same personality profile as text output where possible.
-
-If the chosen TTS runtime supports voice variation, it should map to the configured personality.
-If TTS does not support it, the text response style should still remain personality-consistent.
+Neither surface owns core orchestration. Both are adapters over stable backend capability boundaries.
 
 ---
 
-## Session Model
+## Extension and Customization Shapes
 
-A session is the bounded conversational context within which turns are grouped for continuity, memory policy, and interruption recovery.
+The remaining assistant should grow through recognized reusable shapes rather than project-specific substitutes.
 
-A session begins when JARVISv7 transitions from `IDLE` into an invocation-handling path for a user interaction.
-A session may contain one or more turns.
-A session remains active while the assistant is still handling follow-up interaction under continuity policy.
-A session ends when the system returns to a clean idle baseline and continuity policy decides no active interaction context remains.
+### General Settings and Configuration
 
-A session is not equivalent to a single HTTP request, a single utterance, or a single UI screen.
-It is the interaction container used to group related turns and their artifacts.
+Configuration should be layered by scope:
+
+- product defaults
+- host and hardware-derived facts
+- user settings
+- workspace or project settings
+- session overrides
+- capability-specific settings
+- secrets and credentials
+
+Later scopes may override earlier configurable values, but detected facts and security boundaries must not be falsified by ordinary preference settings.
+
+Settings should remain discoverable, validated, exportable where safe, and separable from secrets.
+
+### Instructions
+
+Instructions define durable behavioral constraints and conventions.
+
+Useful scopes include:
+
+- system or product instructions
+- user instructions
+- project/workspace instructions
+- path or domain-specific instructions
+- agent-specific instructions
+
+Instructions are generally persistent context. They are not executable tools and should not become a substitute for deterministic policy.
+
+### Reusable Prompts
+
+Reusable prompts are user-invoked templates for repeatable requests or workflows. They should be easy to discover, parameterize, and invoke without pretending to be autonomous capabilities.
+
+### Skills
+
+Skills are portable procedural capability bundles. The preferred shape follows the open Agent Skills ecosystem used across current coding agents:
+
+- a skill directory
+- a `SKILL.md` entry point with identity and discovery metadata
+- task instructions
+- optional scripts, examples, templates, and supporting resources
+- progressive loading so only relevant skill content enters context
+
+Skills teach the assistant how to perform a bounded class of work. They may use tools, but they are not tools themselves.
+
+JARVISv7 should be able to consume compatible skills from established ecosystems such as Agent Skills and directories such as skills.sh after review and trust evaluation.
+
+### Tools
+
+Tools are schema-defined executable capabilities.
+
+Each tool shape should expose:
+
+- stable identity and description
+- structured input contract
+- structured or typed result contract where practical
+- capability and permission requirements
+- side-effect classification
+- timeout, cancellation, and failure behavior
+- audit evidence
+
+Tools may be built in, provided by plugins, exposed through MCP, or contributed by another trusted integration. The execution boundary should remain consistent regardless of origin.
+
+### MCP Connections
+
+Model Context Protocol should be treated as the standard external capability connection shape.
+
+JARVISv7 acts as the host and controls:
+
+- server discovery and connection lifecycle
+- capability negotiation
+- resource exposure
+- prompt availability
+- tool authorization
+- user consent
+- isolation between servers
+- logging, errors, cancellation, and disconnection
+
+MCP primitives retain distinct meaning:
+
+- resources provide application-managed context
+- prompts provide user-selectable templates or workflows
+- tools provide model-discoverable executable actions
+
+An MCP server is an integration boundary, not an agent and not a blanket trust grant.
+
+### Hooks
+
+Hooks are deterministic lifecycle actions triggered by explicit events such as startup, before or after tool execution, after file changes, before completion, or during shutdown.
+
+Hooks are appropriate for validation, formatting, policy checks, logging, or cleanup that must occur regardless of model choice. They must be visible, bounded, and governed because they may execute local commands.
+
+### Agents
+
+An agent is a role-scoped reasoning and delegation unit, not simply a prompt or tool collection.
+
+A reusable agent shape should define:
+
+- identity and purpose
+- instructions
+- allowed models or runtime posture
+- available tools, skills, MCP connections, and resources
+- memory scope
+- permission and approval boundaries
+- invocation mode: user-selected, delegated, or disabled
+- handoff and completion contract
+- output contract and trace requirements
+
+Agents compose the stable turn, memory, policy, runtime, and capability foundations. They do not replace those foundations.
+
+Non-agent conversation must continue to work unchanged. Agent behavior remains explicit, opt-in, policy-gated, and traceable.
+
+### Plugins
+
+Plugins are installable packages that bundle one or more extension shapes, such as:
+
+- skills
+- agents
+- reusable prompts or commands
+- hooks
+- MCP server definitions
+- supporting scripts or resources
+
+A plugin manifest should identify publisher, version, contents, compatibility, requested permissions, and trust status.
+
+Installation does not imply activation or approval. Plugin contents must be inspectable before execution, individually enableable where practical, and removable without damaging the core assistant.
+
+### Resources and Connectors
+
+Resources expose contextual data without automatically granting action authority. Connectors establish authenticated access to external services, accounts, repositories, calendars, messages, databases, or devices.
+
+Connectors should declare accessible resources and tools separately so read access, write access, and automation can be governed independently.
+
+### Models and Providers
+
+Model and provider settings should describe selectable reasoning capability, not own product orchestration.
+
+The shape should accommodate:
+
+- local model catalogs and tiers
+- runtime and device compatibility
+- context and modality support
+- generation defaults
+- readiness and validation state
+- explicit remote providers if later implemented
+
+A provider must not appear selectable until its execution path works and its data-handling policy is clear.
+
+### Marketplace and Distribution
+
+Discovery may include local catalogs, organization catalogs, trusted registries, and public ecosystems.
+
+Distribution must preserve:
+
+- provenance
+- versioning
+- review status
+- compatibility
+- permissions
+- update policy
+- rollback and removal
+
+Popularity is discovery evidence, not trust evidence.
 
 ---
 
-## Core Interaction Model
+## Composition Model
 
-JARVISv7 is built around a canonical turn lifecycle.
+The extension shapes combine in a deliberate order:
 
-### Canonical Turn States
+1. settings select preferences and enabled capabilities
+2. instructions constrain persistent behavior
+3. prompts initiate repeatable user-directed workflows
+4. skills provide procedural knowledge
+5. resources provide contextual data
+6. tools provide executable actions
+7. MCP connects external resources, prompts, and tools
+8. hooks enforce deterministic lifecycle behavior
+9. agents compose selected instructions, skills, memory, and capabilities for specialized work
+10. plugins package and distribute compatible combinations of these parts
 
-- `BOOTSTRAP`
-- `PROFILING`
-- `IDLE`
-- `LISTENING`
-- `TRANSCRIBING`
-- `REASONING`
-- `ACTING`
-- `RESPONDING`
-- `SPEAKING`
-- `INTERRUPTED`
-- `RECOVERING`
-- `FAILED`
-
-Text and voice both enter this same turn lifecycle.
-
-### Canonical Turn Flow
-
-#### Startup
-1. system starts
-2. hardware profiler runs
-3. provisioning verifies or corrects the installed package set
-4. readiness rail verifies DLLs, execution providers, and model artifacts
-5. capability flags are emitted
-6. runtime profile is selected
-7. personality profile is loaded
-8. system enters `IDLE`
-
-#### Voice Turn
-1. user invokes assistant (wake word or push-to-talk)
-2. assistant enters `LISTENING`
-3. audio is captured
-4. assistant enters `TRANSCRIBING`
-5. transcript is produced
-6. transcript enters normal cognition/execution path
-7. assistant enters `REASONING` / `ACTING`
-8. response text is produced in alignment with personality profile
-9. assistant enters `RESPONDING`
-10. if TTS available, assistant enters `SPEAKING`
-11. user may interrupt at any point allowed by policy
-12. turn ends in `IDLE`, `RECOVERING`, or `FAILED`
-
-#### Text Turn
-1. user submits typed text
-2. system bypasses listen/transcribe stages
-3. text enters the same cognition/execution path
-4. response follows the same response lifecycle and personality rules
-
-Text is therefore a secondary ingress path, not a separate product architecture.
+No layer should silently inherit authority from a higher layer. An agent cannot bypass tool permissions; a skill cannot bypass policy; a plugin cannot bypass installation review; an MCP server cannot access unrelated context by default.
 
 ---
 
-## Interruption Policy
+## Interruption and Recovery Shape
 
-Interruption is a first-class system behavior, not a UI afterthought.
+Interruption is a first-class interaction behavior.
 
-### Policy Model
+When interruption is accepted:
 
-1. **Speech output is interruptible.** If the assistant is in `SPEAKING`, a valid barge-in signal should stop speech output immediately or at the nearest safe boundary supported by the runtime.
+- active speech stops at the nearest safe boundary
+- the event is recorded
+- the current turn remains reconstructable
+- enough session context is preserved for coherent continuation
+- the system transitions to an explicit next state
 
-2. **Listening has priority over continued speaking when barge-in is accepted.** Once interruption is accepted, the system transitions out of `SPEAKING` and into the next valid capture state according to policy.
-
-3. **The interrupted response must remain traceable.** The turn artifact must record that the response was interrupted, including timing and recovery state.
-
-4. **State preservation is explicit.** The assistant must preserve enough turn/session context to continue coherently after interruption.
-
-5. **Unsafe or unsupported interruption modes degrade cleanly.** If true barge-in is not supported by the current runtime, the system must expose that limitation and fall back to a defined stop-and-reinvoke behavior.
-
-### Initial Implementation Rule
-
-The first acceptable interruption behavior is:
-- user interrupts while JARVISv7 is speaking
-- speech output stops
-- system records the interruption
-- system transitions cleanly to the next allowed state without corrupting the session
-
-Perfect conversational overlap is not required initially.
-Deterministic interruption behavior is required.
-
----
-
-## Canonical Turn Artifact
-
-Every turn should produce an explicit artifact, whether voice or text.
-
-A turn artifact should capture at minimum:
-- turn id
-- session id
-- input modality
-- hardware profile id or snapshot
-- capability flags used for the turn
-- active personality profile
-- raw audio references, if any
-- transcript
-- final prompt text used for cognition
-- retrieved memory/context references
-- tools invoked
-- agent trace, if agent orchestration was active
-- reasoning/execution trace metadata
-- response text
-- audio output references, if any
-- interruption events
-- final state
-- explicit failure reason, if any
-- timestamps for each major phase
-
-This artifact is the authoritative record of what happened.
-Its schema should be fixed early and treated as a compatibility boundary.
-
----
-
-## Architecture Overview
-
-JARVISv7 should be organized into the following major layers.
-
-### 1. Hardware Intelligence Layer
-
-Responsible for:
-- detecting available hardware across architecture classes
-- provisioning the correct package set through a single declarative authority
-- verifying readiness with evidence-backed claims
-- classifying execution environment
-- selecting runtime profiles
-- emitting capability flags
-- exposing a callable hardware profile object to the rest of the system
-
-This layer decides what is realistically available before the assistant attempts work.
-
-Examples:
-- CPU-only fallback on any architecture
-- GPU-accelerated local inference via CUDA on NVIDIA
-- DirectML acceleration on AMD or Intel GPU
-- QNN NPU acceleration on Qualcomm ARM64
-- degraded voice mode when TTS is unavailable
-- text fallback when STT is unavailable
-
-### 2. Personality Layer
-
-Responsible for:
-- loading personality definitions
-- applying personality policy to responses
-- maintaining consistent style across text and voice
-- exposing structured personality controls to the conversation engine
-- keeping persona explicit and inspectable
-
-This layer shapes assistant identity without owning orchestration.
-
-### 3. Voice Runtime Layer
-
-Responsible for:
-- microphone access orchestration
-- audio capture lifecycle
-- wake word integration
-- STT session execution (device-parameterized)
-- TTS session execution (device-parameterized)
-- interruption and barge-in handling
-- audio device management
-
-This layer owns real-time voice execution, not the chat UI.
-
-Each voice-family runtime accepts device as a parameter and delegates device selection to the hardware intelligence layer.
-
-### 4. Conversation Engine
-
-Responsible for:
-- turn lifecycle orchestration
-- explicit state transitions
-- routing between listen, transcribe, reason, act, respond, speak
-- interruption recovery
-- session continuity
-
-This is the core runtime of JARVIS.
-
-### 5. Cognition Engine
-
-Responsible for:
-- prompt assembly (with personality, memory, and retrieval inputs)
-- planning
-- tool-use decisions
-- execution governance
-- memory retrieval and writeback
-- policy enforcement
-
-The cognition engine must consume personality explicitly, not implicitly.
-That means:
-- the active personality profile is an input to prompt assembly
-- personality rules are applied equally for voice and text turns
-- personality never bypasses tool policy, memory policy, or safety policy
-- personality must be traceable as part of the turn artifact context
-
-This layer follows explicit cognition principles:
-- models are stateless workers
-- memory is externalized
-- plans and outcomes are explicit
-- reasoning is constrained by deterministic orchestration
-
-### 6. Agent Layer
-
-Responsible for:
-- role-separated task decomposition, execution, and validation
-- typed, non-conversational inter-agent messaging
-- persisted coordination via an agent ledger
-- training-data curation from successful execution traces
-- training-cycle orchestration with regression-gated deployment
-
-The agent layer is an optional orchestration surface that composes the conversation engine, tool registry, memory, and LLM runtime.
-It does not replace the turn engine.
-Turns that do not opt into agent orchestration continue to work exactly as they did before the agent layer existed.
-
-Agent behavior is policy-gated, explicit, and traceable in turn artifacts.
-
-### 7. Memory System
-
-Responsible for:
-- working memory (in-session, bounded)
-- episodic memory (cross-session, policy-governed)
-- semantic memory (future)
-- task and conversation history
-- retrieval and summarization
-- explicit write policies
-
-Memory exists to support continuity and assistant usefulness, not as a hidden side effect.
-Durable memory authority lives in persisted artifacts, not infrastructure.
-Infrastructure (Redis) is used for retrieval-cache acceleration only.
-
-### 8. Desktop Shell
-
-Responsible for:
-- user-facing interface
-- tray and overlay modes
-- hotkeys / push-to-talk
-- conversation display
-- assistant status display (including hardware and LLM selection visibility)
-- configuration and diagnostics
-- wake word invocation integration
-
-The desktop shell is the home of the assistant, but not the source of orchestration logic.
-The shell is a thin adapter over the backend API contract.
-
-### 9. Text Surface
-
-Responsible for:
-- typed fallback interaction
-- debugging
-- explicit task entry when voice is not appropriate
-- visibility into cognition/tool results when needed
-
-This must reuse the same conversation engine rather than inventing a separate chat architecture.
-
----
-
-## Voice-First Functional Requirements
-
-### Must Have
-
-- callable hardware profiler that returns a normalized capability profile
-- profiler-driven provisioning that resolves the correct packages per host class
-- evidence-backed readiness rail per voice family and device
-- cross-platform support (x64 and ARM64) from the first voice runtime
-- local-first STT path with device as parameter
-- local-first TTS path with device as parameter
-- push-to-talk or equivalent explicit invocation path
-- wake word detection as a default invocation path
-- assistant response through the canonical turn engine
-- deterministic state transitions
-- explicit error states
-- typed fallback
-- hardware-aware runtime selection
-- personality profile loading and application
-- traceable turn artifacts with fixed schema
-- fail-closed behavior for missing runtime/model/provider
-- clear interruption path for assistant speech
-- no silent blank responses
-- arch-aware test harness with marker-based device gating
-
-### Should Have
-
-- stateful streaming transcription
-- streaming partial assistant response
-- low-latency response start
-- visible degraded-mode indicators
-- profile-aware runtime selection
-- selectable personality profiles
-- selectable voices
-- session continuity across interruptions
-- tool-grounded responses
-- cross-session episodic recall
-- agent-capable orchestration (opt-in)
-
-### Could Have
-
-- ambient listening mode
-- multi-device orchestration
-- proactive notifications
-- emotional or expressive speech controls
-- richer avatar or desktop presence
-- multimodal visual awareness
-- local LLM via llama.cpp
-- QNN NPU acceleration for STT
-- DirectML acceleration for STT/TTS
-- custom wake word training ("jarvis" without "hey" prefix)
-
-### Must Not
-
-- depend on cloud-only operation by default
-- hide failures behind null/empty payloads
-- let voice logic break primary typed interaction
-- let UI experiments define backend architecture
-- merge unproven subsystem work as "complete" without live-path validation
-- work on one hardware class and treat other classes as a later retrofit
-- let the proving host become the shipping surface
-
----
-
-## Runtime Strategy
-
-### Local-First Execution Order
-
-The preferred execution order is:
-1. local runtime
-2. local fallback runtime
-3. explicitly approved remote provider
-
-This applies independently to:
-- STT
-- TTS
-- LLM reasoning
-- embeddings and memory support services
-- search escalation providers
-
-### Runtime Selection Inputs
-
-Runtime selection must be driven by:
-- hardware profile
-- capability flags
-- readiness evidence
-- policy
-- user preferences
-- personality/runtime compatibility where applicable
-
-### Hardware Profiles
-
-JARVISv7 should support profile-driven execution such as:
-- desktop x86_64 with NVIDIA GPU and CUDA
-- desktop x86_64 CPU-only
-- laptop x86_64 with integrated GPU (DirectML candidate)
-- laptop ARM64 with Qualcomm NPU (QNN candidate)
-- ARM64 CPU-only fallback
-- constrained fallback profile
-
-Each profile should influence:
-- model family
-- quantization
-- max concurrency
-- response strategy
-- voice latency expectations
-- degraded-mode policy
-
-### Degraded Modes
-
-Examples:
-- STT available, TTS unavailable → text reply + explicit silent-response mode
-- TTS available, STT unavailable → typed input + spoken output
-- local LLM unavailable → explicit provider fallback if allowed
-- wake unavailable → push-to-talk only
-- microphone unavailable → text-only fallback
-- GPU unavailable → CPU profile with explicit performance downgrade
-- QNN readiness unverified → CPU-EP fallback on same host
-
-Degraded mode is acceptable.
-Silent confusion is not.
-
----
-
-## Explicit Cognition Framework Alignment
-
-JARVISv7 should continue and strengthen the Explicit Cognition Framework.
-
-### ECF Rules
-
-- no hidden long-term assistant state inside the model
-- no implicit memory writes without policy
-- tool actions must be explicit and logged
-- plans and execution phases must be inspectable
-- all important state transitions must be reconstructable from artifacts
-- cognition must remain separable from presentation and transport
-- personality must be explicit and externally represented
-- hardware capability assumptions must be derived from the profiler, not hidden inside provider code
-- agent behavior must be opt-in, policy-gated, and traceable
-
-### Why ECF Matters for Voice
-
-Voice interaction increases ambiguity, latency sensitivity, interruption complexity, and persona sensitivity.
-Without explicit cognition, explicit hardware awareness, and explicit turn artifacts, debugging spoken interaction becomes nearly impossible.
-
-ECF is therefore more important in a voice-first system than in a text-centered one.
+Unsupported overlap or barge-in behavior must degrade to a defined stop-and-reinvoke path rather than corrupting the session.
 
 ---
 
 ## Acceptance Model
 
-JARVISv7 should be accepted based on primary-path behavior in the real runtime on every supported host class.
+### Foundation Acceptance
 
-### Minimum Real Acceptance Path
+The foundation is accepted only when the real product path can:
 
-A minimal acceptable voice loop is:
+1. profile the host
+2. provision and verify the runtime stack
+3. expose truthful readiness and degradation
+4. start a session
+5. accept voice or text input
+6. assemble explicit personality and memory context
+7. invoke the selected local model path
+8. produce and optionally speak a response
+9. handle interruption and failure cleanly
+10. persist reconstructable artifacts
 
-1. system profiles the host and emits capability flags
-2. provisioning verifies the correct packages are installed for the detected hardware
-3. readiness verifies DLLs, execution providers, and model artifacts
-4. the selected runtime profile is explicit
-5. the personality profile is explicit
-6. user invokes assistant
-7. assistant enters listening state visibly
-8. user speaks a simple request
-9. assistant transcribes successfully
-10. assistant routes the transcript through the normal cognition/execution path
-11. assistant returns a valid response aligned to personality
-12. if TTS runtime is available, assistant speaks it
-13. if user interrupts during speech, assistant stops and transitions cleanly
-14. final state is explicit and recorded
+### Extension Acceptance
 
-If this path does not work in the active runtime on any supported host class, the slice is not complete.
+An extension shape is accepted only when it can be:
+
+- discovered
+- inspected
+- enabled or disabled
+- authorized
+- invoked through a stable contract
+- observed while running
+- failed or cancelled safely
+- removed without destabilizing the foundation
 
 ### Validation Hierarchy
 
-1. live runtime behavior on every target host class
-2. capability profile correctness
-3. readiness evidence correctness
-4. targeted functional tests (arch-gated, device-gated)
-5. build/test harness results
-6. logs and traces
-7. documentation updates
-
-This order is intentional.
+1. live behavior on every targeted host and product surface
+2. capability and readiness correctness
+3. policy and permission correctness
+4. targeted functional tests
+5. integration and regression tests
+6. logs, traces, and artifacts
+7. documentation
 
 ---
 
 ## Implementation Philosophy
 
-JARVISv7 should be built through thin vertical slices, not isolated subsystem milestones.
+JARVISv7 should be built through thin vertical slices that preserve the primary interaction path.
 
-The wrong approach is:
-- build a route
-- then build a recorder
-- then build a panel
-- then wire them later
+Build order should follow dependency truth:
 
-The correct approach is:
-- build the profiler and provisioning first
-- prove provisioning is correct on every host class
-- prove the voice runtime strategy and acceleration surface
-- prove the smallest real conversational loop
-- build the durable desktop shell once
-- preserve the primary path at every step
-- expand capability only after the real loop works
+- establish host capability, provisioning, and readiness
+- prove local runtimes and acceleration paths
+- prove the canonical conversational loop
+- establish session, memory, personality, artifacts, and recovery
+- preserve the desktop as a thin durable shell
+- add extension shapes one at a time through stable boundaries
+- add agent composition only after skills, tools, permissions, memory scopes, and execution evidence are trustworthy
+
+Avoid parallel frameworks that duplicate conversation, memory, tool, or runtime authority.
+
+---
 
 ## User Experience Goals
 
 JARVISv7 should feel:
+
 - immediate
 - dependable
 - local
@@ -847,80 +558,57 @@ JARVISv7 should feel:
 - understandable
 - interruptible
 - personal
+- extensible without becoming unpredictable
 
-The user should never have to guess:
-- what hardware/runtime profile was selected
-- whether the assistant heard them
-- whether the assistant is still thinking
-- whether the assistant is speaking
-- whether the system failed
-- whether the system is degraded
-- which LLM runtime is active
+The user should be able to understand:
 
----
-
-## Goals for Initial JARVIS
-
-Initial JARVISv7 needs:
-- one honest hardware profiler
-- one honest provisioning model that works across host classes
-- one honest readiness rail with evidence-backed claims
-- one honest and working conversational loop
-- correct runtime selection driven by readiness
-- explicit personality handling
-- deterministic control
-- visible failures
-- clean fallback behavior
-- a durable desktop shell, not a proving host promoted to shipping surface
+- what runtime and hardware profile is active
+- what the assistant heard
+- what state the assistant is in
+- what memory is being used or written
+- what tools, skills, agents, plugins, or MCP servers are active
+- what action is being proposed or executed
+- what permission or confirmation is required
+- whether the system is degraded or failed
 
 ---
 
-## Repository and Governance Alignment
+## Governance Alignment
 
-JARVISv7 must remain aligned with repo governance.
+Repository documents have separate purposes:
 
-This means:
-- evidence-first changes
-- minimal diffs
-- no claiming completion without reproducible proof on every target host class
-- approval-gated implementation
-- no roadmap drift from runtime reality
-- no "complete" status unless the primary path works in the real runtime
+- `ProjectVision.md` defines the intended product shape and core invariants
+- `SYSTEM_INVENTORY.md` records capabilities observable in the current repository
+- `CHANGE_LOG.md` records surviving implemented change history with evidence
+- `repo_tree.md` answers where repository content belongs
 
-In repo terms:
-- `ProjectVision.md` defines the target state and core invariants
-- `SYSTEM_INVENTORY.md` defines what capabilities are actually observable now
-- `CHANGE_LOG.md` defines what has actually been completed with evidence
-- `slices.md` defines the planned sequencing
-- `repo_tree.md` defines the structural boundaries that prevent drift
-
-These must not be conflated.
+Vision guides implementation but does not override runtime truth. Inventory and change history must not claim planned or removed capability.
 
 ---
 
 ## Definition of Success
 
-JARVISv7 is successful when it behaves like a real local assistant rather than a text system with voice attachments.
+JARVISv7 succeeds when it behaves as a real local assistant with a stable, inspectable foundation and reusable extension model.
 
-The earliest meaningful success state is:
+The foundation succeeds when:
 
-- the system profiles the hardware first
-- the system provisions the correct packages for the detected hardware through one authority
-- the system verifies readiness with evidence before selecting runtimes
-- the system emits capability flags that drive runtime choices
-- the assistant personality is explicit and consistent
-- the user can invoke JARVISv7 with voice (wake word or push-to-talk)
-- JARVISv7 can listen and transcribe locally on any supported host class
-- the transcript enters the same core cognition path as typed input
-- JARVISv7 produces a response in the real runtime
-- JARVISv7 speaks when TTS is available
-- JARVISv7 fails clearly when a modality is unavailable
-- JARVISv7 can be interrupted without collapsing the session
-- the desktop shell is the durable surface, not a promoted script
-- all of the above are traceable through explicit artifacts and deterministic state transitions
-- all of the above work on both x64 and ARM64 hosts
+- hardware truth drives provisioning and runtime selection
+- local voice and reasoning work through one canonical interaction path
+- personality, memory, policy, and context are explicit
+- interruption and degraded behavior are reliable
+- the desktop is a durable adapter over backend capability
+- important actions and failures are reconstructable
+- supported x64 and ARM64 paths are validated honestly
 
-That is the foundation.
-Everything else builds on top of it.
+The broader vision succeeds when the same foundation can safely host:
 
----
+- layered settings and instructions
+- reusable prompts and portable skills
+- governed tools and external resources
+- MCP integrations
+- deterministic hooks
+- inspectable plugins
+- specialized, opt-in agents
+- desktop and CLI interaction surfaces
+
+That is the shape of JARVISv7: one stable local assistant foundation, extended through explicit reusable capability forms rather than disconnected features.
