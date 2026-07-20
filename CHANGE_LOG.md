@@ -22,6 +22,15 @@
 ---
 
 ## Change Entries
+- Timestamp: 2026-07-20 04:59
+  - Host class(es): Windows AMD64 / amd64 validated
+  - Summary: Completed the confirmed repository cleanup, reconciled `repo_tree.md`, and updated tests to preserve validation of the retained operational surfaces.
+  - Scope:
+    - Repository cleanup, structural-map reconciliation, and corresponding test maintenance.
+  - Validation:
+    - `backend\.venv\Scripts\python scripts\validate_backend.py unit` PASS (`751 passed, 4 skipped`).
+    - `backend\.venv\Scripts\python scripts\validate_backend.py integration` PASS (`9 passed`).
+
 - Timestamp: 2026-07-19 11:49
   - Host class(es): Windows AMD64 / amd64 validated
   - Summary: Completed the confirmed repository cleanup, reconciled `repo_tree.md`, and corrected the Windows platform gate for the Linux/POSIX source-build filesystem test.

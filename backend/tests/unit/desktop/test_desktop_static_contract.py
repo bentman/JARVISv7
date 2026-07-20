@@ -510,13 +510,6 @@ def test_no_tools_or_agents_implementation_calls() -> None:
     assert "tool_registry" not in source
 
 
-def test_desktop_can_render_optional_tool_calls_metadata() -> None:
-    main_js = _read("desktop/src/main.js")
-    assert "appendToolCalls" in main_js
-    assert "Tool used:" in main_js
-    assert "response.tool_calls" in main_js
-
-
 def test_j1_readiness_components_and_containers_exist() -> None:
     index_html = _read("desktop/src/index.html")
     main_js = _read("desktop/src/main.js")

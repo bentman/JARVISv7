@@ -11,7 +11,6 @@ ENV_NAMES = (
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
-    "TOOL_FILESYSTEM_SANDBOX_PATH",
     "USE_LOCAL_MODEL",
     "LLM_MODEL_MODE",
     "LLM_MODEL_POLICY",
@@ -74,7 +73,6 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "REDIS_PORT",
     "PICOVOICE_ACCESS_KEY",
     "DATA_PATH",
-    "TOOL_FILESYSTEM_SANDBOX_PATH",
     "CONFIG_PATH",
     "MODEL_PATH",
     "STT_MODELS",
@@ -90,7 +88,6 @@ ENV_EXAMPLE_PATH_NAMES: set[str] = {
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
-    "TOOL_FILESYSTEM_SANDBOX_PATH",
     "STT_MODELS",
     "TTS_MODELS",
     "WAKE_MODEL",
@@ -412,7 +409,6 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
     assert settings.ollama_num_ctx == 8192
     assert settings.use_searxng is False
     assert settings.model_path == settings_module.MODELS_DIR
-    assert settings.tool_filesystem_sandbox_path == Path("data/tool_sandbox")
     assert settings.config_path == settings_module.CONFIG_DIR
     assert settings.stt_models == "models/stt"
     assert settings.tts_models == "models/tts"
@@ -508,9 +504,7 @@ def test_env_example_covers_current_settings_env_variables():
     assert values["LLM_MODEL_POLICY"] == "auto"
     assert values["LLM_MODEL_ID"] == ""
     assert values["OLLAMA_MODEL"] == "phi4-mini"
-    assert values["TOOL_FILESYSTEM_SANDBOX_PATH"] == "data/tool_sandbox/"
     assert values["CONFIG_PATH"] == "config/"
-    assert "CONFIG_PATH" not in values["TOOL_FILESYSTEM_SANDBOX_PATH"]
     assert values["SEARXNG_PORT"] == "8888"
     assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_OLLAMA"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}

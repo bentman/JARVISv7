@@ -72,25 +72,6 @@ def _fake_result(turn_id: str = "turn-1") -> TurnResult:
     )
 
 
-def _fake_tool_result(turn_id: str = "turn-tool") -> TurnResult:
-    return TurnResult(
-        turn_id=turn_id,
-        session_id="session-1",
-        transcript="hello",
-        response_text="ready",
-        final_state=ConversationState.IDLE,
-        tool_calls=[{"tool_name": "time", "tool_input": {}}],
-        tool_results=[
-            {
-                "tool_name": "time",
-                "tool_input": {},
-                "tool_output": "2026-05-03T00:00:00Z",
-                "success": True,
-            }
-        ],
-    )
-
-
 def _patch_startup(monkeypatch, *, stt_ready: bool = True) -> None:
     report = _fake_report()
     monkeypatch.setattr(
@@ -327,15 +308,3 @@ def test_verbose_dry_run_keeps_fingerprint_first(monkeypatch, capsys) -> None:
 
     assert exit_code == 0
     assert output[0].startswith("[fingerprint]")
-
-
-def test_text_output_includes_tool_metadata_when_present(monkeypatch, capsys) -> None:
-    _patch_startup(monkeypatch)
-    monkeypatch.setattr(run_jarvis, "_build_engine", lambda context: _FakeEngine())
-    monkeypatch.setattr(run_jarvis.turn_service, "run_text_turn", lambda text, *, engine: _fake_tool_result())
-
-    exit_code = run_jarvis.main(["--text-only", "--turns", "1"])
-    output = capsys.readouterr().out
-    assert exit_code == 0
-    assert "tool_call[1] name=time" in output
-    assert "tool_result[1] name=time success=True" in output

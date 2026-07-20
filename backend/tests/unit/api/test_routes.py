@@ -185,15 +185,6 @@ class _FakeEngine:
             transcript=text.strip(),
             response_text="text response",
             final_state=ConversationState.IDLE,
-            tool_results=[
-                {
-                    "tool_name": "time",
-                    "tool_input": {},
-                    "tool_output": "2026-05-03T00:00:00Z",
-                    "success": True,
-                    "error": None,
-                }
-            ],
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=0,
         )
@@ -827,7 +818,6 @@ def test_text_turn_returns_turn_result() -> None:
     assert payload["response_text"] == "text response"
     assert payload["active_personality_profile_id"] == "default"
     assert payload["profile_epoch"] == 0
-    assert payload["tool_calls"][0]["tool_name"] == "time"
 
 
 def test_text_turn_accepts_active_session_id() -> None:
@@ -914,7 +904,7 @@ def test_agents_status_is_disabled_read_only() -> None:
     assert payload["allowed_roles"] == ["planner", "executor", "critic", "curator", "learner"]
     assert payload["allowed_tools"] == []
     known_specs = {spec["spec_id"]: spec for spec in payload["known_specs"]}
-    assert sorted(known_specs) == ["agent_creator", "critic", "curator", "executor", "learner", "planner"]
+    assert sorted(known_specs) == ["critic", "curator", "executor", "learner", "planner"]
     assert known_specs["planner"]["enabled"] is False
     assert known_specs["planner"]["policy_allowed"] is False
 
@@ -1474,7 +1464,6 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["REDIS_PORT"]["section"] == "Optional Services"
     assert fields["REDIS_PORT"]["advanced"] is False
     assert fields["DATA_PATH"]["section"] == "App Paths"
-    assert fields["TOOL_FILESYSTEM_SANDBOX_PATH"]["section"] == "App Paths"
     assert fields["CONFIG_PATH"]["section"] == "App Paths"
     assert fields["MODEL_PATH"]["section"] == "App Paths"
     assert fields["STT_MODELS"]["section"] == "App Paths"

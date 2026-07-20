@@ -57,17 +57,9 @@ JARVISv7/
 ```text
 backend/
 ├─ app/
-│  ├─ agents/                        # spec-defined disabled agent boundary; consumes existing runtimes/tools/turns only through interfaces
-│  │  ├─ creator.py                  # deterministic spec-only Agent Creator
-│  │  ├─ critic.py                   # critic dry-run/spec surface
-│  │  ├─ curator.py                  # curator dry-run/spec surface
-│  │  ├─ executor.py                 # executor dry-run/spec surface
-│  │  ├─ learner.py                  # learner dry-run/spec surface
+│  ├─ agents/                        # disabled spec-status and read-only ledger boundary
 │  │  ├─ ledger.py                   # local agent event/spec ledger
-│  │  ├─ messages.py                 # typed AgentMessage and message-type enums
-│  │  ├─ planner.py                  # planner dry-run/spec surface
 │  │  ├─ policy.py                   # disabled-by-default policy/status gate
-│  │  ├─ roles.py                    # validated role/spec identifier helpers
 │  │  └─ specs.py                    # JarvisAgentSpec catalog loader/validator
 │  ├─ api/
 │  │  ├─ dependencies.py             # route dependencies and shared request wiring
@@ -89,8 +81,7 @@ backend/
 │  │     ├─ readiness.py             # startup/readiness response schema consumed by desktop shell
 │  │     ├─ session.py               # session schemas
 │  │     ├─ status.py                # wake/status schemas
-│  │     ├─ task.py                  # task schemas
-│  │     └─ tools.py                 # tool-call metadata schemas
+│  │     └─ task.py                  # task schemas
 │  ├─ artifacts/
 │  │  ├─ session_artifact.py         # session artifact definitions
 │  │  ├─ storage.py                  # artifact persistence helpers (writes to data/turns, data/sessions)
@@ -101,7 +92,6 @@ backend/
 │  │  ├─ manager.py                  # cache access layer (fail-closed when Redis unavailable)
 │  │  └─ redis_client.py             # redis integration
 │  ├─ cognition/
-│  │  ├─ executor.py                 # deterministic tool execution coordination (ACTING state owner, F.1)
 │  │  ├─ planner.py                  # turn-level planning logic (distinct from agents/planner.py role)
 │  │  ├─ policies.py                 # cognition policies
 │  │  ├─ prompt_assembler.py         # prompt assembly with personality + working + episodic memory inputs
@@ -194,11 +184,6 @@ backend/
 │  │  ├─ voice_service.py            # microphone capture helpers
 │  │  ├─ wake_monitor.py             # wake monitor service
 │  │  └─ wake_status.py              # wake status store and transition owner
-│  └─ tools/
-│     ├─ filesystem/                 # filesystem tools (read-only at F.2 scope; write tools = future slice)
-│     ├─ registry.py                 # tool registry (F.2)
-│     ├─ search/                     # internal/bundled search tools (adapter over runtimes/internetsearch/)
-│     └─ system/                     # system tools (time/date, hardware-info read-only)
 ├─ tests/
 │  ├─ conftest.py                    # arch/device skipif helpers (skip_unless_x64, skip_unless_arm64, skip_unless_cuda,
 │  │                                 #   skip_unless_directml, skip_unless_qnn, skip_unless_ollama, etc.);
@@ -229,16 +214,15 @@ backend/
 **Note**: `backend/requirements.txt` is not a manual source of truth. It is a generated lockfile of the `pyproject.toml` base extra emitted by the provisioning script. The file carries a top-of-file comment saying so.
 
 **Backend-domain ownership notes:**
-- `agents/` owns spec validation, disabled status truth, dry-run role surfaces, and local ledger records. It consumes `runtimes/`, `tools/`, `services/turn_service.py`, and `memory/` only through existing interfaces. Agent execution remains disabled unless a later approved slice enables it.
-- `cognition/` owns prompt assembly, tool-execution coordination (ACTING), and response shaping. It is the only layer that combines personality + memory + runtime output into a prompt. Never calls runtimes directly — goes through `routing/runtime_selector.py`.
+- `agents/` owns disabled spec/status truth and read-only local ledger diagnostics. It has no execution or prompt surface.
+- `cognition/` owns prompt assembly and response shaping. It is the only layer that combines personality + memory + runtime output into a prompt. Never calls runtimes directly — goes through `routing/runtime_selector.py`.
 - `conversation/` owns the state machine and session lifecycle. State transitions are explicit here, never implicit in prompt content.
 - `hardware/` is the root of runtime-selection authority. `profiler.py` detects; `provisioning.py` translates facts to extras; `preflight.py` verifies evidence. No runtime file contains host-detection logic.
 - `memory/` has a deliberate split: working (in-session, bounded) vs episodic (cross-session, policy-governed) vs semantic (future). `write_policy.py` is the only place that decides what enters each.
 - `personality/` is a prompt-assembly input, not an orchestration layer. Never bypasses safety or policy; never lives as opaque prompt fragment.
-- `routing/runtime_selector.py` is the single escalation-policy owner for LLM and search. Tool files and cognition files never reach past it.
+- `routing/runtime_selector.py` is the escalation-policy owner for LLM runtimes.
 - `runtimes/` contains one subdirectory per family. Each family has a `base.py` interface, one or more concrete runtimes, and a selector. Device is always a constructor parameter.
 - `services/` is the API-facing layer. It orchestrates runtimes, cognition, wake monitoring, resident voice invocation, and memory through their public interfaces; domain transition ownership is kept in named helpers such as `wake_status.py`. The desktop shell (D.2) and proving host (C.6) both consume services — never the layers below.
-- `tools/` depends on `runtimes/internetsearch/` (for search) but is otherwise self-contained. New tools drop in by registration; no redesign needed.
 
 ### Config Domains
 
@@ -246,7 +230,6 @@ backend/
 config/
 ├─ agents/
 │  └─ specs/                         # durable repo-owned disabled JarvisAgentSpec catalog
-│     ├─ agent_creator.yaml
 │     ├─ critic.yaml
 │     ├─ curator.yaml
 │     ├─ executor.yaml
@@ -254,8 +237,7 @@ config/
 │     └─ planner.yaml
 ├─ app/
 │  ├─ defaults.yaml                  # global defaults
-│  ├─ policies.yaml                  # safety, fallback, LLM escalation, search escalation, execution,
-│  │                                 #   agent-opt-in, filesystem-sandbox-path policies
+│  ├─ policies.yaml                  # safety, fallback, LLM escalation, search escalation, and agent opt-in policies
 │  └─ profiles.yaml                  # runtime profiles derived from capability flags
 ├─ redis/
 │  └─ redis.conf                     # Redis service configuration files (container/service ownership)
@@ -275,16 +257,11 @@ config/
 │  ├─ tts.yaml                       # TTS runtime/model config (kokoro-v1.0-onnx)
 │  └─ wake.yaml                      # wake config (openwakeword hey_jarvis default; porcupine optional;
 │                                    #   future-custom-keyword caveat notes)
-├─ personality/
-│  ├─ concise.yaml                   # concise personality profile
-│  ├─ default.yaml                   # runtime personality overlay/tuning profile
-│  ├─ jarvis_personality.json        # canonical identity/persona source
-│  └─ warm.yaml                      # warm personality profile
-└─ prompts/
-   ├─ agents/                        # per-role system prompt assets (planner, executor, critic, curator, learner)
-   ├─ planner/                       # turn-level planner prompt assets (distinct from agents/planner)
-   ├─ responder/                     # responder prompt assets
-   └─ system/                        # system prompt assets
+└─ personality/
+   ├─ concise.yaml                   # concise personality profile
+   ├─ default.yaml                   # runtime personality overlay/tuning profile
+   ├─ jarvis_personality.json        # canonical identity/persona source
+   └─ warm.yaml                      # warm personality profile
 ```
 
 **Config-domain ownership notes:**
@@ -294,8 +271,7 @@ config/
 - `config/redis/` owns Redis service configuration files; `cache/redis/` holds Redis runtime data only.
 - `.env` / `.env.example` own Redis/search connection settings, URLs, enable flags, and API-key placeholders.
 - `config/personality/` carries structured personality profiles. The `personality` domain in `backend/app/` loads them; the prompts themselves are structured config, not free-form prompt fragments.
-- `config/agents/specs/` owns durable disabled agent specs loaded by the agent spec catalog. Agent Creator writes repo-owned spec files there rather than temporary artifacts.
-- `config/prompts/` is split by consumer: `agents/` for the role framework, `planner/` + `responder/` for the turn-level cognition layer, `system/` for shared assets. Each role/layer has its own subdirectory so prompt edits have a single obvious location.
+- `config/agents/specs/` owns durable disabled agent specs loaded by the agent status catalog.
 
 ### Mutable Runtime Domains
 
@@ -313,7 +289,6 @@ data/
 │  └─ working/                       # working memory data (in-session)
 ├─ sessions/                         # session artifacts and persisted state (durable authority)
 ├─ temp/                             # runtime temp files
-├─ tool_sandbox/                     # FilesystemReadTool sandbox
 └─ turns/                            # turn artifacts (durable authority; C.3 schema)
 
 reports/
@@ -427,7 +402,7 @@ scripts/
 2. **`backend/app/hardware/profiler.py` is the sole source of runtime/device recommendations.** No runtime file contains `if platform.system() == ...` or equivalent host-detection logic.
 3. **Every voice-family runtime file accepts `device` as a constructor parameter.** Adding a new device value is a branch inside an existing runtime, never a new file.
 4. **`backend/app/hardware/preflight.py` is the sole owner of DLL / backend-path bootstrap.** No runtime file touches `os.add_dll_directory` or equivalent.
-5. **`backend/app/routing/runtime_selector.py` owns escalation policy for LLM and search.** Tool files and cognition files never reach past this layer.
+5. **`backend/app/routing/runtime_selector.py` owns escalation policy for LLM runtimes.**
 6. **Tests are arch-aware by marker, not by directory.** `backend/tests/conftest.py` defines `skip_unless_*` helpers; directory structure reflects test purpose (unit/integration/runtime) and functional domain (voice/turn/desktop/acceleration_matrix/agents/hardware).
 7. **`scripts/validate_backend.py` is the single entry to run tests in a controlled way.** Subcommands with stable exit codes.
 8. **`scripts/provision.py` is the single entry to install Python dependencies.** Only place that composes `pip install -e .[...]` invocations.
@@ -435,7 +410,7 @@ scripts/
 10. **`scripts/run_jarvis.py` is a proving host, not a shipping path.** `desktop/` is the durable surface from D.2 onward.
 11. **The QNN slot exists in extras, evidence tokens, capability flags, and runtime device enumeration from group A.** Activation in H.2 adds only inference code and a quantized model; no structural changes.
 12. **Every live runtime test is marker-gated** (`pytest.mark.live`, plus family/device/arch markers). The matrix in `backend/tests/runtime/acceleration_matrix/` is the B.5 gate that must remain green before C/D/E/F/G/H/I slice closeouts.
-13. **Agent roles consume existing boundaries unchanged.** Agents never reach past `runtime_selector`, `tool_registry`, `turn_service`, or the memory surfaces — they compose them.
+13. **The agent boundary remains disabled and read-only.** It exposes spec/status truth and ledger diagnostics without execution behavior.
 14. **Turn artifact schema is fixed in C.3** and treated as a compatibility boundary. Later slices (G, I) may add optional fields; they never rename or remove.
 15. `SYSTEM_INVENTORY.md`, `CHANGE_LOG.md`, `ProjectVision.md`, and `slices.md` are not conflated. Inventory ≠ roadmap ≠ vision ≠ changelog.
 

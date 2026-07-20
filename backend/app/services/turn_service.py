@@ -10,23 +10,15 @@ def run_voice_turn(
     sample_rate: int,
     *,
     engine: TurnEngine,
-    tool_name: str | None = None,
-    tool_input: dict[str, object] | None = None,
 ) -> TurnResult:
-    if tool_name is None and tool_input is None:
-        return engine.run_voice_turn(audio, sample_rate)
-    return engine.run_voice_turn(audio, sample_rate, tool_name=tool_name, tool_input=tool_input)
+    return engine.run_voice_turn(audio, sample_rate)
 
 
 def run_text_turn(
     text: str,
     *,
     engine: TurnEngine,
-    tool_name: str | None = None,
-    tool_input: dict[str, object] | None = None,
 ) -> TurnResult:
     if not text.strip():
         raise ValueError("text must be non-empty")
-    if tool_name is None and tool_input is None:
-        return engine.run_text_turn(text)
-    return engine.run_text_turn(text, tool_name=tool_name, tool_input=tool_input)
+    return engine.run_text_turn(text)

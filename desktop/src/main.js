@@ -98,15 +98,6 @@ function setTextEntryEnabled(enabled) {
   inputEl.disabled = !enabled;
 }
 
-function appendToolCalls(toolCalls) {
-  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return;
-  for (const call of toolCalls) {
-    const toolName = call.tool_name || "unknown";
-    const summary = String(call.tool_output_summary || "").slice(0, 200);
-    appendMessage("system", `Tool used: ${toolName} | ${summary}`);
-  }
-}
-
 function presenceText(stateName) {
   const profile = presenceByProfile[activePersonalityId] || presenceByProfile.default;
   return profile[stateName] || presenceByProfile.default[stateName];
@@ -523,7 +514,6 @@ async function submitText(text) {
       profileId: response.active_personality_profile_id,
       profileEpoch: response.profile_epoch,
     });
-    appendToolCalls(response.tool_calls);
     await refreshSessionStatus();
   } catch (error) {
     desktopState?.renderTurnStatus("FAILED");

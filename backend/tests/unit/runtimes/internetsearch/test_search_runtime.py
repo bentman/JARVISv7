@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from backend.app.core.settings import Settings
-from backend.app.routing.runtime_selector import select_search_runtime
 from backend.app.runtimes.internetsearch.ddgs_runtime import DDGSRuntime
 from backend.app.runtimes.internetsearch.searxng_runtime import SearXNGRuntime
 from backend.app.runtimes.internetsearch.tavily_runtime import TavilyRuntime
@@ -9,34 +8,6 @@ from backend.app.runtimes.internetsearch.tavily_runtime import TavilyRuntime
 
 def _settings() -> Settings:
     return Settings()
-
-
-def test_selector_prefers_searxng_then_ddgs_then_tavily_then_null() -> None:
-    settings = _settings()
-    settings.use_searxng = True
-    settings.searxng_base_url = "http://searxng.test:18080"
-    settings.use_ddgs = True
-    settings.use_tavily = True
-    settings.tavily_api_key = "key"
-
-    runtime, trace = select_search_runtime(settings)
-    assert runtime.runtime_name() == "searxng"
-    assert trace.runtime_name == "searxng"
-
-    settings.use_searxng = False
-    runtime, trace = select_search_runtime(settings)
-    assert runtime.runtime_name() == "ddgs"
-    assert trace.runtime_name == "ddgs"
-
-    settings.use_ddgs = False
-    runtime, trace = select_search_runtime(settings)
-    assert runtime.runtime_name() == "tavily"
-    assert trace.runtime_name == "tavily"
-
-    settings.use_tavily = False
-    runtime, trace = select_search_runtime(settings)
-    assert runtime.runtime_name() == "null"
-    assert trace.runtime_name == "null"
 
 
 def test_searxng_runtime_fail_closed_on_error(monkeypatch) -> None:

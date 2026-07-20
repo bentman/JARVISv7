@@ -73,7 +73,6 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec("REDIS_MAX_CONNECTIONS", "Redis maximum connection count.", section="Optional Services", advanced=True),
     OperatorFieldSpec("REDIS_SOCKET_TIMEOUT", "Redis socket timeout in seconds.", section="Optional Services", advanced=True),
     OperatorFieldSpec("DATA_PATH", "Application data path.", section="App Paths"),
-    OperatorFieldSpec("TOOL_FILESYSTEM_SANDBOX_PATH", "Tool filesystem sandbox path.", section="App Paths"),
     OperatorFieldSpec("CONFIG_PATH", "Application config path.", section="App Paths"),
     OperatorFieldSpec("MODEL_PATH", "Model artifact root path.", section="App Paths"),
     OperatorFieldSpec("STT_MODELS", "Speech-to-text model path.", section="App Paths", advanced=True),

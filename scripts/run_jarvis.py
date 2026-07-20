@@ -188,16 +188,6 @@ def _print_result(result: TurnResult, out: TextIO) -> None:
         print(f"transcript={result.transcript}", file=out)
     if result.response_text is not None:
         print(f"response_text={result.response_text}", file=out)
-    if result.tool_calls:
-        for idx, call in enumerate(result.tool_calls, start=1):
-            tool_name = call.get("tool_name", "")
-            print(f"tool_call[{idx}] name={tool_name}", file=out)
-    if result.tool_results:
-        for idx, tool_result in enumerate(result.tool_results, start=1):
-            tool_name = tool_result.get("tool_name", "")
-            success = bool(tool_result.get("success", False))
-            output_summary = str(tool_result.get("tool_output", ""))[:200]
-            print(f"tool_result[{idx}] name={tool_name} success={success} summary={output_summary}", file=out)
     if result.tts_degraded:
         print(f"TTS_UNAVAILABLE {result.tts_degraded_reason}", file=out)
     if result.failure_reason:

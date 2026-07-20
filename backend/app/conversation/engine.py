@@ -15,7 +15,6 @@ from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.style_guard import apply_personality_style_guard
-from backend.app.cognition.executor import ToolExecutor, ToolResult
 from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
@@ -47,8 +46,6 @@ class TurnResult:
     tts_output_device: str | None = None
     interrupted: bool = False
     interruption_events: list[dict[str, object]] = field(default_factory=list)
-    tool_calls: list[dict[str, object]] = field(default_factory=list)
-    tool_results: list[dict[str, object]] = field(default_factory=list)
     raw_audio_path: str | None = None
     active_personality_profile_id: str = "unknown"
     profile_epoch: int = 0
@@ -70,8 +67,6 @@ class TurnEngine:
         barge_in_detector: BargeInDetector | None = None,
         interruption_audio_chunks: Callable[[], Iterable[np.ndarray] | None] | Iterable[np.ndarray] | None = None,
         playback_api: Any | None = None,
-        executor: ToolExecutor | None = None,
-        tool_registry: Any | None = None,
         episodic: EpisodicMemory | None = None,
         cache_manager: CacheManager | None = None,
         semantic: SemanticMemory | None = None,
@@ -86,15 +81,13 @@ class TurnEngine:
         self.barge_in_detector = barge_in_detector
         self.interruption_audio_chunks = interruption_audio_chunks
         self.playback_api = playback_api or playback
-        self.executor = executor or ToolExecutor()
-        self.tool_registry = tool_registry
         self.episodic = episodic
         self.cache_manager = cache_manager
         self.semantic = semantic
         self.retrieval = RetrievalManager()
         self.phase_observer: PhaseObserver | None = None
 
-    def run_text_turn(self, text: str, *, tool_name: str | None = None, tool_input: dict[str, object] | None = None) -> TurnResult:
+    def run_text_turn(self, text: str) -> TurnResult:
         transcript = text.strip()
         context = self._create_context("text")
         if not transcript:
@@ -103,8 +96,6 @@ class TurnEngine:
             context,
             transcript,
             speak_response=False,
-            tool_name=tool_name,
-            tool_input=tool_input,
         )
 
     def run_voice_turn(
@@ -112,8 +103,6 @@ class TurnEngine:
         audio: np.ndarray,
         sample_rate: int,
         *,
-        tool_name: str | None = None,
-        tool_input: dict[str, object] | None = None,
         turn_runtime_context: dict[str, object] | None = None,
     ) -> TurnResult:
         context = self._create_context("voice")
@@ -157,8 +146,6 @@ class TurnEngine:
                 context,
                 transcript,
                 speak_response=True,
-                tool_name=tool_name,
-                tool_input=tool_input,
                 raw_audio_path=raw_audio_path,
                 phase_durations_ms=phase_durations_ms,
                 voice_turn_started_at=voice_turn_started_at,
@@ -180,8 +167,6 @@ class TurnEngine:
         transcript: str,
         *,
         speak_response: bool,
-        tool_name: str | None = None,
-        tool_input: dict[str, object] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
@@ -216,15 +201,6 @@ class TurnEngine:
                     )
                 except Exception:
                     retrieved_context = []
-            tool_results: list[ToolResult] = []
-            tool_context: str | None = None
-            if tool_name is not None:
-                context.advance(ConversationState.ACTING)
-                normalized_input = dict(tool_input or {})
-                tool_result = self._execute_tool(tool_name, normalized_input)
-                tool_results.append(tool_result)
-                tool_context = self._format_tool_result_for_prompt(tool_result)
-
             policy = compile_personality_policy(self.personality)
             prompt_envelope = assemble_prompt_envelope(
                 transcript,
@@ -232,7 +208,6 @@ class TurnEngine:
                 working_memory=working_memory,
                 session_continuity=session_continuity,
                 retrieved_context=retrieved_context,
-                tool_context=tool_context,
                 policy=policy,
             )
 
@@ -267,7 +242,6 @@ class TurnEngine:
                     response_text=stored_response,
                     voice_text=voice_text,
                     final_prompt_text=prompt,
-                    tool_results=tool_results,
                     retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
                     raw_audio_path=raw_audio_path,
                     phase_durations_ms=phase_durations_ms,
@@ -280,8 +254,6 @@ class TurnEngine:
                 transcript=transcript,
                 response_text=stored_response,
                 final_state=context.state,
-                tool_calls=self._to_tool_calls(tool_results),
-                tool_results=self._to_tool_results(tool_results),
                 raw_audio_path=raw_audio_path,
                 active_personality_profile_id=self.personality.profile_id,
                 profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
@@ -313,7 +285,6 @@ class TurnEngine:
         response_text: str,
         final_prompt_text: str,
         voice_text: str | None = None,
-        tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
@@ -330,8 +301,6 @@ class TurnEngine:
                 final_state=context.state,
                 tts_degraded=True,
                 tts_degraded_reason="TTS runtime is unavailable",
-                tool_calls=self._to_tool_calls(tool_results or []),
-                tool_results=self._to_tool_results(tool_results or []),
                 raw_audio_path=raw_audio_path,
                 active_personality_profile_id=self.personality.profile_id,
                 profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
@@ -355,7 +324,6 @@ class TurnEngine:
                 transcript=transcript,
                 response_text=response_text,
                 final_prompt_text=final_prompt_text,
-                tool_results=tool_results,
                 retrieved_memory_refs=retrieved_memory_refs,
                 raw_audio_path=raw_audio_path,
                 phase_durations_ms=phase_durations_ms,
@@ -376,7 +344,6 @@ class TurnEngine:
             transcript=transcript,
             response_text=response_text,
             final_prompt_text=final_prompt_text,
-            tool_results=tool_results,
             retrieved_memory_refs=retrieved_memory_refs,
             raw_audio_path=raw_audio_path,
             phase_durations_ms=phase_durations_ms,
@@ -410,7 +377,6 @@ class TurnEngine:
         transcript: str,
         response_text: str,
         final_prompt_text: str,
-        tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
@@ -429,7 +395,6 @@ class TurnEngine:
                         audio=audio,
                         sample_rate=sample_rate,
                         interruption_chunks=interruption_chunks,
-                        tool_results=tool_results,
                         retrieved_memory_refs=retrieved_memory_refs,
                         raw_audio_path=raw_audio_path,
                         phase_durations_ms=phase_durations_ms,
@@ -474,7 +439,6 @@ class TurnEngine:
         transcript: str,
         response_text: str,
         final_prompt_text: str,
-        tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
@@ -602,8 +566,6 @@ class TurnEngine:
             phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
             interrupted=interrupted,
             interruption_events=interruption_events,
-            tool_calls=self._to_tool_calls(tool_results or []),
-            tool_results=self._to_tool_results(tool_results or []),
         )
 
         self._record_artifact(
@@ -624,7 +586,6 @@ class TurnEngine:
         audio: np.ndarray,
         sample_rate: int,
         interruption_chunks: Iterator[np.ndarray],
-        tool_results: list[ToolResult] | None = None,
         retrieved_memory_refs: list[str] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
@@ -661,8 +622,6 @@ class TurnEngine:
                     final_state=context.state,
                     interrupted=True,
                     interruption_events=interruption_events,
-                    tool_calls=self._to_tool_calls(tool_results or []),
-                    tool_results=self._to_tool_results(tool_results or []),
                     raw_audio_path=raw_audio_path,
                     active_personality_profile_id=self.personality.profile_id,
                     profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
@@ -685,8 +644,6 @@ class TurnEngine:
             transcript=transcript,
             response_text=response_text,
             final_state=context.state,
-            tool_calls=self._to_tool_calls(tool_results or []),
-            tool_results=self._to_tool_results(tool_results or []),
             raw_audio_path=raw_audio_path,
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
@@ -789,8 +746,6 @@ class TurnEngine:
             tts_output_device=result.tts_output_device,
             runtime_context=self._runtime_context(context, result),
             interruption_events=result.interruption_events,
-            tools_invoked=[str(call["tool_name"]) for call in result.tool_calls if isinstance(call.get("tool_name"), str)],
-            agent_trace={"tool_calls": result.tool_calls, "tool_results": result.tool_results} if result.tool_calls else None,
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
             phase_durations_ms=dict(result.phase_durations_ms),
             failure_phase=result.failure_phase,
@@ -841,37 +796,6 @@ class TurnEngine:
             wav_file.setframerate(int(sample_rate))
             wav_file.writeframes(pcm16.tobytes())
         return str(audio_path)
-
-    def _execute_tool(self, tool_name: str, tool_input: dict[str, object]) -> ToolResult:
-        if self.tool_registry is None:
-            return ToolResult(
-                tool_name=tool_name,
-                tool_input=tool_input,
-                tool_output="",
-                error="tool registry is not configured",
-                success=False,
-            )
-        return self.executor.execute(tool_name, tool_input, self.tool_registry)
-
-    def _format_tool_result_for_prompt(self, result: ToolResult) -> str:
-        if result.success:
-            return f"tool={result.tool_name}\ninput={result.tool_input}\noutput={result.tool_output}"
-        return f"tool={result.tool_name}\ninput={result.tool_input}\nerror={result.error or 'unknown error'}"
-
-    def _to_tool_calls(self, results: list[ToolResult]) -> list[dict[str, object]]:
-        return [{"tool_name": r.tool_name, "tool_input": r.tool_input} for r in results]
-
-    def _to_tool_results(self, results: list[ToolResult]) -> list[dict[str, object]]:
-        return [
-            {
-                "tool_name": r.tool_name,
-                "tool_input": r.tool_input,
-                "tool_output": r.tool_output,
-                "error": r.error,
-                "success": r.success,
-            }
-            for r in results
-        ]
 
 
 def timestamp_now() -> str:

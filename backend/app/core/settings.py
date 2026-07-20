@@ -15,7 +15,6 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "CONFIG_PATH": "advanced",
     "DATA_PATH": "advanced",
     "MODEL_PATH": "advanced",
-    "TOOL_FILESYSTEM_SANDBOX_PATH": "advanced",
     "USE_LOCAL_MODEL": "primary",
     "LLM_MODEL_MODE": "primary",
     "LLM_MODEL_POLICY": "primary",
@@ -139,9 +138,6 @@ class Settings:
         default_factory=lambda: _env_path("CONFIG_PATH", CONFIG_DIR)
     )
     data_path: Path = field(default_factory=lambda: _env_path("DATA_PATH", DATA_DIR))
-    tool_filesystem_sandbox_path: Path = field(
-        default_factory=lambda: _env_path("TOOL_FILESYSTEM_SANDBOX_PATH", "data/tool_sandbox/")
-    )
     model_path: Path = field(default_factory=lambda: _env_path("MODEL_PATH", MODELS_DIR))
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", True))
     local_model_fetch_explicit: bool = field(default_factory=lambda: _env_present("LOCAL_MODEL_FETCH"))

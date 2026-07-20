@@ -5,9 +5,7 @@ from typing import Any
 
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
-from backend.app.core.settings import Settings
 from backend.app.runtimes.llm.base import LLMBase
-from backend.app.runtimes.internetsearch import DDGSRuntime, NullSearchRuntime, SearchBase, SearXNGRuntime, TavilyRuntime
 from backend.app.runtimes.llm.claude_runtime import ClaudeLLM
 from backend.app.runtimes.llm.gemini_runtime import GeminiLLM
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
@@ -111,16 +109,3 @@ def _local_trace(local: LlamaCppLLM, reason: str) -> SelectionTrace:
         model_role=getattr(local, "model_role", None),
         model_selection_reason=getattr(local, "model_selection_reason", None),
     )
-
-
-def select_search_runtime(settings: Settings) -> tuple[SearchBase, SelectionTrace]:
-    providers: list[SearchBase] = [
-        SearXNGRuntime(settings),
-        DDGSRuntime(settings),
-        TavilyRuntime(settings),
-    ]
-    for provider in providers:
-        if provider.is_available():
-            return provider, SelectionTrace(provider.runtime_name(), "available")
-    reason = "no search runtime available"
-    return NullSearchRuntime(reason), SelectionTrace("null", reason)
