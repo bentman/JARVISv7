@@ -9,11 +9,22 @@
 
 ## 📚 **J**udiciously **A**daptive **R**untime **V**oice **I**nterface **S**ystem — Mark7
 
-JARVISv7 is a local-first, voice-first personal assistant project built for real conversational interaction on user-owned hardware. The target is not a browser chat box with a microphone button taped to it. The target is a desktop-resident assistant that can listen, reason, respond, speak, remember useful context, expose what it is doing, and fail in ways humans can actually diagnose.
+* Still not sentient.
+* Still not flying the suit.
+* Still not allowed to call vibes a validation strategy.
+* Now with enough runtime evidence that remaining problems have nowhere polite to hide.
 
-It is still not sentient. It is still not flying the suit. It is still not allowed to call vibes a validation strategy.
+JARVISv7 is a local-first, voice-first personal assistant project built for real conversational interaction on user-owned hardware. The target is not a browser chat box with a microphone button taped to it. The target is a desktop-resident assistant that can listen, reason, respond, speak, remember useful context, expose what it is doing, and fail in ways humans can actually diagnose. 
+JARVISv7 exists because v6 taught two important lessons:
 
-JARVISv7 exists because v6 proved the vision was mostly right and the implementation was occasionally adventurous. v7 keeps the ambition, but adds hardware-aware startup, explicit readiness, visible degradation, evidence-backed validation, and fewer opportunities for architectural jazz hands.
+> The vision was mostly right.  
+> The implementation was occasionally creative.  
+
+* Some architectural decisions worked exactly as intended - some did not.  
+* Several worked just well enough to expose entirely different problems.  
+* Which, in hindsight, is indeed progress.  
+
+Since then, v7 has moved from "another restart with better rules" to "an actual construction site with permits, inspections, and a suspicious number of extension cords" - oh and still very hard to manage.
 
 > A project that has finally become disciplined enough to discover how much work remains.
 
@@ -34,7 +45,7 @@ Useful entry points:
 * [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
 * [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
-* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup
+* [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup (kinda)
 
 The README is intentionally not the technical manual. Nobody wins when the front page becomes an installation crime scene.
 
@@ -56,6 +67,10 @@ The intended progression is simple, even when the engineering is not:
 * add reusable skills, integrations, plugins, and agents only after the foundation can support them
 
 That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.
+
+> [ProjectVision.md](ProjectVision.md) contains the destination.  
+> [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.
+
 
 > The goal is natural interaction without pretending the engineering underneath is simple.
 
@@ -88,14 +103,14 @@ Voice remains the primary objective. The project now has real voice infrastructu
 
 What is validated or materially present:
 
-* Windows AMD64 local voice paths, including validated CUDA and DirectML TTS execution where supported
-* Windows ARM64 Qualcomm QNN STT and TTS paths
-* Linux voice and runtime support where documented and validated
 * push-to-talk and wake paths over a shared stream
 * resident voice invocation and bounded follow-up windows
 * barge-in/interruption handling and playback coordination
 * live voice tests for selected host paths
 * desktop resident voice proof paths
+* Windows AMD64 local voice paths, including validated CUDA and DirectML TTS execution where supported
+* Windows ARM64 Qualcomm QNN STT and TTS paths
+* Linux voice and runtime support where documented and validated (fingers-crossed)
 
 What still needs work is the pleasant part: latency, timing, conversational smoothness, natural interruption, robustness, and the small matter of making it feel less like a stack of subsystems successfully pretending to be one organism.
 
@@ -111,15 +126,21 @@ Current runtime posture:
 
 * Windows AMD64 is the broadest proving target, with CPU fallback and selected CUDA and DirectML paths.
 * Windows ARM64 is a first-class target, including validated Qualcomm QNN voice acceleration where supported.
-* Linux is supported enough to welcome contributors without claiming every path has achieved diplomatic immunity; Linux AMD64 NVIDIA CUDA managed `llama.cpp` is live-proven in WSL2 using CUDA 12.4.
-* ARM64 Adreno OpenCL `llama.cpp` support remains a documented staged path.
-* AMD64 does not select QNN and does not pretend to.
-* accelerator claims remain bounded by what has actually been proven.
+* ARM64 Adreno OpenCL accelerated `llama.cpp` support remains side-loaded (compiled via helper doc).
+* ARM64 QNN accelerated `whisper` requires Qualcomm ID and binary download (detailed in another helper doc).
+* AMD64 QNN accelerated `llama.cpp` can also be side-loaded (you guessed it, compiled via helper doc).
+  * This is not in the "proven-live" stack, but there if you want to make it your chosen path.
+* All accelerator claims remain bounded by what has actually been proven.
+* Linux is supported enough to welcome contributors without claiming every path has achieved diplomatic immunity.
+* Linux AMD64 NVIDIA CUDA accelerated `llama.cpp` is side-loaded binary compiled from 12.4 (yet another helper doc).
+
 
 The technical helper docs are here when the hardware rabbit hole becomes unavoidable:
 
 * [docs/jarvis-arm-llamacpp.md](docs/jarvis-arm-llamacpp.md)
+* [docs/jarvis-arm-llamacpp-qnn.md](docs/jarvis-arm-llamacpp-qnn.md)
 * [docs/jarvis-arm-whisper.md](docs/jarvis-arm-whisper.md)
+* [docs/jarvis-wsl-llamacpp.md](docs/jarvis-wsl-llamacpp.md)
 
 Hardware acceleration is welcome. Hardware fan fiction is not.
 
@@ -202,7 +223,8 @@ The intended order matters:
 
 The normal assistant must remain useful without any of them. Extensions should add capability, not establish a parallel government in the basement.
 
-> First make the assistant dependable. Then let it delegate.
+> In other words: The roadmap increasingly consists of engineering problems rather than philosophical ones.  
+> Which is encouraging... and inconvenient.  
 
 * * *
 
@@ -210,7 +232,7 @@ The normal assistant must remain useful without any of them. Extensions should a
 
 v6 showed that the voice-first assistant vision was achievable. It also showed that architecture without strong boundaries can become ambitious in the least helpful ways. v7 keeps the vision and adds discipline: acceptance criteria, inventories, validation harnesses, explicit degraded states, hardware-aware provisioning, traceability, and less tolerance for “probably fine.”
 
-Compared with v6, v7 emphasizes:
+As a result, JARVISv7 places much greater emphasis on:
 
 * evidence-backed capability claims
 * hardware-aware setup before runtime selection
@@ -219,35 +241,67 @@ Compared with v6, v7 emphasizes:
 * explicit personality, policy, memory, and capability boundaries
 * Windows AMD64 first, Windows ARM64 alongside it, and Linux paths expanded with evidence
 * truthful degraded states when a feature is unavailable
+> That sounds less exciting, but turns out to be far more useful.
 
 * * *
 
 ## 🤝 Contributions Welcome
 
-JARVISv7 is under active development. Contributions are welcome where they improve a real path, preserve truthful capability reporting, and arrive with enough evidence that the next person does not need to perform digital archaeology.
+JARVIS has reached the stage where progress comes less from generating new ideas and more from executing existing ones consistently.
 
-Windows AMD64 and Windows ARM64 coverage are especially valuable. Linux contributions are also welcome, particularly where they make setup, runtime behavior, or validation less host-specific.
+Contributions are welcome, particularly those that:
 
-Start with the quick-start guide, read [AGENTS.md](AGENTS.md), and keep changes narrow enough that reviewers can still remember why they opened the diff.
+* improve voice interaction
+* improve memory and retrieval systems
+* reduce complexity and improve reliability
+* improve platform support (did we mention donations, yet?)
+* improve agent boundaries without turning them into autonomous gremlins
+* improve architecture parity without pretending one machine represents the species
+* improve hardware/runtime coverage (ok, we're pretty sure we have mentioned "donations")
+* improve live runtime validation instead of just making tests feel emotionally supportive
+* advance RAG, MCP, skills, agents, and local/cloud escalation without pretending they are already finished
 
-> Pull requests are welcome. Surprise architecture is less welcome.
+**BONUS POINTS:** solving real problems without introducing three new ones.  
+**DOUBLE BONUS POINTS:** documenting what actually happened instead of what would have been nice if it happened.
+> Pull requests are welcome. Surprise architecture is less welcome.  
+> The rules are stricter now. [AGENTS.md](AGENTS.md) is no longer a suggestion.
 
 * * *
 
 ## 📜 License
 
-JARVISv7 is licensed under the [MIT License](LICENSE).
+Distributed under the MIT License.  
 
-Use it, modify it, learn from it, and improve it. The license does not include an arc reactor, a British synthetic voice, or legal permission to blame the repository for decisions made after midnight.
+Use it, modify it, learn from it, and improve it. The license does not include an arc reactor or legal permission to blame the repository for decisions made after midnight. British synthetic voice is included (by defaults). Just remember that experimental software occasionally behaves experimentally.  
+
+> See [LICENSE](LICENSE) for "yada-yada" details.
 
 * * *
 
-## 🙏 Acknowledgments
+## 🧱 Acknowledgments
 
-JARVISv7 builds on a large open-source ecosystem spanning Python, FastAPI, Tauri, ONNX Runtime, llama.cpp, Ollama, openWakeWord, Kokoro, Redis, SearXNG, and the many projects that make local AI development possible without requiring a warehouse full of GPUs.
+Built on the accumulated successes, mistakes, redesigns, overcorrections, and occasional moments of accidental competence from:
 
-The project also owes a recurring debt to every test failure that arrived before a confident release note.
+* [**JARVISv1 (Just A Rough Very Incomplete Start)**](https://github.com/bentman/JARVISv1)  
+  The beginning — many milestones, alpha nonetheless.
 
+* [**JARVISv2 (Just Almost Real Viable Intelligent System)**](https://github.com/bentman/JARVISv2)  
+  The first version that hinted this might actually be possible.
+
+* [**JARVISv3 (Just A Reliable Variant In Service)**](https://github.com/bentman/JARVISv3)  
+  The version that introduced stability.
+
+* [**JARVISv4 (Just A Reimagined Version In Stabilization)**](https://github.com/bentman/JARVISv4)  
+  The version that introduced discipline.
+
+* [**JARVISv5 (Just A Runnable, Verified Iterative System)**](https://github.com/bentman/JARVISv5)  
+  The first version that behaved like a system — without voice.
+
+* [**JARVISv6 (Just Another Restart, Voice Included System)**](https://github.com/bentman/JARVISv6)  
+  The version that proved the vision could work and exposed what still needed to be fixed.
+
+* [**JARVISv7 (Just Another Restart, Validated Iteratively System)**](README.md) << this one >>  
+  The version proving that "under construction" and "making progress" can, occasionally, be the same thing.
 * * *
 
 ## 🧾 Bottom Line
@@ -258,4 +312,4 @@ There is a real desktop shell, a real local conversation path, real voice infras
 
 The destination remains ambitious. The foundation is finally substantial enough that building upward is more sensible than starting over.
 
-> Not magic. Not done. Definitely in progress.
+> "Sometimes you gotta run before you can walk." — Tony Stark
