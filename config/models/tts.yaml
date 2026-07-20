@@ -4,7 +4,7 @@ models:
   kokoro-v1.0-onnx:
     family: tts
     runtime: kokoro_onnx
-    devices: [cpu, cuda, directml]
+    devices: [cpu, cuda, directml, qnn]
     supported_voices: ["af_bella", "af_sarah", "am_adam", "am_michael", "bf_emma", "bf_isabella", "bm_george", "bm_lewis"]
     voice: bf_isabella
     sample_rate: 24000

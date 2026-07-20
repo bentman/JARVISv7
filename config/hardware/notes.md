@@ -1,47 +1,43 @@
 ## ARM64 (Snapdragon X Elite) — Acceleration Chain
 
 ### STT device priority
-1. QNN (Snapdragon X Elite HTP)
-   - Requires: hw-npu-qualcomm-qnn extra, ep:QNNExecutionProvider, dll:QnnHtp, artifact present
-   - Proven: H.3 (2026-05-12)
-2. CPU — fallback when any QNN prerequisite or artifact is missing
+1. QNN (Snapdragon X Elite HTP) — verified
+   - Requires the `hw-npu-qualcomm-qnn` extra, QNN execution-provider readiness, QAIRT runtime libraries, and the QNN model artifact.
+2. CPU — fallback when QNN prerequisites or artifacts are unavailable
 
 ### TTS device priority
-1. CPU — only proven path
-   - kokoro_onnx.Kokoro does not expose a providers parameter (H.7)
-   - Accelerated TTS is not currently wired because kokoro_onnx does not expose provider selection; the hardware acceleration boundary owns activation after upstream support exists.
+1. QNN (Snapdragon X Elite HTP) — verified
+   - Kokoro uses a QNN InferenceSession with CPU fallback enabled.
+2. CPU — fallback when QNN readiness is unavailable
 
 ### LLM
-- Ollama (local HTTP) — primary
+- Managed llama.cpp is the primary local runtime; Windows ARM64 CPU and user-staged Adreno OpenCL paths are verified.
+- QNN/Hexagon LLM acceleration remains unavailable. Ollama remains the fallback runtime.
 
 ### Wake
 - openWakeWord (CPU) — primary; no hardware acceleration targeted
 
 ---
 
-## x64 (Intel i9 + NVIDIA RTX 3060) — Acceleration Chain
+## x64 (Intel + NVIDIA) — Acceleration Chain
 
 ### STT device priority
-1. CUDA (NVIDIA RTX 3060)
-   - Requires: hw-gpu-nvidia-cuda extra, ep:CUDAExecutionProvider
-   - Proven: H.4 (2026-05-03)
-2. DirectML — defined slot; currently SKIP-prereq-missing
-   - DmlExecutionProvider not present in installed onnxruntime-gpu wheel (H.5 2026-05-13)
-   - Gate test in place: backend/tests/runtime/hardware/test_directml_gate_live.py
-   - See enabling procedure below
-3. CPU — fallback when CUDA and DirectML both unproven
+1. CUDA — verified when the NVIDIA CUDA execution provider is ready
+2. DirectML — supported when the DirectML execution provider is ready
+3. CPU — fallback when accelerated providers are unavailable
 
 ### TTS device priority
-1. CPU — only proven path (H.7)
+1. CUDA — verified
+2. DirectML — supported when the DirectML execution provider is ready
+3. CPU — fallback when accelerated providers are unavailable
 
 ### LLM
-- Ollama (local HTTP) — primary
+- Managed llama.cpp CPU and NVIDIA CUDA serve paths are verified. Ollama remains the fallback runtime.
 
 ### Wake
 - openWakeWord (CPU) — primary
 
-### Enabling DirectML (operator action when provider support is installed)
-  pip install onnxruntime-directml
-  $env:JARVISV7_LIVE_TESTS="true"
-  python -m pytest backend/tests/runtime/hardware/test_directml_gate_live.py -q
-If both tests PASS, update pyproject.toml hw-gpu extras and re-run I.2 normalization.
+### Non-pip prerequisites
+- NVIDIA acceleration requires a compatible driver and CUDA toolkit discovered by preflight.
+- Qualcomm QNN acceleration requires the QAIRT SDK/runtime libraries and `QAIRT_SDK_PATH` when automatic discovery is insufficient.
+- Dependency selection and installation remain owned by `pyproject.toml` and `scripts/provision.py`; do not install runtime packages directly.

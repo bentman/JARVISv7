@@ -10,6 +10,7 @@ import pytest
 
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.models.catalog import get_model_entry
 from backend.app.runtimes.tts.kokoro_onnx_runtime import KOKORO_SAMPLE_RATE, KokoroOnnxRuntime
 from backend.app.runtimes.tts.playback import describe_output_device, is_playing, stop
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime, select_tts_runtime, validate_tts_voice
@@ -194,6 +195,12 @@ def test_selector_uses_configured_yaml_voice_for_kokoro_runtime():
 
     assert isinstance(runtime, KokoroOnnxRuntime)
     assert runtime.voice == "bf_isabella"
+
+
+def test_tts_catalog_declares_all_connected_runtime_devices():
+    entry = get_model_entry("tts")
+
+    assert entry.config["devices"] == ["cpu", "cuda", "directml", "qnn"]
 
 
 def test_validate_tts_voice_uses_supported_config_without_rewriting_yaml():

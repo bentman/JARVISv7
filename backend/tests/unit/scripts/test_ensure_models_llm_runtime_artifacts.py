@@ -748,6 +748,33 @@ def test_catalog_non_cuda_gpu_profiles_record_deferred_candidates() -> None:
     assert profiles["windows_amd64_gpu_intel"]["validation_status"] == "declared-degraded"
 
 
+def test_catalog_records_verified_cpu_and_cuda_serve_profiles() -> None:
+    model_names = (
+        "assistant-small-q4",
+        "assistant-qwen3-0p6b-q8-diagnostic",
+        "assistant-qwen3-4b-q4-portable",
+        "assistant-qwen3-8b-q5-balanced",
+        "assistant-qwen3-14b-q4-quality",
+    )
+    verified_profiles = (
+        "linux_amd64_cpu",
+        "linux_amd64_gpu_nvidia_cuda",
+        "windows_amd64_cpu",
+        "windows_arm64_cpu",
+        "windows_amd64_gpu_nvidia_cuda",
+    )
+
+    for model_name in model_names:
+        entry = ensure_models.get_model_entry("llm", model_name)
+        profiles = ensure_models._hardware_profiles(entry)
+        assert {profile: profiles[profile]["validation_status"] for profile in verified_profiles} == {
+            profile: "validated" for profile in verified_profiles
+        }
+
+    small_profiles = ensure_models._hardware_profiles(ensure_models.get_model_entry("llm", "assistant-small-q4"))
+    assert small_profiles["linux_arm64_cpu"]["validation_status"] == "declared-not-validated"
+
+
 def test_catalog_cuda_runtime_profile_uses_pinned_split_archives() -> None:
     entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
     profiles = ensure_models._hardware_profiles(entry)

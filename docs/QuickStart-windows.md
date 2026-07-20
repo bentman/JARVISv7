@@ -10,14 +10,15 @@ Backend setup:
 
 - Windows PowerShell
 - Git
-- Python `>=3.11,<3.14` through the Windows `py` launcher
+- x64 Python `>=3.11,<3.14` through the Windows `py` launcher
 - Internet access for dependency and model acquisition
 
 Desktop shell:
 
 - Node.js and npm
-- Rust toolchain
-- Tauri Windows prerequisites
+- Rust stable with the `x86_64-pc-windows-msvc` target
+- Visual Studio 2022 or Build Tools with Desktop development with C++, MSVC v143 x64 tools, and a Windows SDK (`cl.exe` and `link.exe`)
+- Microsoft Edge WebView2 Runtime
 
 Optional local services:
 

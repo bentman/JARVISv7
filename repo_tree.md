@@ -1,7 +1,7 @@
 
 ## Repo Structure
 
-JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative configuration separate from code, keeps mutable artifacts out of source, and prevents UI-first drift. The structure is designed to absorb the slice sequence in `slices.md` without restructure at any group boundary.
+JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative configuration separate from code, keeps mutable artifacts out of source, and prevents UI-first drift. The structure is intended to remain stable as capability groups evolve.
 
 ### Structure Rules
 
@@ -27,12 +27,13 @@ JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative c
 JARVISv7/
 ├─ backend/                           # backend runtime, APIs, orchestration, providers, artifacts, agents
 ├─ cache/                             # mutable cache and backing-store dev assets (redis state, temp); not source code
-├─ config/                            # declarative config: app, hardware, models, redis, search, agents, personality, prompts
+├─ config/                            # declarative config: agents, app policy, hardware, models, personality, search
 ├─ data/                              # mutable runtime state: memory, sessions, turns, agents (ledger), temp
 ├─ desktop/                           # desktop shell (tauri/native integration, overlays, tray, hotkeys)
 ├─ docs/                              # architecture, runtime, and decision records
 ├─ models/                            # local model artifacts and downloaded runtime assets (llm, stt, tts, wake)
 ├─ reports/                           # validation, diagnostics, benchmark outputs
+├─ runtimes/                          # managed executable runtime sidecars
 ├─ scripts/                           # provisioning, bootstrap, validation, packaging, utility scripts
 ├─ .env.example
 ├─ AGENTS.md
@@ -42,7 +43,6 @@ JARVISv7/
 ├─ pyproject.toml                     # single source of truth for Python package metadata + extras + tooling
 ├─ README.md
 ├─ repo_tree.md
-├─ slices.md
 └─ SYSTEM_INVENTORY.md
 ```
 
@@ -50,7 +50,7 @@ JARVISv7/
 - `pyproject.toml` — provisioning authority (PEP 621 metadata, extras, pytest markers, ruff/mypy/coverage config). The only place package sets are declared.
 - `docker-compose.yml` — Redis, SearXNG, and later local llama.cpp. Declared at the root so one `docker compose up` stands up the substrate.
 - `.env.example` — committed template for all operator-supplied runtime settings: service URLs, ports, API keys, enable flags, model paths. `.env` is the local-only runtime file and is gitignored.
-- `ProjectVision.md` / `SYSTEM_INVENTORY.md` / `CHANGE_LOG.md` / `slices.md` / `repo_tree.md` — four separate governance docs, intentionally not conflated.
+- `ProjectVision.md` / `SYSTEM_INVENTORY.md` / `CHANGE_LOG.md` / `repo_tree.md` — separate governance docs, intentionally not conflated.
 
 ### Backend Runtime Domains
 
@@ -92,8 +92,6 @@ backend/
 │  │  ├─ manager.py                  # cache access layer (fail-closed when Redis unavailable)
 │  │  └─ redis_client.py             # redis integration
 │  ├─ cognition/
-│  │  ├─ planner.py                  # turn-level planning logic (distinct from agents/planner.py role)
-│  │  ├─ policies.py                 # cognition policies
 │  │  ├─ prompt_assembler.py         # prompt assembly with personality + working + episodic memory inputs
 │  │  └─ responder.py                # response shaping logic + responder-boundary sanitation before TTS
 │  ├─ conversation/
@@ -112,7 +110,6 @@ backend/
 │  │  └─ turn_manager.py             # turn creation/update/finalization
 │  ├─ core/
 │  │  ├─ capabilities.py             # normalized capability and profile types; includes qnn_available + directml_candidate flags
-│  │  ├─ errors.py                   # core error types
 │  │  ├─ logging.py                  # logging setup with verbose/trace modes for proving host + scripts
 │  │  ├─ paths.py                    # canonical filesystem paths
 │  │  └─ settings.py                 # environment/app settings (reads .env)
@@ -129,22 +126,16 @@ backend/
 │  │  └─ provisioning.py             # resolve_required_extras(profile) → ordered extras list; sole provisioning authority
 │  ├─ memory/
 │  │  ├─ episodic.py                 # episodic memory (cross-session; G.1)
-│  │  ├─ manager.py                  # memory coordination layer
 │  │  ├─ retrieval.py                # retrieval logic; consults cache layer (G.3)
-│  │  ├─ semantic.py                 # semantic memory (future)
+│  │  ├─ semantic.py                 # semantic memory (cross-session, durable)
 │  │  ├─ working.py                  # bounded working memory (in-session; C.3)
 │  │  └─ write_policy.py             # explicit memory write policies
 │  ├─ models/
-│  │  ├─ catalog.py                  # model catalog authority (reads config/models/*.yaml)
-│  │  └─ manager.py                  # model verify/ensure authority (HF + release-URL acquisition)
+│  │  └─ catalog.py                  # model catalog authority (reads config/models/*.yaml)
 │  ├─ personality/
-│  │  ├─ acknowledgment.py           # personality-aware acknowledgment / playback guard surface
 │  │  ├─ loader.py                   # loads personality profiles from config/personality/
-│  │  ├─ resolver.py                 # resolves active personality for runtime/session
 │  │  └─ schema.py                   # structured personality schema
 │  ├─ routing/
-│  │  ├─ capability_router.py        # routes work from capability flags
-│  │  ├─ model_registry.py           # model/provider catalog access
 │  │  └─ runtime_selector.py         # selects llama.cpp, Ollama fallback, or explicit unavailable state
 │  ├─ runtimes/
 │  │  ├─ internetsearch/
@@ -177,7 +168,7 @@ backend/
 │  │  ├─ voice_service.py            # microphone capture helpers
 │  │  ├─ wake_monitor.py             # wake monitor service
 │  │  └─ wake_status.py              # wake status store and transition owner
-├─ tests/
+└─ tests/
 │  ├─ conftest.py                    # arch/device skipif helpers (skip_unless_x64, skip_unless_arm64, skip_unless_cuda,
 │  │                                 #   skip_unless_directml, skip_unless_qnn, skip_unless_ollama, etc.);
 │  │                                 #   caches preflight per test session; shared fixtures
@@ -191,17 +182,14 @@ backend/
 │  │  ├─ routing/
 │  │  └─ runtimes/                   # runtime-family unit tests; device branches selected per marker
 │  ├─ integration/                   # multi-module, still no live hardware
-│  │  ├─ agents/
 │  │  ├─ api/
 │  │  └─ services/
 │  └─ runtime/                       # live hardware (mic / audio out / GPU / NPU); marker-gated
 │     ├─ acceleration_matrix/        # B.5 gate: (family × device × host class) matrix
-│     ├─ agents/                     # agent live-path tests (Group I)
 │     ├─ desktop/                    # desktop shell live paths
 │     ├─ hardware/                   # profiler, preflight, provisioning live probes; provisioning-baseline gate (A.5)
 │     ├─ turn/                       # turn engine live paths
 │     └─ voice/                      # STT / TTS / Wake live paths
-└─ Dockerfile
 ```
 
 **Note**: `backend/requirements.txt` is not a manual source of truth. It is a generated lockfile of the `pyproject.toml` base extra emitted by the provisioning script. The file carries a top-of-file comment saying so.
@@ -211,7 +199,7 @@ backend/
 - `cognition/` owns prompt assembly and response shaping. It is the only layer that combines personality + memory + runtime output into a prompt. Never calls runtimes directly — goes through `routing/runtime_selector.py`.
 - `conversation/` owns the state machine and session lifecycle. State transitions are explicit here, never implicit in prompt content.
 - `hardware/` is the root of runtime-selection authority. `profiler.py` detects; `provisioning.py` translates facts to extras; `preflight.py` verifies evidence. No runtime file contains host-detection logic.
-- `memory/` has a deliberate split: working (in-session, bounded) vs episodic (cross-session, policy-governed) vs semantic (future). `write_policy.py` is the only place that decides what enters each.
+- `memory/` has a deliberate split: working (in-session, bounded) vs episodic (cross-session, policy-governed) vs semantic (cross-session, durable). `write_policy.py` is the only place that decides what enters each.
 - `personality/` is a prompt-assembly input, not an orchestration layer. Never bypasses safety or policy; never lives as opaque prompt fragment.
 - `routing/runtime_selector.py` is the escalation-policy owner for LLM runtimes.
 - `runtimes/` contains one subdirectory per family. Each family has a `base.py` interface, one or more concrete runtimes, and a selector. Device is always a constructor parameter.
@@ -229,38 +217,31 @@ config/
 │     ├─ learner.yaml
 │     └─ planner.yaml
 ├─ app/
-│  ├─ defaults.yaml                  # global defaults
-│  ├─ policies.yaml                  # disabled agent-boundary policy
-│  └─ profiles.yaml                  # runtime profiles derived from capability flags
-├─ redis/
-│  └─ redis.conf                     # Redis service configuration files (container/service ownership)
-├─ search/                           # search escalation service config (Group E)
-│  └─ searxng/                       # SearXNG service config (repo-owned; mounted into container)
-│     ├─ settings.yml                # SearXNG settings; JSON format enabled
-│     └─ cache/                      # SearXNG runtime cache (gitignored contents)
+│  └─ policies.yaml                  # disabled agent-boundary policy
 ├─ hardware/
 │  └─ notes.md                       # human-readable notes on system prerequisites (QAIRT SDK path, DirectML caveats,
 │                                    #   espeak-ng install, QNN quantization on x64, ARM64 Tauri toolchain)
 │                                    #   — package sets live in pyproject.toml
 ├─ models/
 │  ├─ llm.yaml                       # local llama.cpp model catalog and serve-profile selection config
-│  ├─ models.yaml                    # top-level model registry catalog
-│  ├─ search.yaml                    # search runtime/provider config (SearXNG primary, DDGS, Tavily)
 │  ├─ stt.yaml                       # STT runtime/model config (whisper-small-onnx and QNN variants)
 │  ├─ tts.yaml                       # TTS runtime/model config (kokoro-v1.0-onnx)
 │  └─ wake.yaml                      # wake config (openwakeword hey_jarvis default)
+├─ search/                           # search escalation service config (Group E)
+│  └─ searxng/                       # SearXNG service config (repo-owned; mounted into container)
+│     ├─ settings.yml                # SearXNG settings; JSON format enabled
+│     └─ cache/                      # SearXNG runtime cache (gitignored contents)
 └─ personality/
    ├─ concise.yaml                   # concise personality profile
    ├─ default.yaml                   # runtime personality overlay/tuning profile
-   ├─ jarvis_personality.json        # canonical identity/persona source
+   ├─ jarvis.yaml                    # canonical identity/persona source
    └─ warm.yaml                      # warm personality profile
 ```
 
 **Config-domain ownership notes:**
 - Package sets are declared in `pyproject.toml` under `[project.optional-dependencies]` with PEP 508 environment markers where markers suffice. Vendor-specific gating that markers cannot express (NPU vendor, CUDA presence) is applied by `backend/app/hardware/provisioning.py::resolve_required_extras()`. `config/hardware/notes.md` holds only human-facing operator notes about non-pip prerequisites.
 - `config/app/policies.yaml` owns the disabled agent-boundary policy.
-- `config/models/*.yaml` catalogs are the only place model identities, repo IDs, local paths, and device-preferred variants are declared. Runtimes read from the catalog; they never hardcode model names. `config/models/search.yaml` is provider/routing only and carries no credentials.
-- `config/redis/` owns Redis service configuration files; `cache/redis/` holds Redis runtime data only.
+- `config/models/*.yaml` catalogs are the only place model identities, repo IDs, local paths, and device-preferred variants are declared. Runtimes read from the catalog; they never hardcode model names.
 - `.env` / `.env.example` own Redis/search connection settings, URLs, enable flags, and API-key placeholders.
 - `config/personality/` carries structured personality profiles. The `personality` domain in `backend/app/` loads them; the prompts themselves are structured config, not free-form prompt fragments.
 - `config/agents/specs/` owns durable disabled agent specs loaded by the agent status catalog.
@@ -277,7 +258,7 @@ data/
 │  └─ ledger.db                      # durable agent message bus (I.2); SQLite-backed
 ├─ memory/
 │  ├─ episodic/                      # episodic memory data (cross-session; durable authority for G)
-│  ├─ semantic/                      # semantic memory data (future)
+│  ├─ semantic/                      # semantic memory data (cross-session, durable)
 │  └─ working/                       # working memory data (in-session)
 ├─ sessions/                         # session artifacts and persisted state (durable authority)
 ├─ temp/                             # runtime temp files
@@ -332,16 +313,11 @@ desktop/
 │  ├─ src/
 │  │  ├─ backend.rs                  # backend process lifecycle bridge
 │  │  ├─ lib.rs                      # Tauri app entry
-│  │  ├─ main.rs
-│  │  └─ tray.rs                     # tray presence, state icons, context menu
+│  │  └─ main.rs
 │  ├─ Cargo.toml
 │  ├─ build.rs
 │  └─ tauri.conf.json
-└─ README.md                         # dev prerequisites by arch:
-                                     #   x64: Rust stable, Node LTS, MSVC v143, WebView2
-                                     #   arm64: Rust stable + rustup aarch64-pc-windows-msvc target,
-                                     #          Node LTS (arm64 where available),
-                                     #          MSVC v143 C++ ARM64 build tools, WebView2
+└─ README.md                         # desktop development notes
 ```
 
 ### Scripts Domain
@@ -401,6 +377,6 @@ scripts/
 12. **Every live runtime test is marker-gated** (`pytest.mark.live`, plus family/device/arch markers). The matrix in `backend/tests/runtime/acceleration_matrix/` is the B.5 gate that must remain green before C/D/E/F/G/H/I slice closeouts.
 13. **The agent boundary remains disabled and read-only.** It exposes spec/status truth and ledger diagnostics without execution behavior.
 14. **Turn artifact schema is fixed in C.3** and treated as a compatibility boundary. Later slices (G, I) may add optional fields; they never rename or remove.
-15. `SYSTEM_INVENTORY.md`, `CHANGE_LOG.md`, `ProjectVision.md`, and `slices.md` are not conflated. Inventory ≠ roadmap ≠ vision ≠ changelog.
+15. `SYSTEM_INVENTORY.md`, `CHANGE_LOG.md`, and `ProjectVision.md` are not conflated. Inventory ≠ vision ≠ changelog.
 
 ---
