@@ -64,7 +64,7 @@ Three rules prevent the most common self-inflicted setup problems:
 | `advanced` | Path/tuning overrides, rarely needed | `MODEL_PATH`, `LLAMA_CPP_TIMEOUT_SECONDS` |
 | `derived` | Computed from a primary setting unless explicitly set | `LOCAL_MODEL_FETCH`, `LLAMA_CPP_MANAGED` |
 | `services` | Relevant when the optional service is running | `REDIS_PORT`, `SEARXNG_PORT` |
-| `secret` | Credentials | `PICOVOICE_ACCESS_KEY`, `TAVILY_API_KEY` |
+| `secret` | Credentials | `TAVILY_API_KEY` |
 | `compatibility` / `test-only` | Legacy or CI-only | `JARVISV7_OLLAMA_URL`, `JARVISV7_LIVE_TESTS` |
 
 ## Repo-run desktop preview

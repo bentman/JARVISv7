@@ -293,7 +293,7 @@ JARVISv7 should use one primary runtime family per voice subsystem across all su
 - **STT:** ONNX-based Whisper via `onnxruntime` as the primary cross-platform path. A secondary `onnx-asr` path for alternative model families (Parakeet, Canary, NeMo) when needed.
 - **TTS:** Kokoro via `kokoro-onnx` as the primary cross-platform path.
 - **LLM:** Local `llama.cpp` as the preferred local runtime, Ollama as tested fallback, cloud providers as explicit policy-gated escalation.
-- **Wake:** openWakeWord as the primary runtime (pre-trained "hey jarvis" model, architecture-independent). Porcupine as an optional alternative.
+- **Wake:** openWakeWord as the runtime (pre-trained "hey jarvis" model, architecture-independent).
 
 This strategy should be decided before the first voice turn is implemented, and acceleration targets (CUDA, DirectML, QNN) should be exercised — at least at the readiness and probe level — before any turn-engine work begins.
 

@@ -1,27 +1,6 @@
-llm:
-  escalation_order: [local, ollama]
-  cloud_enabled: false
-
 agents:
   enabled: false
   read_only: true
   reason: Agent boundary is disabled by policy
   allowed_roles: [planner, executor, critic, curator, learner]
   allowed_tools: []
-
-cloud_providers:
-  claude:
-    api_key_env: ANTHROPIC_API_KEY
-    model: claude-sonnet
-  openai:
-    api_key_env: OPENAI_API_KEY
-    model: gpt-4o
-  gemini:
-    api_key_env: GEMINI_API_KEY
-    model: gemini-1.5-pro
-  xai:
-    api_key_env: XAI_API_KEY
-    model: grok-2
-  zai:
-    api_key_env: ZAI_API_KEY
-    model: TBD

@@ -98,12 +98,6 @@ def test_resolver_omits_qnn_for_non_qualcomm_npu() -> None:
     ]
 
 
-def test_resolver_never_adds_porcupine_without_opt_in() -> None:
-    profile = HardwareProfile(arch="amd64")
-
-    assert "hw-wake-porcupine" not in resolve_required_extras(profile)
-
-
 def test_resolver_deterministic_order_for_same_profile() -> None:
     profile = HardwareProfile(
         arch="amd64",

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
 from backend.app.core.capabilities import HardwareProfile
 
@@ -24,7 +23,6 @@ _EXTRA_REQUIREMENT_SPECS: dict[str, tuple[str, ...]] = {
         "onnx>=1.16",
         "transformers>=4.40",
     ),
-    "hw-wake-porcupine": (),
     "dev": ("pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"),
 }
 
@@ -55,17 +53,12 @@ def _extra_reason(profile: HardwareProfile, extra: str) -> str:
         return "intel gpu present"
     if extra == "hw-npu-qualcomm-qnn":
         return "qualcomm npu present"
-    if extra == "hw-wake-porcupine":
-        return "operator opt-in"
     if extra == "dev":
         return "developer tooling baseline"
     return "selected by resolver"
 
 
-def resolve_required_extras(
-    profile: HardwareProfile,
-    include_porcupine: bool = False,
-) -> list[str]:
+def resolve_required_extras(profile: HardwareProfile) -> list[str]:
     extras: list[str] = ["hw-cpu-base"]
 
     if profile.arch == "arm64":
@@ -91,41 +84,29 @@ def resolve_required_extras(
         extras.append("hw-gpu-intel")
     if profile.npu_available and profile.npu_vendor == "qualcomm":
         extras.append("hw-npu-qualcomm-qnn")
-    if include_porcupine:
-        extras.append("hw-wake-porcupine")
-
     extras.append("dev")
     return extras
 
 
-def explain_required_extras(
-    profile: HardwareProfile,
-    include_porcupine: bool = False,
-) -> list[tuple[str, str]]:
+def explain_required_extras(profile: HardwareProfile) -> list[tuple[str, str]]:
     return [
         (extra, _extra_reason(profile, extra))
-        for extra in resolve_required_extras(profile, include_porcupine)
+        for extra in resolve_required_extras(profile)
     ]
 
 
-def resolve_required_requirement_names(
-    profile: HardwareProfile,
-    include_porcupine: bool = False,
-) -> list[str]:
+def resolve_required_requirement_names(profile: HardwareProfile) -> list[str]:
     requirement_names: list[str] = []
-    for requirement in resolve_required_requirement_specs(profile, include_porcupine):
-            requirement_name = _requirement_name(requirement)
-            if requirement_name not in requirement_names:
-                requirement_names.append(requirement_name)
+    for requirement in resolve_required_requirement_specs(profile):
+        requirement_name = _requirement_name(requirement)
+        if requirement_name not in requirement_names:
+            requirement_names.append(requirement_name)
     return requirement_names
 
 
-def resolve_required_requirement_specs(
-    profile: HardwareProfile,
-    include_porcupine: bool = False,
-) -> list[str]:
+def resolve_required_requirement_specs(profile: HardwareProfile) -> list[str]:
     requirement_specs: list[str] = []
-    for extra in resolve_required_extras(profile, include_porcupine):
+    for extra in resolve_required_extras(profile):
         for requirement in _EXTRA_REQUIREMENT_SPECS.get(extra, ()):
             if requirement not in requirement_specs:
                 requirement_specs.append(requirement)

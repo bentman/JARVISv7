@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from backend.app.core.capabilities import HardwareProfile
 from scripts import provision
 
@@ -73,7 +71,6 @@ def test_arm64_qnn_install_uses_only_editable_install(monkeypatch) -> None:
     exit_code = provision._run_install(
         profile,
         ["hw-cpu-base", "hw-arm64-base", "hw-npu-qualcomm-qnn", "dev"],
-        include_porcupine=False,
     )
 
     assert exit_code == 0
@@ -149,7 +146,7 @@ def test_linux_install_uses_no_deps_only_for_openwakeword(monkeypatch) -> None:
     monkeypatch.setattr(provision, "_selected_requirement_specs", lambda *args: requirements)
     monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
 
-    exit_code = provision._run_install(profile, extras, include_porcupine=False)
+    exit_code = provision._run_install(profile, extras)
 
     assert exit_code == 0
     assert commands == [
@@ -162,8 +159,7 @@ def test_linux_install_uses_no_deps_only_for_openwakeword(monkeypatch) -> None:
 
 def test_linux_arm64_resolves_openwakeword_without_x64_requirements() -> None:
     requirements = provision._selected_requirement_specs(
-        HardwareProfile(os_name="linux", arch="arm64"),
-        include_porcupine=False,
+        HardwareProfile(os_name="linux", arch="arm64")
     )
     names = {provision._normalize_requirement_name(requirement) for requirement in requirements}
 
@@ -184,12 +180,12 @@ def test_linux_arm64_resolves_openwakeword_without_x64_requirements() -> None:
 def test_windows_openwakeword_resolution_keeps_the_editable_install_path() -> None:
     for arch, extra in (("amd64", "hw-x64-base"), ("arm64", "hw-arm64-base")):
         profile = HardwareProfile(os_name="windows", arch=arch)
-        requirements = provision._selected_requirement_specs(profile, include_porcupine=False)
+        requirements = provision._selected_requirement_specs(profile)
         names = {provision._normalize_requirement_name(requirement) for requirement in requirements}
 
         assert "openwakeword" in names
         assert {"scipy", "scikit_learn", "tflite_runtime"} & names == set()
-        assert provision._install_commands(profile, ["hw-cpu-base", extra, "dev"], False) == [
+        assert provision._install_commands(profile, ["hw-cpu-base", extra, "dev"]) == [
             provision._build_pip_install_command(["hw-cpu-base", extra, "dev"])
         ]
 
@@ -210,12 +206,12 @@ def test_verify_reports_version_drift_for_exact_pins(monkeypatch, capsys) -> Non
     monkeypatch.setattr(
         provision,
         "_expected_distribution_names",
-        lambda profile, include_porcupine: {"example_exact"},
+        lambda profile: {"example_exact"},
     )
     monkeypatch.setattr(
         provision,
         "_expected_exact_distribution_versions",
-        lambda profile, include_porcupine: {
+        lambda profile: {
             "example_exact": "1.0.0",
         },
     )
@@ -238,12 +234,12 @@ def test_verify_accepts_paired_onnxruntime_with_arm64_qnn(monkeypatch, capsys) -
     monkeypatch.setattr(
         provision,
         "_expected_distribution_names",
-        lambda profile, include_porcupine: {"onnxruntime", "onnxruntime_qnn"},
+        lambda profile: {"onnxruntime", "onnxruntime_qnn"},
     )
     monkeypatch.setattr(
         provision,
         "_expected_exact_distribution_versions",
-        lambda profile, include_porcupine: {},
+        lambda profile: {},
     )
     monkeypatch.setattr(
         provision,
@@ -264,7 +260,7 @@ def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) 
     monkeypatch.setattr(
         provision,
         "_expected_distribution_names",
-        lambda profile, include_porcupine: {"pre_commit", "huggingface_hub", "python_dotenv"},
+        lambda profile: {"pre_commit", "huggingface_hub", "python_dotenv"},
     )
     monkeypatch.setattr(
         provision,

@@ -7,7 +7,6 @@ import pytest
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.stt.barge_in import BargeInDetector
-from backend.app.runtimes.stt.onnx_asr_runtime import OnnxAsrRuntime
 from backend.app.runtimes.stt.onnx_whisper_runtime import (
     ONNX_WHISPER_QNN_NOT_WIRED_REASON,
     OnnxWhisperRuntime,
@@ -530,14 +529,6 @@ def test_barge_in_detector_resets_speech_accumulator_on_non_speech() -> None:
     assert detector.detect(np.ones(10, dtype=np.float32)) is False
     assert detector.detect(np.ones(10, dtype=np.float32)) is False
     assert detector.detect(np.ones(10, dtype=np.float32)) is True
-
-
-def test_secondary_onnx_asr_runtime_boundary_is_unavailable():
-    runtime = OnnxAsrRuntime(device="cpu")
-
-    assert not runtime.is_available()
-    with pytest.raises(RuntimeError, match="boundary-only"):
-        runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000)
 
 
 def test_onnx_whisper_runtime_transcribe_avoids_repeated_file_probes(monkeypatch):

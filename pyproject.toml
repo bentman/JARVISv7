@@ -64,9 +64,6 @@ dependencies = [
   # Audio I/O (cross-platform; CPython wheels available for target archs)
   "sounddevice>=0.4.6",
 
-  # Wake word — universal per PyPI (Windows x86_64 + arm64, macOS, Linux)
-  "pvporcupine>=3.0",
-
   # Local system introspection for profiler
   "psutil>=5.9",
 
@@ -156,14 +153,6 @@ hw-npu-qualcomm-qnn = [
   "transformers>=4.40; platform_machine=='ARM64' and sys_platform=='win32'",
 ]
 
-# Optional alternative wake runtime (openWakeWord is primary).
-# Kept as explicit extra so Porcupine `.ppn` model acquisition and its
-# single-keyword constraint are operator-opt-in rather than default.
-hw-wake-porcupine = [
-  # pvporcupine is already in base (universal). This extra is a marker
-  # for provisioning reasoning + future keyword-acquisition deps.
-]
-
 # Developer tooling
 dev = [
   "pytest>=8.0",
@@ -207,7 +196,6 @@ markers = [
   # External services
   "requires_ollama: requires a running Ollama endpoint",
   "requires_llama_cpp: requires a running llama.cpp OpenAI-compatible endpoint",
-  "requires_porcupine: requires PICOVOICE_ACCESS_KEY env var set",
   "requires_redis: requires a running Redis instance",
   "requires_searxng: requires a running SearXNG instance",
   "requires_docker: requires docker / docker-compose",
@@ -284,7 +272,6 @@ module = [
   "onnx_asr.*",
   "kokoro_onnx.*",
   "openwakeword.*",
-  "pvporcupine.*",
   "sounddevice.*",
 ]
 ignore_missing_imports = true

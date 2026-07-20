@@ -128,8 +128,8 @@ def _requirement_applies_to_profile(requirement: str, profile: HardwareProfile) 
     return Marker(marker.strip()).evaluate(_marker_environment(profile))
 
 
-def _selected_requirement_specs(profile: HardwareProfile, include_porcupine: bool) -> list[str]:
-    extras = resolve_required_extras(profile, include_porcupine=include_porcupine)
+def _selected_requirement_specs(profile: HardwareProfile) -> list[str]:
+    extras = resolve_required_extras(profile)
     return [
         requirement
         for requirement in [
@@ -154,18 +154,15 @@ def _exact_requirement_version(requirement: str) -> tuple[str, str] | None:
     return normalized_name, expected_version
 
 
-def _build_pip_install_command(extras: list[str], include_porcupine: bool = False) -> list[str]:
-    resolved_extras = list(extras)
-    if include_porcupine and "hw-wake-porcupine" not in resolved_extras:
-        resolved_extras.insert(-1, "hw-wake-porcupine")
-    extras_spec = ",".join(resolved_extras)
+def _build_pip_install_command(extras: list[str]) -> list[str]:
+    extras_spec = ",".join(extras)
     return [sys.executable, "-m", "pip", "install", "-e", f".[{extras_spec}]"]
 
 
-def _linux_openwakeword_requirement(profile: HardwareProfile, include_porcupine: bool) -> str:
+def _linux_openwakeword_requirement(profile: HardwareProfile) -> str:
     requirements = [
         requirement.split(";", 1)[0].strip()
-        for requirement in _selected_requirement_specs(profile, include_porcupine)
+        for requirement in _selected_requirement_specs(profile)
         if _normalize_requirement_name(requirement) == OPENWAKEWORD_PACKAGE
     ]
     if len(requirements) != 1:
@@ -176,16 +173,15 @@ def _linux_openwakeword_requirement(profile: HardwareProfile, include_porcupine:
 def _install_commands(
     profile: HardwareProfile,
     extras: list[str],
-    include_porcupine: bool,
 ) -> list[list[str]]:
-    editable_command = _build_pip_install_command(extras, include_porcupine=include_porcupine)
+    editable_command = _build_pip_install_command(extras)
     if profile.os_name != "linux":
         return [editable_command]
 
-    openwakeword_requirement = _linux_openwakeword_requirement(profile, include_porcupine)
+    openwakeword_requirement = _linux_openwakeword_requirement(profile)
     requirements = [
         requirement
-        for requirement in _selected_requirement_specs(profile, include_porcupine)
+        for requirement in _selected_requirement_specs(profile)
         if _normalize_requirement_name(requirement) != OPENWAKEWORD_PACKAGE
     ]
     return [
@@ -212,13 +208,12 @@ def _write_requirements_lockfile(path: Path | None = None) -> None:
 def _emit_plan(
     profile: HardwareProfile,
     extras: list[str],
-    include_porcupine: bool,
     out=None,
 ) -> None:
     if out is None:
         out = sys.stdout
     emit_host_fingerprint(profile, extras, out=out)
-    for extra, reason in explain_required_extras(profile, include_porcupine):
+    for extra, reason in explain_required_extras(profile):
         print(f"{extra}: {reason}", file=out)
 
 
@@ -237,43 +232,35 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="provision.py", parents=[shared])
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    install = subparsers.add_parser("install", parents=[shared])
-    install.add_argument("--with-porcupine", action="store_true")
-
-    verify = subparsers.add_parser("verify", parents=[shared])
-    verify.add_argument("--with-porcupine", action="store_true")
-
-    dry_run = subparsers.add_parser("dry-run", parents=[shared])
-    dry_run.add_argument("--with-porcupine", action="store_true")
-
-    explain = subparsers.add_parser("explain", parents=[shared])
-    explain.add_argument("--with-porcupine", action="store_true")
+    subparsers.add_parser("install", parents=[shared])
+    subparsers.add_parser("verify", parents=[shared])
+    subparsers.add_parser("dry-run", parents=[shared])
+    subparsers.add_parser("explain", parents=[shared])
 
     subparsers.add_parser("lock", parents=[shared])
     return parser.parse_args(argv)
 
 
-def _provision_context(include_porcupine: bool) -> tuple[HardwareProfile, list[str]]:
+def _provision_context() -> tuple[HardwareProfile, list[str]]:
     profiler = _load_profiler()
     report = profiler()
-    extras = resolve_required_extras(report.profile, include_porcupine=include_porcupine)
+    extras = resolve_required_extras(report.profile)
     return report.profile, extras
 
 
-def _expected_distribution_names(profile: HardwareProfile, include_porcupine: bool) -> set[str]:
+def _expected_distribution_names(profile: HardwareProfile) -> set[str]:
     return {
         _normalize_requirement_name(requirement)
-        for requirement in _selected_requirement_specs(profile, include_porcupine)
+        for requirement in _selected_requirement_specs(profile)
         if _normalize_requirement_name(requirement)
     }
 
 
 def _expected_exact_distribution_versions(
     profile: HardwareProfile,
-    include_porcupine: bool,
 ) -> dict[str, str]:
     expected: dict[str, str] = {}
-    for requirement in _selected_requirement_specs(profile, include_porcupine):
+    for requirement in _selected_requirement_specs(profile):
         exact = _exact_requirement_version(requirement)
         if exact is None:
             continue
@@ -282,8 +269,8 @@ def _expected_exact_distribution_versions(
     return expected
 
 
-def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine: bool) -> int:
-    for command in _install_commands(profile, extras, include_porcupine):
+def _run_install(profile: HardwareProfile, extras: list[str]) -> int:
+    for command in _install_commands(profile, extras):
         install_rc = _run_pip_install(command)
         if install_rc != 0:
             return install_rc
@@ -306,15 +293,9 @@ def _run_install(profile: HardwareProfile, extras: list[str], include_porcupine:
     return _run_pip_install(reinstall_gpu_ort)
 
 
-def _run_verify(profile: HardwareProfile, extras: list[str], include_porcupine: bool) -> int:
-    expected_requirements = _expected_distribution_names(
-        profile,
-        include_porcupine=include_porcupine,
-    )
-    expected_versions = _expected_exact_distribution_versions(
-        profile,
-        include_porcupine=include_porcupine,
-    )
+def _run_verify(profile: HardwareProfile, extras: list[str]) -> int:
+    expected_requirements = _expected_distribution_names(profile)
+    expected_versions = _expected_exact_distribution_versions(profile)
     installed_versions = _installed_distribution_versions()
     installed_requirements = set(installed_versions)
     missing = sorted(expected_requirements - installed_requirements)
@@ -346,37 +327,36 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(level="DEBUG" if args.verbose else "INFO", trace_to=args.trace_to)
 
     if args.command == "lock":
-        profile, extras = _provision_context(include_porcupine=False)
+        profile, extras = _provision_context()
         emit_host_fingerprint(profile, extras)
         _write_requirements_lockfile()
         print(f"wrote {REQUIREMENTS_PATH}")
         return 0
 
-    include_porcupine = bool(getattr(args, "with_porcupine", False))
-    profile, extras = _provision_context(include_porcupine=include_porcupine)
+    profile, extras = _provision_context()
     emit_host_fingerprint(profile, extras, readiness="not-checked")
 
     if args.command == "explain":
-        for extra, reason in explain_required_extras(profile, include_porcupine=include_porcupine):
+        for extra, reason in explain_required_extras(profile):
             print(f"{extra}: {reason}")
         return 0
 
     if args.command == "dry-run":
-        for command in _install_commands(profile, extras, include_porcupine):
+        for command in _install_commands(profile, extras):
             print(" ".join(command))
-        for extra, reason in explain_required_extras(profile, include_porcupine=include_porcupine):
+        for extra, reason in explain_required_extras(profile):
             print(f"{extra}: {reason}")
         return 0
 
     if args.command == "verify":
-        return _run_verify(profile, extras, include_porcupine=include_porcupine)
+        return _run_verify(profile, extras)
 
     if args.command == "install":
-        for command in _install_commands(profile, extras, include_porcupine=include_porcupine):
+        for command in _install_commands(profile, extras):
             print(" ".join(command))
         if args.dry_run:
             return 0
-        return _run_install(profile, extras, include_porcupine=include_porcupine)
+        return _run_install(profile, extras)
 
     raise ValueError(f"unsupported command: {args.command}")
 

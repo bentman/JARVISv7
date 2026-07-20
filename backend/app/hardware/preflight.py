@@ -31,7 +31,6 @@ _EXTRA_IMPORTS: dict[str, tuple[str, ...]] = {
     "hw-gpu-amd": ("onnxruntime",),
     "hw-gpu-intel": ("onnxruntime",),
     "hw-npu-qualcomm-qnn": ("onnxruntime", "transformers"),
-    "hw-wake-porcupine": ("pvporcupine",),
     "dev": ("pytest", "pytest_cov", "pytest_asyncio", "ruff", "mypy", "pre_commit"),
 }
 

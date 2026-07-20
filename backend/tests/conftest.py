@@ -124,7 +124,6 @@ if not _llama_cpp_avail and not _ollama_run:
 
 
 SKIP_UNLESS_OLLAMA = not _ollama_run
-SKIP_UNLESS_PORCUPINE = not bool(_settings().picovoice_access_key)
 SKIP_UNLESS_REDIS = shutil.which("redis-server") is None
 SKIP_UNLESS_SEARXNG = shutil.which("searxng") is None
 SKIP_UNLESS_DOCKER = shutil.which("docker") is None

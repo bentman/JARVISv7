@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from backend.app.core.capabilities import HardwareProfile
-from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.routing.runtime_selector import NullLLMRuntime, select_llm
 
@@ -54,15 +52,8 @@ class _UnavailableLocal(_AvailableLocal):
         return False
 
 
-def _preflight() -> PreflightResult:
-    return PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={})
-
-
 def test_selector_prefers_viable_local_before_ollama():
     runtime, trace = select_llm(
-        {"llm": {"cloud_enabled": True}, "cloud_providers": {}},
-        _preflight(),
-        HardwareProfile(),
         local=_AvailableLocal(),  # type: ignore[arg-type]
         ollama=_AvailableOllama(),
     )
@@ -77,11 +68,8 @@ def test_selector_prefers_viable_local_before_ollama():
     assert trace.selected_reason == "selected current-host CPU serve profile windows_amd64_cpu"
 
 
-def test_selector_prefers_ollama_over_cloud_when_ollama_reachable():
+def test_selector_prefers_ollama_when_local_is_unavailable():
     runtime, trace = select_llm(
-        {"llm": {"cloud_enabled": True}, "cloud_providers": {}},
-        _preflight(),
-        HardwareProfile(),
         local=_UnavailableLocal(),  # type: ignore[arg-type]
         ollama=_AvailableOllama(),
     )
@@ -94,9 +82,6 @@ def test_selector_prefers_ollama_over_cloud_when_ollama_reachable():
 
 def test_selector_returns_null_when_nothing_available():
     runtime, trace = select_llm(
-        {"llm": {"cloud_enabled": False}, "cloud_providers": {}},
-        _preflight(),
-        HardwareProfile(),
         local=_UnavailableLocal(),  # type: ignore[arg-type]
         ollama=_UnavailableOllama(),
     )
@@ -109,9 +94,6 @@ def test_selector_returns_null_when_nothing_available():
 
 def test_selector_emits_selection_trace_with_runtime_name_and_reason():
     runtime, trace = select_llm(
-        {},
-        _preflight(),
-        HardwareProfile(),
         local=_UnavailableLocal(),  # type: ignore[arg-type]
         ollama=_AvailableOllama(),
     )
@@ -122,9 +104,6 @@ def test_selector_emits_selection_trace_with_runtime_name_and_reason():
 
 def test_selector_skips_local_when_not_available():
     runtime, trace = select_llm(
-        {},
-        _preflight(),
-        HardwareProfile(),
         local=_UnavailableLocal(),  # type: ignore[arg-type]
         ollama=_AvailableOllama(),
     )

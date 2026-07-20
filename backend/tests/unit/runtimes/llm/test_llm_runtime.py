@@ -483,7 +483,7 @@ def test_llm_catalog_reuses_linux_cuda_profiles_for_every_selectable_model():
         )
 
 
-def test_cloud_provider_neutral_chat_payload_preserves_system_and_user_boundary():
+def test_provider_neutral_chat_payload_preserves_system_and_user_boundary():
     envelope = PromptEnvelope(
         segments=(
             PromptSegment(

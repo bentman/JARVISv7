@@ -11,7 +11,6 @@ from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.runtimes.wake.base import WakeBase
 from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES, WAKE_MODEL_KEY
-from backend.app.runtimes.wake.porcupine_runtime import PorcupineRuntime
 from backend.app.runtimes.wake.wake_runtime import NullWakeRuntime, select_wake_runtime
 
 
@@ -151,23 +150,6 @@ def test_openwakeword_runtime_detects_reference_fixture_with_real_model():
     runtime.detect(sample_audio)
     assert runtime.last_score is not None
     assert runtime.threshold > 0.0
-
-
-def test_porcupine_runtime_is_available_false_when_no_access_key(monkeypatch):
-    monkeypatch.delenv("PICOVOICE_ACCESS_KEY", raising=False)
-    runtime = PorcupineRuntime()
-
-    assert runtime.is_available() is False
-    assert "PICOVOICE_ACCESS_KEY" in runtime.reason
-    with pytest.raises(RuntimeError, match="structural only"):
-        runtime.detect(np.zeros(WAKE_CHUNK_SAMPLES, dtype=np.int16))
-
-
-def test_porcupine_runtime_is_structurally_available_with_access_key(monkeypatch):
-    monkeypatch.setenv("PICOVOICE_ACCESS_KEY", "test-key")
-    runtime = PorcupineRuntime()
-
-    assert runtime.is_available() is True
 
 
 def test_null_wake_runtime_detect_always_returns_false():

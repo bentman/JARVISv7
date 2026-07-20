@@ -173,8 +173,8 @@ def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> 
         prepare_calls.append((profile, preflight, flags))
         return SimpleNamespace(runtime=prepared_runtime, sidecar="sidecar")
 
-    def fake_select(policy, preflight, profile, *, local=None):
-        selector_calls.append((policy, preflight, profile, local))
+    def fake_select(*, local=None, ollama=None):
+        selector_calls.append(local)
         return selected_runtime, "trace"
 
     monkeypatch.setattr(run_jarvis, "prepare_managed_local_llm", fake_prepare)
@@ -186,7 +186,7 @@ def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> 
     assert context.local_llm_sidecar == "sidecar"
     assert context.llm_trace == "trace"
     assert prepare_calls == [(context.profile, context.preflight, context.report.flags)]
-    assert selector_calls == [({}, context.preflight, context.profile, prepared_runtime)]
+    assert selector_calls == [prepared_runtime]
     assert not hasattr(run_jarvis, "_start_local_llm_if_configured")
     assert not hasattr(run_jarvis, "_wait_for_llama_cpp_ready")
 

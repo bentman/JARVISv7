@@ -143,12 +143,7 @@ def _build_engine(context: StartupContext) -> TurnEngine:
         flags=context.report.flags,
     )
     context.local_llm_sidecar = local_llm.sidecar
-    llm, llm_trace = select_llm(
-        {},
-        context.preflight,
-        context.profile,
-        local=local_llm.runtime,
-    )
+    llm, llm_trace = select_llm(local=local_llm.runtime)
     context.llm_trace = llm_trace
     personality = load_default_personality()
     return TurnEngine(stt=stt, tts=tts, llm=llm, personality=personality)

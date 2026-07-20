@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 from pathlib import Path
 
-from backend.app.memory.semantic import SemanticEntry, SemanticMemory, _get_text_hash
+from backend.app.memory.semantic import SemanticMemory, _get_text_hash
 
 
 def test_init_db(tmp_path: Path):
@@ -17,7 +17,6 @@ def test_init_db(tmp_path: Path):
     with memory._get_conn() as conn:
         tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         table_names = {row["name"] for row in tables}
-        assert "semantic_meta" in table_names
         assert "semantic_fact" in table_names
         if memory.supports_fts:
             assert "semantic_fact_fts" in table_names

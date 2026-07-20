@@ -4,7 +4,7 @@ import hashlib
 import json
 import sqlite3
 import uuid
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, cast
@@ -122,14 +122,6 @@ class SemanticMemory:
             with self._get_conn() as conn:
                 conn.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS semantic_meta (
-                        key TEXT PRIMARY KEY,
-                        value TEXT NOT NULL
-                    )
-                    """
-                )
-                conn.execute(
-                    """
                     CREATE TABLE IF NOT EXISTS semantic_fact (
                         fact_id TEXT PRIMARY KEY,
                         text TEXT NOT NULL,
@@ -161,10 +153,6 @@ class SemanticMemory:
                 except sqlite3.OperationalError:
                     self.supports_fts = False
 
-                # Schema version check / migration stub
-                res = conn.execute("SELECT value FROM semantic_meta WHERE key = 'version'").fetchone()
-                if res is None:
-                    conn.execute("INSERT INTO semantic_meta (key, value) VALUES ('version', '1')")
         except Exception:
             # Fail closed - do not crash callers
             pass

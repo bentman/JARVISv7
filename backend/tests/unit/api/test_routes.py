@@ -284,11 +284,10 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-test")
     report = FullCapabilityReport(profile=profile, flags=CapabilityFlags())
     preflight = PreflightResult(tokens=["import:ollama"], dll_discovery_log=[], probe_errors={})
-    policy = {"llm": {"cloud_enabled": False}}
     selected_llm = _FakeLLM()
     prepared_local = _FakeLocalLLM()
     prepare_calls: list[tuple[HardwareProfile, PreflightResult, CapabilityFlags]] = []
-    selector_calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile, object]] = []
+    selector_calls: list[object] = []
 
     monkeypatch.setattr(
         app_module,
@@ -306,7 +305,6 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
             },
         ),
     )
-    monkeypatch.setattr(app_module, "_load_runtime_policy", lambda: policy)
     monkeypatch.setattr(app_module, "load_default_personality", lambda: _FakeEngine.personality)
     monkeypatch.setattr(app_module, "select_stt_runtime", lambda preflight, profile: _FakeSTT())
     monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
@@ -319,8 +317,8 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
             {"runtime": prepared_local, "sidecar": None, "degraded_reason": None},
         )()
 
-    def fake_select_llm(runtime_policy, runtime_preflight, runtime_profile, *, local=None):
-        selector_calls.append((runtime_policy, runtime_preflight, runtime_profile, local))
+    def fake_select_llm(*, local=None, ollama=None):
+        selector_calls.append(local)
         return selected_llm, object()
 
     monkeypatch.setattr(app_module, "prepare_managed_local_llm", fake_prepare_managed_local_llm)
@@ -330,7 +328,7 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
 
     assert state.llm is selected_llm
     assert prepare_calls == [(profile, preflight, report.flags)]
-    assert selector_calls == [(policy, preflight, profile, prepared_local)]
+    assert selector_calls == [prepared_local]
     assert state.resident_audio_stream is not None
     assert state.utterance_segmenter is not None
     assert state.resident_voice._utterance_segmenter is state.utterance_segmenter
@@ -345,9 +343,8 @@ def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> N
     profile = HardwareProfile(os_name="linux", arch="amd64", profile_id="profile-linux-test")
     report = FullCapabilityReport(profile=profile, flags=CapabilityFlags())
     preflight = PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={})
-    policy = {"llm": {"cloud_enabled": False}}
     selected_llm = _FakeLLM()
-    selector_calls: list[tuple[dict[str, object], PreflightResult, HardwareProfile, object]] = []
+    selector_calls: list[object | None] = []
     degraded_reason = "LLM model 'assistant-small-q4' has no CPU serve profile for linux/amd64"
 
     monkeypatch.setattr(
@@ -366,7 +363,6 @@ def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> N
             },
         ),
     )
-    monkeypatch.setattr(app_module, "_load_runtime_policy", lambda: policy)
     monkeypatch.setattr(app_module, "load_default_personality", lambda: _FakeEngine.personality)
     monkeypatch.setattr(app_module, "select_stt_runtime", lambda preflight, profile: _FakeSTT())
     monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
@@ -380,8 +376,8 @@ def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> N
         )(),
     )
 
-    def fake_select_llm(runtime_policy, runtime_preflight, runtime_profile, *, local=None):
-        selector_calls.append((runtime_policy, runtime_preflight, runtime_profile, local))
+    def fake_select_llm(*, local=None, ollama=None):
+        selector_calls.append(local)
         return selected_llm, object()
 
     monkeypatch.setattr(app_module, "select_llm", fake_select_llm)
@@ -390,7 +386,7 @@ def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> N
 
     assert state.llm is selected_llm
     assert state.local_llm_sidecar is None
-    assert selector_calls == [(policy, preflight, profile, None)]
+    assert selector_calls == [None]
 
 
 def test_build_engine_injects_resident_interruption_chunks_when_stream_running() -> None:
@@ -1439,7 +1435,7 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["LLM_MODEL_MODE"]["restart_required"] is True
     assert fields["LOCAL_MODEL_FETCH"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["LOCAL_MODEL_FETCH"]["advanced"] is True
-    assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]
+    assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "diagnostic"]
     assert fields["LLM_MODEL_POLICY"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["LLM_MODEL_ID"]["advanced"] is True
     ordered_keys = [field["key"] for field in payload["fields"]]
@@ -1470,8 +1466,6 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["STT_MODELS"]["advanced"] is True
     assert fields["WAKE_MODEL"]["section"] == "Optional Wake"
     assert fields["WAKE_MODEL"]["advanced"] is True
-    assert fields["PICOVOICE_ACCESS_KEY"]["section"] == "Optional Wake"
-    assert fields["PICOVOICE_ACCESS_KEY"]["secret"] is True
     assert "secret-token" not in str(payload)
     assert "UNRELATED" not in fields
 

@@ -122,18 +122,6 @@ def test_prod_named_policy_degrades_to_portable_on_cpu() -> None:
     assert selection.hardware_selector == "*"
 
 
-def test_prod_vision_preview_selects_diagnostic_placeholder_model() -> None:
-    selection = select_llm_model(
-        "voice_chat",
-        HardwareProfile(os_name="windows", arch="amd64"),
-        settings=_settings(policy="vision_preview", mode="prod"),
-    )
-
-    assert selection.model_id == "assistant-qwen3-0p6b-q8-diagnostic"
-    assert selection.role == "vision_preview"
-    assert selection.role_status == "placeholder-no-vision-runtime"
-
-
 def test_explicit_model_override_wins_over_policy() -> None:
     selection = select_llm_model(
         "voice_chat",
@@ -211,6 +199,6 @@ def test_prod_arm64_qualcomm_qnn_host_selects_portable_model() -> None:
 
 def test_prod_policies_do_not_select_development_model() -> None:
     profile = HardwareProfile(os_name="windows", arch="amd64")
-    for policy in ["auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"]:
+    for policy in ["auto", "portable", "balanced", "quality", "diagnostic"]:
         selection = select_llm_model("voice_chat", profile, settings=_settings(policy=policy, mode="prod"))
         assert selection.model_id != "assistant-small-q4"

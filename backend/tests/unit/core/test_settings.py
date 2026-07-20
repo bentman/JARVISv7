@@ -40,8 +40,6 @@ ENV_NAMES = (
     "RESIDENT_VOICE_PRE_ROLL_SECONDS",
     "RESIDENT_VOICE_MIN_SPEECH_SECONDS",
     "QAIRT_SDK_PATH",
-    "PICOVOICE_ACCESS_KEY",
-    "PVPORCUPINE_MODEL_PATH",
     "REDIS_HOST",
     "REDIS_PORT",
     "REDIS_DB",
@@ -71,7 +69,6 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "TAVILY_API_KEY",
     "REDIS_HOST",
     "REDIS_PORT",
-    "PICOVOICE_ACCESS_KEY",
     "DATA_PATH",
     "CONFIG_PATH",
     "MODEL_PATH",
@@ -113,7 +110,6 @@ ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "RESIDENT_VOICE_PRE_ROLL_SECONDS",
     "RESIDENT_VOICE_MIN_SPEECH_SECONDS",
     "QAIRT_SDK_PATH",
-    "PVPORCUPINE_MODEL_PATH",
     "REDIS_DB",
     "REDIS_MAX_CONNECTIONS",
     "REDIS_SOCKET_TIMEOUT",
@@ -413,7 +409,6 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
     assert settings.stt_models == "models/stt"
     assert settings.tts_models == "models/tts"
     assert settings.wake_model == "models/wake"
-    assert settings.picovoice_access_key is None
 
 
 def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path):
@@ -511,7 +506,6 @@ def test_env_example_covers_current_settings_env_variables():
     assert values["USE_SEARXNG"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_DDGS"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_TAVILY"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
-    assert values["PICOVOICE_ACCESS_KEY"] in {"", "<placeholder>", "<secret>"}
 
 
 def test_setting_env_classification_keeps_primary_starter_small():

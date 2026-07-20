@@ -11,7 +11,7 @@ JARVISv7 uses a repo layout that reinforces runtime domains, keeps declarative c
 - `models/` stores model artifacts only, not executable source.
 - `data/`, `cache/`, and `reports/` store mutable outputs and must not contain source-of-truth code.
 - Runtime integrations use generic labels where technology may change during development.
-- External escalation providers (cloud LLMs, search fallbacks) get explicit runtime files because they are stable policy surfaces.
+- External search providers get explicit runtime files because they are stable service surfaces.
 - Search escalations live under their own provider domain, separate from LLM runtimes.
 - Artifacts, sessions, and turns are persisted separately from implementation code.
 - Desktop is the product shell; conversation and runtime logic stay in backend domains.
@@ -145,7 +145,7 @@ backend/
 │  ├─ routing/
 │  │  ├─ capability_router.py        # routes work from capability flags
 │  │  ├─ model_registry.py           # model/provider catalog access
-│  │  └─ runtime_selector.py         # chooses concrete runtime/provider (LLM escalation policy owner)
+│  │  └─ runtime_selector.py         # selects llama.cpp, Ollama fallback, or explicit unavailable state
 │  ├─ runtimes/
 │  │  ├─ internetsearch/
 │  │  │  ├─ base.py                  # common internet search runtime interface
@@ -154,17 +154,11 @@ backend/
 │  │  │  └─ tavily_runtime.py        # tertiary Tavily search escalation runtime (API key required)
 │  │  ├─ llm/
 │  │  │  ├─ base.py                  # common LLM runtime interface
-│  │  │  ├─ claude_runtime.py        # anthropic escalation runtime (policy-gated)
-│  │  │  ├─ gemini_runtime.py        # google escalation runtime (policy-gated)
 │  │  │  ├─ local_runtime.py         # local/default LLM runtime (LlamaCppLLM; activated in H.1)
-│  │  │  ├─ ollama_runtime.py        # ollama local fallback runtime
-│  │  │  ├─ openai_runtime.py        # openai escalation runtime (policy-gated)
-│  │  │  ├─ xai_runtime.py           # xAI escalation runtime (policy-gated)
-│  │  │  └─ zai_runtime.py           # Z.AI escalation runtime (policy-gated)
+│  │  │  └─ ollama_runtime.py        # ollama local fallback runtime
 │  │  ├─ stt/
 │  │  │  ├─ barge_in.py              # barge-in detector used by interruption / wake-concurrency surfaces
 │  │  │  ├─ base.py                  # common STT runtime interface; device ∈ {cpu, cuda, directml, qnn}
-│  │  │  ├─ onnx_asr_runtime.py      # onnx-asr runtime (Parakeet/Canary/NeMo families over onnxruntime)
 │  │  │  ├─ onnx_whisper_runtime.py  # ONNX Whisper over onnxruntime; all device values (QNN branch wired in H.2)
 │  │  │  └─ stt_runtime.py           # selector: (family, device) dispatch from profiler readiness
 │  │  ├─ tts/
@@ -175,8 +169,7 @@ backend/
 │  │  └─ wake/
 │  │     ├─ base.py                  # common wake runtime interface
 │  │     ├─ openwakeword_runtime.py  # openWakeWord over onnxruntime; pre-trained hey_jarvis default (PRIMARY)
-│  │     ├─ porcupine_runtime.py     # pvporcupine; optional alternative behind hw-wake-porcupine extra
-│  │     └─ wake_runtime.py          # selector: provider ∈ {openwakeword, porcupine}; openwakeword default
+│  │     └─ wake_runtime.py          # openWakeWord readiness selector with null fallback
 │  ├─ services/
 │  │  ├─ resident_voice_invocation.py # resident PTT/wake invocation service
 │  │  ├─ session_service.py          # resident session snapshot/lifecycle service
@@ -237,7 +230,7 @@ config/
 │     └─ planner.yaml
 ├─ app/
 │  ├─ defaults.yaml                  # global defaults
-│  ├─ policies.yaml                  # safety, fallback, LLM escalation, search escalation, and agent opt-in policies
+│  ├─ policies.yaml                  # disabled agent-boundary policy
 │  └─ profiles.yaml                  # runtime profiles derived from capability flags
 ├─ redis/
 │  └─ redis.conf                     # Redis service configuration files (container/service ownership)
@@ -250,13 +243,12 @@ config/
 │                                    #   espeak-ng install, QNN quantization on x64, ARM64 Tauri toolchain)
 │                                    #   — package sets live in pyproject.toml
 ├─ models/
-│  ├─ llm.yaml                       # LLM catalog and selection config (local llama.cpp, Ollama, cloud)
+│  ├─ llm.yaml                       # local llama.cpp model catalog and serve-profile selection config
 │  ├─ models.yaml                    # top-level model registry catalog
 │  ├─ search.yaml                    # search runtime/provider config (SearXNG primary, DDGS, Tavily)
-│  ├─ stt.yaml                       # STT runtime/model config (whisper-small-onnx, qnn-qdq variant, parakeet)
+│  ├─ stt.yaml                       # STT runtime/model config (whisper-small-onnx and QNN variants)
 │  ├─ tts.yaml                       # TTS runtime/model config (kokoro-v1.0-onnx)
-│  └─ wake.yaml                      # wake config (openwakeword hey_jarvis default; porcupine optional;
-│                                    #   future-custom-keyword caveat notes)
+│  └─ wake.yaml                      # wake config (openwakeword hey_jarvis default)
 └─ personality/
    ├─ concise.yaml                   # concise personality profile
    ├─ default.yaml                   # runtime personality overlay/tuning profile
@@ -266,7 +258,7 @@ config/
 
 **Config-domain ownership notes:**
 - Package sets are declared in `pyproject.toml` under `[project.optional-dependencies]` with PEP 508 environment markers where markers suffice. Vendor-specific gating that markers cannot express (NPU vendor, CUDA presence) is applied by `backend/app/hardware/provisioning.py::resolve_required_extras()`. `config/hardware/notes.md` holds only human-facing operator notes about non-pip prerequisites.
-- `config/app/policies.yaml` is the escalation and opt-in surface. Adding a cloud LLM provider, enabling the agent framework, or changing the search escalation order is a policy edit — not code.
+- `config/app/policies.yaml` owns the disabled agent-boundary policy.
 - `config/models/*.yaml` catalogs are the only place model identities, repo IDs, local paths, and device-preferred variants are declared. Runtimes read from the catalog; they never hardcode model names. `config/models/search.yaml` is provider/routing only and carries no credentials.
 - `config/redis/` owns Redis service configuration files; `cache/redis/` holds Redis runtime data only.
 - `.env` / `.env.example` own Redis/search connection settings, URLs, enable flags, and API-key placeholders.
@@ -310,15 +302,12 @@ models/
 ├─ llm/                              # local LLM model artifacts (llama.cpp-consumable formats; H.1)
 ├─ stt/
 │  ├─ whisper-small-onnx/            # ONNX Whisper (CPU/CUDA/DirectML)
-│  ├─ whisper-small-onnx-qnn-qdq/    # Quantized/QDQ Whisper for QNN (defined A.6, acquired H.2)
-│  └─ parakeet-tdt/                  # Parakeet-family ONNX model for onnx-asr path
+│  └─ whisper-small-onnx-qnn-qdq/    # Quantized/QDQ Whisper for QNN (defined A.6, acquired H.2)
 ├─ tts/
 │  └─ kokoro-v1.0-onnx/              # Kokoro ONNX model + voices (kokoro-v1.0.onnx + voices-v1.0.bin pair)
 └─ wake/
-   ├─ openwakeword/                  # openWakeWord .onnx models (arch-independent):
-   │                                 #   hey_jarvis_v0.1.onnx + melspectrogram.onnx + embedding_model.onnx
-   └─ porcupine/                     # Porcupine custom .ppn files when hw-wake-porcupine extra is installed
-                                     #   (per-arch if Picovoice Console requires separate Windows x64/ARM64 files)
+   └─ openwakeword/                  # openWakeWord .onnx models (arch-independent):
+                                     #   hey_jarvis_v0.1.onnx + melspectrogram.onnx + embedding_model.onnx
 ```
 
 ### Desktop Shell Domain

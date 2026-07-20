@@ -44,8 +44,6 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "RESIDENT_VOICE_PRE_ROLL_SECONDS": "advanced",
     "RESIDENT_VOICE_MIN_SPEECH_SECONDS": "advanced",
     "QAIRT_SDK_PATH": "advanced",
-    "PICOVOICE_ACCESS_KEY": "secret",
-    "PVPORCUPINE_MODEL_PATH": "advanced",
     "REDIS_HOST": "services",
     "REDIS_PORT": "services",
     "REDIS_DB": "advanced",
@@ -194,12 +192,6 @@ class Settings:
         default_factory=lambda: _env_float("RESIDENT_VOICE_MIN_SPEECH_SECONDS") or 0.2
     )
     qairt_sdk_path: str | None = field(default_factory=lambda: _env_str("QAIRT_SDK_PATH"))
-    picovoice_access_key: str | None = field(
-        default_factory=lambda: _env_str("PICOVOICE_ACCESS_KEY")
-    )
-    pvporcupine_model_path: str | None = field(
-        default_factory=lambda: _env_str("PVPORCUPINE_MODEL_PATH")
-    )
     redis_host: str = field(default_factory=lambda: _env_str("REDIS_HOST", "127.0.0.1") or "127.0.0.1")
     redis_port: int = field(default_factory=lambda: _env_int("REDIS_PORT") or 6379)
     redis_db: int = field(default_factory=lambda: _env_int("REDIS_DB") or 0)

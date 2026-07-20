@@ -5,7 +5,6 @@ from dataclasses import dataclass, replace
 
 
 from fastapi import FastAPI
-import yaml
 
 
 from backend.app.cache.manager import CacheManager
@@ -13,7 +12,6 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.memory.semantic import SemanticMemory
-from backend.app.core.paths import CONFIG_DIR
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
@@ -43,10 +41,6 @@ from backend.app.services.utterance_segmenter import (
 )
 from backend.app.services.wake_monitor import WakeMonitorService
 
-
-DEFAULT_POLICY_PATH = CONFIG_DIR / "app" / "policies.yaml"
-
-
 @dataclass(slots=True)
 class ApiState:
     report: FullCapabilityReport
@@ -69,15 +63,6 @@ class ApiState:
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
     semantic_memory: SemanticMemory | None = None
-
-
-def _load_runtime_policy(path=DEFAULT_POLICY_PATH) -> dict[str, object]:
-    if not path.exists():
-        return {}
-    payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(payload, dict):
-        raise ValueError("runtime policy must be a mapping")
-    return payload
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -118,7 +103,7 @@ def build_startup_state() -> ApiState:
     tts = select_tts_runtime(preflight, profile)
     tts.warmup()
     local_llm = prepare_managed_local_llm(profile, preflight, flags=report.flags)
-    llm, llm_trace = select_llm(_load_runtime_policy(), preflight, profile, local=local_llm.runtime)
+    llm, llm_trace = select_llm(local=local_llm.runtime)
     session_manager = SessionManager()
     cache_manager = CacheManager()
     semantic_memory = SemanticMemory()

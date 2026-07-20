@@ -26,9 +26,6 @@ llm_selection:
     quality:
       model: assistant-qwen3-14b-q4-quality
       status: active-amd64-cuda
-    vision_preview:
-      model: assistant-qwen3-0p6b-q8-diagnostic
-      status: placeholder-no-vision-runtime
   policies:
     auto:
       linux_amd64_gpu_nvidia_cuda: balanced
@@ -53,9 +50,6 @@ llm_selection:
       "*": portable
     diagnostic:
       "*": diagnostic
-    vision_preview:
-      "*": vision_preview
-
 linux_amd64_serve_profiles: &linux_amd64_serve_profiles
   linux_amd64_cpu:
     profile_id: linux_amd64_cpu

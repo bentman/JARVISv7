@@ -44,7 +44,7 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec(
         "LLM_MODEL_POLICY",
         "Model policy.",
-        options=("auto", "portable", "balanced", "quality", "vision_preview", "diagnostic"),
+        options=("auto", "portable", "balanced", "quality", "diagnostic"),
         section="Local LLM intent (llama.cpp)",
     ),
     OperatorFieldSpec("LLM_MODEL_ID", "Model id override.", section="Local LLM intent (llama.cpp)", advanced=True),
@@ -78,8 +78,6 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec("STT_MODELS", "Speech-to-text model path.", section="App Paths", advanced=True),
     OperatorFieldSpec("TTS_MODELS", "Text-to-speech model path.", section="App Paths", advanced=True),
     OperatorFieldSpec("WAKE_MODEL", "Wake model path.", section="Optional Wake", advanced=True),
-    OperatorFieldSpec("PICOVOICE_ACCESS_KEY", "Picovoice access key.", secret=True, section="Optional Wake", advanced=True),
-    OperatorFieldSpec("PVPORCUPINE_MODEL_PATH", "Porcupine wake model path.", section="Optional Wake", advanced=True),
 )
 
 _OPERATOR_FIELDS = {spec.key: spec for spec in OPERATOR_FIELD_SPECS}
