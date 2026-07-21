@@ -29,13 +29,13 @@ Path to the command transcript. Defaults under JarvisDevRoot.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
 param(
-    [string] $jarvisRoot = "D:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7",
-    [string] $jarvisDevRoot = "D:\WORK\jarvis-dev\llm-qnn",
-    [string] $qairtSdkPath = "D:\WORK\Qualcomm\v2.46.0.260424\qairt\v2.46.0.260424",
+    [string] $jarvisRoot = "$PSScriptRoot\..\..",
+    [string] $jarvisDevRoot = "$jarvisRoot\..\jarvis-dev\llm-qnn",
+    [string] $qairtSdkPath = "$jarvisRoot\..\jarvis-dev\Qualcomm\v2.46.0.260424\qairt\v2.46.0.260424",
     [string] $hexagonHtpCert = "",
     [string] $windowsSdkBin = "",
     [switch] $disableCertGen = $false,
-    [string] $transcriptPath = ""
+    [string] $transcriptPath = "$jarvisDevRoot\$(Get-Date -Format yyyyMMddHHmmss)_jarvis-arm-llamacpp-qnn-transcript.txt"
 )
 
 Set-StrictMode -Version 3.0

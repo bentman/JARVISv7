@@ -127,17 +127,17 @@ JARVISv7 treats hardware differences as architecture, not an embarrassing surpri
 
 Proven runtime posture:
 
-* Windows AMD64 is the broadest proving target, with CPU fallback and selected CUDA and DirectML paths.
+* Windows AMD64 is the broadest proving target, with CPU fallback and selected CUDA/DirectML paths.
 * Windows ARM64 is a first-class target, including validated Qualcomm QNN voice acceleration where supported.
 * Linux is supported enough to welcome contributors without claiming every path has achieved diplomatic immunity.
-* Linux AMD64 NVIDIA CUDA accelerated `llama.cpp` is available through a side-loaded binary compiled against CUDA 12.4.
 * All accelerator claims remain bounded by what has actually been proven.
 
-Available but not baseline:
+Other acceleration is available with effort outside repo automation:
 
 * ARM64 Adreno OpenCL accelerated `llama.cpp` remains a side-loaded path compiled through a helper guide.
 * ARM64 QNN accelerated Whisper requires Qualcomm access and the corresponding binary download.
 * AMD64 QNN accelerated `llama.cpp` can also be side-loaded through its helper guide.
+* Linux AMD64 CUDA accelerated `llama.cpp` is available through a side-loaded binary compiled against CUDA 12.4.
 * These alternatives are available for operators who choose them, but they are not represented as part of the proven default stack.
 
 The technical helper docs are here when the hardware rabbit hole becomes unavoidable:

@@ -42,8 +42,8 @@ Path to the command transcript. Defaults under exportRoot.
 
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
 param(
-    [string] $jarvisRoot = "E:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7",
-    [string] $exportRoot = "E:\WORK\jarvis-dev\whisper-qnn",
+    [string] $jarvisRoot = "$PSScriptRoot\..\..",
+    [string] $exportRoot = "$jarvisRoot\..\jarvis-dev\whisper-qnn",
     [string] $pythonExe = "py",
     [string] $deviceName = "Snapdragon X Elite CRD",
     [string] $modelName = "whisper-qualcomm-qnn",
@@ -55,7 +55,7 @@ param(
     [string] $encoderModelId = "",
     [string] $decoderModelId = "",
     [string] $workbenchIdsInputPath = "",
-    [string] $transcriptPath = ""
+    [string] $transcriptPath = "$exportRoot\$(Get-Date -Format yyyyMMddHHmmss)_jarvis-arm-whisper-transcript.txt"
 )
 
 Set-StrictMode -Version 3.0

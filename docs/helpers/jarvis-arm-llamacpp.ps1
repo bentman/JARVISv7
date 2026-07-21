@@ -22,9 +22,9 @@ Path to the command transcript. Defaults under JarvisDevRoot.
 #>
 [CmdletBinding(SupportsShouldProcess = $true, ConfirmImpact = 'Low')]
 param(
-    [string] $jarvisRoot = "D:\WORK\CODE\GitHub\bentman\Repositories\JARVISv7",
-    [string] $jarvisDevRoot = "D:\WORK\jarvis-dev\llm",
-    [string] $transcriptPath = ""
+    [string] $jarvisRoot = "$PSScriptRoot\..\..",
+    [string] $jarvisDevRoot = "$jarvisRoot\..\jarvis-dev\llm",
+    [string] $transcriptPath = "$jarvisDevRoot\$(Get-Date -Format yyyyMMddHHmmss)_jarvis-arm-llamacpp-transcript.txt"
 )
 
 Set-StrictMode -Version 3.0
