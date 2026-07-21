@@ -66,13 +66,11 @@ The intended progression is simple, even when the engineering is not:
 * allow action only through explicit capability boundaries
 * add reusable skills, integrations, plugins, and agents only after the foundation can support them
 
-That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.
+That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.  
 
 > [ProjectVision.md](ProjectVision.md) contains the destination.  
-> [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.
-
-
-> The goal is natural interaction without pretending the engineering underneath is simple.
+> [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.  
+> The goal is natural interaction without pretending the engineering underneath is simple.  
 
 * * *
 

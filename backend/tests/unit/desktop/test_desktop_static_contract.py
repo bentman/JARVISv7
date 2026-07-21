@@ -496,7 +496,7 @@ def test_desktop_ptt_uses_resident_voice_not_webview_wav_capture() -> None:
     assert "websocket" not in backend_rs.lower()
 
 
-def test_no_tools_or_agents_implementation_calls() -> None:
+def test_no_tools_implementation_calls() -> None:
     source = "\n".join(
         path.read_text(encoding="utf-8")
         for path in [
@@ -505,7 +505,6 @@ def test_no_tools_or_agents_implementation_calls() -> None:
             DESKTOP / "src" / "main.js",
         ]
     )
-    assert "/agents" not in source
     assert "/tools" not in source
     assert "tool_registry" not in source
 

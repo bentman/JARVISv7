@@ -203,7 +203,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
-    from backend.app.api.routes import agents, config, diagnostics, health, personality, readiness, session, status, task
+    from backend.app.api.routes import config, diagnostics, health, personality, readiness, session, status, task
 
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1", lifespan=lifespan)
     install_state(app, startup_state or build_startup_state())
@@ -213,7 +213,6 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.include_router(session.router)
     app.include_router(task.router)
     app.include_router(diagnostics.router)
-    app.include_router(agents.router)
     app.include_router(status.router)
     app.include_router(config.router)
     return app

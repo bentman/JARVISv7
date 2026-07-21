@@ -159,7 +159,6 @@ models:
       - research
       - code_plan
       - tool_plan
-      - agent_plan_disabled
     generation_defaults:
       temperature: 0.4
       top_p: 0.9
@@ -619,7 +618,6 @@ models:
       - research
       - code_plan
       - tool_plan
-      - agent_plan_disabled
     generation_defaults:
       temperature: 0.4
       top_p: 0.9
@@ -962,7 +960,6 @@ models:
       - research
       - code_plan
       - tool_plan
-      - agent_plan_disabled
     generation_defaults:
       temperature: 0.4
       top_p: 0.9
@@ -1305,7 +1302,6 @@ models:
       - research
       - code_plan
       - tool_plan
-      - agent_plan_disabled
     generation_defaults:
       temperature: 0.4
       top_p: 0.9
@@ -1648,7 +1644,6 @@ models:
       - research
       - code_plan
       - tool_plan
-      - agent_plan_disabled
     generation_defaults:
       temperature: 0.4
       top_p: 0.9

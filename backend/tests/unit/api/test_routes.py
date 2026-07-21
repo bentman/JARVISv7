@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-from backend.app.agents.ledger import AgentLedger, AgentLedgerRecord
+
 from backend.app.api import app as app_module
 from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
@@ -889,57 +889,10 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
     }
 
 
-def test_agents_status_is_disabled_read_only() -> None:
-    response = _client().get("/agents/status")
-    payload = response.json()
+def test_agent_routes_are_absent_from_openapi() -> None:
+    paths = _client().app.openapi()["paths"]
 
-    assert response.status_code == 200
-    assert payload["enabled"] is False
-    assert payload["read_only"] is True
-    assert payload["reason"] == "Agent boundary is disabled by policy"
-    assert payload["allowed_roles"] == ["planner", "executor", "critic", "curator", "learner"]
-    assert payload["allowed_tools"] == []
-    known_specs = {spec["spec_id"]: spec for spec in payload["known_specs"]}
-    assert sorted(known_specs) == ["critic", "curator", "executor", "learner", "planner"]
-    assert known_specs["planner"]["enabled"] is False
-    assert known_specs["planner"]["policy_allowed"] is False
-
-
-def test_agents_trace_endpoint_is_read_only(monkeypatch, tmp_path: Path) -> None:
-    ledger_path = tmp_path / "ledger.sqlite3"
-    ledger = AgentLedger(ledger_path)
-    ledger.append(
-        AgentLedgerRecord(
-            record_id="record-1",
-            trace_id="trace-1",
-            role_id="planner",
-            record_type="plan",
-            payload={"dry_run": True},
-            created_at="2026-06-15T00:00:00+00:00",
-        )
-    )
-    monkeypatch.setattr("backend.app.api.routes.agents.AgentLedger", lambda: AgentLedger(ledger_path))
-
-    response = _client().get("/agents/traces/trace-1")
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "trace_id": "trace-1",
-        "read_only": True,
-        "records": [
-            {
-                "record_id": "record-1",
-                "trace_id": "trace-1",
-                "record_type": "plan",
-                "payload": {"dry_run": True},
-                "role_id": "planner",
-                "session_id": None,
-                "turn_id": None,
-                "parent_record_id": None,
-                "created_at": "2026-06-15T00:00:00+00:00",
-            }
-        ],
-    }
+    assert not any(path.startswith("/agents") for path in paths)
 
 
 def test_wake_status_uses_readiness_without_starting_monitor() -> None:

@@ -8,7 +8,7 @@ TURN_ARTIFACT_FIELDS: tuple[str, ...] = (
     "turn_id", "session_id", "input_modality", "hardware_profile_id",
     "capability_flags_snapshot", "active_personality_profile_id", "profile_epoch", "raw_audio_path",
     "transcript", "final_prompt_text", "retrieved_memory_refs", "tools_invoked",
-    "agent_trace", "reasoning_trace_metadata", "response_text", "audio_output_path",
+    "reasoning_trace_metadata", "response_text", "audio_output_path",
     "interruption_events", "final_state", "failure_reason", "tts_degraded",
     "tts_degraded_reason", "tts_output_device", "runtime_context", "phase_timestamps",
     "phase_durations_ms", "failure_phase",
@@ -30,7 +30,6 @@ class TurnArtifact:
     final_prompt_text: str | None = None
     retrieved_memory_refs: list[str] = field(default_factory=list)
     tools_invoked: list[str] = field(default_factory=list)
-    agent_trace: dict[str, Any] | None = None
     reasoning_trace_metadata: dict[str, Any] | None = None
     response_text: str | None = None
     audio_output_path: str | None = None

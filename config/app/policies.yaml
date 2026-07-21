@@ -1,6 +1,0 @@
-agents:
-  enabled: false
-  read_only: true
-  reason: Agent boundary is disabled by policy
-  allowed_roles: [planner, executor, critic, curator, learner]
-  allowed_tools: []

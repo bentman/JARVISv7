@@ -24,7 +24,6 @@ def _entry(tmp_path: Path) -> ModelEntry:
                 "research",
                 "code_plan",
                 "tool_plan",
-                "agent_plan_disabled",
             ],
             "generation_defaults": {
                 "temperature": 0.4,

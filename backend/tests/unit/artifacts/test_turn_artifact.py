@@ -82,7 +82,7 @@ def test_storage_read_returns_none_for_missing_artifact(tmp_path):
     assert storage.read_turn_artifact("missing-session", "missing-turn", tmp_path) is None
 
 
-def test_turn_schema_fields_unchanged():
+def test_turn_schema_fields_are_canonical():
     assert TURN_ARTIFACT_FIELDS == (
         "turn_id",
         "session_id",
@@ -96,7 +96,6 @@ def test_turn_schema_fields_unchanged():
         "final_prompt_text",
         "retrieved_memory_refs",
         "tools_invoked",
-        "agent_trace",
         "reasoning_trace_metadata",
         "response_text",
         "audio_output_path",
