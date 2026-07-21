@@ -2,7 +2,7 @@
 
 ## Purpose
 
-`docs/jarvis-wsl-llamacpp.sh` builds the pinned llama.cpp CUDA sidecar for Linux AMD64/WSL2 and stages only a validated runtime into:
+`docs/helpers/jarvis-wsl-llamacpp.sh` builds the pinned llama.cpp CUDA sidecar for Linux AMD64/WSL2 and stages only a validated runtime into:
 
 ```text
 runtimes/llama.cpp/linux-amd64-cuda
@@ -47,7 +47,7 @@ A newer NVIDIA driver can run applications built with an older CUDA Toolkit thro
 When the NVIDIA CUDA apt repository is already configured:
 
 ```bash
-bash docs/jarvis-wsl-llamacpp.sh --install-cuda-toolkit
+bash docs/helpers/jarvis-wsl-llamacpp.sh --install-cuda-toolkit
 ```
 
 The helper installs only:
@@ -61,7 +61,7 @@ It does not install `cuda`, `cuda-runtime-*`, or `cuda-drivers` packages.
 To use an existing compatible CUDA 12.x Toolkit explicitly:
 
 ```bash
-bash docs/jarvis-wsl-llamacpp.sh --cuda-root /usr/local/cuda-12.4
+bash docs/helpers/jarvis-wsl-llamacpp.sh --cuda-root /usr/local/cuda-12.4
 ```
 
 The selected root must contain `bin/nvcc`, `include`, and `lib64`. CUDA 13.x roots are rejected before configuration so the known-bad build is not repeated.
@@ -71,13 +71,13 @@ The selected root must contain `bin/nvcc`, `include`, and `lib64`. CUDA 13.x roo
 From the JARVIS repository root:
 
 ```bash
-bash docs/jarvis-wsl-llamacpp.sh --install-cuda-toolkit
+bash docs/helpers/jarvis-wsl-llamacpp.sh --install-cuda-toolkit
 ```
 
 After CUDA 12.4 exists, normal reruns use:
 
 ```bash
-bash docs/jarvis-wsl-llamacpp.sh
+bash docs/helpers/jarvis-wsl-llamacpp.sh
 ```
 
 Optional arguments:

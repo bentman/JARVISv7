@@ -71,13 +71,9 @@ The intended progression is simple, even when the engineering is not:
 
 That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.  
 
-<<<<<<< HEAD
 > [ProjectVision.md](ProjectVision.md) contains the destination.  
 > [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.  
 > The goal is natural interaction without pretending the engineering underneath is simple.  
-=======
-[ProjectVision.md](ProjectVision.md) contains the destination. [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered. The goal is natural interaction without pretending the engineering underneath is simple.
->>>>>>> 98ddc5f0acf88ade577f801c60c13cf6a3def1d5
 
 * * *
 
@@ -146,10 +142,10 @@ Available but not baseline:
 
 The technical helper docs are here when the hardware rabbit hole becomes unavoidable:
 
-* [docs/jarvis-arm-llamacpp.md](docs/jarvis-arm-llamacpp.md)
-* [docs/jarvis-arm-llamacpp-qnn.md](docs/jarvis-arm-llamacpp-qnn.md)
-* [docs/jarvis-arm-whisper.md](docs/jarvis-arm-whisper.md)
-* [docs/jarvis-wsl-llamacpp.md](docs/jarvis-wsl-llamacpp.md)
+* [docs/helpers/jarvis-arm-llamacpp.md](docs/helpers/jarvis-arm-llamacpp.md)
+* [docs/helpers/jarvis-arm-llamacpp-qnn.md](docs/helpers/jarvis-arm-llamacpp-qnn.md)
+* [docs/helpers/jarvis-arm-whisper.md](docs/helpers/jarvis-arm-whisper.md)
+* [docs/helpers/jarvis-wsl-llamacpp.md](docs/helpers/jarvis-wsl-llamacpp.md)
 
 Hardware acceleration is welcome. Hardware fan fiction is not.
 

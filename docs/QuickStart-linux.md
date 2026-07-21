@@ -184,7 +184,7 @@ Drop `--verify-only` to request acquisition of a missing or mismatched artifact.
 
 ## Hardware acceleration
 
-Linux AMD64 NVIDIA CUDA is verified for the managed llama.cpp sidecar: b9704 / commit `10786217e9d40c848ac0133cbe9c5f22a52421bb` / build 9704, using `/usr/local/cuda-12.4` and `runtimes/llama.cpp/linux-amd64-cuda`. The live proof starts the managed sidecar, exercises health/models/completion, confirms CUDA offload, and leaves no `llama-server` process. See [Linux llama.cpp CUDA build](jarvis-wsl-llamacpp.md).
+Linux AMD64 NVIDIA CUDA is verified for the managed llama.cpp sidecar: b9704 / commit `10786217e9d40c848ac0133cbe9c5f22a52421bb` / build 9704, using `/usr/local/cuda-12.4` and `runtimes/llama.cpp/linux-amd64-cuda`. The live proof starts the managed sidecar, exercises health/models/completion, confirms CUDA offload, and leaves no `llama-server` process. See [Linux llama.cpp CUDA build](helpers/jarvis-wsl-llamacpp.md).
 
 ROCm, Vulkan, OpenCL, other Linux accelerator paths, and Linux desktop/audio behavior remain outside this verified claim.
 

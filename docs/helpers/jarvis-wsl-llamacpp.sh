@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-DEFAULT_JARVIS_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
+DEFAULT_JARVIS_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
 DEFAULT_DEV_ROOT="$HOME/WORK/CODE/jarvis-dev/llamacpp-cuda"
 
 LLAMA_TAG="b9704"
@@ -24,7 +24,7 @@ keep_previous_runtime=false
 
 usage() {
     cat <<'USAGE'
-Usage: docs/jarvis-wsl-llamacpp.sh [options]
+Usage: docs/helpers/jarvis-wsl-llamacpp.sh [options]
 
 Options:
   --jarvis-root PATH       JARVIS repository root.

@@ -1,6 +1,6 @@
 # JARVIS ARM llama.cpp QNN Helper
 
-This document explains how to use `docs\jarvis-arm-llamacpp-qnn.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Hexagon/QNN NPU support.
+This document explains how to use `docs\helpers\jarvis-arm-llamacpp-qnn.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Hexagon/QNN NPU support.
 
 **WARNING:** This path is experimental. The current repository declares `windows_arm64_npu_qualcomm_qnn` as a degraded/pending-viability profile until a real sidecar binary is built, staged, and validated on the target host. Current upstream llama.cpp Snapdragon support is exposed as the Hexagon backend (`GGML_HEXAGON`), not a stable QNN backend named `GGML_QNN`.
 
@@ -37,7 +37,7 @@ Required:
 
 Recommended:
 
-- Import `docs\jarvis-arm.vsconfig` through Visual Studio Installer.
+- Import `docs\helpers\jarvis-arm.vsconfig` through Visual Studio Installer.
 - Use Visual Studio Developer PowerShell with ARM64 tools already loaded.
 - Set `QAIRT_SDK_PATH` to the extracted Qualcomm AI Engine Direct SDK / QAIRT root before running the helper.
 
@@ -172,7 +172,7 @@ Use the actual extracted SDK root on the target host.
 The Visual Studio configuration file is the preferred setup path:
 
 ```text
-docs\jarvis-arm.vsconfig
+docs\helpers\jarvis-arm.vsconfig
 ```
 
 In Visual Studio Installer, use:
@@ -226,20 +226,20 @@ The helper automatically:
 Dry run:
 
 ```powershell
-.\docs\jarvis-arm-llamacpp-qnn.ps1 -WhatIf
+.\docs\helpers\jarvis-arm-llamacpp-qnn.ps1 -WhatIf
 ```
 
 Build and stage:
 
 ```powershell
 # Standard invocation (automatic certificate generation & registration)
-.\docs\jarvis-arm-llamacpp-qnn.ps1
+.\docs\helpers\jarvis-arm-llamacpp-qnn.ps1
 
 # Invocation disabling certificate auto-generation
-.\docs\jarvis-arm-llamacpp-qnn.ps1 -DisableCertGen
+.\docs\helpers\jarvis-arm-llamacpp-qnn.ps1 -DisableCertGen
 
 # Invocation passing custom QAIRT SDK path and Windows SDK bin path
-.\docs\jarvis-arm-llamacpp-qnn.ps1 -QairtSdkPath "D:\Qualcomm\QAIRT\v2.46.0.260424" -WindowsSdkBin "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0"
+.\docs\helpers\jarvis-arm-llamacpp-qnn.ps1 -QairtSdkPath "D:\Qualcomm\QAIRT\v2.46.0.260424" -WindowsSdkBin "C:\Program Files (x86)\Windows Kits\10\bin\10.0.26100.0"
 ```
 
 ### Windows Host Code-Signing Setup
@@ -248,7 +248,7 @@ Build and stage:
 > **Windows Test-Signing is a hard requirement for Hexagon HTP NPU execution.**
 > Because Microsoft and Qualcomm strictly enforce kernel/driver-level digital signatures for custom DSP/NPU code on Windows Snapdragon hosts, self-signed catalog files (`libggml-htp.cat`) will only load when `TESTSIGNING` is active.
 >
-> If enabling `TESTSIGNING ON` is a blocker for your device (e.g. retail Copilot+ PCs or Surface laptops where secure boot or game anti-cheat compliance must be maintained), you should use the Adreno GPU OpenCL backend ([jarvis-arm-llamacpp.md](file:///D:/WORK/CODE/GitHub/bentman/Repositories/JARVISv7/docs/jarvis-arm-llamacpp.md)) instead, which runs at native retail security levels without requiring test-signing.
+> If enabling `TESTSIGNING ON` is a blocker for your device (e.g. retail Copilot+ PCs or Surface laptops where secure boot or game anti-cheat compliance must be maintained), you should use the Adreno GPU OpenCL backend ([jarvis-arm-llamacpp.md](jarvis-arm-llamacpp.md)) instead, which runs at native retail security levels without requiring test-signing.
 
 Because the Hexagon NPU driver checks Windows digital signatures when loading HTP skeleton libraries (`.so`), the host system must be configured to trust the certificate used to sign the catalog file (`libggml-htp.cat`).
 

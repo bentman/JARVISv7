@@ -1,6 +1,6 @@
 # JARVIS ARM Whisper QNN Artifact Helper
 
-This document explains how to use `docs\jarvis-arm-whisper.ps1` to prepare or inspect a Qualcomm QNN Whisper artifact package for JARVISv7.
+This document explains how to use `docs\helpers\jarvis-arm-whisper.ps1` to prepare or inspect a Qualcomm QNN Whisper artifact package for JARVISv7.
 
 The normal workflow has two hosts:
 
@@ -99,40 +99,40 @@ Run from the JARVIS repo root.
 Inspect only:
 
 ```powershell
-.\docs\jarvis-arm-whisper.ps1 -InspectOnly
+.\docs\helpers\jarvis-arm-whisper.ps1 -InspectOnly
 ```
 
 Dry run:
 
 ```powershell
-.\docs\jarvis-arm-whisper.ps1 -WhatIf
+.\docs\helpers\jarvis-arm-whisper.ps1 -WhatIf
 ```
 
 Default local package run, with no Workbench export:
 
 ```powershell
-.\docs\jarvis-arm-whisper.ps1
+.\docs\helpers\jarvis-arm-whisper.ps1
 ```
 
 Create a new Workbench export:
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
-.\docs\jarvis-arm-whisper.ps1 -RunWorkbenchExport
+.\docs\helpers\jarvis-arm-whisper.ps1 -RunWorkbenchExport
 ```
 
 Download already-completed artifacts from a captured ID file:
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
-.\docs\jarvis-arm-whisper.ps1 -DownloadCompletedArtifacts -workbenchIdsInputPath "<PATH_TO_WORKBENCH_IDS_JSON>"
+.\docs\helpers\jarvis-arm-whisper.ps1 -DownloadCompletedArtifacts -workbenchIdsInputPath "<PATH_TO_WORKBENCH_IDS_JSON>"
 ```
 
 Download already-completed artifacts from explicit IDs:
 
 ```powershell
 $env:QAI_HUB_API_TOKEN = "<YOUR_API_TOKEN>"
-.\docs\jarvis-arm-whisper.ps1 -DownloadCompletedArtifacts -encoderModelId "<ENCODER_MODEL_ID>" -decoderModelId "<DECODER_MODEL_ID>"
+.\docs\helpers\jarvis-arm-whisper.ps1 -DownloadCompletedArtifacts -encoderModelId "<ENCODER_MODEL_ID>" -decoderModelId "<DECODER_MODEL_ID>"
 ```
 
 If a job ID is known, it may also be supplied. Model IDs are usually less error-prone when downloading final optimized artifacts.

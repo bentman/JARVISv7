@@ -1,6 +1,6 @@
 # JARVIS ARM llama.cpp Adreno OpenCL Helper
 
-This document explains how to use `docs\jarvis-arm-llamacpp.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Adreno OpenCL.  
+This document explains how to use `docs\helpers\jarvis-arm-llamacpp.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Adreno OpenCL.  
 
 **WARNING:** This process is a "ram-hog" (~3.5+ GB on my 16GB laptop).
 
@@ -36,7 +36,7 @@ Required:
 
 Recommended:
 
-- Import `docs\jarvis-arm.vsconfig` through Visual Studio Installer.
+- Import `docs\helpers\jarvis-arm.vsconfig` through Visual Studio Installer.
 - Use Developer PowerShell for Visual Studio, or let the helper initialize the ARM64 Visual Studio environment.
 
 ## Install or verify build tools
@@ -44,7 +44,7 @@ Recommended:
 The Visual Studio configuration file is the preferred setup path:
 
 ```text
-docs\jarvis-arm.vsconfig
+docs\helpers\jarvis-arm.vsconfig
 ```
 
 In Visual Studio Installer, use:
@@ -78,13 +78,13 @@ Run from the JARVIS repo root.
 Dry run:
 
 ```powershell
-.\docs\jarvis-arm-llamacpp.ps1 -WhatIf
+.\docs\helpers\jarvis-arm-llamacpp.ps1 -WhatIf
 ```
 
 Build and stage:
 
 ```powershell
-.\docs\jarvis-arm-llamacpp.ps1
+.\docs\helpers\jarvis-arm-llamacpp.ps1
 ```
 
 The helper performs the build phases for you:

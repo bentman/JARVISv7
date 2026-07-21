@@ -169,8 +169,8 @@ Provisioning and model selection are hardware-aware by default — `scripts\prov
 If you're on **Windows ARM64 (Snapdragon)** and want NPU (QNN) or GPU (Adreno OpenCL) acceleration rather than CPU fallback, you need one of the accelerator workaround docs — these are two-host workflows (an AMD64 host prepares/exports an artifact, the ARM64 host stages and runs it) because the export tooling (`qai_hub_models`) requires x64 Python and cannot run inside the ARM64 repo venv:
 
 ```text
-docs\jarvis-arm-llamacpp.md   — Adreno OpenCL llama.cpp sidecar
-docs\jarvis-arm-whisper.md    — Qualcomm QNN Whisper STT artifact
+docs\helpers\jarvis-arm-llamacpp.md   — Adreno OpenCL llama.cpp sidecar
+docs\helpers\jarvis-arm-whisper.md    — Qualcomm QNN Whisper STT artifact
 ```
 
 Skip these entirely on x64 hosts or if CPU-only local inference is acceptable.
