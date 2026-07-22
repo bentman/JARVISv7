@@ -47,7 +47,6 @@ JARVISv7/
 ```text
 backend/
 ├─ app/
-│  ├─ agents/           # application-agent policy, specs, and ledger boundaries
 │  ├─ api/              # HTTP routes, schemas, dependencies, app assembly
 │  ├─ artifacts/        # persisted session/turn artifact models and writers
 │  ├─ cache/            # cache keys, clients, and access logic
@@ -81,12 +80,9 @@ backend/
 
 ```text
 config/
-├─ agents/              # application-agent policy and specifications
-├─ app/                 # application policy and runtime profile configuration
 ├─ hardware/            # human-readable hardware prerequisites and notes
 ├─ models/              # model catalog and selection metadata
 ├─ personality/         # personality profiles
-├─ prompts/             # prompt assets that are actually consumed
 └─ search/              # search-service configuration
 ```
 

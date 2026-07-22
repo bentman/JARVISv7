@@ -163,22 +163,6 @@
     - Timestamp: 2026-06-26 10:51 - Resident shared-stream voice validation.
     - Timestamp: 2026-06-13 18:21 - Realtime session boundary.
 
-- Timestamp: 2026-06-15 08:14
-  - State: Verified
-  - Host class(es): Windows AMD64 and Windows ARM64
-  - Summary: Default-disabled agent policy, validated agent spec catalog, append-only local ledger, and read-only status/trace API.
-  - Location:
-    - `backend/app/agents/ledger.py`
-    - `backend/app/agents/policy.py`
-    - `backend/app/agents/specs.py`
-    - `backend/app/api/routes/agents.py`
-    - `backend/app/api/schemas/agents.py`
-    - `config/agents/specs/`
-  - Evidence:
-    - Timestamp: 2026-06-15 08:14 - Disabled agent policy/spec and read-only trace boundary.
-  - Notes:
-    - No agent creator, planner, executor, critic, curator, learner, tools, model calls, or autonomous execution is present.
-
 - Timestamp: 2026-06-14 10:32
   - State: Verified
   - Host class(es): Windows AMD64
@@ -253,7 +237,7 @@
 - Timestamp: 2026-04-30 11:12
   - State: Verified
   - Host class(es): Windows AMD64 and Windows ARM64
-  - Summary: FastAPI application with health, readiness, diagnostics, configuration, session, task, status, personality, and agent status/trace routes backed by explicit application services.
+  - Summary: FastAPI application with health, readiness, diagnostics, configuration, session, task, status, and personality routes backed by explicit application services.
   - Location:
     - `backend/app/api/`
     - `backend/app/services/`

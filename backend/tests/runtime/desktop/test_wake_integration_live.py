@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from backend.app.conversation.session_manager import SessionManager
-from backend.app.personality.schema import PersonalityProfile
+from backend.app.personality.loader import load_default_personality
 from backend.app.services.session_service import SessionService
 from backend.app.conversation.engine import TurnEngine, TurnResult
 from backend.app.conversation.states import ConversationState
@@ -13,13 +13,7 @@ from backend.tests.conftest import SKIP_UNLESS_LIVE
 
 class _NoopEngine(TurnEngine):
     def __init__(self) -> None:
-        self.personality = PersonalityProfile(
-            profile_id="runtime-d4",
-            display_name="JARVIS",
-            tone="professional",
-            brevity="concise",
-            formality="semi-formal",
-        )
+        self.personality = load_default_personality()
 
     def run_text_turn(self, text: str) -> TurnResult:  # pragma: no cover - not exercised
         return TurnResult(
@@ -71,7 +65,7 @@ def test_wake_monitoring_starts_and_stops_cleanly_on_current_host() -> None:
     assert status.available is True
     assert status.reason == "wake not detected"
     assert status.monitoring is False
-    assert status.last_detected is False
+    assert status.last_detected is None
 
     unavailable = service.process_wake_chunk(_WakeRuntime(available=False), np.zeros(4, dtype=np.float32))
     print(f"[desktop-live][wake] status after unavailable runtime: {unavailable}")
@@ -95,7 +89,7 @@ def test_hey_jarvis_fixture_triggers_detection_in_resident_loop() -> None:
     assert detected.provider == "openwakeword"
     assert detected.available is True
     assert detected.reason == "wake detected"
-    assert detected.last_detected is True
+    assert detected.last_detected is not None
     assert detected.detection_count >= 1
 
     errored = service.process_wake_chunk(
@@ -105,5 +99,5 @@ def test_hey_jarvis_fixture_triggers_detection_in_resident_loop() -> None:
     print(f"[desktop-live][wake] status after deterministic error: {errored}")
     assert errored.available is False
     assert errored.reason == "wake detection error; PTT-only fallback is active"
-    assert errored.last_detected is False
+    assert errored.last_detected == detected.last_detected
     assert errored.last_error == "wake failed"

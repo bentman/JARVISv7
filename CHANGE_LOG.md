@@ -20,6 +20,12 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-21 19:37
+  - Host class(es): Windows AMD64
+  - Summary: Aligned the wake integration test with current personality and detection-status contracts.
+  - Scope: `backend/tests/runtime/desktop/test_wake_integration_live.py`
+  - Validation: Unit validator PASS (`719 passed, 4 skipped`); regression validator PASS (`149 passed, 3 skipped, 5 deselected`); focused live wake test PASS (`2 passed`).
+
 ---
 
 ## Change Appendix
@@ -32,9 +38,7 @@
   - Host class(es): Linux AMD64 validated on WSL2 with NVIDIA CUDA
   - Summary: Hardened managed Linux CUDA llama.cpp source-build, sidecar verification, and genuine portable-model CPU fallback when CUDA serving is unavailable.
   - Scope:
-    - `scripts/ensure_models.py`
-    - `backend/app/services/local_llm_startup.py`
-    - `config/models/llm.yaml`
+    - `scripts/ensure_models.py`, `backend/app/services/local_llm_startup.py`, `config/models/llm.yaml`
     - focused model, runtime, script, and startup tests
   - Validation:
     - Focused unit suite PASS (`65 passed`).
@@ -139,21 +143,6 @@
     - `runtimes/llama.cpp/`
   - Validation:
     - Artifact acquisition, verification, sidecar, profile, and readiness tests PASS.
-
-- Timestamp: 2026-06-15 08:14
-  - Host class(es): Windows AMD64 and Windows ARM64 validated
-  - Summary: Established the current default-disabled agent policy/spec catalog and read-only ledger trace/status boundary.
-  - Scope:
-    - `backend/app/agents/ledger.py`
-    - `backend/app/agents/policy.py`
-    - `backend/app/agents/specs.py`
-    - `backend/app/api/routes/agents.py`
-    - `backend/app/api/schemas/agents.py`
-    - `config/agents/specs/`
-  - Validation:
-    - Agent policy, spec loading, ledger, and API status/trace tests PASS.
-  - Notes:
-    - No planner, executor, creator, tool use, model calls, autonomous execution, training, or deployment capability is claimed.
 
 - Timestamp: 2026-06-14 10:32
   - Host class(es): Windows AMD64 validated
