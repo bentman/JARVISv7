@@ -26,6 +26,18 @@
   - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`
   - Validation: Focused sidecar tests PASS (`35 passed`); unit validator PASS (`721 passed, 4 skipped`); regression validator PASS (`149 passed, 3 skipped, 5 deselected`); proving-host text path PASS.
 
+- Timestamp: 2026-07-22 09:10
+  - Host class(es): Linux ARM64
+  - Summary: Connected the existing internet-search runtimes to the shared conversation turn path behind an explicit model search decision, with bounded untrusted results, artifact evidence, and honest degraded behavior.
+  - Scope:
+    - `backend/app/services/internet_search_service.py` (new provider-selecting service)
+    - `backend/app/cognition/search_directive.py` (new decision parse and prompt segments)
+    - `backend/app/conversation/engine.py` (REASONING -> ACTING -> RESPONDING branch)
+    - `backend/app/api/app.py`, `backend/app/api/schemas/task.py`, `backend/app/api/routes/task.py`
+    - unit tests in `backend/tests/unit/services/`, `backend/tests/unit/cognition/`, `backend/tests/unit/conversation/`, `backend/tests/unit/api/`
+  - Validation: Unit validator PASS (`748 passed, 2 skipped`; clean-main baseline on the same host `721 passed, 2 skipped`).
+  - Notes: Session/voice status parity is tracked separately (issue #14). No new settings, routes, dependencies, or storage roots. Non-search turns keep the existing single-model-call path.
+
 ---
 
 - Timestamp: 2026-07-21 19:37

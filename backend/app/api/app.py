@@ -11,6 +11,7 @@ from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
+from backend.app.core.settings import load_settings
 from backend.app.memory.semantic import SemanticMemory
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import load_default_personality
@@ -24,6 +25,7 @@ from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.services.internet_search_service import InternetSearchService
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.session_service import SessionService
@@ -63,6 +65,7 @@ class ApiState:
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
     semantic_memory: SemanticMemory | None = None
+    search_service: InternetSearchService | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -77,6 +80,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         semantic=state.semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
+        search_service=state.search_service,
     )
 
 
@@ -107,6 +111,7 @@ def build_startup_state() -> ApiState:
     session_manager = SessionManager()
     cache_manager = CacheManager()
     semantic_memory = SemanticMemory()
+    search_service = InternetSearchService.from_settings(load_settings())
     resident_audio_stream = ResidentAudioStream()
     utterance_segmenter = default_utterance_segmenter()
     wake_utterance_segmenter = replace(
@@ -124,6 +129,7 @@ def build_startup_state() -> ApiState:
         semantic=semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(resident_audio_stream),
+        search_service=search_service,
     )
     session_service = SessionService(
         session_manager=session_manager,
@@ -171,6 +177,7 @@ def build_startup_state() -> ApiState:
         llm_trace=llm_trace,
         local_llm_sidecar=local_llm.sidecar,
         semantic_memory=semantic_memory,
+        search_service=search_service,
     )
     return state
 

@@ -14,6 +14,14 @@ import numpy as np
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
+from backend.app.cognition.search_directive import (
+    MAX_SEARCH_RESULTS,
+    SEARCH_UNAVAILABLE_RESPONSE,
+    parse_search_directive,
+    search_answer_contract_segment,
+    search_instruction_segment,
+    search_results_segment,
+)
 from backend.app.cognition.style_guard import apply_personality_style_guard
 from backend.app.cache.manager import CacheManager
 from backend.app.artifacts.turn_artifact import TurnArtifact
@@ -31,6 +39,7 @@ from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts import playback
 from backend.app.runtimes.tts.base import TTSBase
+from backend.app.services.internet_search_service import InternetSearchService, TurnSearchSummary
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +60,7 @@ class TurnResult:
     profile_epoch: int = 0
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
     failure_phase: str | None = None
+    search_summary: TurnSearchSummary | None = None
 
 
 class TurnEngine:
@@ -70,6 +80,7 @@ class TurnEngine:
         episodic: EpisodicMemory | None = None,
         cache_manager: CacheManager | None = None,
         semantic: SemanticMemory | None = None,
+        search_service: InternetSearchService | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -84,6 +95,7 @@ class TurnEngine:
         self.episodic = episodic
         self.cache_manager = cache_manager
         self.semantic = semantic
+        self.search_service = search_service
         self.retrieval = RetrievalManager()
         self.phase_observer: PhaseObserver | None = None
 
@@ -210,6 +222,8 @@ class TurnEngine:
                 retrieved_context=retrieved_context,
                 policy=policy,
             )
+            if self.search_service is not None and self.search_service.is_available():
+                prompt_envelope = prompt_envelope.with_segment(search_instruction_segment())
 
             prompt = render_flat_prompt(prompt_envelope)
             llm_started_at = time.perf_counter()
@@ -228,6 +242,72 @@ class TurnEngine:
                     phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
                     failure_phase="llm" if voice_turn_started_at is not None else _failure_phase_for_state(context.state),
                 )
+            search_summary: TurnSearchSummary | None = None
+            if self.search_service is not None:
+                decision = parse_search_directive(response)
+                if decision.requested and decision.query is not None:
+                    context.advance(ConversationState.ACTING)
+                    outcome = self.search_service.search(decision.query, max_results=MAX_SEARCH_RESULTS)
+                    if outcome.status == "completed":
+                        prompt_envelope = prompt_envelope.with_segment(
+                            search_results_segment(outcome.results)
+                        ).with_segment(search_answer_contract_segment())
+                        prompt = render_flat_prompt(prompt_envelope)
+                        llm_started_at = time.perf_counter()
+                        try:
+                            response = bound_single_turn_response(self.llm.generate_envelope(prompt_envelope))
+                        finally:
+                            if voice_turn_started_at is not None:
+                                phase_durations_ms["llm_ms"] = round(
+                                    phase_durations_ms.get("llm_ms", 0.0) + _elapsed_ms(llm_started_at), 3
+                                )
+                        if not response.strip():
+                            return self._fail(
+                                context,
+                                transcript=transcript,
+                                response_text=response,
+                                reason="LLM returned empty response",
+                                raw_audio_path=raw_audio_path,
+                                phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                                failure_phase="llm" if voice_turn_started_at is not None else _failure_phase_for_state(context.state),
+                            )
+                        if parse_search_directive(response).requested:
+                            response = SEARCH_UNAVAILABLE_RESPONSE
+                            search_summary = TurnSearchSummary(
+                                requested=True,
+                                status="unavailable",
+                                provider=None,
+                                sources=(),
+                                reason="model requested a second search",
+                            )
+                        else:
+                            search_summary = TurnSearchSummary(
+                                requested=True,
+                                status="completed",
+                                provider=outcome.provider,
+                                sources=outcome.results,
+                                reason=outcome.reason,
+                            )
+                    else:
+                        response = SEARCH_UNAVAILABLE_RESPONSE
+                        search_summary = TurnSearchSummary(
+                            requested=True,
+                            status="unavailable",
+                            provider=None,
+                            sources=(),
+                            reason=outcome.reason,
+                        )
+                    context.runtime_context["internet_search"] = {
+                        "requested": True,
+                        "query": decision.query,
+                        "status": search_summary.status,
+                        "provider": search_summary.provider,
+                        "attempted_providers": list(outcome.attempted_providers),
+                        "reason": search_summary.reason,
+                        "sources": [item.url for item in search_summary.sources],
+                    }
+                else:
+                    search_summary = TurnSearchSummary()
             context.advance(ConversationState.RESPONDING)
             stored_response = apply_personality_style_guard(
                 response,
@@ -258,6 +338,7 @@ class TurnEngine:
                 active_personality_profile_id=self.personality.profile_id,
                 profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
                 phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                search_summary=search_summary,
             )
             self._record_artifact(
                 context,
@@ -728,6 +809,14 @@ class TurnEngine:
     ) -> None:
         if self.session_manager is None:
             return
+        search_context = context.runtime_context.get("internet_search")
+        tools_invoked: list[str] = []
+        reasoning_trace_metadata: dict[str, Any] | None = None
+        if isinstance(search_context, dict):
+            reasoning_trace_metadata = {"internet_search": dict(search_context)}
+            provider = search_context.get("provider")
+            if provider:
+                tools_invoked.append(f"internet_search:{provider}")
         artifact = TurnArtifact(
             turn_id=result.turn_id,
             session_id=result.session_id,
@@ -744,6 +833,8 @@ class TurnEngine:
             tts_degraded=result.tts_degraded,
             tts_degraded_reason=result.tts_degraded_reason,
             tts_output_device=result.tts_output_device,
+            tools_invoked=tools_invoked,
+            reasoning_trace_metadata=reasoning_trace_metadata,
             runtime_context=self._runtime_context(context, result),
             interruption_events=result.interruption_events,
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},

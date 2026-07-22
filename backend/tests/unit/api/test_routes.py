@@ -20,6 +20,8 @@ from backend.app.personality.loader import PersonalityProfileError, PersonalityP
 from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
 from backend.app.routing.runtime_selector import SelectionTrace
 from backend.app.artifacts.turn_artifact import TurnArtifact
+from backend.app.runtimes.internetsearch import SearchResult
+from backend.app.services.internet_search_service import TurnSearchSummary
 from backend.app.services.startup_context import StartupContext
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.session_service import SessionService
@@ -814,6 +816,50 @@ def test_text_turn_returns_turn_result() -> None:
     assert payload["response_text"] == "text response"
     assert payload["active_personality_profile_id"] == "default"
     assert payload["profile_epoch"] == 0
+    assert payload["search"] is None
+
+
+def test_text_turn_returns_search_summary_when_present(monkeypatch) -> None:
+    client = _client()
+    engine = client.app.state.jarvis_state.session_service.engine()
+
+    def _search_turn(text: str) -> TurnResult:
+        return TurnResult(
+            turn_id="turn-search",
+            session_id="session-test",
+            transcript=text.strip(),
+            response_text="CUDA 13.1 per https://example.com/cuda",
+            final_state=ConversationState.IDLE,
+            active_personality_profile_id=engine.personality.profile_id,
+            profile_epoch=0,
+            search_summary=TurnSearchSummary(
+                requested=True,
+                status="completed",
+                provider="searxng",
+                sources=(
+                    SearchResult(
+                        title="CUDA release notes",
+                        url="https://example.com/cuda",
+                        snippet="CUDA 13.1 is available.",
+                        source="searxng",
+                    ),
+                ),
+                reason="provider returned usable results",
+            ),
+        )
+
+    monkeypatch.setattr(engine, "run_text_turn", _search_turn)
+    response = client.post("/task/text", json={"text": "latest cuda?"})
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["search"] == {
+        "requested": True,
+        "status": "completed",
+        "provider": "searxng",
+        "sources": [{"title": "CUDA release notes", "url": "https://example.com/cuda", "provider": "searxng"}],
+        "reason": "provider returned usable results",
+    }
 
 
 def test_text_turn_accepts_active_session_id() -> None:

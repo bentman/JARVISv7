@@ -7,6 +7,20 @@ class TextTurnRequest(BaseModel):
     session_id: str | None = None
 
 
+class SearchSource(BaseModel):
+    title: str
+    url: str
+    provider: str
+
+
+class TurnSearchSummaryPayload(BaseModel):
+    requested: bool
+    status: str
+    provider: str | None = None
+    sources: list[SearchSource] = []
+    reason: str | None = None
+
+
 class TextTurnResponse(BaseModel):
     turn_id: str
     session_id: str
@@ -16,3 +30,4 @@ class TextTurnResponse(BaseModel):
     failure_reason: str | None = None
     active_personality_profile_id: str = "unknown"
     profile_epoch: int = 0
+    search: TurnSearchSummaryPayload | None = None
