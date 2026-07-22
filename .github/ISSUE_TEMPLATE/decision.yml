@@ -1,0 +1,42 @@
+name: Decision
+description: Resolve an architectural, product, or workflow choice with clear tradeoffs.
+title: "[decision] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when a choice must be made before implementation. The goal is to reach a clear contract or boundary, not to start broad implementation work.
+  - type: textarea
+    id: decision-needed
+    attributes:
+      label: Decision needed
+      description: What choice must be resolved?
+      placeholder: Describe the unresolved question or boundary.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context and evidence
+      description: What current evidence, constraints, or tradeoffs matter?
+      placeholder: Include repository paths, current behavior, or known constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: options
+    attributes:
+      label: Options considered
+      description: What viable options exist?
+      placeholder: Summarize the main alternatives.
+  - type: textarea
+    id: recommendation
+    attributes:
+      label: Recommended direction
+      description: What direction should be chosen, and why?
+      placeholder: Record the preferred approach and key reasons.
+  - type: textarea
+    id: impacts
+    attributes:
+      label: Expected impacts
+      description: What behavior, architecture, or workflow changes would follow from this decision?
+      placeholder: Note any risks or follow-up work.

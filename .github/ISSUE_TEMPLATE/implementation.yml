@@ -1,0 +1,66 @@
+name: Implementation
+description: Deliver one focused implementation outcome with clear validation.
+title: "[implementation] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for a focused implementation result that can be reviewed in one PR. Keep the scope narrow and tie the work to observable behavior.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What observable behavior should exist when this is complete?
+      placeholder: State the concrete result.
+    validations:
+      required: true
+  - type: textarea
+    id: current-evidence
+    attributes:
+      label: Current evidence
+      description: What happens now, and which paths are involved?
+      placeholder: Reference relevant files, routes, runtime paths, or tests.
+    validations:
+      required: true
+  - type: textarea
+    id: required-behavior
+    attributes:
+      label: Required behavior
+      description: What must change?
+      placeholder: Keep this focused on the requested outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Which surfaces are in scope for this implementation?
+      placeholder: List affected modules, routes, or interfaces.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What should remain unchanged?
+      placeholder: Note adjacent work or behavior that should not be touched.
+  - type: textarea
+    id: acceptance-criteria
+    attributes:
+      label: Acceptance criteria
+      description: What must be true for the implementation to be considered complete?
+      placeholder: Include binary or observable conditions.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation
+      description: Which commands or interactions should prove the outcome?
+      placeholder: Include focused tests, commands, or manual checks.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and blockers
+      description: What must be resolved first, or what does this block?
+      placeholder: Mention related issues or blocked-by relationships.

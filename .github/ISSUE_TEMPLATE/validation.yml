@@ -1,0 +1,46 @@
+name: Validation
+description: Independently verify an integrated result or regression scenario.
+title: "[validation] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this when the work is to verify an existing result, prove a regression fix, or confirm behavior end to end. Validation should be independent of the implementation work where practical.
+  - type: textarea
+    id: target
+    attributes:
+      label: Target result
+      description: What behavior or integration is being validated?
+      placeholder: Describe the scenario or feature under test.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Current evidence
+      description: What is already known, and what is the reason for validation?
+      placeholder: Include the related issue, PR, or observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: validation-plan
+    attributes:
+      label: Validation plan
+      description: What exact steps or commands should be run?
+      placeholder: Include focused test commands or manual interactions.
+    validations:
+      required: true
+  - type: textarea
+    id: success-criteria
+    attributes:
+      label: Success criteria
+      description: What would count as proof that the target is satisfied?
+      placeholder: State the expected observable result.
+    validations:
+      required: true
+  - type: textarea
+    id: limitations
+    attributes:
+      label: Limitations
+      description: What cannot be validated here, or what environment constraints apply?
+      placeholder: Mention missing hardware, services, or cloud limitations.

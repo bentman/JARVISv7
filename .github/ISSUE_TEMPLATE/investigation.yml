@@ -1,0 +1,50 @@
+name: Investigation
+description: Gather evidence, inspect current behavior, and recommend a direction.
+title: "[investigation] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for evidence gathering, architecture inspection, or recommendation work. Do not use it for production changes unless the work is explicitly converted to implementation.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What evidence or recommendation is needed?
+      placeholder: Describe the concrete investigation result.
+    validations:
+      required: true
+  - type: textarea
+    id: current-evidence
+    attributes:
+      label: Current evidence
+      description: What is known now, and which repository paths are relevant?
+      placeholder: Include observed behavior, logs, or code references.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: What should be examined?
+      placeholder: List relevant components or surfaces.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What should not be included in this investigation?
+      placeholder: Note adjacent or deferred work.
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: What would make the investigation complete and reviewable?
+      placeholder: Describe the evidence or recommendation that would satisfy the task.
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: Dependencies and blockers
+      description: What blocks or depends on this investigation?
+      placeholder: Mention related issues, hardware limits, or unresolved design decisions.
