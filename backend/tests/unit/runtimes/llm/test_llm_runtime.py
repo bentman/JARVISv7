@@ -543,6 +543,7 @@ def test_ollama_generate_envelope_posts_chat_messages(monkeypatch):
                     {"role": "user", "content": "[USER REQUEST - user instruction]\nWhat is uptime?"},
                 ],
                 "stream": False,
+                "think": False,
                 "options": {
                     "stop": ["\nUser:"],
                     "num_predict": 80,
@@ -573,6 +574,7 @@ def test_ollama_payload_contains_selected_profile_system_instruction(monkeypatch
     system_text = payload["messages"][0]["content"]
     assert calls[0][0] == "http://test/api/chat"
     assert payload["messages"][0]["role"] == "system"
+    assert payload["think"] is False
     assert "British spelling" in system_text
     assert "one dry aside" in system_text
     assert payload["options"]["num_predict"] == 280
@@ -615,3 +617,75 @@ def test_ollama_runtime_uses_owned_client(monkeypatch):
 
     assert runtime.generate("hello") == "ollama answer"
     assert called == ["http://test/api/generate"]
+
+
+def test_ollama_generate_maps_max_tokens_and_disables_thinking(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append((url, json, timeout))
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"response": "final answer", "thinking": "reasoning narration"},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
+
+    assert OllamaLLM(base_url="http://test", model="assistant").generate("hello", max_tokens=64) == "final answer"
+    payload = calls[0][1]
+    assert payload["think"] is False
+    assert payload["options"]["num_predict"] == 64
+    assert "max_tokens" not in payload
+
+
+def test_ollama_chat_returns_content_without_thinking_field(monkeypatch):
+    def fake_post(url, *, json, timeout):
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {
+                "message": {
+                    "content": "usable final answer",
+                    "thinking": "reasoning narration",
+                }
+            },
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
+    envelope = PromptEnvelope((PromptSegment("user", "user_input", False, "hello"),))
+
+    assert OllamaLLM(base_url="http://test", model="assistant").generate_envelope(envelope) == "usable final answer"
+
+
+def test_ollama_qwen3_adds_bounded_no_think_compatibility_marker(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append(json)
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"message": {"content": "READY"}},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
+    envelope = PromptEnvelope((PromptSegment("user", "user_input", False, "Reply with exactly: READY"),))
+
+    runtime = OllamaLLM(base_url="http://test", model="qwen3-vl:8b")
+    assert runtime.generate_envelope(envelope) == "READY"
+    assert calls[0]["messages"][-1]["content"].endswith("Reply with exactly: READY\n/no_think")
+
+
+def test_ollama_non_qwen_prompt_is_unchanged(monkeypatch):
+    calls = []
+
+    def fake_post(url, *, json, timeout):
+        calls.append(json)
+        return SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"response": "READY"},
+        )
+
+    monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
+
+    runtime = OllamaLLM(base_url="http://test", model="phi4-mini")
+    assert runtime.generate("Reply with exactly: READY") == "READY"
+    assert calls[0]["prompt"] == "Reply with exactly: READY"
