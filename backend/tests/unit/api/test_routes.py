@@ -687,7 +687,48 @@ def test_session_status_returns_active_session() -> None:
         "latest_turn": None,
         "voice_capture_diagnostics": None,
         "failure_phase": None,
+        "search": None,
     }
+
+
+def test_session_status_returns_search_summary_after_voice_completion() -> None:
+    client = _client()
+    state = client.app.state.jarvis_state
+    session_id = state.session_service.status().session_id
+    assert session_id is not None
+    result = TurnResult(
+        turn_id="turn-search",
+        session_id=session_id,
+        transcript="what is the latest CUDA?",
+        response_text="CUDA 13.1 per https://example.com/cuda",
+        final_state=ConversationState.IDLE,
+        search_summary=TurnSearchSummary(
+            requested=True,
+            status="completed",
+            provider="searxng",
+            sources=(
+                SearchResult(
+                    title="CUDA release notes",
+                    url="https://example.com/cuda",
+                    snippet="CUDA 13.1 is available.",
+                    source="searxng",
+                ),
+            ),
+            reason="provider returned usable results",
+        ),
+    )
+    state.session_service.complete_voice_invocation(result)
+
+    payload = client.get("/session/status").json()
+
+    assert payload["search"] == {
+        "requested": True,
+        "status": "completed",
+        "provider": "searxng",
+        "sources": [{"title": "CUDA release notes", "url": "https://example.com/cuda", "provider": "searxng"}],
+        "reason": "provider returned usable results",
+    }
+    assert payload["last_response"] == "CUDA 13.1 per https://example.com/cuda"
 
 
 def test_session_status_returns_latest_turn_summary() -> None:

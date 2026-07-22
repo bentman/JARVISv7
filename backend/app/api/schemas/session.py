@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from backend.app.api.schemas.task import TurnSearchSummaryPayload
+
 
 class CreateSessionRequest(BaseModel):
     client_id: str | None = None
@@ -41,6 +43,7 @@ class SessionStatusResponse(BaseModel):
     latest_turn: LatestTurnSummary | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
     failure_phase: str | None = None
+    search: TurnSearchSummaryPayload | None = None
 
 
 class CloseSessionRequest(BaseModel):

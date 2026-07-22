@@ -10,6 +10,7 @@ from backend.app.api.schemas.session import (
     LatestTurnSummary,
     SessionStatusResponse,
 )
+from backend.app.api.routes.task import search_summary_payload
 from backend.app.services.session_service import SessionService
 from fastapi import APIRouter, Depends, HTTPException
 
@@ -88,4 +89,5 @@ def build_session_status_response(status) -> SessionStatusResponse:
         latest_turn=latest_turn,
         voice_capture_diagnostics=status.voice_capture_diagnostics,
         failure_phase=status.failure_phase,
+        search=search_summary_payload(status.search),
     )

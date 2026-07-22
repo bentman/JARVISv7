@@ -517,3 +517,70 @@ def test_semantic_consolidation_disabled_by_default(tmp_path: Path) -> None:
 
     # Should not write anything to database
     assert len(semantic.search_lexical("fox")) == 0
+
+
+def _search_summary():
+    from backend.app.runtimes.internetsearch import SearchResult
+    from backend.app.services.internet_search_service import TurnSearchSummary
+
+    return TurnSearchSummary(
+        requested=True,
+        status="completed",
+        provider="searxng",
+        sources=(
+            SearchResult(
+                title="CUDA release notes",
+                url="https://example.com/cuda",
+                snippet="CUDA 13.1 is available.",
+                source="searxng",
+            ),
+        ),
+        reason="provider returned usable results",
+    )
+
+
+def _voice_result_with_summary(session_id: str):
+    from backend.app.conversation.engine import TurnResult
+
+    return TurnResult(
+        turn_id="turn-search",
+        session_id=session_id,
+        transcript="what is the latest CUDA?",
+        response_text="CUDA 13.1 per https://example.com/cuda",
+        final_state=ConversationState.IDLE,
+        search_summary=_search_summary(),
+    )
+
+
+def test_complete_voice_invocation_retains_search_summary(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    session_id = service.status().session_id
+    assert session_id is not None
+
+    status = service.complete_voice_invocation(_voice_result_with_summary(session_id))
+
+    assert status.search is not None
+    assert status.search.status == "completed"
+    assert status.search.provider == "searxng"
+    assert [item.url for item in status.search.sources] == ["https://example.com/cuda"]
+
+
+def test_begin_voice_invocation_resets_search_summary(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    session_id = service.status().session_id
+    assert session_id is not None
+    service.complete_voice_invocation(_voice_result_with_summary(session_id))
+    assert service.status().search is not None
+
+    status = service.begin_voice_invocation("ptt")
+
+    assert status.search is None
+
+
+def test_voice_turn_without_search_service_reports_no_summary(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    result = service.engine().run_voice_turn(np.ones(160, dtype=np.float32), 16000)
+
+    status = service.complete_voice_invocation(result)
+
+    assert status.search is None

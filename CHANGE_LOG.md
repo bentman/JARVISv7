@@ -26,6 +26,17 @@
   - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`
   - Validation: Focused sidecar tests PASS (`35 passed`); unit validator PASS (`721 passed, 4 skipped`); regression validator PASS (`149 passed, 3 skipped, 5 deselected`); proving-host text path PASS.
 
+- Timestamp: 2026-07-22 12:35
+  - Host class(es): Linux ARM64
+  - Summary: Exposed the latest turn's internet-search summary for voice: voice turn results now carry the search summary and `/session/status` reports it alongside the existing last transcript and response.
+  - Scope:
+    - `backend/app/conversation/engine.py` (summary threaded through voice result paths)
+    - `backend/app/services/session_service.py` (retention/reset with the existing completion fields)
+    - `backend/app/api/schemas/session.py`, `backend/app/api/routes/session.py`
+    - unit tests in `backend/tests/unit/conversation/`, `backend/tests/unit/services/`, `backend/tests/unit/api/`
+  - Validation: Unit validator PASS (`754 passed, 2 skipped`; prior entry's branch baseline `748 passed, 2 skipped` on the same host).
+  - Notes: TTS input remains the sanitized answer body; no source footer is spoken. Depends on the internet-search turn-path change (issue #13). No new routes or settings.
+
 - Timestamp: 2026-07-22 09:10
   - Host class(es): Linux ARM64
   - Summary: Connected the existing internet-search runtimes to the shared conversation turn path behind an explicit model search decision, with bounded untrusted results, artifact evidence, and honest degraded behavior.

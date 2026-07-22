@@ -326,6 +326,7 @@ class TurnEngine:
                     raw_audio_path=raw_audio_path,
                     phase_durations_ms=phase_durations_ms,
                     voice_turn_started_at=voice_turn_started_at,
+                    search_summary=search_summary,
                 )
             context.advance(ConversationState.IDLE)
             result = TurnResult(
@@ -370,6 +371,7 @@ class TurnEngine:
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
+        search_summary: TurnSearchSummary | None = None,
     ) -> TurnResult:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         if not self.tts.is_available():
@@ -386,6 +388,7 @@ class TurnEngine:
                 active_personality_profile_id=self.personality.profile_id,
                 profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
                 phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                search_summary=search_summary,
             )
             self._record_artifact(
                 context,
@@ -409,6 +412,7 @@ class TurnEngine:
                 raw_audio_path=raw_audio_path,
                 phase_durations_ms=phase_durations_ms,
                 voice_turn_started_at=voice_turn_started_at,
+                search_summary=search_summary,
             )
 
         audio, sample_rate = self._synthesize_voice(
@@ -429,6 +433,7 @@ class TurnEngine:
             raw_audio_path=raw_audio_path,
             phase_durations_ms=phase_durations_ms,
             voice_turn_started_at=voice_turn_started_at,
+            search_summary=search_summary,
         )
 
     def _synthesize_voice(
@@ -462,6 +467,7 @@ class TurnEngine:
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
+        search_summary: TurnSearchSummary | None = None,
     ) -> TurnResult:
         context.advance(ConversationState.SPEAKING)
         if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
@@ -480,6 +486,7 @@ class TurnEngine:
                         raw_audio_path=raw_audio_path,
                         phase_durations_ms=phase_durations_ms,
                         voice_turn_started_at=voice_turn_started_at,
+                        search_summary=search_summary,
                     )
                 finally:
                     self._close_interruption_audio_chunks(interruption_chunks)
@@ -502,6 +509,7 @@ class TurnEngine:
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
             phase_durations_ms=_voice_phase_durations(phase_durations_ms or {}, voice_turn_started_at),
+            search_summary=search_summary,
         )
         self._record_artifact(
             context,
@@ -524,6 +532,7 @@ class TurnEngine:
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
+        search_summary: TurnSearchSummary | None = None,
     ) -> TurnResult:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         tts_started_at = time.perf_counter()
@@ -647,6 +656,7 @@ class TurnEngine:
             phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
             interrupted=interrupted,
             interruption_events=interruption_events,
+            search_summary=search_summary,
         )
 
         self._record_artifact(
@@ -671,6 +681,7 @@ class TurnEngine:
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
+        search_summary: TurnSearchSummary | None = None,
     ) -> TurnResult:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         assert self.barge_in_detector is not None
@@ -707,6 +718,7 @@ class TurnEngine:
                     active_personality_profile_id=self.personality.profile_id,
                     profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
                     phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+                    search_summary=search_summary,
                 )
                 self._record_artifact(
                     context,
@@ -729,6 +741,7 @@ class TurnEngine:
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
             phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+            search_summary=search_summary,
         )
         self._record_artifact(
             context,

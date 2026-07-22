@@ -11,6 +11,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.core.paths import DATA_DIR
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.services.internet_search_service import TurnSearchSummary
 from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
 from backend.app.memory.semantic import SemanticMemory
 
@@ -45,6 +46,7 @@ class SessionStatus:
     latest_turn: LatestTurnStatus | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
     failure_phase: str | None = None
+    search: TurnSearchSummary | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +88,7 @@ class SessionService:
         self._tts_output_device: str | None = None
         self._voice_capture_diagnostics: dict[str, object] | None = None
         self._failure_phase: str | None = None
+        self._last_search_summary: TurnSearchSummary | None = None
         self._semantic_memory = semantic_memory
         self._wake_status_store = WakeStatusStore(
             provider="openwakeword",
@@ -155,6 +158,7 @@ class SessionService:
             latest_turn=self._latest_turn_status(),
             voice_capture_diagnostics=self._voice_capture_diagnostics,
             failure_phase=self._failure_phase,
+            search=self._last_search_summary,
         )
 
     def _latest_turn_status(self) -> LatestTurnStatus | None:
@@ -196,6 +200,7 @@ class SessionService:
         self._state = ConversationState.LISTENING.value
         self._last_transcript = None
         self._last_response = None
+        self._last_search_summary = None
         self._failure_reason = None
         self._failure_phase = None
         self._invocation_source = source
@@ -212,6 +217,7 @@ class SessionService:
     def complete_voice_invocation(self, result, *, state: ConversationState | None = None) -> SessionStatus:
         self._last_transcript = result.transcript
         self._last_response = result.response_text
+        self._last_search_summary = getattr(result, "search_summary", None)
         self._failure_reason = result.failure_reason
         self._failure_phase = getattr(result, "failure_phase", None)
         self._tts_output_device = getattr(result, "tts_output_device", None)

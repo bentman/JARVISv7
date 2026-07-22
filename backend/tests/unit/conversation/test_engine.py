@@ -11,6 +11,7 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.cognition.prompt_envelope import PromptEnvelope
+from backend.app.cognition.responder import sanitize_for_tts
 from backend.app.cognition.search_directive import SEARCH_UNAVAILABLE_RESPONSE
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
@@ -1296,3 +1297,41 @@ def test_text_turn_second_search_directive_degrades_instead_of_looping() -> None
     assert result.search_summary is not None
     assert result.search_summary.status == "unavailable"
     assert result.search_summary.reason == "model requested a second search"
+
+
+def test_voice_turn_carries_search_summary_and_speaks_answer_body() -> None:
+    llm = ScriptedEnvelopeLLM(["SEARCH: latest CUDA release", "CUDA 13.1 per https://example.com/cuda"])
+    provider = FakeSearchProvider("fake1", results=[_search_result()])
+    tts = FakeTTS(available=True)
+    engine = _engine(
+        llm=llm,
+        tts=tts,
+        search_service=InternetSearchService([provider]),
+        playback_api=FakePlayback(),
+    )
+    result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.final_state == ConversationState.IDLE
+    assert result.failure_reason is None
+    assert result.search_summary is not None
+    assert result.search_summary.status == "completed"
+    assert [item.url for item in result.search_summary.sources] == ["https://example.com/cuda"]
+    assert tts.calls == 1
+    assert "SEARCH:" not in tts.synthesized_texts[0]
+    assert tts.synthesized_texts[0] == sanitize_for_tts(result.response_text)
+
+
+def test_voice_turn_tts_degraded_still_carries_search_summary() -> None:
+    llm = ScriptedEnvelopeLLM(["SEARCH: latest CUDA release", "CUDA 13.1 per https://example.com/cuda"])
+    provider = FakeSearchProvider("fake1", results=[_search_result()])
+    engine = _engine(
+        llm=llm,
+        tts=FakeTTS(available=False),
+        search_service=InternetSearchService([provider]),
+    )
+    result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+
+    assert result.tts_degraded is True
+    assert result.search_summary is not None
+    assert result.search_summary.status == "completed"
+    assert result.search_summary.provider == "fake1"
