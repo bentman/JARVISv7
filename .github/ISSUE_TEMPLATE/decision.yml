@@ -1,6 +1,8 @@
 name: Decision
 description: Resolve an architectural, product, or workflow choice with clear tradeoffs.
 title: "[decision] "
+labels:
+  - type:decision
 body:
   - type: markdown
     attributes:

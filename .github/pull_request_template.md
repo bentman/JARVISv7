@@ -1,5 +1,7 @@
 ## Linked issue
-Fixes #
+Fixes #<issue>
+
+> Use the closing keyword only when this PR fully satisfies the linked issue. For partial or follow-up work, link the issue without closing it.
 
 ## Outcome
 Describe the observable behavior or result delivered by this PR.

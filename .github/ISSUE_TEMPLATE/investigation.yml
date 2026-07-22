@@ -1,6 +1,8 @@
 name: Investigation
 description: Gather evidence, inspect current behavior, and recommend a direction.
 title: "[investigation] "
+labels:
+  - type:investigation
 body:
   - type: markdown
     attributes:

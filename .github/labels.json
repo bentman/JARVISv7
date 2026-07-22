@@ -1,0 +1,15 @@
+[
+  {"name": "type:investigation", "color": "0E8A16", "description": "Evidence gathering or recommendation work"},
+  {"name": "type:decision", "color": "D93F0B", "description": "Architectural or workflow decision required"},
+  {"name": "type:implementation", "color": "1D76DB", "description": "Focused implementation work"},
+  {"name": "type:validation", "color": "5319E7", "description": "Independent verification work"},
+  {"name": "status:ready", "color": "BFD4F2", "description": "Ready for assignment"},
+  {"name": "status:blocked", "color": "CC0000", "description": "Blocked by dependencies or unresolved decisions"},
+  {"name": "agent:appropriate", "color": "6CBF43", "description": "Suitable for agent-assisted implementation"},
+  {"name": "agent:human", "color": "F9D423", "description": "Better handled by a human"},
+  {"name": "area:backend", "color": "5319E7", "description": "Backend or service behavior"},
+  {"name": "area:desktop", "color": "0052CC", "description": "Desktop or Tauri experience"},
+  {"name": "area:docs", "color": "FBCA04", "description": "Documentation or process"},
+  {"name": "area:runtime", "color": "C2E0C6", "description": "Runtime or model execution"},
+  {"name": "area:infra", "color": "E99695", "description": "Repository infrastructure or tooling"}
+]

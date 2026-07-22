@@ -1,0 +1,60 @@
+name: Parent outcome
+description: Coordinate a meaningful outcome and its supporting sub-issues.
+title: "[parent] "
+labels:
+  - type:decision
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this for a parent issue that coordinates several sub-issues toward one meaningful outcome. Keep the body focused on the outcome, invariants, and integrated acceptance; use GitHub sub-issues and dependencies for the detailed work breakdown.
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What meaningful result should this parent issue deliver?
+      placeholder: Describe the integrated result without prescribing implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: why-it-matters
+    attributes:
+      label: Why it matters
+      description: Why is this outcome important to users or the repository?
+      placeholder: State the user value or engineering risk.
+    validations:
+      required: true
+  - type: textarea
+    id: current-evidence
+    attributes:
+      label: Current evidence
+      description: What is known now, and which repository paths are relevant?
+      placeholder: Mention observed behavior, relevant files, or constraints.
+    validations:
+      required: true
+  - type: textarea
+    id: invariants
+    attributes:
+      label: Invariants
+      description: What behavior must remain true?
+      placeholder: List critical constraints or non-negotiables.
+  - type: textarea
+    id: out-of-scope
+    attributes:
+      label: Out of scope
+      description: What should not be included in this outcome?
+      placeholder: Note adjacent work or follow-on work that is not part of this parent issue.
+  - type: textarea
+    id: integrated-acceptance
+    attributes:
+      label: Integrated acceptance
+      description: What final observable behavior would prove this parent outcome is complete?
+      placeholder: Describe the end state in product or workflow terms.
+    validations:
+      required: true
+  - type: textarea
+    id: sub-issues
+    attributes:
+      label: Sub-issues and dependencies
+      description: Which GitHub sub-issues or dependencies are part of this outcome?
+      placeholder: Add the sub-issues in GitHub's native hierarchy and dependency relationships; do not duplicate them here.

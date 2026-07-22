@@ -1,6 +1,8 @@
 name: Validation
 description: Independently verify an integrated result or regression scenario.
 title: "[validation] "
+labels:
+  - type:validation
 body:
   - type: markdown
     attributes:
@@ -20,6 +22,14 @@ body:
       label: Current evidence
       description: What is already known, and what is the reason for validation?
       placeholder: Include the related issue, PR, or observed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: entry-point
+    attributes:
+      label: Primary entry point to validate
+      description: Which product path, route, CLI command, or runtime path is under validation?
+      placeholder: Name the path or interaction to exercise.
     validations:
       required: true
   - type: textarea

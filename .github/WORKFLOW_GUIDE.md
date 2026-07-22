@@ -5,12 +5,23 @@ This repository uses GitHub Issues and pull requests as lightweight work-managem
 ## Workflow model
 
 - Use parent issues for coordination when several sub-issues contribute to one meaningful outcome.
-- Use sub-issues for focused, assignable work.
+- Use GitHub-native sub-issues for focused, assignable work.
+- Use GitHub-native issue dependencies for blocked-by and blocking relationships.
 - Use one implementation issue per focused PR.
 - Use labels for type, readiness, area, and agent suitability.
 - Keep the project board optional; issues remain the source of truth for active work.
 
+## Parent, sub-issue, and dependency workflow
+
+- Create a parent issue when several tasks contribute to a single meaningful outcome.
+- Keep the parent body focused on outcome, invariants, and integrated acceptance.
+- Break the work into GitHub sub-issues rather than duplicating hierarchy in issue bodies.
+- Use GitHub issue dependencies for blocked-by and blocking relationships.
+- Do not duplicate hierarchy or dependency state inside issue text when GitHub already tracks it natively.
+
 ## Suggested labels
+
+The repository includes a minimal label set in [.github/labels.json](labels.json) for the workflow scaffold. Create or import these labels in the repository settings before using the templates.
 
 - type:investigation
 - type:decision
@@ -45,6 +56,11 @@ This repository uses GitHub Issues and pull requests as lightweight work-managem
 ## PR usage guidance
 
 - Link the PR to the issue using a closing keyword only when the PR fully satisfies that issue.
+- For partial or follow-up work, link the issue without closing it.
 - Report exact validation commands and results.
 - Keep the diff limited to the assigned outcome.
 - Do not claim completion without evidence.
+
+## Projects
+
+GitHub Projects are optional for this repository. Use them only if the maintainers want a board-style view for triage or sprint planning. They are not a second source of truth; issues and PRs remain the source of truth for active work.

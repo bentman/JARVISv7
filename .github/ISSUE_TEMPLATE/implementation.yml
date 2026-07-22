@@ -1,6 +1,8 @@
 name: Implementation
 description: Deliver one focused implementation outcome with clear validation.
 title: "[implementation] "
+labels:
+  - type:implementation
 body:
   - type: markdown
     attributes:
@@ -28,6 +30,14 @@ body:
       label: Required behavior
       description: What must change?
       placeholder: Keep this focused on the requested outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: product-entry-point
+    attributes:
+      label: Primary product or runtime entry point
+      description: Which API, desktop, CLI, startup, voice, or runtime path is involved?
+      placeholder: Name the main path this change affects.
     validations:
       required: true
   - type: textarea
