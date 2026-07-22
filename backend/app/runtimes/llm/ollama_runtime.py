@@ -14,6 +14,8 @@ _ORIGINAL_POST = httpx.post
 
 
 DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
+# Bounded compatibility fallback for callers without prompt-level generation policy.
+DEFAULT_OLLAMA_NUM_PREDICT = 220
 
 
 class OllamaLLM(LLMBase):
@@ -54,11 +56,12 @@ class OllamaLLM(LLMBase):
     def _payload(self, prompt: str) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
-            "prompt": prompt,
+            "prompt": _apply_no_think_compatibility(prompt, self.model),
             "stream": False,
+            "think": False,
             "options": {
                 "stop": ["\nUser:", "\nAssistant:", "User:", "Assistant:"],
-                "num_predict": 220,
+                "num_predict": DEFAULT_OLLAMA_NUM_PREDICT,
             },
         }
         if self.num_ctx is not None:
@@ -67,13 +70,18 @@ class OllamaLLM(LLMBase):
 
     def generate(self, prompt: str, **kwargs: object) -> str:
         payload = self._payload(prompt)
+        max_tokens = kwargs.pop("max_tokens", None)
+        if max_tokens is not None:
+            payload["options"]["num_predict"] = max_tokens
         payload.update(kwargs)
+        payload["think"] = False
         return self._post_generate(payload)
 
     def generate_envelope(self, envelope: PromptEnvelope, **kwargs: object) -> str:
         chat_prompt = render_chat_prompt(envelope)
         payload = self._chat_payload(chat_prompt.messages, chat_prompt.generation)
         payload.update(kwargs)
+        payload["think"] = False
         return self._post_chat(payload)
 
     def _post_generate(self, payload: dict[str, Any]) -> str:
@@ -96,7 +104,7 @@ class OllamaLLM(LLMBase):
     def _chat_payload(self, messages: list[dict[str, str]], generation: dict[str, object]) -> dict[str, Any]:
         options: dict[str, Any] = {
             "stop": ["\nUser:", "\nAssistant:", "User:", "Assistant:"],
-            "num_predict": 220,
+            "num_predict": DEFAULT_OLLAMA_NUM_PREDICT,
         }
         if self.num_ctx is not None:
             options["num_ctx"] = self.num_ctx
@@ -109,8 +117,9 @@ class OllamaLLM(LLMBase):
             options["num_predict"] = generation["max_tokens"]
         return {
             "model": self.model,
-            "messages": messages,
+            "messages": _apply_chat_no_think_compatibility(messages, self.model),
             "stream": False,
+            "think": False,
             "options": options,
         }
 
@@ -137,3 +146,22 @@ def _copy_option(source: dict[str, object], target: dict[str, Any], key: str) ->
     value = source.get(key)
     if value is not None:
         target[key] = value
+
+
+def _apply_no_think_compatibility(prompt: str, model: str) -> str:
+    if "qwen3" not in model.casefold() or prompt.rstrip().endswith("/no_think"):
+        return prompt
+    return f"{prompt}\n/no_think"
+
+
+def _apply_chat_no_think_compatibility(
+    messages: list[dict[str, str]], model: str
+) -> list[dict[str, str]]:
+    if "qwen3" not in model.casefold():
+        return messages
+    compatible_messages = [message.copy() for message in messages]
+    for message in reversed(compatible_messages):
+        if message.get("role") == "user":
+            message["content"] = _apply_no_think_compatibility(message["content"], model)
+            break
+    return compatible_messages

@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-22 19:48
+  - Host class(es): Windows AMD64
+  - Summary: Normalized non-thinking Ollama requests, final-content extraction, and token-limit mapping while preserving llama.cpp non-thinking generation policy.
+  - Scope: `backend/app/runtimes/llm/ollama_runtime.py`, `backend/tests/unit/runtimes/llm/test_llm_runtime.py`
+  - Validation: Focused LLM tests PASS (`43 passed`); unit validator PASS (`725 passed, 4 skipped`); live Qwen3 Ollama final-answer check PASS; managed llama.cpp live checks PASS (`2 passed`).
+  - Notes: Qwen3 receives a model-gated `/no_think` compatibility suffix because the installed Ollama renderer still emits thinking metadata despite native `think: false`; application output remains final content only.
+
+---
+
 - Timestamp: 2026-07-22 15:30
   - Host class(es): Windows AMD64
   - Summary: Isolated sidecar lifecycle tests from host processes and tightened managed-process cleanup to exact executable paths.
