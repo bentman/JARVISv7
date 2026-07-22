@@ -20,6 +20,14 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-22 15:30
+  - Host class(es): Windows AMD64
+  - Summary: Isolated sidecar lifecycle tests from host processes and tightened managed-process cleanup to exact executable paths.
+  - Scope: `backend/app/services/local_llm_sidecar.py`, `backend/tests/unit/services/test_local_llm_sidecar.py`
+  - Validation: Focused sidecar tests PASS (`35 passed`); unit validator PASS (`721 passed, 4 skipped`); regression validator PASS (`149 passed, 3 skipped, 5 deselected`); proving-host text path PASS.
+
+---
+
 - Timestamp: 2026-07-21 19:37
   - Host class(es): Windows AMD64
   - Summary: Aligned the wake integration test with current personality and detection-status contracts.

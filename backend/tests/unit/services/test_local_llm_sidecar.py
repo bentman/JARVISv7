@@ -57,6 +57,8 @@ def _default_unhealthy_endpoint_probe(monkeypatch: pytest.MonkeyPatch) -> None:
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
         lambda base_url, target_model_id=None: (False, f"endpoint unavailable:{base_url}"),
     )
+    monkeypatch.setattr(local_llm_sidecar, "_reap_processes_for_binary", lambda *args: None)
+    monkeypatch.setattr(local_llm_sidecar, "_reap_processes_on_port", lambda *args: None)
 
 
 def _resolution(
@@ -405,14 +407,25 @@ def test_lifecycle_start_is_idempotent_for_same_running_profile(tmp_path: Path) 
 
 def test_lifecycle_stop_is_idempotent(tmp_path: Path) -> None:
     process = _FakeProcess()
-    service = LocalLLMSidecarService(process_factory=lambda argv: process)
-    service.start(_resolution(tmp_path))
+    binary_reaped: list[Path] = []
+    port_reaped: list[tuple[int, str]] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: process,
+        process_reaper=lambda path, timeout: binary_reaped.append(path),
+        port_reaper=lambda port, name, timeout: port_reaped.append((port, name)),
+    )
+    resolution = _resolution(tmp_path)
+    service.start(resolution)
+    binary_reaped.clear()
+    port_reaped.clear()
 
     stopped = service.stop()
     stopped_again = service.stop()
 
     assert process.terminated is True
     assert process.wait_calls == 1
+    assert binary_reaped == [resolution.binary_path]
+    assert port_reaped == [(8080, "llama-server.exe")]
     assert stopped.state == "stopped"
     assert stopped.running is False
     assert stopped_again.state == "stopped"
@@ -422,18 +435,22 @@ def test_lifecycle_stop_is_idempotent(tmp_path: Path) -> None:
 def test_lifecycle_stop_reaps_selected_binary_process(tmp_path: Path) -> None:
     process = _FakeProcess()
     reaped: list[tuple[Path, float]] = []
+    port_reaped: list[tuple[int, str, float]] = []
     service = LocalLLMSidecarService(
         process_factory=lambda argv: process,
         process_reaper=lambda path, timeout: reaped.append((path, timeout)),
+        port_reaper=lambda port, name, timeout: port_reaped.append((port, name, timeout)),
         stop_timeout_seconds=3.0,
     )
     resolution = _resolution(tmp_path)
     service.start(resolution)
+    port_reaped.clear()
 
     stopped = service.stop()
 
     assert process.terminated is True
     assert reaped == [(resolution.binary_path, 3.0)]
+    assert port_reaped == [(8080, "llama-server.exe", 3.0)]
     assert stopped.state == "stopped"
     assert stopped.running is False
 
@@ -469,6 +486,35 @@ def test_lifecycle_stop_kills_process_when_terminate_times_out(tmp_path: Path) -
     assert process.wait_calls == 2
     assert stopped.state == "stopped"
     assert stopped.running is False
+
+
+def test_process_matching_rejects_same_name_at_different_concrete_path(tmp_path: Path) -> None:
+    selected_binary = (tmp_path / "selected" / "llama-server.exe").resolve()
+    other_binary = (tmp_path / "other" / "llama-server.exe").resolve()
+
+    class HostProcess:
+        def __init__(self) -> None:
+            self.info = {
+                "exe": str(other_binary),
+                "cmdline": [str(other_binary), "--port", "8080"],
+                "name": "llama-server.exe",
+            }
+
+    assert local_llm_sidecar._process_matches_binary(HostProcess(), selected_binary) is False
+
+
+def test_process_matching_accepts_exact_concrete_path(tmp_path: Path) -> None:
+    selected_binary = (tmp_path / "selected" / "llama-server.exe").resolve()
+
+    class HostProcess:
+        def __init__(self) -> None:
+            self.info = {
+                "exe": str(selected_binary),
+                "cmdline": [str(selected_binary), "--port", "8080"],
+                "name": "llama-server.exe",
+            }
+
+    assert local_llm_sidecar._process_matches_binary(HostProcess(), selected_binary) is True
 
 
 def test_lifecycle_start_failure_reports_degraded_reason(tmp_path: Path) -> None:
