@@ -3,6 +3,7 @@
   {"name": "type:decision", "color": "D93F0B", "description": "Architectural or workflow decision required"},
   {"name": "type:implementation", "color": "1D76DB", "description": "Focused implementation work"},
   {"name": "type:validation", "color": "5319E7", "description": "Independent verification work"},
+  {"name": "type:outcome", "color": "6F42C1", "description": "Parent or coordinated outcome work"},
   {"name": "status:ready", "color": "BFD4F2", "description": "Ready for assignment"},
   {"name": "status:blocked", "color": "CC0000", "description": "Blocked by dependencies or unresolved decisions"},
   {"name": "agent:appropriate", "color": "6CBF43", "description": "Suitable for agent-assisted implementation"},

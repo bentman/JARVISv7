@@ -2,7 +2,7 @@ name: Parent outcome
 description: Coordinate a meaningful outcome and its supporting sub-issues.
 title: "[parent] "
 labels:
-  - type:decision
+  - type:outcome
 body:
   - type: markdown
     attributes:
@@ -52,9 +52,3 @@ body:
       placeholder: Describe the end state in product or workflow terms.
     validations:
       required: true
-  - type: textarea
-    id: sub-issues
-    attributes:
-      label: Sub-issues and dependencies
-      description: Which GitHub sub-issues or dependencies are part of this outcome?
-      placeholder: Add the sub-issues in GitHub's native hierarchy and dependency relationships; do not duplicate them here.
