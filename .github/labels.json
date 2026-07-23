@@ -1,4 +1,5 @@
 [
+  {"name": "bug", "color": "d73a4a", "description": "Something isn't working"},
   {"name": "type:outcome", "color": "6F42C1", "description": "Parent issue coordinating one outcome"},
   {"name": "type:work", "color": "1D76DB", "description": "Focused implementation work"},
   {"name": "type:investigation", "color": "0E8A16", "description": "Research, reproduction, comparison, or decision work"},

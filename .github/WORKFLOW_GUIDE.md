@@ -12,7 +12,8 @@ GitHub Issues and pull requests provide lightweight coordination. Repository tru
 ## Issue forms
 
 - **Parent outcome:** coordinate the integrated outcome and its completion.
-- **Work:** deliver one focused implementation task and its normal validation, usually in one pull request.
+- **Work:** deliver a planned implementation or repository change with its normal validation, usually in one pull request.
+- **Bug fix:** correct known broken or regressed behavior with reproducible evidence.
 - **Investigation:** research, reproduce, compare, or resolve an architectural decision.
 - **Validation:** independently prove an existing result only when a separate host, hardware, service, operator, or integrated product path is required.
 
@@ -22,6 +23,7 @@ Ordinary tests and validation belong in the work issue. Create a separate valida
 
 The label catalog is [`.github/labels.json`](labels.json):
 
+- `bug`
 - `type:outcome`
 - `type:work`
 - `type:investigation`

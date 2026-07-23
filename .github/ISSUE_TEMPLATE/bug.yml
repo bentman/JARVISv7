@@ -1,0 +1,36 @@
+name: Bug fix
+description: Correct broken or regressed behavior with reproducible evidence.
+title: "[bug] "
+labels:
+  - bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is broken or behaving incorrectly?
+      placeholder: Describe the broken or regressed behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-evidence
+    attributes:
+      label: Reproduction and evidence
+      description: How can the problem be reproduced, and what evidence confirms it?
+      placeholder: Include relevant logs, paths, versions, or environment details where available.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-validation
+    attributes:
+      label: Acceptance and validation
+      description: What corrected behavior is expected, and how should the fix be verified?
+      placeholder: State the expected behavior and validation.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Optional constraints, suspected cause, dependencies, or related issues.
+      placeholder: Add only relevant notes.
