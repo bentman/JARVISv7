@@ -33,6 +33,7 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "JARVISV7_OLLAMA_URL": "compatibility",
     "OLLAMA_MODEL": "primary",
     "OLLAMA_NUM_CTX": "advanced",
+    "OLLAMA_KEEP_ALIVE": "advanced",
     "JARVISV7_LIVE_TESTS": "test-only",
     "TTS_MODELS": "advanced",
     "STT_MODELS": "advanced",
@@ -169,6 +170,7 @@ class Settings:
     )
     ollama_model: str | None = field(default_factory=lambda: _env_str("OLLAMA_MODEL", "phi4-mini"))
     ollama_num_ctx: int | None = field(default_factory=lambda: _env_int("OLLAMA_NUM_CTX") or 8192)
+    ollama_keep_alive: str = field(default_factory=lambda: _env_str("OLLAMA_KEEP_ALIVE", "5m") or "5m")
     live_tests: bool = field(default_factory=lambda: _env_bool("JARVISV7_LIVE_TESTS", False))
     tts_models: str | None = field(default_factory=lambda: _env_str("TTS_MODELS", "models/tts"))
     stt_models: str | None = field(default_factory=lambda: _env_str("STT_MODELS", "models/stt"))

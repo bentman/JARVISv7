@@ -24,6 +24,7 @@ class OllamaLLM(LLMBase):
         base_url: str | None = None,
         model: str | None = None,
         num_ctx: int | None = None,
+        keep_alive: str | None = None,
         timeout: float = 60.0,
         enabled: bool | None = None,
     ) -> None:
@@ -32,6 +33,7 @@ class OllamaLLM(LLMBase):
         self.base_url = (base_url or settings.ollama_base_url or DEFAULT_OLLAMA_BASE_URL).rstrip("/")
         self.model = model or settings.ollama_model or "phi4-mini"
         self.num_ctx = num_ctx if num_ctx is not None else settings.ollama_num_ctx
+        self.keep_alive = keep_alive if keep_alive is not None else settings.ollama_keep_alive
         self.timeout = timeout
         self.reason = "not probed"
         self.client = httpx.Client()
@@ -59,6 +61,7 @@ class OllamaLLM(LLMBase):
             "prompt": _apply_no_think_compatibility(prompt, self.model),
             "stream": False,
             "think": False,
+            "keep_alive": self.keep_alive,
             "options": {
                 "stop": ["\nUser:", "\nAssistant:", "User:", "Assistant:"],
                 "num_predict": DEFAULT_OLLAMA_NUM_PREDICT,
@@ -69,6 +72,7 @@ class OllamaLLM(LLMBase):
         return payload
 
     def generate(self, prompt: str, **kwargs: object) -> str:
+        """Run the direct-prompt compatibility path required by LLMBase."""
         payload = self._payload(prompt)
         max_tokens = kwargs.pop("max_tokens", None)
         if max_tokens is not None:
@@ -78,6 +82,7 @@ class OllamaLLM(LLMBase):
         return self._post_generate(payload)
 
     def generate_envelope(self, envelope: PromptEnvelope, **kwargs: object) -> str:
+        """Run the normal JARVIS conversation path through Ollama chat."""
         chat_prompt = render_chat_prompt(envelope)
         payload = self._chat_payload(chat_prompt.messages, chat_prompt.generation)
         payload.update(kwargs)
@@ -120,6 +125,7 @@ class OllamaLLM(LLMBase):
             "messages": _apply_chat_no_think_compatibility(messages, self.model),
             "stream": False,
             "think": False,
+            "keep_alive": self.keep_alive,
             "options": options,
         }
 

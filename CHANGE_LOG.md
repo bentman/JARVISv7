@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-23 09:17
+  - Host class(es): Windows AMD64
+  - Summary: Added configurable Ollama model residency and made the structured chat endpoint explicit as the normal conversation path.
+  - Scope: Ollama settings, operator config, runtime payloads, model catalog, quick-start docs, and focused settings/API/LLM tests.
+  - Validation: Focused tests PASS (`110 passed`); unit validator PASS (`725 passed, 4 skipped`); live Ollama chat PASS (`1 passed`); controlled cold/warm probe PASS.
+  - Notes: Default residency is `5m`; the proving host's `30m` override reduced observed load time from `3083 ms` cold to `279 ms` warm.
+
+---
+
 - Timestamp: 2026-07-22 19:48
   - Host class(es): Windows AMD64
   - Summary: Normalized non-thinking Ollama requests, final-content extraction, and token-limit mapping while preserving llama.cpp non-thinking generation policy.
