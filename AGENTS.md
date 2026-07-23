@@ -58,14 +58,6 @@ Default behavior:
 - Prefer existing patterns and minimal diffs.
 - Keep responses concise and evidence-focused.
 
-### GitHub issue authority
-
-Issue templates, labels, parent/child relationships, and dependencies describe work. They do not authorize an agent to create, restructure, merge, or continue into additional work.
-
-The assigned issue is the task boundary. If it is too broad, blocked, or incorrectly structured, report the problem and proposed change, then stop.
-
-Do not create or begin other issues, change workflow rules, merge pull requests, or delete branches unless explicitly requested.
-
 Programming principles:
 
 - Prefer use/re-use/modify existing files/patterns/tests over add/create new. Existing Patterns First: reinforce existing patterns before adding new structure. If no pattern exists, propose the smallest consistent extension.
@@ -78,8 +70,6 @@ Programming principles:
 - Determinism: prefer explicit paths, stable ordering, non-interactive flags, and repeatable command sequences.
 - Minimal Surface Area: avoid new dependencies, files, services, environment variables, or helper scripts unless they are the narrowest approved solution.
 - Observable Behavior: favor changes that can be validated by command output, tests, reports, or visible runtime behavior.
-
-Before editing, provide a short proposal and wait for approval when touching multiple files, core backend systems, scripts, validation harnesses, desktop, Docker/compose, dependencies, environment repair, or repo tooling config.
 
 Proposal format:
 
@@ -159,3 +149,14 @@ Never run destructive Git operations without explicit approval, including:
 - `git clean`
 - `git rebase`
 - history rewrites
+
+# GitHub issue authority
+
+Issue templates, labels, parent/child relationships, and dependencies describe work. They do not authorize an agent to create, restructure, merge, or continue into additional work.
+
+The assigned issue is the task boundary. If it is too broad, blocked, or incorrectly structured, report the problem and proposed change, then stop.
+
+Do not create or begin other issues, change workflow rules, merge pull requests, or delete branches unless explicitly requested.
+
+Before editing, provide a short proposal and wait for approval when touching multiple files, core backend systems, scripts, validation harnesses, desktop, Docker/compose, dependencies, environment repair, or repo tooling config.
+
