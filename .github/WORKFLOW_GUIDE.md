@@ -1,66 +1,44 @@
-# GitHub workflow scaffold
+# GitHub workflow
 
-This repository uses GitHub Issues and pull requests as lightweight work-management surfaces. The goal is to support clear assignment, review, and validation without replacing the repository’s existing truth sources in AGENTS.md, backend/AGENTS.md, and scripts/validate_backend.py.
+GitHub Issues and pull requests provide lightweight coordination. Repository truth and validation rules remain in `AGENTS.md` and the repository validation tooling.
 
-## Workflow model
+## Issue model
 
-- Use parent issues for coordination when several sub-issues contribute to one meaningful outcome.
-- Use GitHub-native sub-issues for focused, assignable work.
-- Use GitHub-native issue dependencies for blocked-by and blocking relationships.
-- Use one implementation issue per focused PR.
-- Use labels for type, readiness, area, and agent suitability.
-- Keep the project board optional; issues remain the source of truth for active work.
+- A parent issue coordinates one outcome requiring several child issues. It replaces a slice.
+- Child issues hold focused work and replace sub-slices.
+- Use GitHub sub-issues for hierarchy and dependencies for blocked-by relationships.
+- Do not duplicate hierarchy, dependencies, or status in task lists.
 
-## Parent, sub-issue, and dependency workflow
+## Issue forms
 
-- Create a parent issue when several tasks contribute to a single meaningful outcome.
-- Keep the parent body focused on outcome, invariants, and integrated acceptance.
-- Break the work into GitHub sub-issues rather than duplicating hierarchy in issue bodies.
-- Use GitHub issue dependencies for blocked-by and blocking relationships.
-- Do not duplicate hierarchy or dependency state inside issue text when GitHub already tracks it natively.
+- **Parent outcome:** coordinate the integrated outcome and its completion.
+- **Work:** deliver one focused implementation task and its normal validation, usually in one pull request.
+- **Investigation:** research, reproduce, compare, or resolve an architectural decision.
+- **Validation:** independently prove an existing result only when a separate host, hardware, service, operator, or integrated product path is required.
 
-## Suggested labels
+Ordinary tests and validation belong in the work issue. Create a separate validation issue only for exceptional independent proof.
 
-The repository includes a minimal label set in [.github/labels.json](labels.json) for the workflow scaffold. Create or import these labels in the repository settings before using the templates.
+## Labels
 
-- type:investigation
-- type:decision
-- type:implementation
-- type:validation
-- status:ready
-- status:blocked
-- agent:appropriate
-- agent:human
-- area:backend
-- area:desktop
-- area:docs
-- area:runtime
-- area:infra
+The label catalog is [`.github/labels.json`](labels.json):
 
-## Suggested project statuses
+- `type:outcome`
+- `type:work`
+- `type:investigation`
+- `type:validation`
+- `status:ready`
+- `status:blocked`
+- `agent:appropriate`
+- `agent:human`
+- `area:backend`
+- `area:desktop`
+- `area:docs`
+- `area:runtime`
+- `area:infra`
 
-- Proposed
-- Ready
-- Assigned
-- In Review
-- Blocked
-- Verified
+## Pull requests
 
-## Issue usage guidance
-
-- Investigation issues should gather evidence and recommend a direction.
-- Decision issues should resolve a concrete architecture or workflow choice.
-- Implementation issues should define one observable outcome and one focused PR.
-- Validation issues should independently prove an integrated result.
-
-## PR usage guidance
-
-- Link the PR to the issue using a closing keyword only when the PR fully satisfies that issue.
-- For partial or follow-up work, link the issue without closing it.
-- Report exact validation commands and results.
-- Keep the diff limited to the assigned outcome.
-- Do not claim completion without evidence.
-
-## Projects
-
-GitHub Projects are optional for this repository. Use them only if the maintainers want a board-style view for triage or sprint planning. They are not a second source of truth; issues and PRs remain the source of truth for active work.
+- Link the PR with a closing keyword only when it fully completes the issue.
+- Keep the diff limited to the linked issue.
+- Report exact validation commands, results, and host class.
+- Record limitations without claiming unverified completion.

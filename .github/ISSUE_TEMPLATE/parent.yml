@@ -1,54 +1,36 @@
 name: Parent outcome
-description: Coordinate a meaningful outcome and its supporting sub-issues.
+description: Coordinate one outcome through GitHub sub-issues and dependencies.
 title: "[parent] "
 labels:
   - type:outcome
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Use this for a parent issue that coordinates several sub-issues toward one meaningful outcome. Keep the body focused on the outcome, invariants, and integrated acceptance; use GitHub sub-issues and dependencies for the detailed work breakdown.
   - type: textarea
     id: outcome
     attributes:
       label: Outcome
-      description: What meaningful result should this parent issue deliver?
-      placeholder: Describe the integrated result without prescribing implementation details.
+      description: What integrated result should this parent deliver?
+      placeholder: Describe the completed outcome.
     validations:
       required: true
   - type: textarea
-    id: why-it-matters
+    id: context
     attributes:
-      label: Why it matters
-      description: Why is this outcome important to users or the repository?
-      placeholder: State the user value or engineering risk.
+      label: Context
+      description: What current evidence and related work matter?
+      placeholder: Summarize the starting point and link related issues.
     validations:
       required: true
   - type: textarea
-    id: current-evidence
+    id: completion
     attributes:
-      label: Current evidence
-      description: What is known now, and which repository paths are relevant?
-      placeholder: Mention observed behavior, relevant files, or constraints.
+      label: Completion
+      description: What proves the coordinated outcome is complete?
+      placeholder: State the observable end result.
     validations:
       required: true
   - type: textarea
-    id: invariants
+    id: constraints
     attributes:
-      label: Invariants
-      description: What behavior must remain true?
-      placeholder: List critical constraints or non-negotiables.
-  - type: textarea
-    id: out-of-scope
-    attributes:
-      label: Out of scope
-      description: What should not be included in this outcome?
-      placeholder: Note adjacent work or follow-on work that is not part of this parent issue.
-  - type: textarea
-    id: integrated-acceptance
-    attributes:
-      label: Integrated acceptance
-      description: What final observable behavior would prove this parent outcome is complete?
-      placeholder: Describe the end state in product or workflow terms.
-    validations:
-      required: true
+      label: Constraints
+      description: What boundaries must the child issues preserve?
+      placeholder: Note only essential constraints.

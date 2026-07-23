@@ -1,52 +1,36 @@
 name: Investigation
-description: Gather evidence, inspect current behavior, and recommend a direction.
+description: Research, reproduce, compare, or resolve an architectural decision.
 title: "[investigation] "
 labels:
   - type:investigation
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Use this for evidence gathering, architecture inspection, or recommendation work. Do not use it for production changes unless the work is explicitly converted to implementation.
   - type: textarea
-    id: outcome
+    id: question
     attributes:
-      label: Outcome
-      description: What evidence or recommendation is needed?
-      placeholder: Describe the concrete investigation result.
+      label: Question
+      description: What must be investigated or decided?
+      placeholder: State the focused question.
     validations:
       required: true
   - type: textarea
-    id: current-evidence
+    id: known-evidence
     attributes:
-      label: Current evidence
-      description: What is known now, and which repository paths are relevant?
-      placeholder: Include observed behavior, logs, or code references.
+      label: Known evidence
+      description: What is already known?
+      placeholder: Summarize observations, references, or alternatives.
     validations:
       required: true
   - type: textarea
-    id: scope
+    id: required-result
     attributes:
-      label: Scope
-      description: What should be examined?
-      placeholder: List relevant components or surfaces.
-  - type: textarea
-    id: out-of-scope
-    attributes:
-      label: Out of scope
-      description: What should not be included in this investigation?
-      placeholder: Note adjacent or deferred work.
-  - type: textarea
-    id: acceptance
-    attributes:
-      label: Acceptance criteria
-      description: What would make the investigation complete and reviewable?
-      placeholder: Describe the evidence or recommendation that would satisfy the task.
+      label: Required result
+      description: What evidence or decision completes this investigation?
+      placeholder: Describe the required finding or recommendation.
     validations:
       required: true
   - type: textarea
-    id: dependencies
+    id: notes
     attributes:
-      label: Dependencies and blockers
-      description: What blocks or depends on this investigation?
-      placeholder: Mention related issues, hardware limits, or unresolved design decisions.
+      label: Notes
+      description: What else is essential to the investigation?
+      placeholder: Add limitations or dependencies if needed.

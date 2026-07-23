@@ -1,56 +1,36 @@
 name: Validation
-description: Independently verify an integrated result or regression scenario.
+description: Exceptional independent proof needing a separate host, hardware, service, operator, or product path. Put ordinary tests in the work issue.
 title: "[validation] "
 labels:
   - type:validation
 body:
-  - type: markdown
-    attributes:
-      value: |
-        Use this when the work is to verify an existing result, prove a regression fix, or confirm behavior end to end. Validation should be independent of the implementation work where practical.
   - type: textarea
     id: target
     attributes:
-      label: Target result
-      description: What behavior or integration is being validated?
-      placeholder: Describe the scenario or feature under test.
+      label: Target
+      description: What existing result requires independent validation?
+      placeholder: Identify the behavior or integration.
     validations:
       required: true
   - type: textarea
-    id: evidence
+    id: validation-steps
     attributes:
-      label: Current evidence
-      description: What is already known, and what is the reason for validation?
-      placeholder: Include the related issue, PR, or observed behavior.
-    validations:
-      required: true
-  - type: textarea
-    id: entry-point
-    attributes:
-      label: Primary entry point to validate
-      description: Which product path, route, CLI command, or runtime path is under validation?
-      placeholder: Name the path or interaction to exercise.
-    validations:
-      required: true
-  - type: textarea
-    id: validation-plan
-    attributes:
-      label: Validation plan
-      description: What exact steps or commands should be run?
-      placeholder: Include focused test commands or manual interactions.
+      label: Validation steps
+      description: What independent steps or interactions are required?
+      placeholder: Include the host, hardware, service, operator, or product path.
     validations:
       required: true
   - type: textarea
     id: success-criteria
     attributes:
       label: Success criteria
-      description: What would count as proof that the target is satisfied?
-      placeholder: State the expected observable result.
+      description: What observable evidence proves the target?
+      placeholder: State the expected result.
     validations:
       required: true
   - type: textarea
     id: limitations
     attributes:
       label: Limitations
-      description: What cannot be validated here, or what environment constraints apply?
-      placeholder: Mention missing hardware, services, or cloud limitations.
+      description: What cannot be validated here?
+      placeholder: Note relevant environment constraints.

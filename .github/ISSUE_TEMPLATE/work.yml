@@ -1,0 +1,36 @@
+name: Work
+description: Deliver one focused implementation task with its normal validation.
+title: "[work] "
+labels:
+  - type:work
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Outcome
+      description: What focused result should this work deliver?
+      placeholder: Describe the observable result.
+    validations:
+      required: true
+  - type: textarea
+    id: current-state
+    attributes:
+      label: Current state
+      description: What happens now, and where?
+      placeholder: Summarize the evidence and relevant paths.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance-validation
+    attributes:
+      label: Acceptance and validation
+      description: What must be true, and how should it be verified?
+      placeholder: State the criteria and normal tests or commands.
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: What else is essential to this task?
+      placeholder: Add constraints or dependencies if needed.
