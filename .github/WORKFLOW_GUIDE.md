@@ -40,7 +40,9 @@ The label catalog is [`.github/labels.json`](labels.json):
 
 ## Pull requests
 
-- Link the PR with a closing keyword only when it fully completes the issue.
+- Create a draft PR only while implementation, validation, or review preparation remains incomplete.
+- When the linked issue is complete, required validation has passed, and the branch is ready for review, create or promote the PR as ready.
 - Keep the diff limited to the linked issue.
 - Report exact validation commands, results, and host class.
 - Record limitations without claiming unverified completion.
+- Link the PR with a closing keyword only when it fully completes the issue.
