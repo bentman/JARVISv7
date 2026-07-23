@@ -150,13 +150,4 @@ Never run destructive Git operations without explicit approval, including:
 - `git rebase`
 - history rewrites
 
-# GitHub issue authority
-
-Issue templates, labels, parent/child relationships, and dependencies describe work. They do not authorize an agent to create, restructure, merge, or continue into additional work.
-
-The assigned issue is the task boundary. If it is too broad, blocked, or incorrectly structured, report the problem and proposed change, then stop.
-
-Do not create or begin other issues, change workflow rules, merge pull requests, or delete branches unless explicitly requested.
-
-Before editing, provide a short proposal and wait for approval when touching multiple files, core backend systems, scripts, validation harnesses, desktop, Docker/compose, dependencies, environment repair, or repo tooling config.
 
