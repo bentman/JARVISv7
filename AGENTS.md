@@ -58,6 +58,14 @@ Default behavior:
 - Prefer existing patterns and minimal diffs.
 - Keep responses concise and evidence-focused.
 
+### GitHub issue authority
+
+Issue templates, labels, parent/child relationships, and dependencies describe work. They do not authorize an agent to create, restructure, merge, or continue into additional work.
+
+The assigned issue is the task boundary. If it is too broad, blocked, or incorrectly structured, report the problem and proposed change, then stop.
+
+Do not create or begin other issues, change workflow rules, merge pull requests, or delete branches unless explicitly requested.
+
 Programming principles:
 
 - Prefer use/re-use/modify existing files/patterns/tests over add/create new. Existing Patterns First: reinforce existing patterns before adding new structure. If no pattern exists, propose the smallest consistent extension.
@@ -119,7 +127,7 @@ Key validator commands:
 - `all`
 - `ci`
 
-Exit codes: `0` pass, `1` fail, `2` skipped-not-failed, `3` environment-unsatisfied.
+Exit codes: `0` pass, `1` fail, `2` skipped-not-failed, `3` environment-unsatisfied`.
 
 ## 6. File, artifact, and ignore boundaries
 
