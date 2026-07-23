@@ -29,6 +29,7 @@ ENV_NAMES = (
     "JARVISV7_OLLAMA_URL",
     "OLLAMA_MODEL",
     "OLLAMA_NUM_CTX",
+    "OLLAMA_KEEP_ALIVE",
     "JARVISV7_LIVE_TESTS",
     "TTS_MODELS",
     "STT_MODELS",
@@ -102,6 +103,7 @@ ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "LLAMA_CPP_TIMEOUT_SECONDS",
     "OLLAMA_BASE_URL",
     "OLLAMA_NUM_CTX",
+    "OLLAMA_KEEP_ALIVE",
     "JARVISV7_LIVE_TESTS",
     "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD",
     "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS",
@@ -136,13 +138,14 @@ def test_settings_prefer_shell_env_over_env_file_when_env_file_exists(monkeypatc
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "JARVIS_LANGUAGE=fr\nOLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=2048\nJARVISV7_LIVE_TESTS=false\n",
-        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nJARVISV7_LIVE_TESTS=false\n",
+        "JARVIS_LANGUAGE=fr\nOLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=2048\nOLLAMA_KEEP_ALIVE=10m\nJARVISV7_LIVE_TESTS=false\n",
+        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=false\n",
     )
     monkeypatch.setenv("OLLAMA_BASE_URL", "http://shell:11434")
     monkeypatch.setenv("JARVIS_LANGUAGE", "pl")
     monkeypatch.setenv("OLLAMA_MODEL", "shell-model")
     monkeypatch.setenv("OLLAMA_NUM_CTX", "8192")
+    monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "30m")
     monkeypatch.setenv("JARVISV7_LIVE_TESTS", "true")
 
     settings = settings_module.load_settings()
@@ -151,6 +154,7 @@ def test_settings_prefer_shell_env_over_env_file_when_env_file_exists(monkeypatc
     assert settings.ollama_base_url == "http://shell:11434"
     assert settings.ollama_model == "shell-model"
     assert settings.ollama_num_ctx == 8192
+    assert settings.ollama_keep_alive == "30m"
     assert settings.live_tests is True
 
 
@@ -158,8 +162,8 @@ def test_settings_load_env_over_env_example_when_shell_env_absent(monkeypatch, t
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "OLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=4096\nJARVISV7_LIVE_TESTS=yes\n",
-        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nJARVISV7_LIVE_TESTS=false\n",
+        "OLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=4096\nOLLAMA_KEEP_ALIVE=15m\nJARVISV7_LIVE_TESTS=yes\n",
+        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=false\n",
     )
 
     settings = settings_module.load_settings()
@@ -167,6 +171,7 @@ def test_settings_load_env_over_env_example_when_shell_env_absent(monkeypatch, t
     assert settings.ollama_base_url == "http://env-file:11434"
     assert settings.ollama_model == "env-file-model"
     assert settings.ollama_num_ctx == 4096
+    assert settings.ollama_keep_alive == "15m"
     assert settings.live_tests is True
 
 
@@ -175,7 +180,7 @@ def test_settings_load_env_example_when_env_absent(monkeypatch, tmp_path):
         monkeypatch,
         tmp_path,
         None,
-        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nJARVISV7_LIVE_TESTS=on\n",
+        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=on\n",
     )
 
     settings = settings_module.load_settings()
@@ -183,6 +188,7 @@ def test_settings_load_env_example_when_env_absent(monkeypatch, tmp_path):
     assert settings.ollama_base_url == "http://example-file:11434"
     assert settings.ollama_model == "example-model"
     assert settings.ollama_num_ctx == 1024
+    assert settings.ollama_keep_alive == "2m"
     assert settings.live_tests is True
 
 
@@ -403,6 +409,7 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
     assert settings.ollama_base_url == "http://127.0.0.1:11434"
     assert settings.ollama_model == "phi4-mini"
     assert settings.ollama_num_ctx == 8192
+    assert settings.ollama_keep_alive == "5m"
     assert settings.use_searxng is False
     assert settings.model_path == settings_module.MODELS_DIR
     assert settings.config_path == settings_module.CONFIG_DIR
@@ -415,7 +422,7 @@ def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path)
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "USE_LOCAL_MODEL=\nLLM_MODEL_MODE=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nUSE_SEARXNG=\nCONFIG_PATH=\n",
+        "USE_LOCAL_MODEL=\nLLM_MODEL_MODE=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nOLLAMA_KEEP_ALIVE=\nUSE_SEARXNG=\nCONFIG_PATH=\n",
         None,
     )
 
@@ -426,6 +433,7 @@ def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path)
     assert settings.llm_model_policy == "auto"
     assert settings.ollama_model == "phi4-mini"
     assert settings.ollama_num_ctx == 8192
+    assert settings.ollama_keep_alive == "5m"
     assert settings.use_searxng is False
     assert settings.config_path == settings_module.CONFIG_DIR
 

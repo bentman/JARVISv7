@@ -1398,6 +1398,8 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["OLLAMA_MODEL"]["section"] == "Use Local Ollama intent"
     assert fields["OLLAMA_BASE_URL"]["section"] == "Use Local Ollama intent"
     assert fields["OLLAMA_BASE_URL"]["advanced"] is True
+    assert fields["OLLAMA_KEEP_ALIVE"]["section"] == "Use Local Ollama intent"
+    assert fields["OLLAMA_KEEP_ALIVE"]["advanced"] is True
     assert fields["USE_SEARXNG"]["section"] == "Optional Services"
     assert fields["SEARXNG_PORT"]["section"] == "Optional Services"
     assert fields["SEARXNG_PORT"]["advanced"] is False

@@ -532,7 +532,15 @@ def test_ollama_generate_envelope_posts_chat_messages(monkeypatch):
         generation={"temperature": 0.1, "max_tokens": 80, "stop": ["\nUser:"]},
     )
 
-    assert OllamaLLM(base_url="http://test", model="assistant-small-q4", num_ctx=4096).generate_envelope(envelope) == "ollama answer"
+    assert (
+        OllamaLLM(
+            base_url="http://test",
+            model="assistant-small-q4",
+            num_ctx=4096,
+            keep_alive="30m",
+        ).generate_envelope(envelope)
+        == "ollama answer"
+    )
     assert calls == [
         (
             "http://test/api/chat",
@@ -544,6 +552,7 @@ def test_ollama_generate_envelope_posts_chat_messages(monkeypatch):
                 ],
                 "stream": False,
                 "think": False,
+                "keep_alive": "30m",
                 "options": {
                     "stop": ["\nUser:"],
                     "num_predict": 80,
@@ -569,12 +578,16 @@ def test_ollama_payload_contains_selected_profile_system_instruction(monkeypatch
     monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
     envelope = assemble_prompt_envelope("Explain compound interest.", load_personality_profile("jarvis"))
 
-    assert OllamaLLM(base_url="http://test", model="assistant").generate_envelope(envelope) == "ollama answer"
+    assert (
+        OllamaLLM(base_url="http://test", model="assistant", keep_alive="5m").generate_envelope(envelope)
+        == "ollama answer"
+    )
     payload = calls[0][1]
     system_text = payload["messages"][0]["content"]
     assert calls[0][0] == "http://test/api/chat"
     assert payload["messages"][0]["role"] == "system"
     assert payload["think"] is False
+    assert payload["keep_alive"] == "5m"
     assert "British spelling" in system_text
     assert "one dry aside" in system_text
     assert payload["options"]["num_predict"] == 280
@@ -631,9 +644,15 @@ def test_ollama_generate_maps_max_tokens_and_disables_thinking(monkeypatch):
 
     monkeypatch.setattr("backend.app.runtimes.llm.ollama_runtime.httpx.post", fake_post)
 
-    assert OllamaLLM(base_url="http://test", model="assistant").generate("hello", max_tokens=64) == "final answer"
+    assert (
+        OllamaLLM(base_url="http://test", model="assistant", keep_alive="5m").generate(
+            "hello", max_tokens=64
+        )
+        == "final answer"
+    )
     payload = calls[0][1]
     assert payload["think"] is False
+    assert payload["keep_alive"] == "5m"
     assert payload["options"]["num_predict"] == 64
     assert "max_tokens" not in payload
 

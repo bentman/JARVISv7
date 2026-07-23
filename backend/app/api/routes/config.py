@@ -61,6 +61,12 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec("OLLAMA_MODEL", "Ollama model name.", section="Use Local Ollama intent"),
     OperatorFieldSpec("OLLAMA_BASE_URL", "Local Ollama endpoint URL.", section="Use Local Ollama intent", advanced=True),
     OperatorFieldSpec("OLLAMA_NUM_CTX", "Ollama context window.", section="Use Local Ollama intent", advanced=True),
+    OperatorFieldSpec(
+        "OLLAMA_KEEP_ALIVE",
+        "Ollama model residency duration.",
+        section="Use Local Ollama intent",
+        advanced=True,
+    ),
     OperatorFieldSpec("USE_SEARXNG", "Enable SearXNG search escalation.", section="Optional Services"),
     OperatorFieldSpec("USE_DDGS", "Enable DDGS search fallback.", section="Optional Services"),
     OperatorFieldSpec("USE_TAVILY", "Enable Tavily search fallback.", section="Optional Services"),

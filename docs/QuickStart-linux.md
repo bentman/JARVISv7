@@ -129,6 +129,10 @@ USE_DDGS=true
 
 Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override.
 
+Normal JARVIS Ollama turns use the structured `/api/chat` path. The direct `/api/generate` adapter remains only for direct-prompt compatibility.
+
+Ollama requests keep the selected model resident for `5m` by default. Set the advanced `OLLAMA_KEEP_ALIVE` value in `.env` to another Ollama duration when needed.
+
 ### 4. Bootstrap backend dependencies and models
 
 ```bash
