@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 13:53
+  - Host class(es): Windows AMD64
+  - Summary: Merged approved PR #44, completing transactional governed semantic-memory lifecycle operations on `main`.
+  - Scope: `backend/app/memory/curation.py`, `backend/app/memory/semantic.py`, `backend/tests/unit/memory/test_semantic_lifecycle.py`
+  - Validation: PR #44 merged as `48e7e24`; memory tests PASS (`101 passed`) and unit validator PASS (`788 passed, 5 skipped`).
+  - Notes: Closed #34; model extraction, workers, retrieval changes, APIs, desktop code, and physical source-artifact deletion remain out of scope.
+
+---
+
 - Timestamp: 2026-07-24 13:27
   - Host class(es): Windows AMD64
   - Summary: Added deterministic transactional semantic-memory lifecycle, evidence, policy, curation-job, and content-revision operations with optimistic concurrency and bounded SQLite writer-conflict handling.
