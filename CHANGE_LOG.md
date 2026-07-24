@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 15:32
+  - Host class(es): Windows AMD64
+  - Summary: Merged approved PR #45, completing issue #36’s resumable deferred memory-curation execution with durable shutdown drain and shared single-slot LLM coordination.
+  - Scope: Backend curation persistence, service lifecycle, session/turn arbitration, POST drain API, Tauri shutdown bridge, and deterministic behavior tests.
+  - Validation: PR #45 merged as `0e1a906`; repository unit validator PASS on merged `main` (`808 passed, 4 skipped`).
+  - Notes: Issue #36 was closed; production extraction, reconciliation policy, automatic semantic writes, and memory management UI remain out of scope.
+
+---
+
 - Timestamp: 2026-07-24 14:56
   - Host class(es): Windows AMD64
   - Summary: Prevented FastAPI shutdown from stopping the managed LLM sidecar while an in-flight non-preemptible curation processor still owns the shared coordinator, and narrowed the curation API to the required POST drain bridge.
