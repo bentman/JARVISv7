@@ -1,4 +1,7 @@
-default_model: assistant-small-q4
+# Active Qwen3 non-thinking roles follow the family baseline:
+# temperature 0.7, top_p 0.8, top_k 20, repeat_penalty 1.0.
+# The legacy Qwen2.5 diagnostic follows its family baseline with repeat_penalty 1.1.
+default_model: assistant-qwen3-4b-q4-portable
 
 llm_selection:
   default_policy: auto
@@ -8,9 +11,9 @@ llm_selection:
     model_override: LLM_MODEL_ID
   modes:
     dev:
-      model: assistant-small-q4
+      model: assistant-qwen3-4b-q4-portable
       role: dev
-      status: active-development-default
+      status: active-development-behavioral-default
     prod:
       role_mapping: production
   roles:
@@ -143,6 +146,7 @@ ollama:
   version_note: "Ollama HTTP API validated with local phi4-mini; requests keep the model resident for 5m by default, with OLLAMA_KEEP_ALIVE as the advanced operator override."
 
 models:
+  # Retained for explicit plumbing/startup diagnostics; no mode or policy selects it.
   assistant-small-q4:
     family: llm
     runtime: llama_cpp
@@ -161,10 +165,10 @@ models:
       - code_plan
       - tool_plan
     generation_defaults:
-      temperature: 0.4
-      top_p: 0.9
-      top_k: 40
-      repeat_penalty: 1.08
+      temperature: 0.7
+      top_p: 0.8
+      top_k: 20
+      repeat_penalty: 1.1
       max_tokens: 256
       stop:
         - "\nUser:"
@@ -620,10 +624,10 @@ models:
       - code_plan
       - tool_plan
     generation_defaults:
-      temperature: 0.4
-      top_p: 0.9
-      top_k: 40
-      repeat_penalty: 1.08
+      temperature: 0.7
+      top_p: 0.8
+      top_k: 20
+      repeat_penalty: 1.0
       max_tokens: 256
       chat_template_kwargs:
         enable_thinking: false
@@ -962,10 +966,10 @@ models:
       - code_plan
       - tool_plan
     generation_defaults:
-      temperature: 0.4
-      top_p: 0.9
-      top_k: 40
-      repeat_penalty: 1.08
+      temperature: 0.7
+      top_p: 0.8
+      top_k: 20
+      repeat_penalty: 1.0
       max_tokens: 256
       chat_template_kwargs:
         enable_thinking: false
@@ -1304,10 +1308,10 @@ models:
       - code_plan
       - tool_plan
     generation_defaults:
-      temperature: 0.4
-      top_p: 0.9
-      top_k: 40
-      repeat_penalty: 1.08
+      temperature: 0.7
+      top_p: 0.8
+      top_k: 20
+      repeat_penalty: 1.0
       max_tokens: 256
       chat_template_kwargs:
         enable_thinking: false
@@ -1646,10 +1650,10 @@ models:
       - code_plan
       - tool_plan
     generation_defaults:
-      temperature: 0.4
-      top_p: 0.9
-      top_k: 40
-      repeat_penalty: 1.08
+      temperature: 0.7
+      top_p: 0.8
+      top_k: 20
+      repeat_penalty: 1.0
       max_tokens: 256
       chat_template_kwargs:
         enable_thinking: false

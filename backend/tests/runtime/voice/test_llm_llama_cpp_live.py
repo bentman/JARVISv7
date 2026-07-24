@@ -6,13 +6,14 @@ from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.tests.conftest import LLAMA_CPP_READY_PROMPT, SKIP_UNLESS_LIVE, assert_llama_cpp_ready_contract
 
 
-def _live_llama_cpp_runtime(live_llama_cpp_sidecar) -> LlamaCppLLM:
+def _live_llama_cpp_runtime(live_llama_cpp_sidecar, *, deterministic: bool = True) -> LlamaCppLLM:
     resolution = live_llama_cpp_sidecar.resolution
     generation_defaults = {
         **resolution.generation_defaults,
         "max_tokens": 16,
-        "temperature": 0,
     }
+    if deterministic:
+        generation_defaults["temperature"] = 0
     runtime = LlamaCppLLM(
         base_url=resolution.base_url,
         model=resolution.model_id,
@@ -67,3 +68,24 @@ def test_llm_llama_cpp_returns_deterministic_response_to_known_prompt(live_llama
     response = runtime.generate(LLAMA_CPP_READY_PROMPT)
 
     assert_llama_cpp_ready_contract(response, runtime=runtime)
+
+
+@pytest.mark.live
+@pytest.mark.llm
+@pytest.mark.cuda
+@pytest.mark.requires_llama_cpp
+@pytest.mark.skipif(SKIP_UNLESS_LIVE, reason="JARVISV7_LIVE_TESTS not set")
+def test_llm_llama_cpp_family_sampling_supports_jarvis_conversation_contract(live_llama_cpp_sidecar):
+    runtime = _live_llama_cpp_runtime(live_llama_cpp_sidecar, deterministic=False)
+    runtime.generation_defaults["max_tokens"] = 48
+
+    response = runtime.generate(
+        "You are J.A.R.V.I.S. The optional internet search service is offline. "
+        "In one sentence, explain that ordinary conversation can continue without search."
+    )
+    normalized = response.strip().lower()
+
+    assert "<think>" not in normalized
+    assert "search" in normalized
+    assert "continu" in normalized
+    assert len(response.split()) <= 40

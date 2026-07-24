@@ -188,7 +188,7 @@ Useful checks on any host:
 
 ## Use production local LLM mode
 
-Starter mode uses `dev` and selects `assistant-small-q4`. Production mode uses the host/policy-selected Qwen3 catalog model.
+Starter mode uses `dev` and selects the Qwen3 4B portable behavioral model. Production mode uses the host/policy-selected Qwen3 catalog model; the tiny Qwen2.5 model is retained only for explicit plumbing/startup diagnostics.
 
 Preview the selected production model for the current host:
 

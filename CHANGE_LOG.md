@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-23 15:57
+  - Host class(es): Windows AMD64; existing Windows ARM64 and Linux AMD64 catalog evidence preserved
+  - Summary: Aligned Qwen-family sampling, made Qwen3 4B the development behavioral default, retained Qwen2.5 0.5B only for explicit diagnostics, and locked model quants and host contexts to the catalog policy.
+  - Scope: `config/models/llm.yaml`, Windows quick-start guidance, LLM selection/runtime/profile tests, and managed llama.cpp live conversation coverage.
+  - Validation: Focused LLM policy/runtime tests PASS (`57 passed`); dependent provisioning/startup/API tests PASS (`101 passed, 3 skipped`); unit validator PASS (`726 passed, 4 skipped`); regression validator PASS (`149 passed, 3 skipped, 5 deselected`; `reports/validation/20260723205705-regression.txt`); managed Qwen3 8B CUDA live tests PASS (`3 passed`).
+  - Notes: Active Qwen3 non-thinking roles use `temperature=0.7`, `top_p=0.8`, `top_k=20`, and `repeat_penalty=1.0`; the legacy Qwen2.5 diagnostic uses its family `repeat_penalty=1.1`.
+
+---
+
 - Timestamp: 2026-07-23 09:17
   - Host class(es): Windows AMD64
   - Summary: Added configurable Ollama model residency and made the structured chat endpoint explicit as the normal conversation path.

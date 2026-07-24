@@ -26,7 +26,7 @@ def _entry(tmp_path: Path) -> ModelEntry:
                 "tool_plan",
             ],
             "generation_defaults": {
-                "temperature": 0.4,
+                "temperature": 0.7,
                 "max_tokens": 256,
             },
             "serve_profiles": {
@@ -289,7 +289,7 @@ def test_resolve_windows_amd64_cpu_profile_with_existing_artifacts(tmp_path: Pat
     assert resolution.base_url == "http://127.0.0.1:8080"
     assert resolution.accelerator == "cpu"
     assert resolution.launch["gpu_layers"] == 0
-    assert resolution.generation_defaults["temperature"] == 0.4
+    assert resolution.generation_defaults["temperature"] == 0.7
     assert resolution.degraded_reason is None
 
 

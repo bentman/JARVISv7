@@ -96,6 +96,8 @@ def test_local_runtime_is_available_false_on_invalid_models_payload(monkeypatch)
 
 def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
     calls = []
+    model_id = "assistant-qwen3-4b-q4-portable"
+    generation_defaults = get_model_entry("llm", model_id).config["generation_defaults"]
 
     def fake_post(url, *, json, timeout):
         calls.append((url, json, timeout))
@@ -107,17 +109,9 @@ def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
     monkeypatch.setattr("backend.app.runtimes.llm.local_runtime.httpx.post", fake_post)
     runtime = LlamaCppLLM(
         base_url="http://test",
-        model="assistant-small-q4",
+        model=model_id,
         timeout=7.0,
-        generation_defaults={
-            "temperature": 0.4,
-            "top_p": 0.9,
-            "top_k": 40,
-            "repeat_penalty": 1.08,
-            "max_tokens": 256,
-            "stop": ["\nUser:"],
-            "chat_template_kwargs": {"enable_thinking": False},
-        },
+        generation_defaults=generation_defaults,
     )
 
     assert runtime.generate("Reply ready") == "ready"
@@ -125,16 +119,10 @@ def test_local_runtime_generate_posts_openai_chat_completion(monkeypatch):
         (
             "http://test/v1/chat/completions",
             {
-                "model": "assistant-small-q4",
+                "model": model_id,
                 "messages": [{"role": "user", "content": "Reply ready"}],
                 "stream": False,
-                "temperature": 0.4,
-                "top_p": 0.9,
-                "top_k": 40,
-                "repeat_penalty": 1.08,
-                "max_tokens": 256,
-                "stop": ["\nUser:"],
-                "chat_template_kwargs": {"enable_thinking": False},
+                **generation_defaults,
             },
             7.0,
         )
@@ -443,29 +431,25 @@ def test_local_runtime_generate_fails_on_unsupported_endpoint_response(monkeypat
         LlamaCppLLM(base_url="http://test").generate("hello")
 
 
-def test_llm_catalog_declares_lower_quant_default_and_cpu_profiles():
+def test_llm_catalog_declares_portable_qwen3_default_and_cpu_profiles():
     entry = get_model_entry("llm")
 
-    assert entry.name == "assistant-small-q4"
+    assert entry.name == "assistant-qwen3-4b-q4-portable"
     assert entry.local_path.as_posix().endswith(
-        "models/llm/assistant-small-q4/qwen2.5-0.5b-instruct-q4_k_m.gguf"
+        "models/llm/assistant-qwen3-4b-q4-portable/Qwen3-4B-Q4_K_M.gguf"
     )
     assert entry.config["quantization"] == "q4_k_m"
     assert entry.config["source"]["type"] == "huggingface"
-    assert entry.config["source"]["repo_id"] == "Qwen/Qwen2.5-0.5B-Instruct-GGUF"
-    assert entry.config["source"]["file"] == "qwen2.5-0.5b-instruct-q4_k_m.gguf"
+    assert entry.config["source"]["repo_id"] == "Qwen/Qwen3-4B-GGUF"
+    assert entry.config["source"]["file"] == "Qwen3-4B-Q4_K_M.gguf"
     assert "voice_chat" in entry.config["routes"]
 
     profiles = entry.config["serve_profiles"]["hardware_profiles"]
     assert "linux_amd64_cpu" in profiles
-    assert "linux_arm64_cpu" in profiles
     assert "windows_amd64_cpu" in profiles
     assert "windows_arm64_cpu" in profiles
     assert profiles["linux_amd64_cpu"]["binary_path"].endswith(
         "runtimes/llama.cpp/linux-amd64-cpu/llama-server"
-    )
-    assert profiles["linux_arm64_cpu"]["binary_path"].endswith(
-        "runtimes/llama.cpp/linux-arm64-cpu/llama-server"
     )
     assert profiles["windows_amd64_cpu"]["binary_path"].endswith(
         "runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe"
