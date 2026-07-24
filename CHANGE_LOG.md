@@ -24,7 +24,7 @@
   - Host class(es): Windows AMD64
   - Summary: Added bounded typed memory extraction and durable review-only reconciliation through the deferred curation processor, with strict persisted evidence verification, deterministic exclusions, and resumable per-candidate idempotency.
   - Scope: Cognition extraction envelope, unclassified pending-review policy, production curation processor composition, bounded processor results, API startup injection, and focused unit/integration coverage.
-  - Validation: Cognition tests PASS (`21 passed`); memory tests PASS (`103 passed`); services tests PASS (`168 passed`); unit validator PASS (`812 passed, 4 skipped`); integration validator PASS (`10 passed`); focused Ruff checks PASS.
+  - Validation: Cognition tests PASS (`21 passed`); memory tests PASS (`104 passed`); services tests PASS (`168 passed`); unit validator PASS (`813 passed, 4 skipped`); integration validator PASS (`10 passed`); focused Ruff checks PASS.
   - Notes: Model-proposed identity and lifecycle actions remain advisory. No automatic activation, reinforcement, dispute, correction, or supersession; retrieval, APIs, desktop UI, and model/runtime policy were unchanged.
 
 ---

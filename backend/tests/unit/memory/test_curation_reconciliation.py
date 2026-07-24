@@ -118,3 +118,26 @@ def test_secret_and_application_owned_values_are_rejected_without_persistence(
     assert secret.rejected == 1
     assert owned.rejected == 1
     assert memory.list_facts().value == ()
+
+
+def test_application_owned_values_are_resolved_at_processing_time(tmp_path: Path) -> None:
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    active_values = ["initial-profile"]
+    policy = ReviewOnlyCurationPolicy(
+        memory,
+        application_owned_values_provider=lambda: tuple(active_values),
+    )
+    proposal, candidate = _proposal(
+        text="The profile is switched-profile.",
+        excerpt="The profile is switched-profile.",
+    )
+    active_values[:] = ["switched-profile"]
+
+    result = policy.reconcile(
+        proposal=proposal,
+        candidate=candidate,
+        observed_at=NOW,
+    )
+
+    assert result.rejected == 1
+    assert memory.list_facts().value == ()

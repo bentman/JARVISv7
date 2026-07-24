@@ -118,6 +118,7 @@ def build_startup_state() -> ApiState:
     cache_manager = CacheManager()
     semantic_memory = SemanticMemory()
     llm_coordinator = LLMExecutionCoordinator()
+    settings = load_settings()
     resident_audio_stream = ResidentAudioStream()
     utterance_segmenter = default_utterance_segmenter()
     wake_utterance_segmenter = replace(
@@ -148,10 +149,12 @@ def build_startup_state() -> ApiState:
             MemoryCandidateExtractor(llm),
             ReviewOnlyCurationPolicy(
                 semantic_memory,
-                application_owned_values=collect_application_owned_values(
-                    load_settings(),
-                    personality,
-                    profile,
+                application_owned_values_provider=lambda: (
+                    collect_application_owned_values(
+                        settings,
+                        session_service.active_personality(),
+                        profile,
+                    )
                 ),
             ),
         ),

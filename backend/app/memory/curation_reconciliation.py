@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
 
@@ -63,9 +63,11 @@ class ReviewOnlyCurationPolicy:
         semantic_memory: SemanticMemory,
         *,
         application_owned_values: Iterable[str] = (),
+        application_owned_values_provider: Callable[[], Iterable[str]] | None = None,
     ) -> None:
         self._memory = semantic_memory
         self._owned_values = _normalize_owned_values(application_owned_values)
+        self._owned_values_provider = application_owned_values_provider
 
     def reconcile(
         self,
@@ -75,7 +77,16 @@ class ReviewOnlyCurationPolicy:
         observed_at: str,
         additional_owned_values: Iterable[str] = (),
     ) -> ReconciliationCounts:
-        owned_values = self._owned_values | _normalize_owned_values(additional_owned_values)
+        current_values = (
+            self._owned_values_provider()
+            if self._owned_values_provider is not None
+            else ()
+        )
+        owned_values = (
+            self._owned_values
+            | _normalize_owned_values(current_values)
+            | _normalize_owned_values(additional_owned_values)
+        )
         inspected = (
             proposal.text,
             proposal.value or "",
