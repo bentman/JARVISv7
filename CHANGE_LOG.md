@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 12:58
+  - Host class(es): Windows AMD64
+  - Summary: Merged approved PR #43, establishing deterministic application-owned semantic-memory candidate identity and evidence validation on `main`.
+  - Scope: `backend/app/memory/curation_contract.py`, `backend/tests/unit/memory/test_curation_contract.py`
+  - Validation: PR #43 merged as `7693b46`; focused tests PASS (`20 passed`), retained diagnostic compatibility PASS (`96 outputs, 0 mismatches`), and unit validator PASS (`758 passed, 5 skipped`).
+  - Notes: Closed #32; lifecycle persistence and later memory-governance children remain out of scope.
+
+---
+
 - Timestamp: 2026-07-24 12:26
   - Host class(es): Windows AMD64
   - Summary: Replaced model-owned semantic-memory identity with a strict application boundary that verifies persisted evidence, derives provisional claim keys, and requires trusted application decisions for governed kinds and related claims.
