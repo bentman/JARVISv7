@@ -2,15 +2,45 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import sqlite3
+import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
 import numpy as np
 from backend.app.core.paths import DATA_DIR
+from backend.app.memory.curation import (
+    TRANSITION_MATRIX,
+    CorrectionResult,
+    CurationJob,
+    CurationJobStatus,
+    CurationValidationError,
+    EvidenceInput,
+    EvidenceRecord,
+    FactDetail,
+    GovernedEvidenceAuthority,
+    GovernedFactInput,
+    GovernedFactRecord,
+    LifecycleEventRecord,
+    LifecycleState,
+    MemoryPolicy,
+    OperationStatus,
+    StoreResult,
+    require_timestamp,
+    validate_error,
+    validate_job_identity,
+    validate_kind_filter,
+    validate_list_limit,
+    validate_query,
+    validate_reason,
+    validate_worker_identity,
+)
+from backend.app.memory.curation_contract import GovernedMemoryKind, validate_claim_key
 
 SEMANTIC_SCHEMA_VERSION = 1
 EVIDENCE_AUTHORITIES = (
@@ -30,6 +60,9 @@ LIFECYCLE_STATES = (
     "forgotten",
 )
 CURATION_JOB_STATUSES = ("pending", "processing", "completed", "failed", "cancelled")
+_WRITE_BUSY_RETRIES = 3
+_WRITE_BUSY_TIMEOUT_MS = 250
+_WRITE_BUSY_BACKOFF_SECONDS = 0.02
 
 _LEGACY_FACT_COLUMNS = (
     "fact_id",
@@ -54,6 +87,10 @@ _FTS_SHADOW_TABLES = {
     "semantic_fact_fts_docsize",
     "semantic_fact_fts_idx",
 }
+
+
+class _StoreConflictError(RuntimeError):
+    pass
 
 
 def _iso_now() -> str:
@@ -158,6 +195,7 @@ class SemanticMemory:
     def _get_conn(self) -> sqlite3.Connection:
         conn = sqlite3.connect(self.db_path, timeout=10.0)
         conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout = {_WRITE_BUSY_TIMEOUT_MS}")
         conn.execute("PRAGMA foreign_keys = ON")
         if conn.execute("PRAGMA foreign_keys").fetchone()[0] != 1:
             conn.close()
@@ -311,9 +349,7 @@ class SemanticMemory:
             )
             """
         )
-        conn.execute(
-            "CREATE UNIQUE INDEX idx_semantic_fact_hash ON semantic_fact(text_hash)"
-        )
+        conn.execute("CREATE UNIQUE INDEX idx_semantic_fact_hash ON semantic_fact(text_hash)")
         self._create_governance_schema(conn)
         self._create_fts_if_available(conn, backfill=False)
 
@@ -509,9 +545,7 @@ class SemanticMemory:
             """,
             (initialized_at,),
         )
-        conn.execute(
-            "INSERT INTO semantic_meta (singleton_id, content_revision) VALUES (1, 0)"
-        )
+        conn.execute("INSERT INTO semantic_meta (singleton_id, content_revision) VALUES (1, 0)")
         conn.execute(
             """
             CREATE TRIGGER semantic_policy_revision_monotonic
@@ -600,9 +634,7 @@ class SemanticMemory:
         }
         actual_tables = {
             row["name"]
-            for row in conn.execute(
-                "SELECT name FROM sqlite_schema WHERE type = 'table'"
-            )
+            for row in conn.execute("SELECT name FROM sqlite_schema WHERE type = 'table'")
         }
         if not required_tables <= actual_tables:
             raise RuntimeError("versioned semantic schema is missing required tables")
@@ -631,60 +663,1856 @@ class SemanticMemory:
             if singleton_ids != [1]:
                 raise RuntimeError(f"{table_name} singleton authority is missing or ambiguous")
 
+    @staticmethod
+    def _is_busy_error(exc: sqlite3.OperationalError) -> bool:
+        message = str(exc).lower()
+        return "database is locked" in message or "database is busy" in message
+
+    def _run_write(
+        self,
+        operation: Callable[[sqlite3.Connection], StoreResult[Any]],
+    ) -> StoreResult[Any]:
+        if not self._schema_ready:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
+        for attempt in range(_WRITE_BUSY_RETRIES):
+            conn: sqlite3.Connection | None = None
+            try:
+                conn = self._get_conn()
+                conn.execute("BEGIN IMMEDIATE")
+                result = operation(conn)
+                if result.succeeded:
+                    conn.commit()
+                else:
+                    conn.rollback()
+                return result
+            except _StoreConflictError as exc:
+                if conn is not None and conn.in_transaction:
+                    conn.rollback()
+                return StoreResult(OperationStatus.CONFLICT, message=str(exc))
+            except CurationValidationError as exc:
+                if conn is not None and conn.in_transaction:
+                    conn.rollback()
+                return StoreResult(OperationStatus.INVALID, message=str(exc))
+            except sqlite3.OperationalError as exc:
+                if conn is not None and conn.in_transaction:
+                    conn.rollback()
+                if self._is_busy_error(exc):
+                    if attempt + 1 == _WRITE_BUSY_RETRIES:
+                        return StoreResult(
+                            OperationStatus.BUSY,
+                            message="semantic store is busy",
+                        )
+                    time.sleep(_WRITE_BUSY_BACKOFF_SECONDS * (attempt + 1))
+                    continue
+                return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+            except Exception as exc:
+                if conn is not None and conn.in_transaction:
+                    conn.rollback()
+                return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+            finally:
+                if conn is not None:
+                    conn.close()
+        return StoreResult(OperationStatus.BUSY, message="semantic store is busy")
+
+    @staticmethod
+    def _json_object(raw: str) -> dict[str, Any]:
+        try:
+            value = json.loads(raw)
+        except (TypeError, ValueError):
+            return {}
+        return value if isinstance(value, dict) else {}
+
+    @classmethod
+    def _fact_record(cls, row: sqlite3.Row) -> GovernedFactRecord:
+        return GovernedFactRecord(
+            fact_id=cast(str, row["fact_id"]),
+            text=cast(str, row["text"]),
+            kind=cast(str, row["kind"]),
+            claim_key=cast(str | None, row["claim_key"]),
+            value_text=cast(str | None, row["value_text"]),
+            evidence_authority=cast(str, row["evidence_authority"]),
+            state=cast(str, row["state"]),
+            confidence=cast(float | None, row["confidence"]),
+            importance=cast(float | None, row["importance"]),
+            reinforcement_count=int(row["reinforcement_count"]),
+            created_at=cast(str, row["created_at"]),
+            updated_at=cast(str, row["updated_at"]),
+            last_confirmed_at=cast(str | None, row["last_confirmed_at"]),
+            expires_at=cast(str | None, row["expires_at"]),
+            superseded_by_fact_id=cast(str | None, row["superseded_by_fact_id"]),
+            revision=int(row["revision"]),
+            metadata=cls._json_object(cast(str, row["metadata_json"])),
+            vectorizer_id=cast(str, row["vectorizer_id"]),
+            vector_dim=int(row["vector_dim"]),
+            text_hash=cast(str, row["text_hash"]),
+        )
+
+    @classmethod
+    def _evidence_record(cls, row: sqlite3.Row) -> EvidenceRecord:
+        return EvidenceRecord(
+            evidence_id=cast(str, row["evidence_id"]),
+            fact_id=cast(str, row["fact_id"]),
+            authority=cast(str, row["evidence_authority"]),
+            observed_at=cast(str, row["observed_at"]),
+            created_at=cast(str, row["created_at"]),
+            source_session_id=cast(str | None, row["source_session_id"]),
+            source_turn_id=cast(str | None, row["source_turn_id"]),
+            source_field=cast(str | None, row["source_field"]),
+            action_id=cast(str | None, row["action_id"]),
+            action_surface=cast(str | None, row["action_surface"]),
+            action_reason=cast(str | None, row["action_reason"]),
+            metadata=cls._json_object(cast(str, row["metadata_json"])),
+        )
+
+    @classmethod
+    def _event_record(cls, row: sqlite3.Row) -> LifecycleEventRecord:
+        return LifecycleEventRecord(
+            event_id=cast(str, row["event_id"]),
+            fact_id=cast(str, row["fact_id"]),
+            event_type=cast(str, row["event_type"]),
+            prior_state=cast(str | None, row["prior_state"]),
+            resulting_state=cast(str | None, row["resulting_state"]),
+            related_fact_id=cast(str | None, row["related_fact_id"]),
+            reason_code=cast(str, row["reason_code"]),
+            occurred_at=cast(str, row["occurred_at"]),
+            source_session_id=cast(str | None, row["source_session_id"]),
+            source_turn_id=cast(str | None, row["source_turn_id"]),
+            metadata=cls._json_object(cast(str, row["metadata_json"])),
+        )
+
+    @staticmethod
+    def _job_record(row: sqlite3.Row) -> CurationJob:
+        return CurationJob(
+            session_id=cast(str, row["session_id"]),
+            artifact_ref=cast(str, row["artifact_ref"]),
+            status=CurationJobStatus(cast(str, row["status"])),
+            attempt_count=int(row["attempt_count"]),
+            created_at=cast(str, row["created_at"]),
+            started_at=cast(str | None, row["started_at"]),
+            updated_at=cast(str, row["updated_at"]),
+            last_attempt_at=cast(str | None, row["last_attempt_at"]),
+            last_error=cast(str | None, row["last_error"]),
+            last_reason=cast(str | None, row["last_reason"]),
+            lease_token=cast(str | None, row["lease_token"]),
+            lease_owner=cast(str | None, row["lease_owner"]),
+            lease_expires_at=cast(str | None, row["lease_expires_at"]),
+        )
+
+    @staticmethod
+    def _is_mutable_governed_row(row: sqlite3.Row) -> bool:
+        try:
+            GovernedMemoryKind(cast(str, row["kind"]))
+            LifecycleState(cast(str, row["state"]))
+            validate_claim_key(cast(str, row["claim_key"]))
+        except (TypeError, ValueError):
+            return False
+        return True
+
+    @staticmethod
+    def _increment_content_revision(conn: sqlite3.Connection) -> None:
+        cursor = conn.execute(
+            """
+            UPDATE semantic_meta
+            SET content_revision = content_revision + 1
+            WHERE singleton_id = 1
+            """
+        )
+        if cursor.rowcount != 1:
+            raise RuntimeError("semantic content revision authority is unavailable")
+
+    def read_content_revision(self) -> StoreResult[int]:
+        if not self._schema_ready:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    """
+                    SELECT content_revision
+                    FROM semantic_meta
+                    WHERE singleton_id = 1
+                    """
+                ).fetchone()
+            if row is None:
+                return StoreResult(
+                    OperationStatus.UNAVAILABLE,
+                    message="semantic content revision authority is unavailable",
+                )
+            return StoreResult(OperationStatus.SUCCESS, int(row["content_revision"]))
+        except Exception as exc:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+
+    def read_policy(self) -> StoreResult[MemoryPolicy]:
+        if not self._schema_ready:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
+        try:
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    """
+                    SELECT automatic_curation_enabled, revision, updated_at
+                    FROM semantic_policy
+                    WHERE singleton_id = 1
+                    """
+                ).fetchone()
+            if row is None:
+                return StoreResult(
+                    OperationStatus.UNAVAILABLE,
+                    message="semantic policy authority is unavailable",
+                )
+            return StoreResult(
+                OperationStatus.SUCCESS,
+                MemoryPolicy(
+                    automatic_curation_enabled=bool(row["automatic_curation_enabled"]),
+                    revision=int(row["revision"]),
+                    updated_at=cast(str, row["updated_at"]),
+                ),
+            )
+        except Exception as exc:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+
+    def read_fact(self, fact_id: str) -> StoreResult[FactDetail]:
+        if not isinstance(fact_id, str) or not fact_id.strip() or len(fact_id) > 128:
+            return StoreResult(OperationStatus.INVALID, message="fact_id is invalid")
+        if not self._schema_ready:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
+        try:
+            with self._get_conn() as conn:
+                fact = conn.execute(
+                    "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                    (fact_id,),
+                ).fetchone()
+                if fact is None:
+                    return StoreResult(OperationStatus.NOT_FOUND)
+                evidence = conn.execute(
+                    """
+                    SELECT *
+                    FROM semantic_evidence
+                    WHERE fact_id = ?
+                    ORDER BY created_at ASC, evidence_id ASC
+                    """,
+                    (fact_id,),
+                ).fetchall()
+                events = conn.execute(
+                    """
+                    SELECT *
+                    FROM semantic_event
+                    WHERE fact_id = ?
+                    ORDER BY occurred_at ASC, event_id ASC
+                    """,
+                    (fact_id,),
+                ).fetchall()
+            return StoreResult(
+                OperationStatus.SUCCESS,
+                FactDetail(
+                    fact=self._fact_record(fact),
+                    evidence=tuple(self._evidence_record(row) for row in evidence),
+                    events=tuple(self._event_record(row) for row in events),
+                ),
+            )
+        except Exception as exc:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+
+    def list_facts(
+        self,
+        *,
+        state: LifecycleState | None = None,
+        kind: GovernedMemoryKind | None = None,
+        query: str | None = None,
+        limit: int = 50,
+    ) -> StoreResult[tuple[GovernedFactRecord, ...]]:
+        try:
+            validate_list_limit(limit)
+            kind_value = validate_kind_filter(kind)
+            query_value = validate_query(query)
+            if state is not None and not isinstance(state, LifecycleState):
+                raise CurationValidationError("state filter is invalid")
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+        if not self._schema_ready:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
+        clauses: list[str] = []
+        params: list[Any] = []
+        if state is not None:
+            clauses.append("state = ?")
+            params.append(state.value)
+        if kind_value is not None:
+            clauses.append("kind = ?")
+            params.append(kind_value)
+        if query_value is not None:
+            clauses.append("(text LIKE ? OR claim_key LIKE ? OR value_text LIKE ?)")
+            pattern = f"%{query_value}%"
+            params.extend((pattern, pattern, pattern))
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+        params.append(limit)
+        try:
+            with self._get_conn() as conn:
+                rows = conn.execute(
+                    f"""
+                    SELECT *
+                    FROM semantic_fact
+                    {where}
+                    ORDER BY created_at DESC, fact_id ASC
+                    LIMIT ?
+                    """,
+                    tuple(params),
+                ).fetchall()
+            return StoreResult(
+                OperationStatus.SUCCESS,
+                tuple(self._fact_record(row) for row in rows),
+            )
+        except Exception as exc:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+
+    @staticmethod
+    def _evidence_existing_row(
+        conn: sqlite3.Connection,
+        fact_id: str,
+        evidence: EvidenceInput,
+    ) -> sqlite3.Row | None:
+        if evidence.action_id is not None:
+            return conn.execute(
+                """
+                SELECT *
+                FROM semantic_evidence
+                WHERE fact_id = ? AND action_id = ?
+                """,
+                (fact_id, evidence.action_id),
+            ).fetchone()
+        return conn.execute(
+            """
+            SELECT *
+            FROM semantic_evidence
+            WHERE fact_id = ?
+              AND source_session_id = ?
+              AND source_turn_id = ?
+              AND source_field = ?
+              AND action_id IS NULL
+            """,
+            (
+                fact_id,
+                evidence.source_session_id,
+                evidence.source_turn_id,
+                evidence.source_field,
+            ),
+        ).fetchone()
+
+    @classmethod
+    def _insert_evidence(
+        cls,
+        conn: sqlite3.Connection,
+        fact_id: str,
+        evidence: EvidenceInput,
+        *,
+        created_at: str,
+    ) -> tuple[bool, str]:
+        metadata_json = json.dumps(
+            evidence.metadata,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        existing = cls._evidence_existing_row(conn, fact_id, evidence)
+        if existing is not None:
+            comparable = (
+                cast(str, existing["evidence_authority"]),
+                cast(str, existing["observed_at"]),
+                cast(str | None, existing["source_session_id"]),
+                cast(str | None, existing["source_turn_id"]),
+                cast(str | None, existing["source_field"]),
+                cast(str | None, existing["action_id"]),
+                cast(str | None, existing["action_surface"]),
+                cast(str | None, existing["action_reason"]),
+                cast(str, existing["metadata_json"]),
+            )
+            requested = (
+                evidence.authority.value,
+                evidence.observed_at,
+                evidence.source_session_id,
+                evidence.source_turn_id,
+                evidence.source_field,
+                evidence.action_id,
+                evidence.action_surface,
+                evidence.action_reason,
+                metadata_json,
+            )
+            if comparable != requested:
+                raise _StoreConflictError(
+                    "evidence origin already exists with different parameters"
+                )
+            return False, cast(str, existing["evidence_id"])
+
+        evidence_id = uuid.uuid4().hex
+        conn.execute(
+            """
+            INSERT INTO semantic_evidence (
+                evidence_id, fact_id,
+                source_session_id, source_turn_id, source_field,
+                action_id, action_surface, action_reason,
+                evidence_authority, observed_at, created_at, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                evidence_id,
+                fact_id,
+                evidence.source_session_id,
+                evidence.source_turn_id,
+                evidence.source_field,
+                evidence.action_id,
+                evidence.action_surface,
+                evidence.action_reason,
+                evidence.authority.value,
+                evidence.observed_at,
+                created_at,
+                metadata_json,
+            ),
+        )
+        return True, evidence_id
+
+    @staticmethod
+    def _insert_event(
+        conn: sqlite3.Connection,
+        *,
+        fact_id: str,
+        event_type: str,
+        prior_state: str | None,
+        resulting_state: str | None,
+        related_fact_id: str | None,
+        reason_code: str,
+        occurred_at: str,
+        evidence: EvidenceInput | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        event_metadata = dict(metadata or {})
+        if evidence is not None and evidence.action_id is not None:
+            event_metadata["action_id"] = evidence.action_id
+            event_metadata["action_surface"] = evidence.action_surface
+        conn.execute(
+            """
+            INSERT INTO semantic_event (
+                event_id, fact_id, event_type, prior_state, resulting_state,
+                related_fact_id, reason_code, occurred_at,
+                source_session_id, source_turn_id, metadata_json
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                uuid.uuid4().hex,
+                fact_id,
+                event_type,
+                prior_state,
+                resulting_state,
+                related_fact_id,
+                reason_code,
+                occurred_at,
+                evidence.source_session_id if evidence is not None else None,
+                evidence.source_turn_id if evidence is not None else None,
+                json.dumps(
+                    event_metadata,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+            ),
+        )
+
+    @staticmethod
+    def _vector_values(
+        fact: GovernedFactInput,
+    ) -> tuple[str, int, bytes]:
+        vectorizer_id = fact.vectorizer_id or "local_hashing_trick_v1_128"
+        vector = (
+            np.array(fact.vector, dtype="<f4")
+            if fact.vector is not None
+            else text_to_vector(fact.text, dim=128)
+        )
+        return vectorizer_id, len(vector), vector.tobytes()
+
+    def _insert_governed_fact_row(
+        self,
+        conn: sqlite3.Connection,
+        fact: GovernedFactInput,
+        *,
+        fact_id: str,
+        state: LifecycleState,
+        now: str,
+    ) -> None:
+        vectorizer_id, vector_dim, vector_blob = self._vector_values(fact)
+        cursor = conn.execute(
+            """
+            INSERT INTO semantic_fact (
+                fact_id, text, source_session_id, source_turn_id, source_field,
+                created_at, updated_at, kind, confidence, metadata_json,
+                vectorizer_id, vector_dim, vector_blob, text_hash,
+                claim_key, value_text, evidence_authority, state, importance,
+                reinforcement_count, last_confirmed_at, expires_at,
+                superseded_by_fact_id, revision
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1,
+                ?, ?, NULL, 1
+            )
+            """,
+            (
+                fact_id,
+                fact.text,
+                fact.evidence[0].source_session_id,
+                fact.evidence[0].source_turn_id,
+                fact.evidence[0].source_field,
+                now,
+                now,
+                fact.identity.kind.value,
+                fact.confidence,
+                json.dumps(
+                    fact.metadata,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                    sort_keys=True,
+                ),
+                vectorizer_id,
+                vector_dim,
+                vector_blob,
+                _get_text_hash(fact.text),
+                fact.identity.claim_key,
+                fact.value_text,
+                fact.evidence_authority.value,
+                state.value,
+                fact.importance,
+                now if state is LifecycleState.ACTIVE else None,
+                fact.expires_at,
+            ),
+        )
+        if self.supports_fts and cursor.lastrowid is not None:
+            conn.execute(
+                "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
+                (cursor.lastrowid, fact.text),
+            )
+        for evidence in fact.evidence:
+            self._insert_evidence(conn, fact_id, evidence, created_at=now)
+        self._insert_event(
+            conn,
+            fact_id=fact_id,
+            event_type="created",
+            prior_state=None,
+            resulting_state=state.value,
+            related_fact_id=None,
+            reason_code="governed_fact_created",
+            occurred_at=now,
+            evidence=fact.evidence[0],
+        )
+
+    def create_governed_fact(
+        self,
+        fact: GovernedFactInput,
+    ) -> StoreResult[GovernedFactRecord]:
+        def operation(conn: sqlite3.Connection) -> StoreResult[GovernedFactRecord]:
+            now = _iso_now()
+            text_hash = _get_text_hash(fact.text)
+            same_text = conn.execute(
+                "SELECT * FROM semantic_fact WHERE text_hash = ?",
+                (text_hash,),
+            ).fetchone()
+            if same_text is not None:
+                if (
+                    same_text["kind"] != fact.identity.kind.value
+                    or same_text["claim_key"] != fact.identity.claim_key
+                    or same_text["value_text"] != fact.value_text
+                ):
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="text hash already belongs to a different governed identity",
+                    )
+                if not self._is_mutable_governed_row(same_text):
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="matching fact has an unknown or terminal contract",
+                    )
+                if same_text["state"] not in {
+                    LifecycleState.PENDING_REVIEW.value,
+                    LifecycleState.ACTIVE.value,
+                    LifecycleState.DISPUTED.value,
+                }:
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="terminal facts cannot be implicitly reinforced",
+                    )
+                return self._reinforce_existing_from_creation(
+                    conn,
+                    same_text,
+                    fact,
+                    now=now,
+                )
+
+            occupant = conn.execute(
+                """
+                SELECT *
+                FROM semantic_fact
+                WHERE claim_key = ?
+                  AND state IN ('active', 'pending_review', 'disputed')
+                ORDER BY
+                    CASE state
+                        WHEN 'active' THEN 0
+                        WHEN 'disputed' THEN 1
+                        ELSE 2
+                    END,
+                    created_at ASC,
+                    fact_id ASC
+                LIMIT 1
+                """,
+                (fact.identity.claim_key,),
+            ).fetchone()
+            if occupant is not None and not self._is_mutable_governed_row(occupant):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="claim identity is occupied by an unknown governed record",
+                )
+            if (
+                occupant is not None
+                and occupant["kind"] == fact.identity.kind.value
+                and occupant["value_text"] == fact.value_text
+            ):
+                return self._reinforce_existing_from_creation(
+                    conn,
+                    occupant,
+                    fact,
+                    now=now,
+                )
+            if (
+                occupant is not None
+                and occupant["kind"] != fact.identity.kind.value
+                and occupant["value_text"] == fact.value_text
+            ):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="claim identity is occupied by a different governed kind",
+                )
+
+            resulting_state = fact.state
+            result_status = OperationStatus.SUCCESS
+            if occupant is not None and occupant["value_text"] != fact.value_text:
+                resulting_state = LifecycleState.PENDING_REVIEW
+                result_status = OperationStatus.REVIEW_REQUIRED
+
+            fact_id = uuid.uuid4().hex
+            self._insert_governed_fact_row(
+                conn,
+                fact,
+                fact_id=fact_id,
+                state=resulting_state,
+                now=now,
+            )
+            self._increment_content_revision(conn)
+            row = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            return StoreResult(
+                result_status,
+                self._fact_record(row),
+                (
+                    "different value for an occupied claim requires review"
+                    if result_status is OperationStatus.REVIEW_REQUIRED
+                    else None
+                ),
+            )
+
+        return cast(StoreResult[GovernedFactRecord], self._run_write(operation))
+
+    def _reinforce_existing_from_creation(
+        self,
+        conn: sqlite3.Connection,
+        row: sqlite3.Row,
+        fact: GovernedFactInput,
+        *,
+        now: str,
+    ) -> StoreResult[GovernedFactRecord]:
+        inserted_ids: list[str] = []
+        for evidence in fact.evidence:
+            inserted, evidence_id = self._insert_evidence(
+                conn,
+                cast(str, row["fact_id"]),
+                evidence,
+                created_at=now,
+            )
+            if inserted:
+                inserted_ids.append(evidence_id)
+        if not inserted_ids:
+            return StoreResult(OperationStatus.NO_CHANGE, self._fact_record(row))
+
+        confidence = (
+            max(
+                float(row["confidence"]) if row["confidence"] is not None else 0.0,
+                fact.confidence if fact.confidence is not None else 0.0,
+            )
+            if row["confidence"] is not None or fact.confidence is not None
+            else None
+        )
+        importance = (
+            max(
+                float(row["importance"]) if row["importance"] is not None else 0.0,
+                fact.importance if fact.importance is not None else 0.0,
+            )
+            if row["importance"] is not None or fact.importance is not None
+            else None
+        )
+        conn.execute(
+            """
+            UPDATE semantic_fact
+            SET reinforcement_count = reinforcement_count + 1,
+                confidence = ?,
+                importance = ?,
+                last_confirmed_at = ?,
+                updated_at = ?,
+                revision = revision + 1
+            WHERE fact_id = ?
+            """,
+            (
+                confidence,
+                importance,
+                now,
+                now,
+                row["fact_id"],
+            ),
+        )
+        self._insert_event(
+            conn,
+            fact_id=cast(str, row["fact_id"]),
+            event_type="reinforced",
+            prior_state=cast(str, row["state"]),
+            resulting_state=cast(str, row["state"]),
+            related_fact_id=None,
+            reason_code="compatible_evidence",
+            occurred_at=now,
+            evidence=fact.evidence[0],
+            metadata={"evidence_ids": inserted_ids},
+        )
+        self._increment_content_revision(conn)
+        updated = conn.execute(
+            "SELECT * FROM semantic_fact WHERE fact_id = ?",
+            (row["fact_id"],),
+        ).fetchone()
+        return StoreResult(OperationStatus.SUCCESS, self._fact_record(updated))
+
+    def append_evidence(
+        self,
+        fact_id: str,
+        evidence: EvidenceInput,
+        *,
+        expected_revision: int | None = None,
+    ) -> StoreResult[GovernedFactRecord]:
+        try:
+            self._validate_fact_id(fact_id)
+            if expected_revision is not None:
+                self._validate_expected_revision(expected_revision)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[GovernedFactRecord]:
+            row = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            if expected_revision is not None and int(row["revision"]) != expected_revision:
+                return StoreResult(OperationStatus.CONFLICT, message="stale fact revision")
+            if not self._is_mutable_governed_row(row):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="fact has an unknown or invalid governed contract",
+                )
+            now = _iso_now()
+            inserted, evidence_id = self._insert_evidence(
+                conn,
+                fact_id,
+                evidence,
+                created_at=now,
+            )
+            if not inserted:
+                return StoreResult(OperationStatus.NO_CHANGE, self._fact_record(row))
+            conn.execute(
+                """
+                UPDATE semantic_fact
+                SET updated_at = ?, revision = revision + 1
+                WHERE fact_id = ?
+                """,
+                (now, fact_id),
+            )
+            self._insert_event(
+                conn,
+                fact_id=fact_id,
+                event_type="evidence_appended",
+                prior_state=cast(str, row["state"]),
+                resulting_state=cast(str, row["state"]),
+                related_fact_id=None,
+                reason_code="evidence_appended",
+                occurred_at=now,
+                evidence=evidence,
+                metadata={"evidence_id": evidence_id},
+            )
+            updated = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._fact_record(updated))
+
+        return cast(StoreResult[GovernedFactRecord], self._run_write(operation))
+
+    @staticmethod
+    def _validate_expected_revision(expected_revision: int) -> None:
+        if (
+            isinstance(expected_revision, bool)
+            or not isinstance(expected_revision, int)
+            or expected_revision < 1
+        ):
+            raise CurationValidationError("expected_revision must be a positive integer")
+
+    @staticmethod
+    def _validate_fact_id(fact_id: str, label: str = "fact_id") -> None:
+        if not isinstance(fact_id, str) or not fact_id.strip() or len(fact_id) > 128:
+            raise CurationValidationError(f"{label} is invalid")
+
+    @staticmethod
+    def _require_user_action(evidence: EvidenceInput) -> None:
+        if (
+            evidence.authority is not GovernedEvidenceAuthority.DIRECT_USER_ACTION
+            or evidence.action_id is None
+        ):
+            raise CurationValidationError(
+                "operator lifecycle mutations require direct user-action evidence"
+            )
+
+    def _transition_fact(
+        self,
+        fact_id: str,
+        *,
+        expected_revision: int,
+        target: LifecycleState,
+        evidence: EvidenceInput,
+        reason: str,
+        event_type: str,
+        related_fact_id: str | None = None,
+    ) -> StoreResult[GovernedFactRecord]:
+        try:
+            self._validate_fact_id(fact_id)
+            self._validate_expected_revision(expected_revision)
+            self._require_user_action(evidence)
+            validate_reason(reason)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[GovernedFactRecord]:
+            row = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            if int(row["revision"]) != expected_revision:
+                return StoreResult(OperationStatus.CONFLICT, message="stale fact revision")
+            if not self._is_mutable_governed_row(row):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="fact has an unknown or invalid governed contract",
+                )
+            current = LifecycleState(cast(str, row["state"]))
+            if target not in TRANSITION_MATRIX[current]:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message=f"transition {current.value} -> {target.value} is not allowed",
+                )
+            if target is LifecycleState.ACTIVE:
+                active_occupant = conn.execute(
+                    """
+                    SELECT fact_id
+                    FROM semantic_fact
+                    WHERE claim_key = ?
+                      AND fact_id <> ?
+                      AND state = 'active'
+                    LIMIT 1
+                    """,
+                    (row["claim_key"], fact_id),
+                ).fetchone()
+                if active_occupant is not None:
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="claim identity already has an active occupant",
+                    )
+            now = _iso_now()
+            inserted, _ = self._insert_evidence(
+                conn,
+                fact_id,
+                evidence,
+                created_at=now,
+            )
+            if not inserted:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="user-action evidence was already used for this fact",
+                )
+            cursor = conn.execute(
+                """
+                UPDATE semantic_fact
+                SET state = ?,
+                    superseded_by_fact_id = ?,
+                    last_confirmed_at = CASE WHEN ? = 'active' THEN ? ELSE last_confirmed_at END,
+                    updated_at = ?,
+                    revision = revision + 1
+                WHERE fact_id = ? AND revision = ?
+                """,
+                (
+                    target.value,
+                    related_fact_id,
+                    target.value,
+                    now,
+                    now,
+                    fact_id,
+                    expected_revision,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise _StoreConflictError("fact revision changed during transition")
+            self._insert_event(
+                conn,
+                fact_id=fact_id,
+                event_type=event_type,
+                prior_state=current.value,
+                resulting_state=target.value,
+                related_fact_id=related_fact_id,
+                reason_code=reason,
+                occurred_at=now,
+                evidence=evidence,
+            )
+            self._increment_content_revision(conn)
+            updated = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._fact_record(updated))
+
+        return cast(StoreResult[GovernedFactRecord], self._run_write(operation))
+
+    def confirm_fact(
+        self,
+        fact_id: str,
+        *,
+        expected_revision: int,
+        evidence: EvidenceInput,
+        reason: str = "user_confirmed",
+    ) -> StoreResult[GovernedFactRecord]:
+        return self._transition_fact(
+            fact_id,
+            expected_revision=expected_revision,
+            target=LifecycleState.ACTIVE,
+            evidence=evidence,
+            reason=reason,
+            event_type="confirmed",
+        )
+
+    def dispute_fact(
+        self,
+        fact_id: str,
+        *,
+        expected_revision: int,
+        evidence: EvidenceInput,
+        reason: str = "user_disputed",
+    ) -> StoreResult[GovernedFactRecord]:
+        return self._transition_fact(
+            fact_id,
+            expected_revision=expected_revision,
+            target=LifecycleState.DISPUTED,
+            evidence=evidence,
+            reason=reason,
+            event_type="disputed",
+        )
+
+    def expire_fact(
+        self,
+        fact_id: str,
+        *,
+        expected_revision: int,
+        evidence: EvidenceInput,
+        reason: str = "explicit_expiration",
+    ) -> StoreResult[GovernedFactRecord]:
+        return self._transition_fact(
+            fact_id,
+            expected_revision=expected_revision,
+            target=LifecycleState.EXPIRED,
+            evidence=evidence,
+            reason=reason,
+            event_type="expired",
+        )
+
+    def forget_fact(
+        self,
+        fact_id: str,
+        *,
+        expected_revision: int,
+        evidence: EvidenceInput,
+        reason: str = "user_forgotten",
+    ) -> StoreResult[GovernedFactRecord]:
+        return self._transition_fact(
+            fact_id,
+            expected_revision=expected_revision,
+            target=LifecycleState.FORGOTTEN,
+            evidence=evidence,
+            reason=reason,
+            event_type="forgotten",
+        )
+
+    def reinforce_fact(
+        self,
+        fact_id: str,
+        *,
+        evidence: EvidenceInput,
+        confidence: float | None = None,
+        importance: float | None = None,
+        confirmed_at: str | None = None,
+    ) -> StoreResult[GovernedFactRecord]:
+        try:
+            self._validate_fact_id(fact_id)
+            if confidence is not None and (
+                isinstance(confidence, bool)
+                or not math.isfinite(float(confidence))
+                or not 0.0 <= float(confidence) <= 1.0
+            ):
+                raise CurationValidationError("confidence must be finite and between 0 and 1")
+            if importance is not None and (
+                isinstance(importance, bool)
+                or not math.isfinite(float(importance))
+                or not 0.0 <= float(importance) <= 1.0
+            ):
+                raise CurationValidationError("importance must be finite and between 0 and 1")
+            if confirmed_at is not None:
+                require_timestamp(confirmed_at, "confirmed_at")
+        except (CurationValidationError, TypeError, ValueError) as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[GovernedFactRecord]:
+            row = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            if not self._is_mutable_governed_row(row):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="fact has an unknown or invalid governed contract",
+                )
+            state = LifecycleState(cast(str, row["state"]))
+            if state not in {
+                LifecycleState.PENDING_REVIEW,
+                LifecycleState.ACTIVE,
+                LifecycleState.DISPUTED,
+            }:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="terminal facts cannot be reinforced",
+                )
+            now = _iso_now()
+            inserted, evidence_id = self._insert_evidence(
+                conn,
+                fact_id,
+                evidence,
+                created_at=now,
+            )
+            if not inserted:
+                return StoreResult(OperationStatus.NO_CHANGE, self._fact_record(row))
+            bounded_confidence = (
+                max(
+                    float(row["confidence"]) if row["confidence"] is not None else 0.0,
+                    float(confidence) if confidence is not None else 0.0,
+                )
+                if row["confidence"] is not None or confidence is not None
+                else None
+            )
+            bounded_importance = (
+                max(
+                    float(row["importance"]) if row["importance"] is not None else 0.0,
+                    float(importance) if importance is not None else 0.0,
+                )
+                if row["importance"] is not None or importance is not None
+                else None
+            )
+            cursor = conn.execute(
+                """
+                UPDATE semantic_fact
+                SET reinforcement_count = reinforcement_count + 1,
+                    confidence = ?,
+                    importance = ?,
+                    last_confirmed_at = ?,
+                    updated_at = ?,
+                    revision = revision + 1
+                WHERE fact_id = ?
+                  AND state IN ('pending_review', 'active', 'disputed')
+                """,
+                (
+                    bounded_confidence,
+                    bounded_importance,
+                    confirmed_at or now,
+                    now,
+                    fact_id,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise _StoreConflictError("fact changed during reinforcement")
+            self._insert_event(
+                conn,
+                fact_id=fact_id,
+                event_type="reinforced",
+                prior_state=state.value,
+                resulting_state=state.value,
+                related_fact_id=None,
+                reason_code="compatible_evidence",
+                occurred_at=now,
+                evidence=evidence,
+                metadata={"evidence_id": evidence_id},
+            )
+            self._increment_content_revision(conn)
+            updated = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._fact_record(updated))
+
+        return cast(StoreResult[GovernedFactRecord], self._run_write(operation))
+
+    def supersede_fact(
+        self,
+        fact_id: str,
+        *,
+        related_fact_id: str,
+        expected_revision: int,
+        evidence: EvidenceInput,
+        reason: str = "explicit_supersession",
+    ) -> StoreResult[GovernedFactRecord]:
+        if fact_id == related_fact_id:
+            return StoreResult(
+                OperationStatus.INVALID,
+                message="a fact cannot supersede itself",
+            )
+        try:
+            self._validate_fact_id(fact_id)
+            self._validate_fact_id(related_fact_id, "related_fact_id")
+            self._validate_expected_revision(expected_revision)
+            self._require_user_action(evidence)
+            validate_reason(reason)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[GovernedFactRecord]:
+            original = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            related = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (related_fact_id,),
+            ).fetchone()
+            if original is None or related is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            if int(original["revision"]) != expected_revision:
+                return StoreResult(OperationStatus.CONFLICT, message="stale fact revision")
+            if not self._is_mutable_governed_row(original) or not self._is_mutable_governed_row(
+                related
+            ):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="supersession requires valid application-owned identities",
+                )
+            original_state = LifecycleState(cast(str, original["state"]))
+            if LifecycleState.SUPERSEDED not in TRANSITION_MATRIX[original_state]:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="current lifecycle state cannot be superseded",
+                )
+            if related["state"] != LifecycleState.ACTIVE.value:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="related superseding fact must be active",
+                )
+            if original["claim_key"] != related["claim_key"] or original["kind"] != related["kind"]:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="superseding facts must share application-owned identity",
+                )
+            cursor_id: str | None = related_fact_id
+            visited: set[str] = set()
+            while cursor_id is not None:
+                if cursor_id == fact_id:
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="supersession would create a cycle",
+                    )
+                if cursor_id in visited:
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="existing supersession chain contains a cycle",
+                    )
+                visited.add(cursor_id)
+                chain_row = conn.execute(
+                    """
+                    SELECT superseded_by_fact_id
+                    FROM semantic_fact
+                    WHERE fact_id = ?
+                    """,
+                    (cursor_id,),
+                ).fetchone()
+                cursor_id = (
+                    cast(str | None, chain_row["superseded_by_fact_id"])
+                    if chain_row is not None
+                    else None
+                )
+            now = _iso_now()
+            inserted, _ = self._insert_evidence(
+                conn,
+                fact_id,
+                evidence,
+                created_at=now,
+            )
+            if not inserted:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="user-action evidence was already used for this fact",
+                )
+            conn.execute(
+                """
+                UPDATE semantic_fact
+                SET state = 'superseded',
+                    superseded_by_fact_id = ?,
+                    updated_at = ?,
+                    revision = revision + 1
+                WHERE fact_id = ? AND revision = ?
+                """,
+                (related_fact_id, now, fact_id, expected_revision),
+            )
+            self._insert_event(
+                conn,
+                fact_id=fact_id,
+                event_type="superseded",
+                prior_state=original_state.value,
+                resulting_state=LifecycleState.SUPERSEDED.value,
+                related_fact_id=related_fact_id,
+                reason_code=reason,
+                occurred_at=now,
+                evidence=evidence,
+            )
+            self._increment_content_revision(conn)
+            updated = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._fact_record(updated))
+
+        return cast(StoreResult[GovernedFactRecord], self._run_write(operation))
+
+    def correct_fact(
+        self,
+        fact_id: str,
+        *,
+        expected_revision: int,
+        replacement: GovernedFactInput,
+        evidence: EvidenceInput,
+        reason: str = "explicit_user_correction",
+    ) -> StoreResult[CorrectionResult]:
+        try:
+            self._validate_fact_id(fact_id)
+            self._validate_expected_revision(expected_revision)
+            self._require_user_action(evidence)
+            validate_reason(reason)
+            if replacement.state is not LifecycleState.ACTIVE:
+                raise CurationValidationError("a correction replacement must start active")
+            if replacement.evidence_authority is not GovernedEvidenceAuthority.DIRECT_USER_ACTION:
+                raise CurationValidationError(
+                    "a correction replacement must preserve direct user-action authority"
+                )
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CorrectionResult]:
+            original = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            if original is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            if int(original["revision"]) != expected_revision:
+                return StoreResult(OperationStatus.CONFLICT, message="stale fact revision")
+            if not self._is_mutable_governed_row(original):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="fact has an unknown or invalid governed contract",
+                )
+            original_state = LifecycleState(cast(str, original["state"]))
+            if LifecycleState.SUPERSEDED not in TRANSITION_MATRIX[original_state]:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="current lifecycle state cannot be corrected",
+                )
+            if (
+                original["kind"] != replacement.identity.kind.value
+                or original["claim_key"] != replacement.identity.claim_key
+            ):
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="correction must reuse the application-owned claim identity",
+                )
+            duplicate_text = conn.execute(
+                "SELECT fact_id FROM semantic_fact WHERE text_hash = ?",
+                (_get_text_hash(replacement.text),),
+            ).fetchone()
+            if duplicate_text is not None:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="replacement text already belongs to another fact",
+                )
+            other_occupant = conn.execute(
+                """
+                SELECT fact_id
+                FROM semantic_fact
+                WHERE claim_key = ?
+                  AND fact_id <> ?
+                  AND state = 'active'
+                LIMIT 1
+                """,
+                (replacement.identity.claim_key, fact_id),
+            ).fetchone()
+            if other_occupant is not None:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="claim identity already has another active occupant",
+                )
+            now = _iso_now()
+            replacement_id = uuid.uuid4().hex
+            self._insert_governed_fact_row(
+                conn,
+                replacement,
+                fact_id=replacement_id,
+                state=LifecycleState.ACTIVE,
+                now=now,
+            )
+            self._insert_evidence(
+                conn,
+                replacement_id,
+                evidence,
+                created_at=now,
+            )
+            inserted_on_original, _ = self._insert_evidence(
+                conn,
+                fact_id,
+                evidence,
+                created_at=now,
+            )
+            if not inserted_on_original:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="user-action evidence was already used for this fact",
+                )
+            conn.execute(
+                """
+                UPDATE semantic_fact
+                SET state = 'superseded',
+                    superseded_by_fact_id = ?,
+                    updated_at = ?,
+                    revision = revision + 1
+                WHERE fact_id = ? AND revision = ?
+                """,
+                (replacement_id, now, fact_id, expected_revision),
+            )
+            self._insert_event(
+                conn,
+                fact_id=fact_id,
+                event_type="corrected",
+                prior_state=original_state.value,
+                resulting_state=LifecycleState.SUPERSEDED.value,
+                related_fact_id=replacement_id,
+                reason_code=reason,
+                occurred_at=now,
+                evidence=evidence,
+            )
+            self._insert_event(
+                conn,
+                fact_id=replacement_id,
+                event_type="correction_replacement",
+                prior_state=None,
+                resulting_state=LifecycleState.ACTIVE.value,
+                related_fact_id=fact_id,
+                reason_code=reason,
+                occurred_at=now,
+                evidence=evidence,
+            )
+            self._increment_content_revision(conn)
+            original_updated = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (fact_id,),
+            ).fetchone()
+            replacement_row = conn.execute(
+                "SELECT * FROM semantic_fact WHERE fact_id = ?",
+                (replacement_id,),
+            ).fetchone()
+            return StoreResult(
+                OperationStatus.SUCCESS,
+                CorrectionResult(
+                    original=self._fact_record(original_updated),
+                    replacement=self._fact_record(replacement_row),
+                ),
+            )
+
+        return cast(StoreResult[CorrectionResult], self._run_write(operation))
+
+    def update_policy(
+        self,
+        *,
+        automatic_curation_enabled: bool,
+        expected_revision: int,
+    ) -> StoreResult[MemoryPolicy]:
+        try:
+            self._validate_expected_revision(expected_revision)
+            if not isinstance(automatic_curation_enabled, bool):
+                raise CurationValidationError("automatic_curation_enabled must be boolean")
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[MemoryPolicy]:
+            row = conn.execute("SELECT * FROM semantic_policy WHERE singleton_id = 1").fetchone()
+            if row is None:
+                return StoreResult(
+                    OperationStatus.UNAVAILABLE,
+                    message="semantic policy authority is unavailable",
+                )
+            if int(row["revision"]) != expected_revision:
+                return StoreResult(OperationStatus.CONFLICT, message="stale policy revision")
+            current = bool(row["automatic_curation_enabled"])
+            if current is automatic_curation_enabled:
+                return StoreResult(
+                    OperationStatus.NO_CHANGE,
+                    MemoryPolicy(
+                        automatic_curation_enabled=current,
+                        revision=int(row["revision"]),
+                        updated_at=cast(str, row["updated_at"]),
+                    ),
+                )
+            now = _iso_now()
+            cursor = conn.execute(
+                """
+                UPDATE semantic_policy
+                SET automatic_curation_enabled = ?,
+                    revision = revision + 1,
+                    updated_at = ?
+                WHERE singleton_id = 1 AND revision = ?
+                """,
+                (int(automatic_curation_enabled), now, expected_revision),
+            )
+            if cursor.rowcount != 1:
+                raise _StoreConflictError("policy revision changed during update")
+            updated = conn.execute(
+                "SELECT * FROM semantic_policy WHERE singleton_id = 1"
+            ).fetchone()
+            return StoreResult(
+                OperationStatus.SUCCESS,
+                MemoryPolicy(
+                    automatic_curation_enabled=bool(updated["automatic_curation_enabled"]),
+                    revision=int(updated["revision"]),
+                    updated_at=cast(str, updated["updated_at"]),
+                ),
+            )
+
+        return cast(StoreResult[MemoryPolicy], self._run_write(operation))
+
+    def enqueue_curation_job(
+        self,
+        *,
+        session_id: str,
+        artifact_ref: str,
+    ) -> StoreResult[CurationJob]:
+        try:
+            validate_job_identity(session_id, artifact_ref)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            existing = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if existing is not None:
+                if existing["artifact_ref"] != artifact_ref:
+                    return StoreResult(
+                        OperationStatus.CONFLICT,
+                        message="session is already queued with a different artifact",
+                    )
+                return StoreResult(OperationStatus.NO_CHANGE, self._job_record(existing))
+            now = _iso_now()
+            conn.execute(
+                """
+                INSERT INTO semantic_curation_job (
+                    session_id, artifact_ref, status, attempt_count,
+                    created_at, started_at, updated_at, last_attempt_at,
+                    last_error, last_reason, lease_token, lease_owner, lease_expires_at
+                ) VALUES (?, ?, 'pending', 0, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL)
+                """,
+                (session_id, artifact_ref, now, now),
+            )
+            row = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(row))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
+
+    def list_curation_jobs(
+        self,
+        *,
+        max_attempts: int,
+        limit: int = 50,
+    ) -> StoreResult[tuple[CurationJob, ...]]:
+        try:
+            validate_list_limit(limit)
+            if (
+                isinstance(max_attempts, bool)
+                or not isinstance(max_attempts, int)
+                or max_attempts < 1
+            ):
+                raise CurationValidationError("max_attempts must be a positive integer")
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+        if not self._schema_ready:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
+        try:
+            with self._get_conn() as conn:
+                rows = conn.execute(
+                    """
+                    SELECT *
+                    FROM semantic_curation_job
+                    WHERE status IN ('pending', 'failed')
+                      AND attempt_count < ?
+                    ORDER BY
+                        CASE status WHEN 'pending' THEN 0 ELSE 1 END,
+                        updated_at ASC,
+                        session_id ASC
+                    LIMIT ?
+                    """,
+                    (max_attempts, limit),
+                ).fetchall()
+            return StoreResult(
+                OperationStatus.SUCCESS,
+                tuple(self._job_record(row) for row in rows),
+            )
+        except Exception as exc:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+
+    def claim_curation_job(
+        self,
+        *,
+        worker_id: str,
+        max_attempts: int,
+        lease_seconds: int,
+    ) -> StoreResult[CurationJob]:
+        try:
+            validate_worker_identity(worker_id)
+            if (
+                isinstance(max_attempts, bool)
+                or not isinstance(max_attempts, int)
+                or max_attempts < 1
+            ):
+                raise CurationValidationError("max_attempts must be a positive integer")
+            if (
+                isinstance(lease_seconds, bool)
+                or not isinstance(lease_seconds, int)
+                or not 1 <= lease_seconds <= 86_400
+            ):
+                raise CurationValidationError("lease_seconds must be between 1 and 86400")
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            row = conn.execute(
+                """
+                SELECT *
+                FROM semantic_curation_job
+                WHERE status IN ('pending', 'failed')
+                  AND attempt_count < ?
+                ORDER BY
+                    CASE status WHEN 'pending' THEN 0 ELSE 1 END,
+                    updated_at ASC,
+                    session_id ASC
+                LIMIT 1
+                """,
+                (max_attempts,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            now_dt = datetime.now(UTC)
+            now = now_dt.isoformat()
+            lease_token = uuid.uuid4().hex
+            lease_expires_at = (now_dt + timedelta(seconds=lease_seconds)).isoformat()
+            cursor = conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET status = 'processing',
+                    attempt_count = attempt_count + 1,
+                    started_at = COALESCE(started_at, ?),
+                    updated_at = ?,
+                    last_attempt_at = ?,
+                    last_error = NULL,
+                    last_reason = 'claimed',
+                    lease_token = ?,
+                    lease_owner = ?,
+                    lease_expires_at = ?
+                WHERE session_id = ?
+                  AND status IN ('pending', 'failed')
+                  AND attempt_count < ?
+                """,
+                (
+                    now,
+                    now,
+                    now,
+                    lease_token,
+                    worker_id,
+                    lease_expires_at,
+                    row["session_id"],
+                    max_attempts,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise _StoreConflictError("curation job changed during claim")
+            claimed = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (row["session_id"],),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(claimed))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
+
+    def _finish_curation_job(
+        self,
+        *,
+        session_id: str,
+        lease_token: str,
+        status: CurationJobStatus,
+        reason: str,
+        error: str | None,
+    ) -> StoreResult[CurationJob]:
+        try:
+            validate_job_identity(session_id)
+            validate_worker_identity(lease_token)
+            validate_reason(reason)
+            validate_error(error)
+            if status not in {
+                CurationJobStatus.COMPLETED,
+                CurationJobStatus.FAILED,
+                CurationJobStatus.CANCELLED,
+                CurationJobStatus.PENDING,
+            }:
+                raise CurationValidationError("unsupported job completion status")
+            if status is CurationJobStatus.FAILED and not error:
+                raise CurationValidationError("failed jobs require bounded error evidence")
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            row = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            if row["status"] != CurationJobStatus.PROCESSING.value:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="job is not processing",
+                )
+            if row["lease_token"] != lease_token:
+                return StoreResult(
+                    OperationStatus.CONFLICT,
+                    message="job lease does not match",
+                )
+            now = _iso_now()
+            conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET status = ?,
+                    updated_at = ?,
+                    last_error = ?,
+                    last_reason = ?,
+                    lease_token = NULL,
+                    lease_owner = NULL,
+                    lease_expires_at = NULL
+                WHERE session_id = ?
+                  AND status = 'processing'
+                  AND lease_token = ?
+                """,
+                (
+                    status.value,
+                    now,
+                    error,
+                    reason,
+                    session_id,
+                    lease_token,
+                ),
+            )
+            updated = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(updated))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
+
+    def complete_curation_job(
+        self,
+        *,
+        session_id: str,
+        lease_token: str,
+        reason: str = "completed",
+    ) -> StoreResult[CurationJob]:
+        return self._finish_curation_job(
+            session_id=session_id,
+            lease_token=lease_token,
+            status=CurationJobStatus.COMPLETED,
+            reason=reason,
+            error=None,
+        )
+
+    def fail_curation_job(
+        self,
+        *,
+        session_id: str,
+        lease_token: str,
+        reason: str,
+        error: str,
+    ) -> StoreResult[CurationJob]:
+        return self._finish_curation_job(
+            session_id=session_id,
+            lease_token=lease_token,
+            status=CurationJobStatus.FAILED,
+            reason=reason,
+            error=error,
+        )
+
+    def cancel_curation_job(
+        self,
+        *,
+        session_id: str,
+        lease_token: str,
+        reason: str,
+    ) -> StoreResult[CurationJob]:
+        return self._finish_curation_job(
+            session_id=session_id,
+            lease_token=lease_token,
+            status=CurationJobStatus.CANCELLED,
+            reason=reason,
+            error=None,
+        )
+
+    def return_curation_job_to_pending(
+        self,
+        *,
+        session_id: str,
+        lease_token: str,
+        reason: str,
+        error: str | None = None,
+    ) -> StoreResult[CurationJob]:
+        return self._finish_curation_job(
+            session_id=session_id,
+            lease_token=lease_token,
+            status=CurationJobStatus.PENDING,
+            reason=reason,
+            error=error,
+        )
+
+    def recover_stale_curation_jobs(
+        self,
+        *,
+        recovered_at: str | None = None,
+        reason: str = "stale_lease_recovered",
+    ) -> StoreResult[int]:
+        try:
+            cutoff_input = recovered_at or _iso_now()
+            require_timestamp(cutoff_input, "recovered_at")
+            cutoff = datetime.fromisoformat(cutoff_input).astimezone(UTC).isoformat()
+            validate_reason(reason)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[int]:
+            cursor = conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET status = 'pending',
+                    updated_at = ?,
+                    last_reason = ?,
+                    last_error = COALESCE(last_error, 'processing lease expired'),
+                    lease_token = NULL,
+                    lease_owner = NULL,
+                    lease_expires_at = NULL
+                WHERE status = 'processing'
+                  AND lease_expires_at <= ?
+                """,
+                (cutoff, reason, cutoff),
+            )
+            return StoreResult(OperationStatus.SUCCESS, int(cursor.rowcount))
+
+        return cast(StoreResult[int], self._run_write(operation))
+
     def write_entry(self, entry: SemanticEntry) -> str | None:
         """Writes a fully constructed SemanticEntry to the store, performing deduplication on text_hash."""
         if not self._schema_ready:
             return None
-        try:
-            with self._get_conn() as conn:
-                metadata_json = json.dumps(entry.metadata)
-                # Deduplication rides on the unique text_hash index so a concurrent
-                # same-text writer cannot slip between a check and the insert.
-                cursor = conn.execute(
-                    """
-                    INSERT INTO semantic_fact (
-                        fact_id, text, source_session_id, source_turn_id, source_field,
-                        created_at, updated_at, kind, confidence, metadata_json,
-                        vectorizer_id, vector_dim, vector_blob, text_hash
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ON CONFLICT(text_hash) DO NOTHING
-                    """,
-                    (
-                        entry.fact_id,
-                        entry.text,
-                        entry.source_session_id,
-                        entry.source_turn_id,
-                        entry.source_field,
-                        entry.created_at,
-                        entry.updated_at,
-                        entry.kind,
-                        entry.confidence,
-                        metadata_json,
-                        entry.vectorizer_id,
-                        entry.vector_dim,
-                        entry.vector_blob,
-                        entry.text_hash,
-                    ),
-                )
-                if cursor.rowcount == 0:
-                    existing = conn.execute(
-                        "SELECT fact_id FROM semantic_fact WHERE text_hash = ?", (entry.text_hash,)
-                    ).fetchone()
-                    if existing is None:
-                        return None
-                    return cast(str, existing["fact_id"])
 
-                rowid = cursor.lastrowid
-                if self.supports_fts and rowid is not None:
-                    # A failed FTS insert must abort the enclosing transaction so the
-                    # fact row and its FTS row commit together or not at all.
-                    conn.execute(
-                        "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
-                        (rowid, entry.text),
-                    )
-                return entry.fact_id
-        except Exception:
-            return None
+        def operation(conn: sqlite3.Connection) -> StoreResult[str]:
+            metadata_json = json.dumps(entry.metadata)
+            # Deduplication rides on the unique text_hash index so a concurrent
+            # same-text writer cannot slip between a check and the insert.
+            cursor = conn.execute(
+                """
+                INSERT INTO semantic_fact (
+                    fact_id, text, source_session_id, source_turn_id, source_field,
+                    created_at, updated_at, kind, confidence, metadata_json,
+                    vectorizer_id, vector_dim, vector_blob, text_hash
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(text_hash) DO NOTHING
+                """,
+                (
+                    entry.fact_id,
+                    entry.text,
+                    entry.source_session_id,
+                    entry.source_turn_id,
+                    entry.source_field,
+                    entry.created_at,
+                    entry.updated_at,
+                    entry.kind,
+                    entry.confidence,
+                    metadata_json,
+                    entry.vectorizer_id,
+                    entry.vector_dim,
+                    entry.vector_blob,
+                    entry.text_hash,
+                ),
+            )
+            if cursor.rowcount == 0:
+                existing = conn.execute(
+                    "SELECT fact_id FROM semantic_fact WHERE text_hash = ?",
+                    (entry.text_hash,),
+                ).fetchone()
+                if existing is None:
+                    return StoreResult(OperationStatus.UNAVAILABLE)
+                return StoreResult(
+                    OperationStatus.NO_CHANGE,
+                    cast(str, existing["fact_id"]),
+                )
+
+            rowid = cursor.lastrowid
+            if self.supports_fts and rowid is not None:
+                # A failed FTS insert must abort the enclosing transaction so the
+                # fact row and its FTS row commit together or not at all.
+                conn.execute(
+                    "INSERT INTO semantic_fact_fts (rowid, text) VALUES (?, ?)",
+                    (rowid, entry.text),
+                )
+            self._increment_content_revision(conn)
+            return StoreResult(OperationStatus.SUCCESS, entry.fact_id)
+
+        result = self._run_write(operation)
+        return cast(str | None, result.value) if result.succeeded else None
 
     def write_fact(
         self,

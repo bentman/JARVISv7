@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 13:27
+  - Host class(es): Windows AMD64
+  - Summary: Added deterministic transactional semantic-memory lifecycle, evidence, policy, curation-job, and content-revision operations with optimistic concurrency and bounded SQLite writer-conflict handling.
+  - Scope: `backend/app/memory/curation.py`, `backend/app/memory/semantic.py`, `backend/tests/unit/memory/test_semantic_lifecycle.py`
+  - Validation: Focused lifecycle tests PASS (`30 passed`); complete memory tests PASS (`101 passed`); unit validator PASS (`788 passed, 5 skipped`); focused Ruff and Python 3.12 mypy checks PASS.
+  - Notes: Governed creation requires the application-owned kind/identity contract from #32; model extraction, workers, retrieval changes, APIs, desktop code, and physical source-artifact deletion remain out of scope.
+
+---
+
 - Timestamp: 2026-07-24 12:58
   - Host class(es): Windows AMD64
   - Summary: Merged approved PR #43, establishing deterministic application-owned semantic-memory candidate identity and evidence validation on `main`.
