@@ -50,6 +50,7 @@ class ProposalContractError(ValueError):
 class GovernedMemoryKind(StrEnum):
     """Application-owned durable-memory vocabulary."""
 
+    UNCLASSIFIED = PROVISIONAL_MEMORY_KIND
     USER_PREFERENCE = "user_preference"
     PERSONAL_FACT = "personal_fact"
     PROJECT_FACT = "project_fact"
