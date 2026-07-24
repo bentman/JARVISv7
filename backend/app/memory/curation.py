@@ -82,7 +82,9 @@ class GovernedEvidenceAuthority(StrEnum):
 class CurationJobStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
-    COMPLETED = "completed"
+    RETRY_WAIT = "retry_wait"
+    SUCCEEDED = "succeeded"
+    COMPLETED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
 
@@ -401,19 +403,75 @@ class MemoryPolicy:
 
 @dataclass(frozen=True, slots=True)
 class CurationJob:
+    job_id: str
     session_id: str
-    artifact_ref: str
+    session_artifact_path: str
+    policy_revision: int
     status: CurationJobStatus
     attempt_count: int
-    created_at: str
-    started_at: str | None
+    max_attempts: int
+    authorized_at: str
+    enqueued_at: str
+    next_attempt_at: str
     updated_at: str
-    last_attempt_at: str | None
-    last_error: str | None
-    last_reason: str | None
-    lease_token: str | None
-    lease_owner: str | None
+    boot_id: str | None
+    claim_token: str | None
+    claimed_at: str | None
     lease_expires_at: str | None
+    generation_started_at: str | None
+    generation_finished_at: str | None
+    generation_duration_ms: float | None
+    persisted_at: str | None
+    completed_at: str | None
+    cancel_requested_at: str | None
+    cancelled_at: str | None
+    cancel_reason: str | None
+    last_error_code: str | None
+    last_error_detail: str | None
+    last_error_at: str | None
+    blocked_reason: str | None
+    last_result_reason: str | None
+    runtime_name: str | None
+    model_id: str | None
+    serve_profile_id: str | None
+    accelerator: str | None
+
+    @property
+    def artifact_ref(self) -> str:
+        return self.session_artifact_path
+
+    @property
+    def created_at(self) -> str:
+        return self.enqueued_at
+
+    @property
+    def started_at(self) -> str | None:
+        return self.claimed_at
+
+    @property
+    def last_attempt_at(self) -> str | None:
+        return self.claimed_at
+
+    @property
+    def last_error(self) -> str | None:
+        return self.last_error_detail
+
+    @property
+    def last_reason(self) -> str | None:
+        return (
+            self.last_result_reason
+            or self.last_error_code
+            or self.blocked_reason
+            or self.cancel_reason
+        )
+
+    @property
+    def lease_token(self) -> str | None:
+        return self.claim_token
+
+    @property
+    def lease_owner(self) -> str | None:
+        return self.boot_id
 
 
 @dataclass(frozen=True, slots=True)

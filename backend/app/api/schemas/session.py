@@ -52,3 +52,6 @@ class CloseSessionResponse(BaseModel):
     session_id: str
     closed: bool
     artifact_path: str
+    curation_enqueued: bool = False
+    curation_enqueue_status: str = "not_authorized"
+    curation_enqueue_error: str | None = None

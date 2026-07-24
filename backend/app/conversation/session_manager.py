@@ -115,7 +115,13 @@ class SessionManager:
             metadata={"profile_id": profile_id, "profile_epoch": self.profile_epoch},
         )
 
-    def close_session(self, final_state: ConversationState | str = ConversationState.IDLE) -> Path:
+    def close_session(
+        self,
+        final_state: ConversationState | str = ConversationState.IDLE,
+        *,
+        memory_curation_authorized_at: str | None = None,
+        memory_curation_policy_revision: int | None = None,
+    ) -> Path:
         final_state_value = final_state.value if isinstance(final_state, ConversationState) else final_state
         self.record_timeline_event("session_closed", state=final_state_value)
         timeline_path = storage.write_session_timeline(self.timeline, self.sessions_base_dir)
@@ -129,6 +135,8 @@ class SessionManager:
             timeline_path=str(timeline_path),
             continuity_summary=continuity_summary,
             memory_curation_candidate=bool(self.turn_artifacts),
+            memory_curation_authorized_at=memory_curation_authorized_at,
+            memory_curation_policy_revision=memory_curation_policy_revision,
         )
         return storage.write_session_artifact(artifact, self.sessions_base_dir)
 

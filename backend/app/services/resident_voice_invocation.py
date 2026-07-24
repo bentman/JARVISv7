@@ -16,6 +16,10 @@ from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services import voice_service
 from backend.app.services.audio_stream import AudioChunk, ResidentAudioStream
 from backend.app.services.session_service import SessionService, SessionStatus
+from backend.app.services.llm_execution_coordinator import (
+    InteractiveTicket,
+    LLMExecutionCoordinator,
+)
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 
 AudioCapture = Callable[[], tuple[np.ndarray, int]]
@@ -36,6 +40,7 @@ class ResidentInvocationRequest:
     audio: np.ndarray | None = None
     sample_rate: int | None = None
     capture_diagnostics: dict[str, object] | None = None
+    interactive_ticket: InteractiveTicket | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,6 +61,7 @@ class ResidentVoiceInvocationService:
         utterance_segmenter: UtteranceSegmenter | None = None,
         before_invocation: BeforeInvocation | None = None,
         after_invocation: AfterInvocation | None = None,
+        llm_coordinator: LLMExecutionCoordinator | None = None,
     ) -> None:
         self._session_service = session_service
         self._engine_provider = engine_provider
@@ -64,6 +70,7 @@ class ResidentVoiceInvocationService:
         self._utterance_segmenter = utterance_segmenter
         self._before_invocation = before_invocation
         self._after_invocation = after_invocation
+        self._llm_coordinator = llm_coordinator
         self._queue: queue.Queue[ResidentInvocationRequest] = queue.Queue()
         self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
@@ -85,12 +92,14 @@ class ResidentVoiceInvocationService:
         capture_diagnostics: dict[str, object] | None = None,
     ) -> SessionStatus:
         normalized_source = source.strip().lower() or "voice"
+        ticket = self._llm_coordinator.register_interactive() if self._llm_coordinator else None
         self._queue.put(
             ResidentInvocationRequest(
                 source=normalized_source,
                 audio=audio,
                 sample_rate=sample_rate,
                 capture_diagnostics=dict(capture_diagnostics) if capture_diagnostics is not None else None,
+                interactive_ticket=ticket,
             )
         )
         self._ensure_worker()
@@ -98,7 +107,8 @@ class ResidentVoiceInvocationService:
 
     def ptt(self) -> SessionStatus:
         status = self._session_service.begin_voice_invocation("ptt")
-        self._queue.put(ResidentInvocationRequest(source="ptt"))
+        ticket = self._llm_coordinator.register_interactive() if self._llm_coordinator else None
+        self._queue.put(ResidentInvocationRequest(source="ptt", interactive_ticket=ticket))
         self._ensure_worker()
         return status
 
@@ -194,6 +204,7 @@ class ResidentVoiceInvocationService:
                 sample_rate=request.sample_rate,
                 audio_capture=self._audio_capture,
                 capture_diagnostics=request.capture_diagnostics,
+                interactive_ticket=request.interactive_ticket,
             )
             if result.interrupted and request.source != "barge_in" and self._mode not in RESIDENT_BARGE_IN_DISABLED_MODES:
                 self._enqueue_barge_in_follow_up()
@@ -211,6 +222,8 @@ class ResidentVoiceInvocationService:
             if self._after_invocation is not None:
                 with suppress(Exception):
                     self._after_invocation(hook_state)
+            if request.interactive_ticket is not None:
+                request.interactive_ticket.release()
 
     def _resolve_ptt_audio(self, request: ResidentInvocationRequest) -> ResidentInvocationRequest:
         if request.source != "ptt" or request.audio is not None:
@@ -246,12 +259,14 @@ class ResidentVoiceInvocationService:
                 audio=np.array([], dtype=np.float32),
                 sample_rate=segment.sample_rate,
                 capture_diagnostics=diagnostics,
+                interactive_ticket=request.interactive_ticket,
             )
         return ResidentInvocationRequest(
             source=request.source,
             audio=segment.audio,
             sample_rate=segment.sample_rate,
             capture_diagnostics=diagnostics,
+            interactive_ticket=request.interactive_ticket,
         )
 
     def _record_capture_diagnostics(self, request: ResidentInvocationRequest) -> None:

@@ -348,8 +348,30 @@ pub fn write_operator_config(client: &Client, base_url: &str, fields: Value) -> 
 }
 
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
-    let response = client.post(format!("{base_url}/session/close")).json(&json!({"session_id": session_id, "final_state": "IDLE"})).send().map_err(|err| format!("POST /session/close failed: {err}"))?;
+    let response = client
+        .post(format!("{base_url}/session/close"))
+        .timeout(Duration::from_secs(5))
+        .json(&json!({"session_id": session_id, "final_state": "IDLE"}))
+        .send()
+        .map_err(|err| format!("POST /session/close failed: {err}"))?;
     if response.status().is_success() { Ok(()) } else { Err(format!("POST /session/close returned {}", response.status())) }
+}
+
+pub fn drain_memory_curation(client: &Client, base_url: &str) -> Result<(), String> {
+    let response = client
+        .post(format!("{base_url}/memory/curation/drain"))
+        .timeout(Duration::from_secs(10))
+        .json(&json!({}))
+        .send()
+        .map_err(|err| format!("POST /memory/curation/drain failed: {err}"))?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "POST /memory/curation/drain returned {}",
+            response.status()
+        ))
+    }
 }
 
 pub fn submit_text_turn(client: &Client, base_url: &str, text: &str, session_id: Option<&str>) -> Result<String, String> {
@@ -423,7 +445,9 @@ fn kill_process_by_pid(pid: u32) {
 
 #[cfg(test)]
 mod tests {
-    use super::{python_path_for_host, BackendProcessManager, Client, Duration};
+    use super::python_path_for_host;
+    #[cfg(target_os = "linux")]
+    use super::{BackendProcessManager, Client, Duration};
     use std::path::Path;
 
     #[test]
@@ -440,6 +464,15 @@ mod tests {
             python_path_for_host(Path::new("/repo"), false),
             Path::new("/repo/backend/.venv/bin/python")
         );
+    }
+
+    #[test]
+    fn shutdown_requests_use_explicit_timeouts_and_post_drain() {
+        let source = include_str!("backend.rs");
+        assert!(source.contains(".timeout(Duration::from_secs(5))"));
+        assert!(source.contains(".timeout(Duration::from_secs(10))"));
+        assert!(source.contains(".post(format!(\"{base_url}/memory/curation/drain\"))"));
+        assert!(!source.contains(".get(format!(\"{base_url}/memory/curation/drain\"))"));
     }
 
     #[cfg(target_os = "linux")]

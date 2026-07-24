@@ -703,17 +703,21 @@ def test_curation_jobs_are_idempotent_claimable_and_restart_safe(
     tmp_path: Path,
 ) -> None:
     memory = SemanticMemory(tmp_path / "memory.sqlite")
+    memory.update_policy(automatic_curation_enabled=True, expected_revision=1)
     enqueued = memory.enqueue_curation_job(
         session_id="session-1",
         artifact_ref="sessions/session-1/session.json",
+        policy_revision=2,
     )
     duplicate = memory.enqueue_curation_job(
         session_id="session-1",
         artifact_ref="sessions/session-1/session.json",
+        policy_revision=2,
     )
     conflict = memory.enqueue_curation_job(
         session_id="session-1",
         artifact_ref="different.json",
+        policy_revision=2,
     )
     listed = memory.list_curation_jobs(max_attempts=3)
     claimed = memory.claim_curation_job(
@@ -742,9 +746,10 @@ def test_curation_jobs_are_idempotent_claimable_and_restart_safe(
         worker_id="worker-2",
         max_attempts=3,
         lease_seconds=30,
+        claimed_at="2099-01-01T00:01:01+00:00",
     )
     assert failed.value is not None
-    assert failed.value.status is CurationJobStatus.FAILED
+    assert failed.value.status is CurationJobStatus.RETRY_WAIT
     assert reclaimed.value is not None
     assert reclaimed.value.attempt_count == 2
     returned = memory.return_curation_job_to_pending(
@@ -753,7 +758,7 @@ def test_curation_jobs_are_idempotent_claimable_and_restart_safe(
         reason="shutdown",
     )
     assert returned.value is not None
-    assert returned.value.status is CurationJobStatus.PENDING
+    assert returned.value.status is CurationJobStatus.RETRY_WAIT
     exhausted = memory.claim_curation_job(
         worker_id="worker-3",
         max_attempts=2,
@@ -767,9 +772,11 @@ def test_curation_claim_is_atomic_and_reads_do_not_recover_stale_jobs(
     tmp_path: Path,
 ) -> None:
     memory = SemanticMemory(tmp_path / "memory.sqlite")
+    memory.update_policy(automatic_curation_enabled=True, expected_revision=1)
     memory.enqueue_curation_job(
         session_id="session-1",
         artifact_ref="sessions/session-1/session.json",
+        policy_revision=2,
     )
 
     def claim(worker: str) -> OperationStatus:
@@ -790,17 +797,19 @@ def test_curation_claim_is_atomic_and_reads_do_not_recover_stale_jobs(
     assert recovered.value == 1
     assert jobs_after.value is not None
     assert len(jobs_after.value) == 1
-    assert jobs_after.value[0].status is CurationJobStatus.PENDING
+    assert jobs_after.value[0].status is CurationJobStatus.RETRY_WAIT
 
 
 def test_curation_jobs_can_complete_and_cancel_with_owned_leases(
     tmp_path: Path,
 ) -> None:
     memory = SemanticMemory(tmp_path / "memory.sqlite")
+    memory.update_policy(automatic_curation_enabled=True, expected_revision=1)
     for session_id in ("session-a", "session-b"):
         memory.enqueue_curation_job(
             session_id=session_id,
             artifact_ref=f"sessions/{session_id}/session.json",
+            policy_revision=2,
         )
 
     first = memory.claim_curation_job(

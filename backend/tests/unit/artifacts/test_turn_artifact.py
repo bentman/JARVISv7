@@ -151,6 +151,8 @@ def test_session_schema_fields_unchanged():
         "timeline_path",
         "continuity_summary",
         "memory_curation_candidate",
+        "memory_curation_authorized_at",
+        "memory_curation_policy_revision",
     )
 
 

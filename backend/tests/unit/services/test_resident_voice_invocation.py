@@ -17,6 +17,7 @@ from backend.app.services.resident_voice_invocation import (
     ResidentVoiceInvocationService,
     resident_interruption_chunks,
 )
+from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.unit.services.test_session_service import _service
 
@@ -751,3 +752,24 @@ def test_ptt_empty_transcript_keeps_stt_failure_reason(tmp_path: Path) -> None:
     status = service.status()
     assert status.failure_reason == "STT returned empty transcript"
     assert status.invocation_source == "ptt"
+
+
+@pytest.mark.parametrize("source", ["ptt", "wake"])
+def test_no_speech_voice_paths_release_registered_llm_ticket(
+    tmp_path: Path,
+    source: str,
+) -> None:
+    coordinator = LLMExecutionCoordinator()
+    service = _service(tmp_path)
+    resident = ResidentVoiceInvocationService(
+        session_service=service,
+        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value]
+        audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
+        llm_coordinator=coordinator,
+    )
+
+    resident.enqueue(source, np.array([], dtype=np.float32), 16000)
+    _wait_for(lambda: service.status().state == "FAILED")
+
+    assert coordinator.snapshot()["interactive_waiters"] == 0
+    assert coordinator.snapshot()["interactive_active"] is False

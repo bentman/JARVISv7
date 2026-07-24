@@ -5,6 +5,8 @@ from pathlib import Path
 import numpy as np
 
 from backend.app.artifacts.turn_artifact import TurnArtifact
+from backend.app.artifacts.session_artifact import SessionArtifact
+from backend.app.memory.curation import OperationStatus, StoreResult
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -108,7 +110,11 @@ def _personality(profile_id: str = "default", display_name: str = "Morgan") -> P
     )
 
 
-def _service(tmp_path: Path, semantic_memory=None) -> SessionService:
+def _service(
+    tmp_path: Path,
+    semantic_memory=None,
+    memory_curation_service=None,
+) -> SessionService:
     manager = SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
 
     def factory(new_manager: SessionManager) -> TurnEngine:
@@ -121,7 +127,29 @@ def _service(tmp_path: Path, semantic_memory=None) -> SessionService:
         engine=_engine(manager),
         engine_factory=factory,
         semantic_memory=semantic_memory,
+        memory_curation_service=memory_curation_service,
     )
+
+
+class _RecordingCurationService:
+    def __init__(self, status: OperationStatus = OperationStatus.SUCCESS) -> None:
+        self.status = status
+        self.calls: list[dict[str, object]] = []
+
+    def enqueue_closed_session(self, **kwargs) -> StoreResult[None]:
+        artifact_path = Path(kwargs["artifact_path"])
+        artifact = SessionArtifact.from_json(artifact_path.read_text(encoding="utf-8"))
+        assert artifact.ended_at is not None
+        assert artifact.session_id == kwargs["session_id"]
+        assert artifact.memory_curation_candidate is True
+        assert artifact.memory_curation_authorized_at == kwargs["authorized_at"]
+        self.calls.append(kwargs)
+        return StoreResult(
+            self.status,
+            message="injected enqueue failure"
+            if self.status is OperationStatus.UNAVAILABLE
+            else None,
+        )
 
 
 def test_start_session_creates_active_session_id(tmp_path: Path) -> None:
@@ -283,6 +311,106 @@ def test_end_session_marks_service_inactive(tmp_path: Path) -> None:
     assert status.session_id is None
 
 
+def test_end_session_writes_authorized_artifact_before_enqueue(tmp_path: Path) -> None:
+    from backend.app.memory.semantic import SemanticMemory
+
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    memory.update_policy(automatic_curation_enabled=True, expected_revision=1)
+    curation = _RecordingCurationService()
+    service = _service(
+        tmp_path,
+        semantic_memory=memory,
+        memory_curation_service=curation,
+    )
+    session_id = service.status().session_id
+    assert session_id is not None
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-1",
+            session_id=session_id,
+            input_modality="text",
+            final_state="IDLE",
+            transcript="remember this",
+            response_text="acknowledged",
+        )
+    )
+
+    closed = service.end_session(session_id)
+
+    assert closed.closed is True
+    assert closed.curation_enqueued is True
+    assert closed.curation_enqueue_status == "success"
+    assert len(curation.calls) == 1
+    assert curation.calls[0]["policy_revision"] == 2
+
+
+def test_end_session_disabled_policy_does_not_enqueue(tmp_path: Path) -> None:
+    from backend.app.memory.semantic import SemanticMemory
+
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    curation = _RecordingCurationService()
+    service = _service(
+        tmp_path,
+        semantic_memory=memory,
+        memory_curation_service=curation,
+    )
+    session_id = service.status().session_id
+    assert session_id is not None
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-1",
+            session_id=session_id,
+            input_modality="text",
+            final_state="IDLE",
+            transcript="remember this",
+            response_text="acknowledged",
+        )
+    )
+
+    closed = service.end_session(session_id)
+    artifact = SessionArtifact.from_json(
+        closed.artifact_path.read_text(encoding="utf-8")
+    )
+
+    assert closed.curation_enqueued is False
+    assert closed.curation_enqueue_status == "not_authorized"
+    assert artifact.memory_curation_authorized_at is None
+    assert curation.calls == []
+
+
+def test_enqueue_failure_does_not_invalidate_closed_artifact(tmp_path: Path) -> None:
+    from backend.app.memory.semantic import SemanticMemory
+
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    memory.update_policy(automatic_curation_enabled=True, expected_revision=1)
+    curation = _RecordingCurationService(OperationStatus.UNAVAILABLE)
+    service = _service(
+        tmp_path,
+        semantic_memory=memory,
+        memory_curation_service=curation,
+    )
+    session_id = service.status().session_id
+    assert session_id is not None
+    service.session_manager.record_turn_artifact(
+        TurnArtifact(
+            turn_id="turn-1",
+            session_id=session_id,
+            input_modality="text",
+            final_state="IDLE",
+            transcript="remember this",
+            response_text="acknowledged",
+        )
+    )
+
+    closed = service.end_session(session_id)
+
+    assert closed.closed is True
+    assert closed.artifact_path.is_file()
+    assert closed.curation_enqueued is False
+    assert closed.curation_enqueue_status == "unavailable"
+    assert closed.curation_enqueue_error == "injected enqueue failure"
+
+
 def test_assert_active_session_accepts_matching_id(tmp_path: Path) -> None:
     service = _service(tmp_path)
     service.assert_active_session(service.status().session_id)
@@ -426,7 +554,9 @@ def test_start_and_stop_wake_monitor_updates_status_without_readiness_change(tmp
     assert stopped.reason == "wake monitoring stopped; manual PTT is active"
 
 
-def test_semantic_consolidation_governed_by_policy(tmp_path: Path) -> None:
+def test_legacy_semantic_consolidation_policy_no_longer_writes_on_close(
+    tmp_path: Path,
+) -> None:
     from backend.app.memory.semantic import SemanticMemory
     from backend.app.memory.write_policy import WritePolicy
 
@@ -477,14 +607,12 @@ def test_semantic_consolidation_governed_by_policy(tmp_path: Path) -> None:
         )
     )
 
-    # End session to trigger consolidation
+    # Close remains model-free; the old direct prose consolidation architecture is gone.
     service.end_session(session_id)
 
-    # Read entries back
+    # Production extraction/reconciliation is intentionally deferred.
     res = semantic.search_lexical("fox")
-    assert len(res) == 1
-    assert res[0].text == "The quick brown fox response text"
-    assert res[0].source_field == "response_text"
+    assert res == []
 
     # Verify that failed turn was skipped
     assert len(semantic.search_lexical("failed")) == 0
