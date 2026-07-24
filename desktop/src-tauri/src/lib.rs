@@ -1,6 +1,6 @@
 mod backend;
 
-use backend::{close_session, create_session, get_desktop_status as backend_desktop_status, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_resident_voice_status as backend_resident_voice_status, get_session_status as backend_session_status, get_wake_status as backend_wake_status, invoke_resident_ptt as backend_invoke_resident_ptt, select_personality as backend_select_personality, set_resident_voice_mode as backend_set_resident_voice_mode, set_resident_voice_tts_voice as backend_set_resident_voice_tts_voice, start_resident_voice_stream as backend_start_resident_voice_stream, start_wake_monitor as backend_start_wake_monitor, stop_resident_voice_stream as backend_stop_resident_voice_stream, stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn, toggle_wake_monitor as backend_toggle_wake_monitor, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
+use backend::{close_session, create_session, drain_memory_curation, get_desktop_status as backend_desktop_status, get_json, get_operator_config as backend_operator_config, get_personality_list as backend_personality_list, get_resident_voice_status as backend_resident_voice_status, get_session_status as backend_session_status, get_wake_status as backend_wake_status, invoke_resident_ptt as backend_invoke_resident_ptt, select_personality as backend_select_personality, set_resident_voice_mode as backend_set_resident_voice_mode, set_resident_voice_tts_voice as backend_set_resident_voice_tts_voice, start_resident_voice_stream as backend_start_resident_voice_stream, start_wake_monitor as backend_start_wake_monitor, stop_resident_voice_stream as backend_stop_resident_voice_stream, stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn, toggle_wake_monitor as backend_toggle_wake_monitor, wait_healthy, write_operator_config as backend_write_operator_config, BackendProcessManager};
 use reqwest::blocking::Client;
 use serde_json::{json, Value};
 use std::sync::{Arc, Mutex};
@@ -60,12 +60,39 @@ fn stop_backend(state: State<'_, DesktopState>) -> Result<(), String> {
         let mut active_session = state.session_id.lock().map_err(|_| "session lock poisoned".to_string())?;
         active_session.take()
     };
-    if let Some(session_id) = session {
-        let _ = close_session(&state.http_client, &base_url, &session_id);
-    }
-    let mut manager = state.backend.lock().map_err(|_| "backend manager lock poisoned".to_string())?;
-    manager.kill_backend();
-    Ok(())
+    run_shutdown_sequence(
+        || {
+            if let Some(session_id) = session {
+                close_session(&state.http_client, &base_url, &session_id)
+            } else {
+                Ok(())
+            }
+        },
+        || drain_memory_curation(&state.http_client, &base_url),
+        || {
+            let mut manager = state
+                .backend
+                .lock()
+                .map_err(|_| "backend manager lock poisoned".to_string())?;
+            manager.kill_backend();
+            Ok(())
+        },
+    )
+}
+
+fn run_shutdown_sequence<C, D, K>(
+    close: C,
+    drain: D,
+    kill: K,
+) -> Result<(), String>
+where
+    C: FnOnce() -> Result<(), String>,
+    D: FnOnce() -> Result<(), String>,
+    K: FnOnce() -> Result<(), String>,
+{
+    let _ = close();
+    let _ = drain();
+    kill()
 }
 
 #[tauri::command]
@@ -261,4 +288,33 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running JARVISv7 desktop host");
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::run_shutdown_sequence;
+    use std::cell::RefCell;
+
+    #[test]
+    fn stop_order_is_close_then_drain_then_kill_even_on_request_errors() {
+        let events = RefCell::new(Vec::new());
+
+        run_shutdown_sequence(
+            || {
+                events.borrow_mut().push("close");
+                Err("close timeout".to_string())
+            },
+            || {
+                events.borrow_mut().push("drain");
+                Err("drain timeout".to_string())
+            },
+            || {
+                events.borrow_mut().push("kill");
+                Ok(())
+            },
+        )
+        .expect("kill remains reachable");
+
+        assert_eq!(events.into_inner(), vec!["close", "drain", "kill"]);
+    }
 }

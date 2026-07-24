@@ -20,6 +20,24 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 14:56
+  - Host class(es): Windows AMD64
+  - Summary: Prevented FastAPI shutdown from stopping the managed LLM sidecar while an in-flight non-preemptible curation processor still owns the shared coordinator, and narrowed the curation API to the required POST drain bridge.
+  - Scope: `backend/app/api/app.py`, `backend/app/api/routes/memory_curation.py`, and focused API lifecycle/route tests; the #34 governed lifecycle and #36 curation-job schema were otherwise unchanged.
+  - Validation: Affected lifecycle, route, service, and #34 lifecycle tests PASS (`40 passed`); session tests PASS (`25 passed`); service tests PASS (`167 passed`); unit validator PASS (`807 passed, 5 skipped`); integration validator PASS (`9 passed`); profile and desktop static tests PASS.
+  - Notes: A Cargo check rerun was environment-blocked twice by transient Windows object-file locks (`os error 32`); the unchanged desktop diff had already passed Cargo check before this backend-only correction. No application packaging build was run.
+
+---
+
+- Timestamp: 2026-07-24 14:30
+  - Host class(es): Windows AMD64
+  - Summary: Added resumable deferred memory-curation execution with durable artifact-first enqueue, bounded shutdown drain, stale-claim recovery, and one shared interactive-priority LLM coordinator.
+  - Scope: Backend curation persistence/service/composition, session and turn coordination, curation status/drain routes, Tauri shutdown ordering/timeouts, and focused deterministic tests.
+  - Validation: Focused session tests PASS (`25 passed`); service tests PASS (`167 passed`); focused curation/coordinator/lifecycle tests PASS (`14 passed`); unit validator PASS (`807 passed, 5 skipped`); integration validator PASS (`9 passed`); live CUDA LLM/desktop runtime validator PASS (`3 passed, 46 deselected`); desktop static tests PASS; Cargo test PASS (`4 passed`) and Cargo check PASS.
+  - Notes: Production extraction, candidate parsing, reconciliation policy, automatic semantic writes, and memory management UI remain out of scope. Application packaging/build was not run per explicit operator direction.
+
+---
+
 - Timestamp: 2026-07-24 13:53
   - Host class(es): Windows AMD64
   - Summary: Merged approved PR #44, completing transactional governed semantic-memory lifecycle operations on `main`.

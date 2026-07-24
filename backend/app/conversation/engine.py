@@ -31,6 +31,10 @@ from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts import playback
 from backend.app.runtimes.tts.base import TTSBase
+from backend.app.services.llm_execution_coordinator import (
+    InteractiveTicket,
+    LLMExecutionCoordinator,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,6 +74,7 @@ class TurnEngine:
         episodic: EpisodicMemory | None = None,
         cache_manager: CacheManager | None = None,
         semantic: SemanticMemory | None = None,
+        llm_coordinator: LLMExecutionCoordinator | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -84,19 +89,26 @@ class TurnEngine:
         self.episodic = episodic
         self.cache_manager = cache_manager
         self.semantic = semantic
+        self.llm_coordinator = llm_coordinator
         self.retrieval = RetrievalManager()
         self.phase_observer: PhaseObserver | None = None
 
     def run_text_turn(self, text: str) -> TurnResult:
-        transcript = text.strip()
-        context = self._create_context("text")
-        if not transcript:
-            return self._fail(context, transcript=None, response_text=None, reason="text input is empty")
-        return self._run_reasoning_path(
-            context,
-            transcript,
-            speak_response=False,
-        )
+        ticket = self.llm_coordinator.register_interactive() if self.llm_coordinator else None
+        try:
+            transcript = text.strip()
+            context = self._create_context("text")
+            if not transcript:
+                return self._fail(context, transcript=None, response_text=None, reason="text input is empty")
+            return self._run_reasoning_path(
+                context,
+                transcript,
+                speak_response=False,
+                interactive_ticket=ticket,
+            )
+        finally:
+            if ticket is not None:
+                ticket.release()
 
     def run_voice_turn(
         self,
@@ -104,7 +116,11 @@ class TurnEngine:
         sample_rate: int,
         *,
         turn_runtime_context: dict[str, object] | None = None,
+        interactive_ticket: InteractiveTicket | None = None,
     ) -> TurnResult:
+        ticket = interactive_ticket
+        if ticket is None and self.llm_coordinator is not None:
+            ticket = self.llm_coordinator.register_interactive()
         context = self._create_context("voice")
         voice_turn_started_at = time.perf_counter()
         phase_durations_ms: dict[str, float] = {}
@@ -149,6 +165,7 @@ class TurnEngine:
                 raw_audio_path=raw_audio_path,
                 phase_durations_ms=phase_durations_ms,
                 voice_turn_started_at=voice_turn_started_at,
+                interactive_ticket=ticket,
             )
         except Exception as exc:
             return self._fail(
@@ -160,6 +177,9 @@ class TurnEngine:
                 phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
                 failure_phase=_failure_phase_for_state(context.state),
             )
+        finally:
+            if ticket is not None and interactive_ticket is None:
+                ticket.release()
 
     def _run_reasoning_path(
         self,
@@ -170,6 +190,7 @@ class TurnEngine:
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
+        interactive_ticket: InteractiveTicket | None = None,
     ) -> TurnResult:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         try:
@@ -214,7 +235,15 @@ class TurnEngine:
             prompt = render_flat_prompt(prompt_envelope)
             llm_started_at = time.perf_counter()
             try:
-                response = bound_single_turn_response(self.llm.generate_envelope(prompt_envelope))
+                if interactive_ticket is None:
+                    response = bound_single_turn_response(
+                        self.llm.generate_envelope(prompt_envelope)
+                    )
+                else:
+                    with interactive_ticket.execution():
+                        response = bound_single_turn_response(
+                            self.llm.generate_envelope(prompt_envelope)
+                        )
             finally:
                 if voice_turn_started_at is not None:
                     phase_durations_ms["llm_ms"] = _elapsed_ms(llm_started_at)

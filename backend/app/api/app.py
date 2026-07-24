@@ -40,6 +40,8 @@ from backend.app.services.utterance_segmenter import (
     UtteranceSegmenter,
 )
 from backend.app.services.wake_monitor import WakeMonitorService
+from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
+from backend.app.services.memory_curation_service import MemoryCurationService
 
 @dataclass(slots=True)
 class ApiState:
@@ -63,6 +65,8 @@ class ApiState:
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
     semantic_memory: SemanticMemory | None = None
+    llm_coordinator: LLMExecutionCoordinator | None = None
+    memory_curation_service: MemoryCurationService | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -77,6 +81,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         semantic=state.semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
+        llm_coordinator=state.llm_coordinator,
     )
 
 
@@ -107,6 +112,7 @@ def build_startup_state() -> ApiState:
     session_manager = SessionManager()
     cache_manager = CacheManager()
     semantic_memory = SemanticMemory()
+    llm_coordinator = LLMExecutionCoordinator()
     resident_audio_stream = ResidentAudioStream()
     utterance_segmenter = default_utterance_segmenter()
     wake_utterance_segmenter = replace(
@@ -124,18 +130,39 @@ def build_startup_state() -> ApiState:
         semantic=semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(resident_audio_stream),
+        llm_coordinator=llm_coordinator,
+    )
+    session_service: SessionService
+    memory_curation_service = MemoryCurationService(
+        semantic_memory=semantic_memory,
+        sessions_root=session_manager.sessions_base_dir,
+        turns_root=session_manager.turns_base_dir,
+        coordinator=llm_coordinator,
+        session_is_active=lambda: session_service.is_session_active(),
+        processor=None,
+        runtime_status=lambda: {
+            "ready": bool(llm.is_available()),
+            "runtime_name": type(llm).__name__,
+            "model_id": getattr(llm, "model", None)
+            or getattr(llm, "model_name", None),
+            "serve_profile_id": getattr(llm_trace, "serve_profile_id", None),
+            "accelerator": getattr(llm_trace, "accelerator", None),
+        },
     )
     session_service = SessionService(
         session_manager=session_manager,
         engine=engine,
         engine_factory=lambda manager: bind_session(state, manager),
         semantic_memory=semantic_memory,
+        memory_curation_service=memory_curation_service,
+        llm_coordinator=llm_coordinator,
     )
     resident_voice = ResidentVoiceInvocationService(
         session_service=session_service,
         engine_provider=lambda: session_service.engine(),
         resident_stream=resident_audio_stream,
         utterance_segmenter=utterance_segmenter,
+        llm_coordinator=llm_coordinator,
     )
     wake_monitor = WakeMonitorService(
         session_service=session_service,
@@ -149,6 +176,8 @@ def build_startup_state() -> ApiState:
         after_invocation=wake_monitor.resume_after_voice_invocation,
     )
     wake_monitor.warmup()
+    memory_curation_service.recover_and_reconcile()
+    memory_curation_service.start()
 
     state = ApiState(
         report=report,
@@ -171,6 +200,8 @@ def build_startup_state() -> ApiState:
         llm_trace=llm_trace,
         local_llm_sidecar=local_llm.sidecar,
         semantic_memory=semantic_memory,
+        llm_coordinator=llm_coordinator,
+        memory_curation_service=memory_curation_service,
     )
     return state
 
@@ -192,18 +223,43 @@ def stop_resident_audio_stream(state: ApiState | None) -> None:
     state.resident_audio_stream.stop()
 
 
+def stop_memory_curation(state: ApiState | None) -> None:
+    if state is None or state.memory_curation_service is None:
+        return
+    state.memory_curation_service.stop(timeout=1.0)
+
+
+def memory_curation_owns_llm(state: ApiState | None) -> bool:
+    coordinator = getattr(state, "llm_coordinator", None)
+    if coordinator is None:
+        return False
+    return bool(coordinator.snapshot()["background_active"])
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
         yield
     finally:
         state = getattr(app.state, "jarvis_state", None)
+        stop_memory_curation(state)
         stop_resident_audio_stream(state)
-        stop_managed_local_llm(state)
+        if not memory_curation_owns_llm(state):
+            stop_managed_local_llm(state)
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
-    from backend.app.api.routes import config, diagnostics, health, personality, readiness, session, status, task
+    from backend.app.api.routes import (
+        config,
+        diagnostics,
+        health,
+        memory_curation,
+        personality,
+        readiness,
+        session,
+        status,
+        task,
+    )
 
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1", lifespan=lifespan)
     install_state(app, startup_state or build_startup_state())
@@ -215,4 +271,5 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.include_router(diagnostics.router)
     app.include_router(status.router)
     app.include_router(config.router)
+    app.include_router(memory_curation.router)
     return app

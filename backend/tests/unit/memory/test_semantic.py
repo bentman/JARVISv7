@@ -850,20 +850,27 @@ def test_event_job_fact_revision_and_policy_constraints(tmp_path: Path) -> None:
         conn.execute(
             """
             INSERT INTO semantic_curation_job (
-                session_id, artifact_ref, status, attempt_count,
-                created_at, updated_at,
-                lease_token, lease_owner, lease_expires_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                job_id, session_id, session_artifact_path, policy_revision,
+                status, attempt_count, max_attempts, authorized_at,
+                enqueued_at, next_attempt_at, updated_at,
+                claim_token, boot_id, claimed_at, lease_expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
+                "job-1",
                 "session-1",
                 "sessions/session-1/session.json",
+                1,
                 "processing",
                 1,
+                3,
+                "2026-07-01T00:00:00+00:00",
+                "2026-07-01T00:00:00+00:00",
                 "2026-07-01T00:00:00+00:00",
                 "2026-07-01T00:01:00+00:00",
                 "lease-1",
                 "worker-1",
+                "2026-07-01T00:01:00+00:00",
                 "2026-07-01T00:05:00+00:00",
             ),
         )
@@ -871,27 +878,39 @@ def test_event_job_fact_revision_and_policy_constraints(tmp_path: Path) -> None:
             conn.execute(
                 """
                 INSERT INTO semantic_curation_job (
-                    session_id, artifact_ref, status, attempt_count,
-                    created_at, updated_at
-                ) VALUES ('bad-status', 'artifact', 'unknown', 0, 'now', 'now')
+                    job_id, session_id, session_artifact_path, policy_revision,
+                    status, attempt_count, max_attempts, authorized_at,
+                    enqueued_at, next_attempt_at, updated_at
+                ) VALUES (
+                    'bad-status-job', 'bad-status', 'artifact', 1,
+                    'unknown', 0, 3, 'now', 'now', 'now', 'now'
+                )
                 """
             )
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 """
                 INSERT INTO semantic_curation_job (
-                    session_id, artifact_ref, status, attempt_count,
-                    created_at, updated_at
-                ) VALUES ('bad-attempt', 'artifact', 'pending', -1, 'now', 'now')
+                    job_id, session_id, session_artifact_path, policy_revision,
+                    status, attempt_count, max_attempts, authorized_at,
+                    enqueued_at, next_attempt_at, updated_at
+                ) VALUES (
+                    'bad-attempt-job', 'bad-attempt', 'artifact', 1,
+                    'pending', -1, 3, 'now', 'now', 'now', 'now'
+                )
                 """
             )
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 """
                 INSERT INTO semantic_curation_job (
-                    session_id, artifact_ref, status, attempt_count,
-                    created_at, updated_at, lease_token
-                ) VALUES ('bad-lease', 'artifact', 'processing', 1, 'now', 'now', 'lease')
+                    job_id, session_id, session_artifact_path, policy_revision,
+                    status, attempt_count, max_attempts, authorized_at,
+                    enqueued_at, next_attempt_at, updated_at, claim_token
+                ) VALUES (
+                    'bad-lease-job', 'bad-lease', 'artifact', 1,
+                    'processing', 1, 3, 'now', 'now', 'now', 'now', 'lease'
+                )
                 """
             )
         with pytest.raises(sqlite3.IntegrityError):

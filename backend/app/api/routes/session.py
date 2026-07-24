@@ -21,7 +21,10 @@ def create_session(
     request: CreateSessionRequest,
     session_service: SessionService = Depends(get_session_service),
 ) -> CreateSessionResponse:
-    status = session_service.start_session(request.client_id)
+    try:
+        status = session_service.start_session(request.client_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     return CreateSessionResponse(
         session_id=status.session_id or "",
         state=status.state,
@@ -42,6 +45,9 @@ def close_session(
         session_id=result.session_id,
         closed=result.closed,
         artifact_path=str(result.artifact_path),
+        curation_enqueued=result.curation_enqueued,
+        curation_enqueue_status=result.curation_enqueue_status,
+        curation_enqueue_error=result.curation_enqueue_error,
     )
 
 

@@ -14,6 +14,7 @@ from backend.app.conversation.realtime.response_queue import RealtimeResponseQue
 from backend.app.conversation.realtime.turn_taking import has_committable_audio
 from backend.app.conversation.states import ConversationState
 from backend.app.services.session_service import SessionService
+from backend.app.services.llm_execution_coordinator import InteractiveTicket
 
 
 class AudioCapture(Protocol):
@@ -59,6 +60,7 @@ class RealtimeConversationSession:
         audio: np.ndarray | None = None,
         sample_rate: int | None = None,
         capture_diagnostics: dict[str, object] | None = None,
+        interactive_ticket: InteractiveTicket | None = None,
     ) -> TurnResult:
         source = source.strip().lower() or "voice"
         self.ledger.append(RealtimeEventType.SESSION_ACTIVE, source=source, state=ConversationState.IDLE)
@@ -98,6 +100,7 @@ class RealtimeConversationSession:
                 sample_rate,
                 source=source,
                 capture_diagnostics=capture_diagnostics,
+                interactive_ticket=interactive_ticket,
             )
             if source == "wake" and result.failure_reason == EMPTY_TRANSCRIPT_REASON:
                 result = replace(result, failure_reason=WAKE_NO_SPEECH_REASON)
@@ -168,6 +171,7 @@ class RealtimeConversationSession:
         *,
         source: str,
         capture_diagnostics: dict[str, object] | None,
+        interactive_ticket: InteractiveTicket | None,
     ) -> TurnResult:
         engine = self._engine_provider()
         previous_observer = getattr(engine, "phase_observer", None)
@@ -176,10 +180,17 @@ class RealtimeConversationSession:
         if source == "wake" and capture_diagnostics is not None:
             turn_runtime_context["wake_capture_diagnostics"] = dict(capture_diagnostics)
         try:
+            if interactive_ticket is None:
+                return engine.run_voice_turn(
+                    audio,
+                    sample_rate,
+                    turn_runtime_context=turn_runtime_context,
+                )
             return engine.run_voice_turn(
                 audio,
                 sample_rate,
                 turn_runtime_context=turn_runtime_context,
+                interactive_ticket=interactive_ticket,
             )
         finally:
             setattr(engine, "phase_observer", previous_observer)

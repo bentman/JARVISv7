@@ -42,7 +42,7 @@ from backend.app.memory.curation import (
 )
 from backend.app.memory.curation_contract import GovernedMemoryKind, validate_claim_key
 
-SEMANTIC_SCHEMA_VERSION = 1
+SEMANTIC_SCHEMA_VERSION = 2
 EVIDENCE_AUTHORITIES = (
     "direct_user_statement",
     "direct_user_action",
@@ -59,7 +59,14 @@ LIFECYCLE_STATES = (
     "expired",
     "forgotten",
 )
-CURATION_JOB_STATUSES = ("pending", "processing", "completed", "failed", "cancelled")
+CURATION_JOB_STATUSES = (
+    "pending",
+    "processing",
+    "retry_wait",
+    "succeeded",
+    "failed",
+    "cancelled",
+)
 _WRITE_BUSY_RETRIES = 3
 _WRITE_BUSY_TIMEOUT_MS = 250
 _WRITE_BUSY_BACKOFF_SECONDS = 0.02
@@ -224,6 +231,15 @@ class SemanticMemory:
                         self._create_latest_schema(conn)
                     else:
                         self._migrate_legacy_to_v1(conn)
+                    conn.execute(f"PRAGMA user_version = {SEMANTIC_SCHEMA_VERSION}")
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+            elif version == 1:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    self._migrate_curation_jobs_to_v2(conn)
                     conn.execute(f"PRAGMA user_version = {SEMANTIC_SCHEMA_VERSION}")
                     conn.commit()
                 except Exception:
@@ -489,34 +505,7 @@ class SemanticMemory:
             )
             """
         )
-        conn.execute(
-            """
-            CREATE TABLE semantic_curation_job (
-                session_id TEXT PRIMARY KEY CHECK (length(session_id) > 0),
-                artifact_ref TEXT NOT NULL CHECK (length(artifact_ref) > 0),
-                status TEXT NOT NULL DEFAULT 'pending'
-                    CHECK (status IN (
-                        'pending', 'processing', 'completed', 'failed', 'cancelled'
-                    )),
-                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
-                created_at TEXT NOT NULL,
-                started_at TEXT,
-                updated_at TEXT NOT NULL,
-                last_attempt_at TEXT,
-                last_error TEXT,
-                last_reason TEXT,
-                lease_token TEXT,
-                lease_owner TEXT,
-                lease_expires_at TEXT,
-                CHECK (
-                    (lease_token IS NULL AND lease_owner IS NULL AND lease_expires_at IS NULL)
-                    OR
-                    (lease_token IS NOT NULL AND lease_owner IS NOT NULL
-                     AND lease_expires_at IS NOT NULL)
-                )
-            )
-            """
-        )
+        self._create_curation_job_v2(conn)
         conn.execute(
             """
             CREATE TABLE semantic_policy (
@@ -591,6 +580,123 @@ class SemanticMemory:
                 END
                 """
             )
+
+    @staticmethod
+    def _create_curation_job_v2(
+        conn: sqlite3.Connection,
+        *,
+        table_name: str = "semantic_curation_job",
+    ) -> None:
+        conn.execute(
+            f"""
+            CREATE TABLE {table_name} (
+                job_id TEXT NOT NULL UNIQUE CHECK (length(job_id) > 0),
+                session_id TEXT PRIMARY KEY CHECK (length(session_id) > 0),
+                session_artifact_path TEXT NOT NULL
+                    CHECK (length(session_artifact_path) > 0),
+                policy_revision INTEGER NOT NULL CHECK (policy_revision >= 1),
+                status TEXT NOT NULL DEFAULT 'pending'
+                    CHECK (status IN (
+                        'pending', 'processing', 'retry_wait',
+                        'succeeded', 'failed', 'cancelled'
+                    )),
+                attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+                max_attempts INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts = 3),
+                authorized_at TEXT NOT NULL,
+                enqueued_at TEXT NOT NULL,
+                next_attempt_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                boot_id TEXT,
+                claim_token TEXT,
+                claimed_at TEXT,
+                lease_expires_at TEXT,
+                generation_started_at TEXT,
+                generation_finished_at TEXT,
+                generation_duration_ms REAL,
+                persisted_at TEXT,
+                completed_at TEXT,
+                cancel_requested_at TEXT,
+                cancelled_at TEXT,
+                cancel_reason TEXT,
+                last_error_code TEXT,
+                last_error_detail TEXT,
+                last_error_at TEXT,
+                blocked_reason TEXT,
+                last_result_reason TEXT,
+                runtime_name TEXT,
+                model_id TEXT,
+                serve_profile_id TEXT,
+                accelerator TEXT,
+                CHECK (
+                    (claim_token IS NULL AND boot_id IS NULL
+                     AND claimed_at IS NULL AND lease_expires_at IS NULL)
+                    OR
+                    (claim_token IS NOT NULL AND boot_id IS NOT NULL
+                     AND claimed_at IS NOT NULL AND lease_expires_at IS NOT NULL)
+                )
+            )
+            """
+        )
+        conn.execute(
+            f"""
+            CREATE INDEX idx_{table_name}_due
+            ON {table_name}(status, next_attempt_at, enqueued_at, job_id)
+            """
+        )
+
+    def _migrate_curation_jobs_to_v2(self, conn: sqlite3.Connection) -> None:
+        self._create_curation_job_v2(
+            conn,
+            table_name="semantic_curation_job_v2",
+        )
+        rows = conn.execute(
+            "SELECT * FROM semantic_curation_job ORDER BY created_at, session_id"
+        ).fetchall()
+        for row in rows:
+            old_status = cast(str, row["status"])
+            attempts = int(row["attempt_count"])
+            status = {
+                "completed": "succeeded",
+                "failed": "retry_wait" if attempts < 3 else "failed",
+            }.get(old_status, old_status)
+            enqueued_at = cast(str, row["created_at"])
+            conn.execute(
+                """
+                INSERT INTO semantic_curation_job_v2 (
+                    job_id, session_id, session_artifact_path, policy_revision,
+                    status, attempt_count, max_attempts, authorized_at,
+                    enqueued_at, next_attempt_at, updated_at,
+                    boot_id, claim_token, claimed_at, lease_expires_at,
+                    completed_at, cancelled_at, cancel_reason,
+                    last_error_code, last_error_detail, last_error_at
+                ) VALUES (?, ?, ?, 1, ?, ?, 3, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    uuid.uuid5(uuid.NAMESPACE_URL, f"jarvis-curation:{row['session_id']}").hex,
+                    row["session_id"],
+                    row["artifact_ref"],
+                    status,
+                    attempts,
+                    enqueued_at,
+                    enqueued_at,
+                    row["updated_at"],
+                    row["updated_at"],
+                    row["lease_owner"],
+                    row["lease_token"],
+                    row["last_attempt_at"],
+                    row["lease_expires_at"],
+                    row["updated_at"] if status == "succeeded" else None,
+                    row["updated_at"] if status == "cancelled" else None,
+                    row["last_reason"] if status == "cancelled" else None,
+                    row["last_reason"] if status in {"retry_wait", "failed"} else None,
+                    row["last_error"],
+                    row["updated_at"] if row["last_error"] else None,
+                ),
+            )
+        conn.execute("DROP TABLE semantic_curation_job")
+        conn.execute(
+            "ALTER TABLE semantic_curation_job_v2 RENAME TO semantic_curation_job"
+        )
 
     def _create_fts_if_available(
         self,
@@ -783,19 +889,38 @@ class SemanticMemory:
     @staticmethod
     def _job_record(row: sqlite3.Row) -> CurationJob:
         return CurationJob(
+            job_id=cast(str, row["job_id"]),
             session_id=cast(str, row["session_id"]),
-            artifact_ref=cast(str, row["artifact_ref"]),
+            session_artifact_path=cast(str, row["session_artifact_path"]),
+            policy_revision=int(row["policy_revision"]),
             status=CurationJobStatus(cast(str, row["status"])),
             attempt_count=int(row["attempt_count"]),
-            created_at=cast(str, row["created_at"]),
-            started_at=cast(str | None, row["started_at"]),
+            max_attempts=int(row["max_attempts"]),
+            authorized_at=cast(str, row["authorized_at"]),
+            enqueued_at=cast(str, row["enqueued_at"]),
+            next_attempt_at=cast(str, row["next_attempt_at"]),
             updated_at=cast(str, row["updated_at"]),
-            last_attempt_at=cast(str | None, row["last_attempt_at"]),
-            last_error=cast(str | None, row["last_error"]),
-            last_reason=cast(str | None, row["last_reason"]),
-            lease_token=cast(str | None, row["lease_token"]),
-            lease_owner=cast(str | None, row["lease_owner"]),
+            boot_id=cast(str | None, row["boot_id"]),
+            claim_token=cast(str | None, row["claim_token"]),
+            claimed_at=cast(str | None, row["claimed_at"]),
             lease_expires_at=cast(str | None, row["lease_expires_at"]),
+            generation_started_at=cast(str | None, row["generation_started_at"]),
+            generation_finished_at=cast(str | None, row["generation_finished_at"]),
+            generation_duration_ms=cast(float | None, row["generation_duration_ms"]),
+            persisted_at=cast(str | None, row["persisted_at"]),
+            completed_at=cast(str | None, row["completed_at"]),
+            cancel_requested_at=cast(str | None, row["cancel_requested_at"]),
+            cancelled_at=cast(str | None, row["cancelled_at"]),
+            cancel_reason=cast(str | None, row["cancel_reason"]),
+            last_error_code=cast(str | None, row["last_error_code"]),
+            last_error_detail=cast(str | None, row["last_error_detail"]),
+            last_error_at=cast(str | None, row["last_error_at"]),
+            blocked_reason=cast(str | None, row["blocked_reason"]),
+            last_result_reason=cast(str | None, row["last_result_reason"]),
+            runtime_name=cast(str | None, row["runtime_name"]),
+            model_id=cast(str | None, row["model_id"]),
+            serve_profile_id=cast(str | None, row["serve_profile_id"]),
+            accelerator=cast(str | None, row["accelerator"]),
         )
 
     @staticmethod
@@ -2102,6 +2227,28 @@ class SemanticMemory:
             )
             if cursor.rowcount != 1:
                 raise _StoreConflictError("policy revision changed during update")
+            if not automatic_curation_enabled:
+                conn.execute(
+                    """
+                    UPDATE semantic_curation_job
+                    SET status = 'cancelled',
+                        updated_at = ?,
+                        cancelled_at = ?,
+                        cancel_reason = 'policy_disabled',
+                        blocked_reason = NULL
+                    WHERE status IN ('pending', 'retry_wait')
+                    """,
+                    (now, now),
+                )
+                conn.execute(
+                    """
+                    UPDATE semantic_curation_job
+                    SET cancel_requested_at = ?,
+                        updated_at = ?
+                    WHERE status = 'processing'
+                    """,
+                    (now, now),
+                )
             updated = conn.execute(
                 "SELECT * FROM semantic_policy WHERE singleton_id = 1"
             ).fetchone()
@@ -2121,9 +2268,14 @@ class SemanticMemory:
         *,
         session_id: str,
         artifact_ref: str,
+        policy_revision: int = 1,
+        authorized_at: str | None = None,
     ) -> StoreResult[CurationJob]:
         try:
             validate_job_identity(session_id, artifact_ref)
+            self._validate_expected_revision(policy_revision)
+            authorized_at = authorized_at or _iso_now()
+            require_timestamp(authorized_at, "authorized_at")
         except CurationValidationError as exc:
             return StoreResult(OperationStatus.INVALID, message=str(exc))
 
@@ -2133,22 +2285,50 @@ class SemanticMemory:
                 (session_id,),
             ).fetchone()
             if existing is not None:
-                if existing["artifact_ref"] != artifact_ref:
+                if (
+                    existing["session_artifact_path"] != artifact_ref
+                    or int(existing["policy_revision"]) != policy_revision
+                ):
                     return StoreResult(
                         OperationStatus.CONFLICT,
-                        message="session is already queued with a different artifact",
+                        message="session is already queued with different authorization",
                     )
                 return StoreResult(OperationStatus.NO_CHANGE, self._job_record(existing))
             now = _iso_now()
+            policy = conn.execute(
+                """
+                SELECT automatic_curation_enabled, revision
+                FROM semantic_policy WHERE singleton_id = 1
+                """
+            ).fetchone()
+            authorized = (
+                policy is not None
+                and bool(policy["automatic_curation_enabled"])
+                and int(policy["revision"]) == policy_revision
+            )
+            initial_status = "pending" if authorized else "cancelled"
             conn.execute(
                 """
                 INSERT INTO semantic_curation_job (
-                    session_id, artifact_ref, status, attempt_count,
-                    created_at, started_at, updated_at, last_attempt_at,
-                    last_error, last_reason, lease_token, lease_owner, lease_expires_at
-                ) VALUES (?, ?, 'pending', 0, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, NULL)
+                    job_id, session_id, session_artifact_path, policy_revision,
+                    status, attempt_count, max_attempts, authorized_at,
+                    enqueued_at, next_attempt_at, updated_at,
+                    cancelled_at, cancel_reason
+                ) VALUES (?, ?, ?, ?, ?, 0, 3, ?, ?, ?, ?, ?, ?)
                 """,
-                (session_id, artifact_ref, now, now),
+                (
+                    uuid.uuid5(uuid.NAMESPACE_URL, f"jarvis-curation:{session_id}").hex,
+                    session_id,
+                    artifact_ref,
+                    policy_revision,
+                    initial_status,
+                    authorized_at,
+                    now,
+                    now,
+                    now,
+                    None if authorized else now,
+                    None if authorized else "policy_revision_changed",
+                ),
             )
             row = conn.execute(
                 "SELECT * FROM semantic_curation_job WHERE session_id = ?",
@@ -2161,8 +2341,9 @@ class SemanticMemory:
     def list_curation_jobs(
         self,
         *,
-        max_attempts: int,
+        max_attempts: int = 3,
         limit: int = 50,
+        include_terminal: bool = False,
     ) -> StoreResult[tuple[CurationJob, ...]]:
         try:
             validate_list_limit(limit)
@@ -2178,16 +2359,18 @@ class SemanticMemory:
             return StoreResult(OperationStatus.UNAVAILABLE, message=self.schema_error)
         try:
             with self._get_conn() as conn:
+                statuses = (
+                    "('pending', 'retry_wait', 'processing', 'succeeded', 'failed', 'cancelled')"
+                    if include_terminal
+                    else "('pending', 'retry_wait')"
+                )
                 rows = conn.execute(
-                    """
+                    f"""
                     SELECT *
                     FROM semantic_curation_job
-                    WHERE status IN ('pending', 'failed')
+                    WHERE status IN {statuses}
                       AND attempt_count < ?
-                    ORDER BY
-                        CASE status WHEN 'pending' THEN 0 ELSE 1 END,
-                        updated_at ASC,
-                        session_id ASC
+                    ORDER BY next_attempt_at, enqueued_at, job_id
                     LIMIT ?
                     """,
                     (max_attempts, limit),
@@ -2205,9 +2388,13 @@ class SemanticMemory:
         worker_id: str,
         max_attempts: int,
         lease_seconds: int,
+        boot_id: str | None = None,
+        claimed_at: str | None = None,
     ) -> StoreResult[CurationJob]:
         try:
             validate_worker_identity(worker_id)
+            boot_id = boot_id or worker_id
+            validate_worker_identity(boot_id)
             if (
                 isinstance(max_attempts, bool)
                 or not isinstance(max_attempts, int)
@@ -2220,53 +2407,56 @@ class SemanticMemory:
                 or not 1 <= lease_seconds <= 86_400
             ):
                 raise CurationValidationError("lease_seconds must be between 1 and 86400")
+            if claimed_at is not None:
+                require_timestamp(claimed_at, "claimed_at")
         except CurationValidationError as exc:
             return StoreResult(OperationStatus.INVALID, message=str(exc))
 
         def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            now_dt = (
+                datetime.fromisoformat(claimed_at).astimezone(UTC)
+                if claimed_at is not None
+                else datetime.now(UTC)
+            )
+            now = now_dt.isoformat()
             row = conn.execute(
                 """
                 SELECT *
                 FROM semantic_curation_job
-                WHERE status IN ('pending', 'failed')
+                WHERE status IN ('pending', 'retry_wait')
                   AND attempt_count < ?
-                ORDER BY
-                    CASE status WHEN 'pending' THEN 0 ELSE 1 END,
-                    updated_at ASC,
-                    session_id ASC
+                  AND next_attempt_at <= ?
+                ORDER BY next_attempt_at, enqueued_at, job_id
                 LIMIT 1
                 """,
-                (max_attempts,),
+                (max_attempts, now),
             ).fetchone()
             if row is None:
                 return StoreResult(OperationStatus.NOT_FOUND)
-            now_dt = datetime.now(UTC)
-            now = now_dt.isoformat()
-            lease_token = uuid.uuid4().hex
+            claim_token = uuid.uuid4().hex
             lease_expires_at = (now_dt + timedelta(seconds=lease_seconds)).isoformat()
             cursor = conn.execute(
                 """
                 UPDATE semantic_curation_job
                 SET status = 'processing',
                     attempt_count = attempt_count + 1,
-                    started_at = COALESCE(started_at, ?),
                     updated_at = ?,
-                    last_attempt_at = ?,
-                    last_error = NULL,
-                    last_reason = 'claimed',
-                    lease_token = ?,
-                    lease_owner = ?,
-                    lease_expires_at = ?
+                    boot_id = ?,
+                    claim_token = ?,
+                    claimed_at = ?,
+                    lease_expires_at = ?,
+                    blocked_reason = NULL,
+                    last_error_code = NULL,
+                    last_error_detail = NULL
                 WHERE session_id = ?
-                  AND status IN ('pending', 'failed')
+                  AND status IN ('pending', 'retry_wait')
                   AND attempt_count < ?
                 """,
                 (
                     now,
+                    boot_id,
+                    claim_token,
                     now,
-                    now,
-                    lease_token,
-                    worker_id,
                     lease_expires_at,
                     row["session_id"],
                     max_attempts,
@@ -2282,73 +2472,78 @@ class SemanticMemory:
 
         return cast(StoreResult[CurationJob], self._run_write(operation))
 
-    def _finish_curation_job(
+    def read_curation_job(self, session_id: str) -> StoreResult[CurationJob]:
+        try:
+            validate_job_identity(session_id)
+            with self._get_conn() as conn:
+                row = conn.execute(
+                    "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                    (session_id,),
+                ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(row))
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+        except Exception as exc:
+            return StoreResult(OperationStatus.UNAVAILABLE, message=str(exc))
+
+    def record_curation_generation_started(
         self,
         *,
         session_id: str,
         lease_token: str,
-        status: CurationJobStatus,
-        reason: str,
-        error: str | None,
+        boot_id: str,
+        runtime_name: str | None = None,
+        model_id: str | None = None,
+        serve_profile_id: str | None = None,
+        accelerator: str | None = None,
     ) -> StoreResult[CurationJob]:
         try:
             validate_job_identity(session_id)
             validate_worker_identity(lease_token)
-            validate_reason(reason)
-            validate_error(error)
-            if status not in {
-                CurationJobStatus.COMPLETED,
-                CurationJobStatus.FAILED,
-                CurationJobStatus.CANCELLED,
-                CurationJobStatus.PENDING,
-            }:
-                raise CurationValidationError("unsupported job completion status")
-            if status is CurationJobStatus.FAILED and not error:
-                raise CurationValidationError("failed jobs require bounded error evidence")
+            validate_worker_identity(boot_id)
+            for label, value in (
+                ("runtime_name", runtime_name),
+                ("model_id", model_id),
+                ("serve_profile_id", serve_profile_id),
+                ("accelerator", accelerator),
+            ):
+                if value is not None:
+                    validate_reason(value, label)
         except CurationValidationError as exc:
             return StoreResult(OperationStatus.INVALID, message=str(exc))
 
         def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
-            row = conn.execute(
-                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
-                (session_id,),
-            ).fetchone()
-            if row is None:
-                return StoreResult(OperationStatus.NOT_FOUND)
-            if row["status"] != CurationJobStatus.PROCESSING.value:
-                return StoreResult(
-                    OperationStatus.CONFLICT,
-                    message="job is not processing",
-                )
-            if row["lease_token"] != lease_token:
-                return StoreResult(
-                    OperationStatus.CONFLICT,
-                    message="job lease does not match",
-                )
             now = _iso_now()
-            conn.execute(
+            cursor = conn.execute(
                 """
                 UPDATE semantic_curation_job
-                SET status = ?,
+                SET generation_started_at = ?,
                     updated_at = ?,
-                    last_error = ?,
-                    last_reason = ?,
-                    lease_token = NULL,
-                    lease_owner = NULL,
-                    lease_expires_at = NULL
+                    runtime_name = ?,
+                    model_id = ?,
+                    serve_profile_id = ?,
+                    accelerator = ?
                 WHERE session_id = ?
                   AND status = 'processing'
-                  AND lease_token = ?
+                  AND claim_token = ?
+                  AND boot_id = ?
                 """,
                 (
-                    status.value,
                     now,
-                    error,
-                    reason,
+                    now,
+                    runtime_name,
+                    model_id,
+                    serve_profile_id,
+                    accelerator,
                     session_id,
                     lease_token,
+                    boot_id,
                 ),
             )
+            if cursor.rowcount != 1:
+                return StoreResult(OperationStatus.CONFLICT, message="job claim is stale")
             updated = conn.execute(
                 "SELECT * FROM semantic_curation_job WHERE session_id = ?",
                 (session_id,),
@@ -2362,15 +2557,91 @@ class SemanticMemory:
         *,
         session_id: str,
         lease_token: str,
-        reason: str = "completed",
+        reason: str = "succeeded",
+        boot_id: str | None = None,
+        generation_duration_ms: float | None = None,
     ) -> StoreResult[CurationJob]:
-        return self._finish_curation_job(
-            session_id=session_id,
-            lease_token=lease_token,
-            status=CurationJobStatus.COMPLETED,
-            reason=reason,
-            error=None,
-        )
+        try:
+            validate_job_identity(session_id)
+            validate_worker_identity(lease_token)
+            validate_reason(reason)
+            if boot_id is not None:
+                validate_worker_identity(boot_id)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            row = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            expected_boot = boot_id or cast(str | None, row["boot_id"])
+            if (
+                row["status"] != "processing"
+                or row["claim_token"] != lease_token
+                or row["boot_id"] != expected_boot
+            ):
+                return StoreResult(OperationStatus.CONFLICT, message="job claim is stale")
+            policy = conn.execute(
+                "SELECT automatic_curation_enabled, revision FROM semantic_policy WHERE singleton_id = 1"
+            ).fetchone()
+            now = _iso_now()
+            cancelled = (
+                policy is None
+                or not bool(policy["automatic_curation_enabled"])
+                or int(policy["revision"]) != int(row["policy_revision"])
+                or row["cancel_requested_at"] is not None
+            )
+            status = "cancelled" if cancelled else "succeeded"
+            cursor = conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET status = ?,
+                    updated_at = ?,
+                    generation_finished_at = ?,
+                    generation_duration_ms = ?,
+                    persisted_at = CASE WHEN ? = 'succeeded' THEN ? ELSE NULL END,
+                    completed_at = CASE WHEN ? = 'succeeded' THEN ? ELSE NULL END,
+                    cancelled_at = CASE WHEN ? = 'cancelled' THEN ? ELSE cancelled_at END,
+                    cancel_reason = CASE WHEN ? = 'cancelled' THEN 'policy_revision_changed'
+                                         ELSE cancel_reason END,
+                    last_result_reason = ?,
+                    boot_id = NULL,
+                    claim_token = NULL,
+                    claimed_at = NULL,
+                    lease_expires_at = NULL
+                WHERE session_id = ? AND status = 'processing'
+                  AND claim_token = ? AND boot_id = ?
+                """,
+                (
+                    status,
+                    now,
+                    now,
+                    generation_duration_ms,
+                    status,
+                    now,
+                    status,
+                    now,
+                    status,
+                    now,
+                    status,
+                    reason,
+                    session_id,
+                    lease_token,
+                    expected_boot,
+                ),
+            )
+            if cursor.rowcount != 1:
+                return StoreResult(OperationStatus.CONFLICT, message="job claim is stale")
+            updated = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(updated))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
 
     def fail_curation_job(
         self,
@@ -2379,14 +2650,78 @@ class SemanticMemory:
         lease_token: str,
         reason: str,
         error: str,
+        boot_id: str | None = None,
+        retryable: bool = True,
     ) -> StoreResult[CurationJob]:
-        return self._finish_curation_job(
-            session_id=session_id,
-            lease_token=lease_token,
-            status=CurationJobStatus.FAILED,
-            reason=reason,
-            error=error,
-        )
+        try:
+            validate_job_identity(session_id)
+            validate_worker_identity(lease_token)
+            validate_reason(reason)
+            validate_error(error)
+            if boot_id is not None:
+                validate_worker_identity(boot_id)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            row = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            expected_boot = boot_id or cast(str | None, row["boot_id"])
+            if (
+                row["status"] != "processing"
+                or row["claim_token"] != lease_token
+                or row["boot_id"] != expected_boot
+            ):
+                return StoreResult(OperationStatus.CONFLICT, message="job claim is stale")
+            attempts = int(row["attempt_count"])
+            terminal = not retryable or attempts >= int(row["max_attempts"])
+            now_dt = datetime.now(UTC)
+            delay = 60 if attempts == 1 else 300
+            next_attempt_at = (
+                now_dt if terminal else now_dt + timedelta(seconds=delay)
+            ).isoformat()
+            status = "failed" if terminal else "retry_wait"
+            conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET status = ?,
+                    next_attempt_at = ?,
+                    updated_at = ?,
+                    generation_finished_at = ?,
+                    last_error_code = ?,
+                    last_error_detail = ?,
+                    last_error_at = ?,
+                    boot_id = NULL,
+                    claim_token = NULL,
+                    claimed_at = NULL,
+                    lease_expires_at = NULL
+                WHERE session_id = ? AND status = 'processing'
+                  AND claim_token = ? AND boot_id = ?
+                """,
+                (
+                    status,
+                    next_attempt_at,
+                    now_dt.isoformat(),
+                    now_dt.isoformat(),
+                    reason,
+                    error,
+                    now_dt.isoformat(),
+                    session_id,
+                    lease_token,
+                    expected_boot,
+                ),
+            )
+            updated = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(updated))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
 
     def cancel_curation_job(
         self,
@@ -2394,14 +2729,44 @@ class SemanticMemory:
         session_id: str,
         lease_token: str,
         reason: str,
+        boot_id: str | None = None,
     ) -> StoreResult[CurationJob]:
-        return self._finish_curation_job(
-            session_id=session_id,
-            lease_token=lease_token,
-            status=CurationJobStatus.CANCELLED,
-            reason=reason,
-            error=None,
-        )
+        try:
+            validate_job_identity(session_id)
+            validate_worker_identity(lease_token)
+            validate_reason(reason)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            row = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            if row is None:
+                return StoreResult(OperationStatus.NOT_FOUND)
+            expected_boot = boot_id or cast(str | None, row["boot_id"])
+            now = _iso_now()
+            cursor = conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET status = 'cancelled', updated_at = ?, cancelled_at = ?,
+                    cancel_reason = ?, boot_id = NULL, claim_token = NULL,
+                    claimed_at = NULL, lease_expires_at = NULL
+                WHERE session_id = ? AND status = 'processing'
+                  AND claim_token = ? AND boot_id = ?
+                """,
+                (now, now, reason, session_id, lease_token, expected_boot),
+            )
+            if cursor.rowcount != 1:
+                return StoreResult(OperationStatus.CONFLICT, message="job claim is stale")
+            updated = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(updated))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
 
     def return_curation_job_to_pending(
         self,
@@ -2410,46 +2775,128 @@ class SemanticMemory:
         lease_token: str,
         reason: str,
         error: str | None = None,
+        boot_id: str | None = None,
     ) -> StoreResult[CurationJob]:
-        return self._finish_curation_job(
+        return self.fail_curation_job(
             session_id=session_id,
             lease_token=lease_token,
-            status=CurationJobStatus.PENDING,
             reason=reason,
-            error=error,
+            error=error or reason,
+            boot_id=boot_id,
+            retryable=True,
         )
+
+    def mark_curation_job_blocked(
+        self,
+        *,
+        session_id: str,
+        reason: str,
+    ) -> StoreResult[CurationJob]:
+        try:
+            validate_job_identity(session_id)
+            validate_reason(reason)
+        except CurationValidationError as exc:
+            return StoreResult(OperationStatus.INVALID, message=str(exc))
+
+        def operation(conn: sqlite3.Connection) -> StoreResult[CurationJob]:
+            now = _iso_now()
+            cursor = conn.execute(
+                """
+                UPDATE semantic_curation_job
+                SET blocked_reason = ?, updated_at = ?
+                    , last_result_reason = ?
+                WHERE session_id = ? AND status IN ('pending', 'retry_wait')
+                """,
+                (reason, now, reason, session_id),
+            )
+            if cursor.rowcount != 1:
+                return StoreResult(OperationStatus.CONFLICT, message="job is not queueable")
+            row = conn.execute(
+                "SELECT * FROM semantic_curation_job WHERE session_id = ?",
+                (session_id,),
+            ).fetchone()
+            return StoreResult(OperationStatus.SUCCESS, self._job_record(row))
+
+        return cast(StoreResult[CurationJob], self._run_write(operation))
 
     def recover_stale_curation_jobs(
         self,
         *,
         recovered_at: str | None = None,
         reason: str = "stale_lease_recovered",
+        current_boot_id: str | None = None,
     ) -> StoreResult[int]:
         try:
             cutoff_input = recovered_at or _iso_now()
             require_timestamp(cutoff_input, "recovered_at")
             cutoff = datetime.fromisoformat(cutoff_input).astimezone(UTC).isoformat()
             validate_reason(reason)
+            if current_boot_id is not None:
+                validate_worker_identity(current_boot_id)
         except CurationValidationError as exc:
             return StoreResult(OperationStatus.INVALID, message=str(exc))
 
         def operation(conn: sqlite3.Connection) -> StoreResult[int]:
-            cursor = conn.execute(
+            policy = conn.execute(
+                "SELECT automatic_curation_enabled, revision FROM semantic_policy WHERE singleton_id = 1"
+            ).fetchone()
+            processing_rows = conn.execute(
                 """
-                UPDATE semantic_curation_job
-                SET status = 'pending',
-                    updated_at = ?,
-                    last_reason = ?,
-                    last_error = COALESCE(last_error, 'processing lease expired'),
-                    lease_token = NULL,
-                    lease_owner = NULL,
-                    lease_expires_at = NULL
+                SELECT * FROM semantic_curation_job
                 WHERE status = 'processing'
-                  AND lease_expires_at <= ?
+                  AND ((? IS NOT NULL AND boot_id <> ?) OR lease_expires_at <= ?)
                 """,
-                (cutoff, reason, cutoff),
-            )
-            return StoreResult(OperationStatus.SUCCESS, int(cursor.rowcount))
+                (current_boot_id, current_boot_id, cutoff),
+            ).fetchall()
+            recovered = 0
+            for row in processing_rows:
+                policy_changed = (
+                    policy is None
+                    or not bool(policy["automatic_curation_enabled"])
+                    or int(policy["revision"]) != int(row["policy_revision"])
+                    or row["cancel_requested_at"] is not None
+                )
+                attempts = int(row["attempt_count"])
+                if policy_changed:
+                    status = "cancelled"
+                elif attempts >= int(row["max_attempts"]):
+                    status = "failed"
+                else:
+                    status = "retry_wait"
+                now = cutoff
+                conn.execute(
+                    """
+                    UPDATE semantic_curation_job
+                    SET status = ?, next_attempt_at = ?, updated_at = ?,
+                        cancelled_at = CASE WHEN ? = 'cancelled' THEN ? ELSE cancelled_at END,
+                        cancel_reason = CASE WHEN ? = 'cancelled' THEN 'policy_revision_changed'
+                                             ELSE cancel_reason END,
+                        last_error_code = CASE WHEN ? <> 'cancelled' THEN ? ELSE last_error_code END,
+                        last_error_detail = CASE WHEN ? <> 'cancelled'
+                                                 THEN 'previous process ended during curation'
+                                                 ELSE last_error_detail END,
+                        last_error_at = CASE WHEN ? <> 'cancelled' THEN ? ELSE last_error_at END,
+                        boot_id = NULL, claim_token = NULL,
+                        claimed_at = NULL, lease_expires_at = NULL
+                    WHERE session_id = ? AND status = 'processing'
+                    """,
+                    (
+                        status,
+                        now,
+                        now,
+                        status,
+                        now,
+                        status,
+                        status,
+                        reason,
+                        status,
+                        status,
+                        now,
+                        row["session_id"],
+                    ),
+                )
+                recovered += 1
+            return StoreResult(OperationStatus.SUCCESS, recovered)
 
         return cast(StoreResult[int], self._run_write(operation))
 
