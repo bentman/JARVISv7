@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 12:01
+  - Host class(es): Windows AMD64
+  - Summary: Added the versioned, transactional SQLite semantic-memory governance schema and an idempotent compatibility migration for recognized legacy databases.
+  - Scope: `backend/app/memory/semantic.py`, `backend/tests/unit/memory/test_semantic.py`
+  - Validation: Focused semantic-memory tests PASS (`27 passed`); unit validator PASS (`739 passed, 4 skipped`); focused Ruff checks PASS.
+  - Notes: PR #42 preserved existing facts, vectors, hashes, content-storing FTS5 rowids, deduplication, and retrieval behavior; model extraction, governed claim identity, lifecycle operations, scheduling, and automatic writes remained out of scope.
+
+---
+
 - Timestamp: 2026-07-23 15:57
   - Host class(es): Windows AMD64; existing Windows ARM64 and Linux AMD64 catalog evidence preserved
   - Summary: Aligned Qwen-family sampling, made Qwen3 4B the development behavioral default, retained Qwen2.5 0.5B only for explicit diagnostics, and locked model quants and host contexts to the catalog policy.
