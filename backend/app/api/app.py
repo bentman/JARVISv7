@@ -229,6 +229,13 @@ def stop_memory_curation(state: ApiState | None) -> None:
     state.memory_curation_service.stop(timeout=1.0)
 
 
+def memory_curation_owns_llm(state: ApiState | None) -> bool:
+    coordinator = getattr(state, "llm_coordinator", None)
+    if coordinator is None:
+        return False
+    return bool(coordinator.snapshot()["background_active"])
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
@@ -237,7 +244,8 @@ async def lifespan(app: FastAPI):
         state = getattr(app.state, "jarvis_state", None)
         stop_memory_curation(state)
         stop_resident_audio_stream(state)
-        stop_managed_local_llm(state)
+        if not memory_curation_owns_llm(state):
+            stop_managed_local_llm(state)
 
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:

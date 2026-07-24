@@ -9,19 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
-@dataclass
-class _Status:
-    jobs: tuple[object, ...] = ()
-
-
 class _Service:
     def __init__(self) -> None:
-        self.status_calls = 0
         self.drain_calls: list[float] = []
-
-    def status(self) -> _Status:
-        self.status_calls += 1
-        return _Status()
 
     def drain(self, timeout: float) -> DrainResult:
         self.drain_calls.append(timeout)
@@ -40,16 +30,6 @@ def _client(state: _State) -> TestClient:
     return TestClient(app)
 
 
-def test_get_status_is_read_only_adapter() -> None:
-    service = _Service()
-    response = _client(_State(service)).get("/memory/curation/status")
-
-    assert response.status_code == 200
-    assert response.json() == {"jobs": []}
-    assert service.status_calls == 1
-    assert service.drain_calls == []
-
-
 def test_post_drain_uses_explicit_eight_second_server_budget() -> None:
     service = _Service()
     response = _client(_State(service)).post("/memory/curation/drain")
@@ -62,5 +42,5 @@ def test_post_drain_uses_explicit_eight_second_server_budget() -> None:
 def test_routes_report_unavailable_service() -> None:
     client = _client(_State(None))
 
-    assert client.get("/memory/curation/status").status_code == 503
+    assert client.get("/memory/curation/status").status_code == 404
     assert client.post("/memory/curation/drain").status_code == 503
