@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-24 12:26
+  - Host class(es): Windows AMD64
+  - Summary: Replaced model-owned semantic-memory identity with a strict application boundary that verifies persisted evidence, derives provisional claim keys, and requires trusted application decisions for governed kinds and related claims.
+  - Scope: `backend/app/memory/curation_contract.py`, `backend/tests/unit/memory/test_curation_contract.py`
+  - Validation: Focused contract tests PASS (`20 passed`); retained 96-output diagnostic compatibility probe PASS (`93 accepted, 3 rejected, 0 mismatches`); memory tests PASS (`71 passed`); unit validator PASS (`758 passed, 5 skipped`); profile and focused Ruff checks PASS.
+  - Notes: Model-proposed kind, claim key, and correction relation remain advisory; candidates are unclassified, review-only, direct-transcript-grounded, and cannot automatically activate, reinforce, or supersede. Lifecycle persistence from issue #34 and later children remains out of scope.
+
+---
+
 - Timestamp: 2026-07-24 12:01
   - Host class(es): Windows AMD64
   - Summary: Added the versioned, transactional SQLite semantic-memory governance schema and an idempotent compatibility migration for recognized legacy databases.
