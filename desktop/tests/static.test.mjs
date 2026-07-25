@@ -6,6 +6,12 @@ import { collectDegradedConditions, selectedFamilyBlockers } from "../src/compon
 import { createDesktopState } from "../src/components/desktop-state.js";
 import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
+import {
+  createMemoryPanelController,
+  createOperatorPanelCoordinator,
+  curationActivityState,
+  memoryActionsEnabled,
+} from "../src/components/memory-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -15,6 +21,7 @@ const backendDiagnostics = readFileSync(new URL("../src/components/backend-diagn
 const desktopPolling = readFileSync(new URL("../src/components/desktop-polling.js", import.meta.url), "utf8");
 const degradedList = readFileSync(new URL("../src/components/degraded-list.js", import.meta.url), "utf8");
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
+const memoryPanel = readFileSync(new URL("../src/components/memory-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
@@ -565,4 +572,322 @@ assert.deepEqual(
   "resident voice presenter must still append current voice completions",
 );
 
-console.log("desktop static voice checks passed");
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function memoryRecord(overrides = {}) {
+  return {
+    fact_id: "memory-1",
+    revision: 1,
+    text: "The user prefers concise answers.",
+    value: "concise",
+    lifecycle_state: "pending_review",
+    ...overrides,
+  };
+}
+
+function memoryDetail(record = memoryRecord()) {
+  return {
+    record,
+    evidence: [],
+    events: [],
+    evidence_total: 0,
+    evidence_returned: 0,
+    events_total: 0,
+    events_returned: 0,
+  };
+}
+
+const firstList = deferred();
+const listController = createMemoryPanelController({
+  listMemories: ({ query }) =>
+    query === "old"
+      ? firstList.promise
+      : Promise.resolve({ records: [memoryRecord({ fact_id: "new", text: "new result" })] }),
+});
+const staleListRequest = listController.refreshList({ query: "old" });
+await listController.refreshList({ query: "new" });
+firstList.resolve({ records: [memoryRecord({ fact_id: "old", text: "old result" })] });
+await staleListRequest;
+assert.equal(listController.snapshot().list.records[0].fact_id, "new", "stale list responses must not replace newer filters");
+
+const firstDetail = deferred();
+const detailController = createMemoryPanelController({
+  getMemoryDetail: (factId) =>
+    factId === "old" ? firstDetail.promise : Promise.resolve(memoryDetail(memoryRecord({ fact_id: "new" }))),
+});
+const staleDetailRequest = detailController.selectMemory("old");
+await detailController.selectMemory("new");
+firstDetail.resolve(memoryDetail(memoryRecord({ fact_id: "old" })));
+await staleDetailRequest;
+assert.equal(detailController.snapshot().detail.record.fact_id, "new", "stale detail responses must not replace newer selection");
+
+const failedMutation = deferred();
+const mutationSnapshots = [];
+const mutationController = createMemoryPanelController(
+  {
+    getMemoryDetail: () => Promise.resolve(memoryDetail()),
+    listMemories: () => Promise.resolve({ records: [memoryRecord()] }),
+    confirmMemory: () => failedMutation.promise,
+  },
+  (snapshot) => mutationSnapshots.push(snapshot),
+);
+await mutationController.selectMemory("memory-1");
+const pendingConfirm = mutationController.confirm();
+assert.equal(mutationController.snapshot().mutationPending, true, "mutation lock must engage while request is pending");
+assert.equal(mutationController.snapshot().detail.record.text, "The user prefers concise answers.", "pending mutation must retain record");
+failedMutation.reject(new Error("confirm failed"));
+await pendingConfirm;
+assert.equal(mutationController.snapshot().mutationPending, false, "mutation lock must release after failure");
+assert.equal(mutationController.snapshot().detail.record.revision, 1, "failed confirm must retain rendered revision");
+assert.ok(
+  mutationSnapshots.some((snapshot) => snapshot.mutationPending) &&
+    mutationSnapshots.at(-1).mutationPending === false,
+  "rendered mutation state must disable then re-enable controls",
+);
+
+let conflictDetailReads = 0;
+const recordConflict = new Error("conflict");
+recordConflict.status = 409;
+recordConflict.detail = { error: "conflict", current_revision: 2, current_state: "active" };
+const conflictController = createMemoryPanelController({
+  getMemoryDetail: () =>
+    Promise.resolve(memoryDetail(memoryRecord({ revision: ++conflictDetailReads, lifecycle_state: conflictDetailReads > 1 ? "active" : "pending_review" }))),
+  listMemories: () => Promise.resolve({ records: [memoryRecord({ revision: 2, lifecycle_state: "active" })] }),
+  confirmMemory: () => Promise.reject(recordConflict),
+});
+await conflictController.selectMemory("memory-1");
+await conflictController.confirm();
+assert.equal(conflictController.snapshot().detail.record.revision, 2, "record 409 must reload current backend detail");
+assert.ok(conflictController.snapshot().conflict.includes("not applied"), "record 409 must remain visibly actionable");
+
+let policyReads = 0;
+const policyConflict = new Error("policy conflict");
+policyConflict.status = 409;
+policyConflict.detail = { error: "conflict", current_revision: 2, current_state: "enabled" };
+const policyController = createMemoryPanelController({
+  getMemoryPolicy: () =>
+    Promise.resolve({ automatic_curation_enabled: policyReads++ > 0, revision: policyReads, updated_at: "now" }),
+  updateMemoryPolicy: () => Promise.reject(policyConflict),
+  getMemoryCurationStatus: () => Promise.resolve({}),
+});
+await policyController.refreshPolicy();
+await policyController.updatePolicy(true);
+assert.equal(policyController.snapshot().policy.revision, 2, "policy 409 must reload current backend policy");
+assert.ok(policyController.snapshot().conflict.includes("reloaded"), "policy 409 must display visible reload conflict");
+
+let forgetCalls = 0;
+const forgetResponse = deferred();
+const forgetController = createMemoryPanelController({
+  getMemoryDetail: () => Promise.resolve(memoryDetail()),
+  listMemories: () => Promise.resolve({ records: [memoryRecord()] }),
+  forgetMemory: () => {
+    forgetCalls += 1;
+    return forgetResponse.promise;
+  },
+});
+await forgetController.selectMemory("memory-1");
+await forgetController.forget(() => Promise.resolve(false));
+assert.equal(forgetCalls, 0, "forget must require explicit confirmation");
+const pendingForget = forgetController.forget(() => Promise.resolve(true));
+await Promise.resolve();
+assert.equal(forgetCalls, 1, "confirmed forget must call the backend once");
+assert.equal(forgetController.snapshot().detail.record.lifecycle_state, "pending_review", "forget must not optimistically remove or alter the record");
+forgetResponse.resolve(memoryDetail(memoryRecord({ revision: 2, lifecycle_state: "forgotten" })));
+await pendingForget;
+
+for (const action of ["correct", "dispute", "forget"]) {
+  const controller = createMemoryPanelController({
+    getMemoryDetail: () => Promise.resolve(memoryDetail()),
+    listMemories: () => Promise.resolve({ records: [memoryRecord()] }),
+    [`${action}Memory`]: () => Promise.reject(new Error(`${action} failed`)),
+  });
+  await controller.selectMemory("memory-1");
+  if (action === "correct") {
+    await controller.correct({ replacementText: "replacement" });
+  } else if (action === "forget") {
+    await controller.forget(() => Promise.resolve(true));
+  } else {
+    await controller.dispute();
+  }
+  assert.equal(controller.snapshot().detail.record.revision, 1, `failed ${action} must retain the rendered record`);
+}
+
+let correctionDetailId = "memory-1";
+const correctionController = createMemoryPanelController({
+  getMemoryDetail: (factId) => {
+    correctionDetailId = factId;
+    return Promise.resolve(memoryDetail(memoryRecord({ fact_id: factId, revision: factId === "memory-2" ? 1 : 2 })));
+  },
+  listMemories: () => Promise.resolve({ records: [] }),
+  correctMemory: () =>
+    Promise.resolve({
+      original: memoryRecord({ revision: 2, superseded_by_fact_id: "memory-2", lifecycle_state: "superseded" }),
+      replacement: memoryRecord({ fact_id: "memory-2", text: "The user prefers detailed answers.", value: "detailed" }),
+      relation: "superseded_by",
+    }),
+});
+await correctionController.selectMemory("memory-1");
+await correctionController.correct({ replacementText: "The user prefers detailed answers.", replacementValue: "detailed" });
+assert.equal(correctionDetailId, "memory-2", "successful correction must refresh replacement detail from backend");
+assert.equal(correctionController.snapshot().correction.original.superseded_by_fact_id, "memory-2", "correction must retain original supersession truth");
+assert.equal(correctionController.snapshot().correction.replacement.fact_id, "memory-2", "correction must retain replacement truth");
+
+assert.equal(
+  memoryActionsEnabled(memoryRecord({ lifecycle_state: "superseded" }), false),
+  true,
+  "renderer must not disable actions from lifecycle transition policy",
+);
+assert.equal(
+  memoryActionsEnabled(memoryRecord({ lifecycle_state: "backend_future_state" }), true),
+  false,
+  "the in-flight mutation lock must remain the only renderer action gate",
+);
+
+let submittedRevision = null;
+const invalidTransition = new Error("invalid transition");
+invalidTransition.detail = {
+  error: "invalid_transition",
+  message: "confirm memory transition is not allowed",
+};
+const backendOwnedTransitionController = createMemoryPanelController({
+  getMemoryDetail: () =>
+    Promise.resolve(memoryDetail(memoryRecord({ revision: 7, lifecycle_state: "superseded" }))),
+  confirmMemory: (_factId, expectedRevision) => {
+    submittedRevision = expectedRevision;
+    return Promise.reject(invalidTransition);
+  },
+});
+await backendOwnedTransitionController.selectMemory("memory-1");
+await backendOwnedTransitionController.confirm();
+assert.equal(submittedRevision, 7, "renderer must submit the current revision and let the backend decide transition validity");
+assert.equal(
+  backendOwnedTransitionController.snapshot().detail.record.lifecycle_state,
+  "superseded",
+  "backend transition rejection must retain the inspected record",
+);
+assert.equal(
+  backendOwnedTransitionController.snapshot().detailError,
+  "confirm memory transition is not allowed",
+  "backend transition rejection must display typed backend truth",
+);
+
+const availableIdleCuration = {
+  service_available: true,
+  processor_available: true,
+  worker_running: true,
+  drain_active: false,
+  degraded: false,
+  retry_blocked: false,
+  pending_count: 0,
+  processing_count: 0,
+  failed_count: 0,
+  current_job_id: null,
+};
+assert.equal(
+  curationActivityState(availableIdleCuration),
+  "idle",
+  "an available worker without active work must display idle",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, processing_count: 1 }),
+  "running",
+  "a processing job must display running",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, current_job_id: "job-1" }),
+  "running",
+  "a current job must display running",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, drain_active: true }),
+  "running",
+  "an active drain must display running",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, degraded: true }),
+  "degraded",
+  "backend degraded status must remain degraded",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, retry_blocked: true }),
+  "blocked",
+  "backend blocked status must remain blocked",
+);
+
+const panelEvents = [];
+let memoryOpen = false;
+let settingsOpen = true;
+const coordinator = createOperatorPanelCoordinator({
+  isMemoryOpen: () => memoryOpen,
+  openMemory: async () => {
+    panelEvents.push("open-memory");
+    memoryOpen = true;
+  },
+  closeMemory: () => {
+    panelEvents.push("close-memory");
+    memoryOpen = false;
+  },
+  focusMemoryTrigger: () => panelEvents.push("focus-memory"),
+  isSettingsOpen: () => settingsOpen,
+  openSettings: async () => {
+    panelEvents.push("open-settings");
+    settingsOpen = true;
+  },
+  closeSettings: () => {
+    panelEvents.push("close-settings");
+    settingsOpen = false;
+  },
+  focusSettingsTrigger: () => panelEvents.push("focus-settings"),
+});
+await coordinator.toggleMemory();
+assert.deepEqual(panelEvents, ["close-settings", "open-memory"], "memory open must deterministically close settings first");
+panelEvents.length = 0;
+await coordinator.toggleSettings();
+assert.deepEqual(panelEvents, ["close-memory", "open-settings"], "settings open must deterministically close memory first");
+
+for (const command of [
+  "get_memory_policy",
+  "update_memory_policy",
+  "list_memories",
+  "get_memory_detail",
+  "confirm_memory",
+  "correct_memory",
+  "dispute_memory",
+  "forget_memory",
+  "get_memory_curation_status",
+]) {
+  assert.ok(apiClient.includes(`invokeMemory(invoke, "${command}"`), `API client must use Tauri command ${command}`);
+  assert.ok(lib.includes(command), `Tauri handler must register ${command}`);
+}
+for (const route of ["/memory/policy", "/memory/curation/status", "/memory/{fact_id}"]) {
+  assert.ok(backend.includes(route), `backend bridge must include ${route}`);
+}
+for (const field of [
+  "evidence_authority",
+  "lifecycle_state",
+  "eligible_for_normal_retrieval",
+  "expectedRevision",
+  "source_session_id",
+  "source_turn_id",
+  "source_field",
+  "superseded_by_fact_id",
+]) {
+  assert.ok(memoryPanel.includes(field) || apiClient.includes(field), `memory surface must include ${field}`);
+}
+assert.ok(!memoryPanel.includes("innerHTML"), "memory panel must render backend text without innerHTML");
+assert.ok(!memoryPanel.includes("fetch("), "memory panel must not call backend HTTP directly");
+assert.ok(!memoryPanel.includes("localStorage"), "memory policy must not be persisted in renderer storage");
+assert.ok(!memoryPanel.includes("ACTION_STATES"), "renderer must not duplicate lifecycle transition policy");
+assert.ok(!memoryPanel.includes(".has(record.lifecycle_state)"), "action availability must not be inferred from lifecycle state");
+assert.ok(index.includes('id="memory-trigger"'), "operator area must expose one Memory control");
+assert.ok(index.includes('id="memory-panel"'), "operator area must include one hidden Memory panel");
+
+console.log("desktop static and memory behavior checks passed");

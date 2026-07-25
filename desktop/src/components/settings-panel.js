@@ -10,6 +10,7 @@ let restartHandler = null;
 let restartRequiredChangeHandler = null;
 let getConfigHandler = null;
 let writeConfigHandler = null;
+let returnFocusEl = null;
 
 function fieldLabel(field) {
   return field.description || field.key;
@@ -162,6 +163,7 @@ function renderPanel(containerEl, fields) {
   const heading = document.createElement("h2");
   const appearance = createAppearanceControls();
   heading.textContent = "Settings";
+  heading.tabIndex = -1;
   dirtyEl = document.createElement("p");
   dirtyEl.hidden = true;
   const form = document.createElement("form");
@@ -264,10 +266,12 @@ export async function openSettings(containerEl, options = {}) {
   restartRequiredChangeHandler = options.onRestartRequiredChange || restartRequiredChangeHandler;
   getConfigHandler = options.getOperatorConfig || getConfigHandler;
   writeConfigHandler = options.writeOperatorConfig || writeConfigHandler;
+  returnFocusEl = options.returnFocusEl || returnFocusEl;
   containerEl.hidden = false;
   containerEl.textContent = "Loading settings…";
   notifyRestartRequiredChange();
   await loadSettings(containerEl);
+  containerEl.querySelector("h2")?.focus();
 }
 
 export function closeSettings() {
@@ -280,4 +284,5 @@ export function closeSettings() {
   statusEl = null;
   dirtyEl = null;
   notifyRestartRequiredChange();
+  returnFocusEl?.focus();
 }

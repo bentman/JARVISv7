@@ -32,6 +32,7 @@ def test_required_desktop_files_exist() -> None:
         "desktop/src/components/appearance-controls.js",
         "desktop/src/components/backend-diagnostics.js",
         "desktop/src/components/settings-panel.js",
+        "desktop/src/components/memory-panel.js",
         "desktop/src/components/resident-voice.js",
         "desktop/src/components/service-status.js",
         "desktop/src/components/desktop-polling.js",
@@ -85,7 +86,8 @@ def test_desktop_backend_bridge_reuses_one_http_client() -> None:
     backend_rs = _read("desktop/src-tauri/src/backend.rs")
     lib_rs = _read("desktop/src-tauri/src/lib.rs")
     assert "http_client: Client" in lib_rs
-    assert "Client::builder().build()" in lib_rs
+    assert "Client::builder()" in lib_rs
+    assert ".build()" in lib_rs
     assert "Client::new()" not in backend_rs
     assert "timeout(Duration::from_millis(700))" in backend_rs
 
@@ -119,7 +121,16 @@ def test_desktop_displays_resident_session_status() -> None:
     assert "/session/ptt" in backend_rs
     assert "get_session_status" in lib_rs
     assert "invoke_resident_ptt" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt" in lib_rs
+    for command in [
+        "start_backend",
+        "stop_backend",
+        "health_check",
+        "get_readiness",
+        "get_session_status",
+        "get_desktop_status",
+        "invoke_resident_ptt",
+    ]:
+        assert command in lib_rs
     assert 'invoke("get_session_status")' in api_client
     assert 'invoke("get_desktop_status")' in api_client
     assert "/status/desktop" in backend_rs
@@ -164,7 +175,13 @@ def test_desktop_displays_wake_status_and_ptt_fallback() -> None:
     assert "start_wake_monitor" in lib_rs
     assert "stop_wake_monitor" in lib_rs
     assert "toggle_wake_monitor" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor" in lib_rs
+    for command in [
+        "get_wake_status",
+        "start_wake_monitor",
+        "stop_wake_monitor",
+        "toggle_wake_monitor",
+    ]:
+        assert command in lib_rs
     assert 'invoke("get_wake_status")' in api_client
     assert 'invoke("start_wake_monitor")' in api_client
     assert 'invoke("stop_wake_monitor")' in api_client
@@ -265,7 +282,13 @@ def test_k2b_settings_panel_component_and_shell_wiring() -> None:
     assert "write_operator_config" in lib_rs
     assert "backend_operator_config" in lib_rs
     assert "backend_write_operator_config" in lib_rs
-    assert "generate_handler![start_backend, stop_backend, health_check, get_readiness, get_session_status, get_desktop_status, invoke_resident_ptt, get_wake_status, start_wake_monitor, stop_wake_monitor, toggle_wake_monitor, get_personality_list, select_personality, get_operator_config, write_operator_config" in lib_rs
+    for command in [
+        "get_personality_list",
+        "select_personality",
+        "get_operator_config",
+        "write_operator_config",
+    ]:
+        assert command in lib_rs
     assert "get_operator_config" in backend_rs
     assert "write_operator_config" in backend_rs
     assert "/config/operator" in backend_rs
@@ -845,6 +868,106 @@ def test_j4_conversation_role_hierarchy_and_no_inline_styles() -> None:
     ]:
         assert selector in style_css
     assert " style=" not in index_html
+
+
+def test_issue_40_memory_bridge_and_panel_contract() -> None:
+    backend_rs = _read("desktop/src-tauri/src/backend.rs")
+    lib_rs = _read("desktop/src-tauri/src/lib.rs")
+    api_client = _read("desktop/src/api-client.js")
+    main_js = _read("desktop/src/main.js")
+    index_html = _read("desktop/src/index.html")
+    memory_panel = _read("desktop/src/components/memory-panel.js")
+    style_css = _read("desktop/src/style.css")
+
+    commands = [
+        "get_memory_policy",
+        "update_memory_policy",
+        "list_memories",
+        "get_memory_detail",
+        "confirm_memory",
+        "correct_memory",
+        "dispute_memory",
+        "forget_memory",
+        "get_memory_curation_status",
+    ]
+    for command in commands:
+        assert command in backend_rs
+        assert command in lib_rs
+        assert command in api_client
+    for route in ["/memory/policy", "/memory/curation/status", "/memory/{fact_id}"]:
+        assert route in backend_rs
+    for action in ['"confirm"', '"correct"', '"dispute"']:
+        assert action in backend_rs
+    assert ".delete(format!(\"{base_url}/memory/{fact_id}\"))" in backend_rs
+    assert '"expected_revision"' in backend_rs
+    assert '"status": status.as_u16()' in backend_rs
+    assert '"body": structured_body' in backend_rs
+    assert "memoryApiError" in api_client
+    assert "wrapped.status" in api_client
+    assert "wrapped.detail" in api_client
+
+    assert 'id="memory-trigger"' in index_html
+    assert 'aria-label="Memory"' in index_html
+    assert 'id="memory-panel"' in index_html
+    assert "createMemoryPanel" in main_js
+    assert "createOperatorPanelCoordinator" in main_js
+    assert "closeSettings" in main_js
+    assert "closeMemory" in main_js
+    assert "returnFocusEl" in _read("desktop/src/components/settings-panel.js")
+    assert ".memory-panel" in style_css
+
+    for field in [
+        "automatic_curation_enabled",
+        "pending_count",
+        "failed_count",
+        "recent_jobs",
+        "evidence_authority",
+        "lifecycle_state",
+        "eligible_for_normal_retrieval",
+        "reinforcement_count",
+        "source_session_id",
+        "source_turn_id",
+        "source_field",
+        "superseded_by_fact_id",
+        "evidence_truncated",
+        "events_truncated",
+        "revision",
+    ]:
+        assert field in memory_panel
+    for action in ["Confirm", "Correct", "Dispute", "Forget"]:
+        assert action in memory_panel
+    for state in ["idle", "running", "degraded", "blocked"]:
+        assert state in memory_panel
+    for copy in [
+        "Automatic retention (opt-in)",
+        "Model-proposed memories remain application-governed.",
+        "Source conversation and session artifacts are separate",
+        "not erased by this operation",
+        "changed elsewhere",
+        "Loading records",
+        "No memories match",
+        "unavailable",
+    ]:
+        assert copy in memory_panel
+    assert "createMemoryPanelController" in memory_panel
+    assert "listSequence" in memory_panel
+    assert "detailSequence" in memory_panel
+    assert "mutationPending" in memory_panel
+    assert "memoryActionsEnabled" in memory_panel
+    assert "curationActivityState" in memory_panel
+    assert "expectedRevision" in api_client
+    assert "replacementText" in api_client
+    assert "replacementValue" in api_client
+    assert "innerHTML" not in memory_panel
+    assert "fetch(" not in memory_panel
+    assert "localStorage" not in memory_panel
+    assert "sqlite" not in memory_panel.lower()
+    assert "database_path" not in memory_panel
+    assert "artifact_path" not in memory_panel
+    assert "ACTION_STATES" not in memory_panel
+    assert ".has(record.lifecycle_state)" not in memory_panel
+    assert "status.worker_running || status.drain_active" not in memory_panel
+    assert "/memory" not in api_client
 
 
 

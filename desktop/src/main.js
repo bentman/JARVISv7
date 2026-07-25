@@ -7,6 +7,7 @@ import { renderReadiness as renderReadinessPanel } from "./components/readiness-
 import { createResidentVoicePresenter } from "./components/resident-voice.js";
 import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
+import { createMemoryPanel, createOperatorPanelCoordinator } from "./components/memory-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 import { createDesktopPolling } from "./components/desktop-polling.js";
@@ -26,6 +27,8 @@ const personalityDetailEl = document.querySelector("#personality-detail");
 const settingsTriggerEl = document.querySelector("#settings-trigger");
 const settingsRestartRequiredEl = document.querySelector("#settings-restart-required");
 const settingsPanelEl = document.querySelector("#settings-panel");
+const memoryTriggerEl = document.querySelector("#memory-trigger");
+const memoryPanelEl = document.querySelector("#memory-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
@@ -42,6 +45,21 @@ const backendDiagnosticsEl = document.querySelector("#backend-diagnostics");
 
 const invoke = window.__TAURI__?.core?.invoke;
 const api = createApiClient(invoke);
+const memoryPanel = createMemoryPanel(
+  memoryPanelEl,
+  {
+    getMemoryPolicy: (...args) => api.getMemoryPolicy(...args),
+    updateMemoryPolicy: (...args) => api.updateMemoryPolicy(...args),
+    listMemories: (...args) => api.listMemories(...args),
+    getMemoryDetail: (...args) => api.getMemoryDetail(...args),
+    confirmMemory: (...args) => api.confirmMemory(...args),
+    correctMemory: (...args) => api.correctMemory(...args),
+    disputeMemory: (...args) => api.disputeMemory(...args),
+    forgetMemory: (...args) => api.forgetMemory(...args),
+    getMemoryCurationStatus: (...args) => api.getMemoryCurationStatus(...args),
+  },
+  { onClose: () => memoryTriggerEl.focus() },
+);
 let activePersonalityId = "default";
 let desktopState = null;
 let personalitySelectionPending = false;
@@ -50,6 +68,24 @@ const TTS_VOICE_STORAGE_KEY = "jarvisv7_active_tts_voice";
 const RESIDENT_VOICE_MODE_STORAGE_KEY = "jarvisv7_active_resident_voice_mode";
 let ttsVoicePreferenceRestored = false;
 let residentVoiceModePreferenceRestored = false;
+
+const operatorPanels = createOperatorPanelCoordinator({
+  isMemoryOpen: () => memoryPanel.isOpen(),
+  openMemory: () => memoryPanel.open(),
+  closeMemory: () => memoryPanel.close(),
+  focusMemoryTrigger: () => memoryTriggerEl.focus(),
+  isSettingsOpen: () => !settingsPanelEl.hidden,
+  openSettings: () =>
+    openSettings(settingsPanelEl, {
+      getOperatorConfig: api.getOperatorConfig,
+      writeOperatorConfig: api.writeOperatorConfig,
+      restartBackend: restartBackendForSettings,
+      onRestartRequiredChange: updateSettingsRestartRequired,
+      returnFocusEl: settingsTriggerEl,
+    }),
+  closeSettings: () => closeSettings(),
+  focusSettingsTrigger: () => settingsTriggerEl.focus(),
+});
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -560,17 +596,12 @@ if (residentTtsVoiceEl) {
   });
 }
 
+memoryTriggerEl.addEventListener("click", () => {
+  operatorPanels.toggleMemory().catch((error) => showError(String(error)));
+});
+
 settingsTriggerEl.addEventListener("click", () => {
-  if (settingsPanelEl.hidden) {
-    openSettings(settingsPanelEl, {
-      getOperatorConfig: api.getOperatorConfig,
-      writeOperatorConfig: api.writeOperatorConfig,
-      restartBackend: restartBackendForSettings,
-      onRestartRequiredChange: updateSettingsRestartRequired,
-    }).catch((error) => showError(String(error)));
-    return;
-  }
-  closeSettings();
+  operatorPanels.toggleSettings().catch((error) => showError(String(error)));
 });
 
 if (wakeToggleEl) {
