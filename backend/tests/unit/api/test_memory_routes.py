@@ -268,3 +268,63 @@ def test_store_and_curation_unavailability_are_visible_and_sanitized(tmp_path: P
         "message": "memory curation is unavailable",
     }
     assert "private" not in store_response.text + curation_response.text
+
+
+def test_curation_status_api_exposes_structured_durable_result_only(tmp_path: Path) -> None:
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    enabled = memory.update_policy(
+        automatic_curation_enabled=True,
+        expected_revision=1,
+    )
+    assert enabled.value is not None
+    memory.enqueue_curation_job(
+        session_id="session-result",
+        artifact_ref="C:/private/source.json",
+        policy_revision=enabled.value.revision,
+    )
+    claimed = memory.claim_curation_job(
+        worker_id="boot",
+        boot_id="boot",
+        max_attempts=3,
+        lease_seconds=30,
+    )
+    assert claimed.value is not None and claimed.value.claim_token is not None
+    memory.complete_curation_job(
+        session_id="session-result",
+        lease_token=claimed.value.claim_token,
+        boot_id="boot",
+        reason="review_only_candidates_resolved",
+        candidates_proposed=3,
+        candidates_rejected=1,
+        pending_review_created=2,
+        duplicate_noops=1,
+    )
+    curation = MemoryCurationService(
+        semantic_memory=memory,
+        sessions_root=tmp_path / "sessions",
+        turns_root=tmp_path / "turns",
+        coordinator=LLMExecutionCoordinator(),
+        session_is_active=lambda: False,
+        processor=None,
+    )
+
+    response = _client(
+        MemoryService(semantic_memory=memory, curation_service=curation)
+    ).get("/memory/curation/status")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["last_result"] == {
+        "reason_code": "review_only_candidates_resolved",
+        "candidates_proposed": 3,
+        "candidates_rejected": 1,
+        "active_records_created": 0,
+        "pending_review_created": 2,
+        "records_reinforced": 0,
+        "records_superseded_or_disputed": 0,
+        "duplicate_noops": 1,
+        "failure_count": 0,
+    }
+    assert payload["recent_jobs"][0]["result"] == payload["last_result"]
+    for prohibited in ("C:/private", "source.json", "artifact", "model_output"):
+        assert prohibited not in response.text

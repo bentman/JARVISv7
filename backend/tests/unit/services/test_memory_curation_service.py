@@ -28,7 +28,15 @@ def test_explicit_drain_processes_one_durable_job_with_fake_processor(
     def processor(evidence) -> CurationProcessorResult:
         calls.append(evidence.session.session_id)
         assert len(evidence.turns) == 1
-        return CurationProcessorResult(success=True, durable=True)
+        return CurationProcessorResult(
+            success=True,
+            durable=True,
+            reason_code="review_only_candidates_resolved",
+            candidates_proposed=3,
+            candidates_rejected=1,
+            pending_review_created=2,
+            duplicate_noops=1,
+        )
 
     service = _service(memory, sessions, turns, processor=processor)
     enqueue = service.enqueue_closed_session(
@@ -54,6 +62,21 @@ def test_explicit_drain_processes_one_durable_job_with_fake_processor(
     assert job.generation_finished_at is not None
     assert job.completed_at is not None
     assert job.attempt_count == 1
+    assert job.last_result_reason == "review_only_candidates_resolved"
+    assert job.result_candidates_proposed == 3
+    assert job.result_candidates_rejected == 1
+    assert job.result_active_records_created == 0
+    assert job.result_pending_review_created == 2
+    assert job.result_records_reinforced == 0
+    assert job.result_records_superseded_or_disputed == 0
+    assert job.result_duplicate_noops == 1
+    assert job.result_failure_count == 0
+
+    restarted = SemanticMemory(memory.db_path).read_curation_job("session-1").value
+    assert restarted is not None
+    assert restarted.last_result_reason == "review_only_candidates_resolved"
+    assert restarted.result_candidates_proposed == 3
+    assert restarted.result_pending_review_created == 2
 
 
 def test_missing_artifact_is_visible_terminal_failure_without_processor_call(

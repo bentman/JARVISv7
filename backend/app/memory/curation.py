@@ -431,6 +431,14 @@ class CurationJob:
     last_error_at: str | None
     blocked_reason: str | None
     last_result_reason: str | None
+    result_candidates_proposed: int | None
+    result_candidates_rejected: int | None
+    result_active_records_created: int | None
+    result_pending_review_created: int | None
+    result_records_reinforced: int | None
+    result_records_superseded_or_disputed: int | None
+    result_duplicate_noops: int | None
+    result_failure_count: int | None
     runtime_name: str | None
     model_id: str | None
     serve_profile_id: str | None

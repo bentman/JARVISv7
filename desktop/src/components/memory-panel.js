@@ -26,6 +26,21 @@ function isConflict(error) {
   return error?.status === 409 || error?.detail?.error === "conflict";
 }
 
+export function formatCurationResult(result) {
+  if (!result) return "";
+  return [
+    result.reason_code,
+    `proposed ${result.candidates_proposed}`,
+    `pending review ${result.pending_review_created}`,
+    `active ${result.active_records_created}`,
+    `rejected ${result.candidates_rejected}`,
+    `duplicates ${result.duplicate_noops}`,
+    `reinforced ${result.records_reinforced}`,
+    `superseded/disputed ${result.records_superseded_or_disputed}`,
+    `failures ${result.failure_count}`,
+  ].join(" · ");
+}
+
 function copyState(state) {
   return {
     ...state,
@@ -326,6 +341,7 @@ function renderCuration(state) {
     labeledValue(facts, "Failed", status.failed_count);
     labeledValue(facts, "Current job", status.current_job_id);
     labeledValue(facts, "Reason", status.degraded_reason || status.last_result_reason);
+    labeledValue(facts, "Processor result", formatCurationResult(status.last_result));
     labeledValue(facts, "Updated", status.last_updated_at);
     section.appendChild(facts);
     if (status.recent_jobs?.length) {
@@ -335,7 +351,8 @@ function renderCuration(state) {
       jobs.appendChild(summary);
       for (const job of status.recent_jobs) {
         const row = document.createElement("p");
-        row.textContent = `${job.status} · ${job.last_reason || job.blocked_reason || "no reason"} · enqueued ${job.enqueued_at} · started ${formatValue(job.started_at)} · completed ${formatValue(job.completed_at)} · updated ${job.updated_at}`;
+        const result = formatCurationResult(job.result);
+        row.textContent = `${job.status} · ${result || job.last_reason || job.blocked_reason || "no reason"} · enqueued ${job.enqueued_at} · started ${formatValue(job.started_at)} · completed ${formatValue(job.completed_at)} · updated ${job.updated_at}`;
         jobs.appendChild(row);
       }
       section.appendChild(jobs);

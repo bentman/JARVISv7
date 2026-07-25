@@ -63,7 +63,12 @@ class CurationProcessorResult:
             self.duplicate_noops,
             self.failure_count,
         )
-        if any(isinstance(value, bool) or not 0 <= value <= 3 for value in counts):
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, int)
+            or not 0 <= value <= 3
+            for value in counts
+        ):
             raise ValueError("processor result counts must be integers between 0 and 3")
         if not self.reason_code or len(self.reason_code) > 128:
             raise ValueError("processor reason_code must contain 1..128 characters")
@@ -380,6 +385,17 @@ class MemoryCurationService:
                     lease_token=token,
                     boot_id=self.boot_id,
                     generation_duration_ms=duration_ms,
+                    reason=processor_result.reason_code,
+                    candidates_proposed=processor_result.candidates_proposed,
+                    candidates_rejected=processor_result.candidates_rejected,
+                    active_records_created=processor_result.active_records_created,
+                    pending_review_created=processor_result.pending_review_created,
+                    records_reinforced=processor_result.records_reinforced,
+                    records_superseded_or_disputed=(
+                        processor_result.records_superseded_or_disputed
+                    ),
+                    duplicate_noops=processor_result.duplicate_noops,
+                    failure_count=processor_result.failure_count,
                 )
             else:
                 self._memory.fail_curation_job(
