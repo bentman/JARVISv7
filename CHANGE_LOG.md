@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 09:21
+  - Host class(es): Windows AMD64
+  - Summary: Added the governed semantic-memory desktop surface for opt-in retention, bounded inspection, evidence/lifecycle review, backend-owned actions, forgetting, and truthful curation status.
+  - Scope: Desktop renderer/Tauri memory bridge, hidden operator memory panel and settings focus coordination, scoped presentation, focused Node behavior tests, and desktop static-contract coverage.
+  - Validation: Desktop Node tests PASS; Cargo check PASS with one Windows incremental-cache finalization warning; desktop static contract PASS (`33 passed`); unit validator PASS (`852 passed, 4 skipped, 1 warning`).
+  - Notes: PR #49 closed issue #40; no production build/package or Agent-claimed manual UI validation was performed.
+
+---
+
 - Timestamp: 2026-07-25 07:15
   - Host class(es): Windows AMD64
   - Summary: Exposed typed, bounded governed-memory policy, inspection, lifecycle, forgetting, and curation-status contracts through the backend API with optimistic-concurrency conflict reporting and sanitized responses.
