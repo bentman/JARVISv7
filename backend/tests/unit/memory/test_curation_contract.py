@@ -5,7 +5,6 @@ import json
 import pytest
 from backend.app.memory.curation_contract import (
     PROVISIONAL_MEMORY_KIND,
-    AdvisoryRelation,
     ApplicationIdentityDecision,
     CandidateDisposition,
     EvidenceAuthority,
@@ -13,7 +12,6 @@ from backend.app.memory.curation_contract import (
     GovernedMemoryKind,
     PersistedTurnEvidence,
     ProposalContractError,
-    SUPPORTED_ADVISORY_MEMORY_KINDS,
     apply_identity_decision,
     build_provisional_candidate,
     build_provisional_candidates,
@@ -25,18 +23,11 @@ from backend.app.memory.curation_contract import (
 
 def _candidate(
     *,
-    kind: str = "personal_fact",
-    claim_key: str = "model.home_city",
-    relation: str = "assertion",
     field: str = "transcript",
     excerpt: str = "I live in Chicago.",
 ) -> dict[str, object]:
     return {
         "text": "The user lives in Chicago.",
-        "kind": kind,
-        "claim_key": claim_key,
-        "value": "Chicago",
-        "relation": relation,
         "evidence_refs": [
             {
                 "source_turn_id": "turn-1",
@@ -82,32 +73,10 @@ def test_governed_kind_vocabulary_is_application_owned_and_exact() -> None:
     assert GovernedMemoryKind.UNCLASSIFIED.value == PROVISIONAL_MEMORY_KIND
 
 
-def test_supported_advisory_kind_vocabulary_excludes_application_only_kind() -> None:
-    assert tuple(kind.value for kind in SUPPORTED_ADVISORY_MEMORY_KINDS) == (
-        "user_preference",
-        "personal_fact",
-        "project_fact",
-        "decision",
-        "commitment",
-        "relationship",
-        "summary",
-    )
-
-
-@pytest.mark.parametrize("kind", SUPPORTED_ADVISORY_MEMORY_KINDS)
-def test_strict_parser_accepts_each_supported_advisory_kind(kind: GovernedMemoryKind) -> None:
-    proposal = parse_model_proposals(_raw(_candidate(kind=kind.value)))[0]
-
-    assert proposal.advisory_kind is kind
-
-
 def test_strict_parser_accepts_measured_shape_and_surrounding_whitespace() -> None:
     proposal = parse_model_proposals(f" \n{_raw()}\t ")[0]
 
     assert proposal.text == "The user lives in Chicago."
-    assert proposal.advisory_kind is GovernedMemoryKind.PERSONAL_FACT
-    assert proposal.advisory_claim_key == "model.home_city"
-    assert proposal.advisory_relation is AdvisoryRelation.ASSERTION
     assert proposal.evidence_refs[0].source_field is EvidenceField.TRANSCRIPT
     assert proposal.confidence == 0.9
 
@@ -120,8 +89,7 @@ def test_strict_parser_accepts_measured_shape_and_surrounding_whitespace() -> No
         '{"candidates":[],"unknown":true}',
         '{"candidates":[]} trailing',
         '```json\n{"candidates":[]}\n```',
-        '{"candidates":[{"text":"x","kind":"personal_fact","claim_key":"valid.key",'
-        '"value":null,"relation":"assertion","evidence_refs":[],'
+        '{"candidates":[{"text":"x","evidence_refs":[],'
         '"confidence":NaN,"importance":0.5}]}',
         "[]",
     ],
@@ -143,8 +111,10 @@ def test_strict_parser_rejects_unknown_nested_fields_and_invalid_numbers() -> No
     with pytest.raises(ProposalContractError, match="JSON number"):
         parse_model_proposals(_raw(candidate))
 
-    with pytest.raises(ProposalContractError, match="advisory vocabulary"):
-        parse_model_proposals(_raw(_candidate(kind="unclassified")))
+    candidate = _candidate()
+    candidate["kind"] = "personal_fact"
+    with pytest.raises(ProposalContractError, match="candidate fields"):
+        parse_model_proposals(_raw(candidate))
 
 
 def test_evidence_verification_derives_authority_from_persisted_field() -> None:
@@ -189,36 +159,15 @@ def test_evidence_verification_rejects_untrusted_origins(
         verify_evidence_refs(proposal, [turn])
 
 
-def test_provisional_identity_ignores_model_kind_key_and_relation() -> None:
-    first = parse_model_proposals(
-        _raw(
-            _candidate(
-                kind="personal_fact",
-                claim_key="residence_location",
-                relation="assertion",
-            )
-        )
-    )[0]
-    second = parse_model_proposals(
-        _raw(
-            _candidate(
-                kind="summary",
-                claim_key="home_city",
-                relation="explicit_correction",
-            )
-        )
-    )[0]
+def test_provisional_identity_is_derived_without_model_identity_fields() -> None:
+    proposal = parse_model_proposals(_raw())[0]
+    candidate = build_provisional_candidate(proposal, [_turn()])
 
-    first_candidate = build_provisional_candidate(first, [_turn()])
-    second_candidate = build_provisional_candidate(second, [_turn()])
-
-    assert first_candidate.claim_key == second_candidate.claim_key
-    assert first_candidate.kind == second_candidate.kind == PROVISIONAL_MEMORY_KIND
-    assert first_candidate.disposition is CandidateDisposition.REVIEW_REQUIRED
-    assert first_candidate.can_auto_activate is False
-    assert first_candidate.can_auto_reinforce is False
-    assert first_candidate.can_auto_supersede is False
-    assert first_candidate.advisory_claim_key != second_candidate.advisory_claim_key
+    assert candidate.kind == PROVISIONAL_MEMORY_KIND
+    assert candidate.disposition is CandidateDisposition.REVIEW_REQUIRED
+    assert candidate.can_auto_activate is False
+    assert candidate.can_auto_reinforce is False
+    assert candidate.can_auto_supersede is False
 
 
 def test_provisional_key_is_order_stable_and_changes_with_evidence_origin() -> None:
@@ -259,22 +208,14 @@ def test_response_only_proposals_cannot_become_provisional_memory() -> None:
 
 def test_duplicate_evidence_identity_requires_operator_disambiguation() -> None:
     proposals = parse_model_proposals(
-        json.dumps({"candidates": [_candidate(), _candidate(kind="summary")]})
+        json.dumps({"candidates": [_candidate(), _candidate()]})
     )
     with pytest.raises(ProposalContractError, match="operator disambiguation"):
         build_provisional_candidates(proposals, [_turn()])
 
 
 def test_only_explicit_application_decision_assigns_governed_identity() -> None:
-    proposal = parse_model_proposals(
-        _raw(
-            _candidate(
-                kind="summary",
-                claim_key="model.invented.identity",
-                relation="explicit_correction",
-            )
-        )
-    )[0]
+    proposal = parse_model_proposals(_raw())[0]
     candidate = build_provisional_candidate(proposal, [_turn()])
 
     new_identity = apply_identity_decision(
@@ -292,7 +233,7 @@ def test_only_explicit_application_decision_assigns_governed_identity() -> None:
     assert new_identity.claim_key == candidate.claim_key
     assert new_identity.kind is GovernedMemoryKind.PERSONAL_FACT
     assert related_identity.claim_key == "claim.existingapplicationidentity"
-    assert related_identity.claim_key != proposal.advisory_claim_key
+    assert related_identity.claim_key != candidate.claim_key
 
 
 def test_invalid_application_related_key_fails_closed() -> None:

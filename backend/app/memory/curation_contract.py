@@ -20,7 +20,6 @@ MAX_MODEL_OUTPUT_CHARS = 16_384
 MAX_CANDIDATES = 3
 MAX_TEXT_CHARS = 240
 MAX_CLAIM_KEY_CHARS = 80
-MAX_VALUE_CHARS = 160
 MAX_EVIDENCE_REFS = 3
 MAX_TURN_ID_CHARS = 64
 MAX_SESSION_ID_CHARS = 128
@@ -31,10 +30,6 @@ _CLAIM_KEY_PATTERN = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 _CANDIDATE_FIELDS = frozenset(
     {
         "text",
-        "kind",
-        "claim_key",
-        "value",
-        "relation",
         "evidence_refs",
         "confidence",
         "importance",
@@ -60,11 +55,6 @@ class GovernedMemoryKind(StrEnum):
     SUMMARY = "summary"
 
 
-SUPPORTED_ADVISORY_MEMORY_KINDS = tuple(
-    kind for kind in GovernedMemoryKind if kind is not GovernedMemoryKind.UNCLASSIFIED
-)
-
-
 class EvidenceField(StrEnum):
     TRANSCRIPT = "transcript"
     RESPONSE_TEXT = "response_text"
@@ -79,11 +69,6 @@ class CandidateDisposition(StrEnum):
     REVIEW_REQUIRED = "review_required"
 
 
-class AdvisoryRelation(StrEnum):
-    ASSERTION = "assertion"
-    EXPLICIT_CORRECTION = "explicit_correction"
-
-
 @dataclass(frozen=True, slots=True)
 class ModelEvidenceRef:
     source_turn_id: str
@@ -94,10 +79,6 @@ class ModelEvidenceRef:
 @dataclass(frozen=True, slots=True)
 class ModelMemoryProposal:
     text: str
-    advisory_kind: GovernedMemoryKind
-    advisory_claim_key: str
-    value: str | None
-    advisory_relation: AdvisoryRelation
     evidence_refs: tuple[ModelEvidenceRef, ...]
     confidence: float
     importance: float
@@ -134,9 +115,6 @@ class ProvisionalMemoryCandidate:
     confidence: float
     importance: float
     disposition: CandidateDisposition
-    advisory_kind: GovernedMemoryKind
-    advisory_claim_key: str
-    advisory_relation: AdvisoryRelation
     can_auto_activate: bool = False
     can_auto_reinforce: bool = False
     can_auto_supersede: bool = False
@@ -244,22 +222,6 @@ def _parse_candidate(value: Any) -> ModelMemoryProposal:
         raise ProposalContractError("candidate must be an object")
     _require_exact_fields(value, _CANDIDATE_FIELDS, "candidate")
     text = _require_bounded_string(value["text"], "candidate text", MAX_TEXT_CHARS)
-    try:
-        advisory_kind = GovernedMemoryKind(value["kind"])
-    except (TypeError, ValueError) as exc:
-        raise ProposalContractError("candidate kind is outside the advisory vocabulary") from exc
-    if advisory_kind not in SUPPORTED_ADVISORY_MEMORY_KINDS:
-        raise ProposalContractError("candidate kind is outside the advisory vocabulary")
-    advisory_claim_key = validate_claim_key(value["claim_key"])
-    candidate_value = value["value"]
-    if candidate_value is not None and (
-        not isinstance(candidate_value, str) or len(candidate_value) > MAX_VALUE_CHARS
-    ):
-        raise ProposalContractError("candidate value must be null or a string of 0..160 chars")
-    try:
-        advisory_relation = AdvisoryRelation(value["relation"])
-    except (TypeError, ValueError) as exc:
-        raise ProposalContractError("candidate relation is unsupported") from exc
     evidence_values = value["evidence_refs"]
     if (
         not isinstance(evidence_values, list)
@@ -269,10 +231,6 @@ def _parse_candidate(value: Any) -> ModelMemoryProposal:
     evidence_refs = tuple(_parse_evidence_ref(item) for item in evidence_values)
     return ModelMemoryProposal(
         text=text,
-        advisory_kind=advisory_kind,
-        advisory_claim_key=advisory_claim_key,
-        value=candidate_value,
-        advisory_relation=advisory_relation,
         evidence_refs=evidence_refs,
         confidence=_require_score(value["confidence"], "confidence"),
         importance=_require_score(value["importance"], "importance"),
@@ -401,9 +359,6 @@ def build_provisional_candidate(
         confidence=proposal.confidence,
         importance=proposal.importance,
         disposition=CandidateDisposition.REVIEW_REQUIRED,
-        advisory_kind=proposal.advisory_kind,
-        advisory_claim_key=proposal.advisory_claim_key,
-        advisory_relation=proposal.advisory_relation,
     )
 
 

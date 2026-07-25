@@ -9,7 +9,14 @@ from backend.app.cognition.memory_extraction import (
     MAX_TURN_FIELD_CHARS,
     MemoryCandidateExtractor,
 )
-from backend.app.memory.curation_contract import SUPPORTED_ADVISORY_MEMORY_KINDS
+from backend.app.memory.curation_contract import (
+    MAX_CANDIDATES,
+    MAX_EVIDENCE_REFS,
+    MAX_EXCERPT_CHARS,
+    MAX_MODEL_OUTPUT_CHARS,
+    MAX_TEXT_CHARS,
+    MAX_TURN_ID_CHARS,
+)
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.runtimes.llm.base import LLMBase
 
@@ -66,6 +73,45 @@ def test_extractor_uses_trusted_contract_untrusted_bounded_evidence() -> None:
     ]
     session_payload = json.loads(llm.envelope.segments[2].text)
     assert session_payload["turns"][0]["turn_id"] == "turn-2"
-    assert "kind (" + "|".join(
-        kind.value for kind in SUPPORTED_ADVISORY_MEMORY_KINDS
-    ) + ")" in llm.envelope.segments[1].text
+    contract = llm.envelope.segments[1].text
+    assert "text (1..240 chars), evidence_refs" in contract
+    assert "kind" not in contract
+    assert "claim_key" not in contract
+    assert "relation" not in contract
+
+
+def test_extraction_budget_covers_maximum_valid_bounded_output() -> None:
+    evidence = {
+        "source_turn_id": "t" * MAX_TURN_ID_CHARS,
+        "source_field": "transcript",
+        "excerpt": "e" * MAX_EXCERPT_CHARS,
+    }
+    candidate = {
+        "text": "x" * MAX_TEXT_CHARS,
+        "evidence_refs": [evidence] * MAX_EVIDENCE_REFS,
+        "confidence": 0,
+        "importance": 0,
+    }
+    raw_output = json.dumps(
+        {"candidates": [candidate] * MAX_CANDIDATES},
+        separators=(",", ":"),
+    )
+    padding = MAX_MODEL_OUTPUT_CHARS - len(raw_output)
+    assert padding > 1
+    raw_output = raw_output.replace(
+        '"confidence":0',
+        '"confidence":0.' + "0" * (padding - 1),
+        1,
+    )
+    assert len(raw_output) == MAX_MODEL_OUTPUT_CHARS
+
+    llm = FakeEnvelopeLLM(raw_output)
+    result = MemoryCandidateExtractor(llm).extract(
+        session_id="session-1",
+        turns=(),
+    )
+
+    assert len(result.proposals) == MAX_CANDIDATES
+    assert EXTRACTION_MAX_TOKENS >= len(raw_output)
+    assert llm.envelope is not None
+    assert llm.envelope.generation == {"max_tokens": EXTRACTION_MAX_TOKENS}

@@ -41,10 +41,6 @@ def _output() -> str:
         candidates.append(
             {
                 "text": f"The user has lived in {city}.",
-                "kind": "personal_fact",
-                "claim_key": f"model.city.{index}",
-                "value": city,
-                "relation": "assertion",
                 "evidence_refs": [
                     {
                         "source_turn_id": f"turn-{index}",

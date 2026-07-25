@@ -89,7 +89,6 @@ class ReviewOnlyCurationPolicy:
         )
         inspected = (
             proposal.text,
-            proposal.value or "",
             *(ref.excerpt for ref in candidate.evidence_refs),
         )
         if any(_contains_secret(value) for value in inspected):

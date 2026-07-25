@@ -20,6 +20,24 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 15:44
+  - Host class(es): Windows AMD64
+  - Summary: Raised the bounded memory-extraction generation budget to conservatively cover every strict-parser-valid response within the existing maximum output character cap.
+  - Scope: Extraction generation setting and focused maximum-size extraction/contract/processor tests.
+  - Validation: Focused pytest PASS (`23 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/cognition/test_memory_extraction.py backend/tests/unit/memory/test_curation_contract.py backend/tests/unit/services/test_memory_curation_processor.py`.
+  - Notes: Candidate/field bounds, strict parsing, evidence verification, and review-only safety behavior were unchanged; the generation setting remains finite.
+
+---
+
+- Timestamp: 2026-07-25 15:36
+  - Host class(es): Windows AMD64
+  - Summary: Simplified review-only memory extraction so model proposals contain only candidate text, verified-evidence locators, and review signals; claim identity, kind, and relationships remain application-owned.
+  - Scope: Extraction output contract, proposal/candidate contracts, review-only reconciliation, and focused deterministic tests.
+  - Validation: Focused pytest PASS (`25 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/cognition/test_memory_extraction.py backend/tests/unit/memory/test_curation_contract.py backend/tests/unit/memory/test_curation_reconciliation.py backend/tests/unit/services/test_memory_curation_processor.py`.
+  - Notes: Strict JSON parsing, candidate bounds, evidence verification, secret filtering, pending-review-only persistence, and persisted semantic-memory records were unchanged.
+
+---
+
 - Timestamp: 2026-07-25 15:27
   - Host class(es): Windows AMD64
   - Summary: Aligned the model-facing memory-extraction kind contract with an explicit parser-supported advisory vocabulary and rejected application-only kinds at the model boundary.

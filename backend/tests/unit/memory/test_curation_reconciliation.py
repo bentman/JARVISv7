@@ -16,16 +16,12 @@ from backend.app.memory.semantic import SemanticMemory
 NOW = "2026-07-24T12:00:00+00:00"
 
 
-def _proposal(*, text: str, excerpt: str, value: str | None = None):
+def _proposal(*, text: str, excerpt: str):
     raw = json.dumps(
         {
             "candidates": [
                 {
                     "text": text,
-                    "kind": "personal_fact",
-                    "claim_key": "model.untrusted",
-                    "value": value,
-                    "relation": "assertion",
                     "evidence_refs": [
                         {
                             "source_turn_id": "turn-1",
@@ -55,7 +51,6 @@ def test_review_candidate_is_unclassified_pending_and_idempotent(tmp_path: Path)
     proposal, candidate = _proposal(
         text="The user lives in Chicago.",
         excerpt="I live in Chicago.",
-        value="Chicago",
     )
 
     first = policy.reconcile(
