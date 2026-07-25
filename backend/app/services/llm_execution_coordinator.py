@@ -90,8 +90,7 @@ class LLMExecutionCoordinator:
     ) -> bool:
         with self._condition:
             if (
-                not self._shutdown_drain_active
-                or self._stopping
+                self._stopping
                 or not session_inactive
                 or not policy_enabled
                 or not llm_ready

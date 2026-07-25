@@ -113,7 +113,7 @@ RuntimeStatus = Callable[[], dict[str, str | bool | None]]
 
 
 class MemoryCurationService:
-    """One explicit-drain worker backed exclusively by SemanticMemory jobs."""
+    """One signaled worker backed exclusively by SemanticMemory jobs."""
 
     def __init__(
         self,
@@ -138,6 +138,7 @@ class MemoryCurationService:
         self._condition = threading.Condition()
         self._worker: threading.Thread | None = None
         self._stop_requested = False
+        self._work_requested = False
         self._drain_requested = False
         self._drain_done: threading.Event | None = None
         self._drain_result: DrainResult | None = None
@@ -221,6 +222,11 @@ class MemoryCurationService:
                     occurred_at=datetime.now(UTC).isoformat(),
                 )
             )
+        else:
+            self.start()
+            with self._condition:
+                self._work_requested = True
+                self._condition.notify_all()
         return result
 
     def drain(self, timeout: float = 8.0) -> DrainResult:
@@ -274,11 +280,17 @@ class MemoryCurationService:
     def _run(self) -> None:
         while True:
             with self._condition:
-                while not self._drain_requested and not self._stop_requested:
+                while (
+                    not self._work_requested
+                    and not self._drain_requested
+                    and not self._stop_requested
+                ):
                     self._condition.wait()
                 if self._stop_requested:
                     return
                 done = self._drain_done
+                is_drain = self._drain_requested
+                self._work_requested = False
             try:
                 result = self._attempt_one()
             except Exception as exc:
@@ -288,9 +300,10 @@ class MemoryCurationService:
                 )
             with self._condition:
                 self._drain_result = result
-                self._drain_requested = False
-                self._drain_done = None
-                if done is not None:
+                if is_drain:
+                    self._drain_requested = False
+                    self._drain_done = None
+                if is_drain and done is not None:
                     done.set()
 
     def _attempt_one(self) -> DrainResult:

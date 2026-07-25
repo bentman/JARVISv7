@@ -24,6 +24,18 @@ def test_interactive_waiter_prevents_background_admission() -> None:
     ticket.release()
 
 
+def test_background_is_admitted_during_normal_runtime() -> None:
+    coordinator = LLMExecutionCoordinator()
+
+    assert coordinator.try_acquire_background(
+        session_inactive=True,
+        policy_enabled=True,
+        llm_ready=True,
+    )
+    assert coordinator.snapshot()["background_active"] is True
+    coordinator.release_background()
+
+
 def test_background_is_non_preemptible_and_interactive_runs_after_release() -> None:
     coordinator = LLMExecutionCoordinator()
     coordinator.begin_shutdown_drain()

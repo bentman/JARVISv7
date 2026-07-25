@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import threading
+import time
 from pathlib import Path
 
 from backend.app.artifacts.session_artifact import SessionArtifact
@@ -17,6 +19,30 @@ from backend.app.services.memory_curation_service import (
 )
 
 NOW = "2026-07-24T12:00:00+00:00"
+
+
+def test_enqueued_authorized_job_runs_during_normal_runtime(tmp_path: Path) -> None:
+    memory, sessions, turns, artifact_path = _authorized_job(tmp_path)
+    processed = threading.Event()
+
+    def processor(_evidence) -> CurationProcessorResult:
+        processed.set()
+        return CurationProcessorResult(success=True, durable=True)
+
+    service = _service(memory, sessions, turns, processor=processor)
+    enqueue = service.enqueue_closed_session(
+        session_id="session-1",
+        artifact_path=artifact_path,
+        policy_revision=2,
+        authorized_at=NOW,
+    )
+    try:
+        assert enqueue.status is OperationStatus.SUCCESS
+        assert processed.wait(1)
+        job = _wait_for_job(memory, "session-1", CurationJobStatus.SUCCEEDED)
+        assert job is not None and job.status is CurationJobStatus.SUCCEEDED
+    finally:
+        service.stop()
 
 
 def test_explicit_drain_processes_one_durable_job_with_fake_processor(
@@ -39,9 +65,9 @@ def test_explicit_drain_processes_one_durable_job_with_fake_processor(
         )
 
     service = _service(memory, sessions, turns, processor=processor)
-    enqueue = service.enqueue_closed_session(
+    enqueue = memory.enqueue_curation_job(
         session_id="session-1",
-        artifact_path=artifact_path,
+        artifact_ref=str(artifact_path),
         policy_revision=2,
         authorized_at=NOW,
     )
@@ -92,9 +118,9 @@ def test_missing_artifact_is_visible_terminal_failure_without_processor_call(
         processor=lambda evidence: calls.append(evidence),  # type: ignore[arg-type]
     )
     missing = tmp_path / "sessions" / "session-1" / "session.json"
-    service.enqueue_closed_session(
+    memory.enqueue_curation_job(
         session_id="session-1",
-        artifact_path=missing,
+        artifact_ref=str(missing),
         policy_revision=2,
         authorized_at=NOW,
     )
@@ -118,9 +144,9 @@ def test_processor_exception_enters_retry_wait_with_bounded_error(
         raise RuntimeError("secret " + "x" * 4000)
 
     service = _service(memory, sessions, turns, processor=processor)
-    service.enqueue_closed_session(
+    memory.enqueue_curation_job(
         session_id="session-1",
-        artifact_path=artifact_path,
+        artifact_ref=str(artifact_path),
         policy_revision=2,
         authorized_at=NOW,
     )
@@ -223,9 +249,9 @@ def test_policy_disable_cancels_pending_and_processing_results(tmp_path: Path) -
 def test_status_is_side_effect_free(tmp_path: Path) -> None:
     memory, sessions, turns, artifact_path = _authorized_job(tmp_path)
     service = _service(memory, sessions, turns, processor=None)
-    service.enqueue_closed_session(
+    memory.enqueue_curation_job(
         session_id="session-1",
-        artifact_path=artifact_path,
+        artifact_ref=str(artifact_path),
         policy_revision=2,
         authorized_at=NOW,
     )
@@ -271,6 +297,20 @@ def _authorized_job(
     )
     artifact_path = write_session_artifact(artifact, sessions)
     return memory, sessions, turns, artifact_path
+
+
+def _wait_for_job(
+    memory: SemanticMemory,
+    session_id: str,
+    status: CurationJobStatus,
+):
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        job = memory.read_curation_job(session_id).value
+        if job is not None and job.status is status:
+            return job
+        time.sleep(0.01)
+    return memory.read_curation_job(session_id).value
 
 
 def _service(

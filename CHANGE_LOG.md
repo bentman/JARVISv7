@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 15:12
+  - Host class(es): Windows AMD64
+  - Summary: Made authorized closed-session curation jobs wake the existing background worker during normal runtime while preserving interactive-priority LLM admission.
+  - Scope: Curation worker signaling, LLM coordinator admission, and focused session/curation/coordinator service tests.
+  - Validation: Focused pytest PASS (`35 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/services/test_memory_curation_service.py backend/tests/unit/services/test_llm_execution_coordinator.py backend/tests/unit/services/test_session_service.py`.
+  - Notes: The worker remains event-driven; no polling loop, extraction, retrieval, desktop, or schema behavior changed.
+
+---
+
 - Timestamp: 2026-07-25 15:05
   - Host class(es): Windows AMD64
   - Summary: Upgraded the active semantic-memory database from schema version 2 to version 3 through the production initializer and expanded v2 migration coverage for stored governed data.
