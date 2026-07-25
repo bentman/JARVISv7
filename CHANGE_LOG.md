@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 06:13
+  - Host class(es): Windows AMD64
+  - Summary: Added lifecycle-aware governed semantic retrieval with source-stable RRF fusion, semantic revision cache identity, untrusted prompt references, and structured turn-artifact provenance.
+  - Scope: Semantic-memory SQL eligibility, hybrid retrieval ranking/cache contracts, prompt assembly, turn artifact/engine persistence, and focused memory/cognition/conversation/artifact tests.
+  - Validation: Retrieval tests PASS (`27 passed`); semantic tests PASS (`30 passed`); cognition tests PASS (`22 passed`); conversation tests PASS (`80 passed`); focused two-turn integration PASS (`4 passed`); unit validator PASS (`838 passed, 4 skipped`); integration validator PASS (`10 passed`).
+  - Notes: Preserved three-list RRF with `k=60`, optional fail-open caching, existing `retrieved_memory_refs`, and read-only lifecycle behavior; curation, lifecycle transitions, APIs, desktop UI, embeddings, and model/runtime policy were unchanged.
+
+---
+
 - Timestamp: 2026-07-24 18:48
   - Host class(es): Windows AMD64
   - Summary: Added bounded typed memory extraction and durable review-only reconciliation through the deferred curation processor, with strict persisted evidence verification, deterministic exclusions, and resumable per-candidate idempotency.
