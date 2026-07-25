@@ -110,6 +110,26 @@ def test_build_continuity_packet_uses_recent_turn_and_working_memory(tmp_path):
     assert packet.working_memory == ("remember this",)
 
 
+def test_write_policy_capacity_bounds_storage_and_continuity_working_memory(tmp_path):
+    manager = SessionManager(
+        session_id="session-1",
+        turns_base_dir=tmp_path / "turns",
+        sessions_base_dir=tmp_path / "sessions",
+    )
+    policy = WritePolicy(max_working_memory_entries=2)
+    for response in ("one", "two", "three"):
+        manager.update_working_memory(response, policy)
+
+    packet = manager.build_continuity_packet(
+        latest_text="continue",
+        write_policy=policy,
+    )
+
+    assert manager.working_memory.as_list() == ["two", "three"]
+    assert manager.get_working_context(policy) == ["two", "three"]
+    assert packet.working_memory == ("two", "three")
+
+
 def test_build_continuity_packet_excludes_stale_same_session_context(tmp_path):
     now = datetime(2026, 6, 14, 12, 0, tzinfo=timezone.utc)
     manager = SessionManager(

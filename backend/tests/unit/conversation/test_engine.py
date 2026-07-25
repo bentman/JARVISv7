@@ -515,6 +515,41 @@ def test_engine_with_session_manager_injects_working_memory_on_second_turn(tmp_p
     assert len(manager.turn_artifacts) == 2
 
 
+def test_engine_uses_write_policy_capacity_for_storage_and_prompt_context(tmp_path):
+    manager = SessionManager(
+        session_id="session-1",
+        turns_base_dir=tmp_path / "turns",
+        sessions_base_dir=tmp_path / "sessions",
+    )
+    llm = FakeEnvelopeLLM(response="one")
+    engine = _engine(
+        session_manager=manager,
+        llm=llm,
+        write_policy=WritePolicy(max_working_memory_entries=2),
+    )
+
+    for request, response in (("first", "one"), ("second", "two"), ("third", "three"), ("fourth", "four")):
+        llm.response = response
+        engine.run_text_turn(request)
+
+    session_context = next(
+        segment.text
+        for segment in llm.envelopes[3].segments
+        if segment.authority == "session"
+    )
+    working_context = next(
+        segment.text
+        for segment in llm.envelopes[3].segments
+        if segment.authority == "memory"
+    )
+
+    assert manager.working_memory.as_list() == ["three", "four"]
+    assert "- two" in session_context and "- three" in session_context
+    assert "- one" not in session_context
+    assert "- two" in working_context and "- three" in working_context
+    assert "- one" not in working_context
+
+
 def test_engine_with_session_manager_injects_continuity_on_second_turn(tmp_path):
     manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
     llm = FakeLLM(response="first response")

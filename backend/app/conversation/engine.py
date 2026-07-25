@@ -195,7 +195,14 @@ class TurnEngine:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         try:
             context.advance(ConversationState.REASONING)
-            continuity_packet = self.session_manager.build_continuity_packet(latest_text=transcript) if self.session_manager else None
+            continuity_packet = (
+                self.session_manager.build_continuity_packet(
+                    latest_text=transcript,
+                    write_policy=self.write_policy,
+                )
+                if self.session_manager
+                else None
+            )
             session_continuity = None
             if continuity_packet is not None and not continuity_packet.is_empty():
                 session_continuity = continuity_packet.to_prompt_text()

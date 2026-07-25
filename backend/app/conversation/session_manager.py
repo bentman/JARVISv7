@@ -165,7 +165,10 @@ class SessionManager:
         *,
         latest_text: str | None = None,
         include_current_session: bool = True,
+        write_policy: WritePolicy | None = None,
     ) -> ContinuityPacket:
+        if write_policy is not None:
+            self._apply_policy_capacity(write_policy)
         last_turn = self.turn_artifacts[-1] if self.turn_artifacts else None
         policy_result = decide_continuity(
             ContinuityPolicyInput(
@@ -190,7 +193,11 @@ class SessionManager:
             session_id=self.session_id,
             policy_result=policy_result,
             turn_artifacts=self.turn_artifacts,
-            working_memory=self.working_memory.as_list(),
+            working_memory=(
+                self.working_memory.as_list()
+                if write_policy is None or write_policy.write_to_working_memory
+                else []
+            ),
             suppress_assistant_context=suppress_assistant_context,
             suppressed_context_reason=suppressed_context_reason,
         )

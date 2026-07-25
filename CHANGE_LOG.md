@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 15:19
+  - Host class(es): Windows AMD64
+  - Summary: Made the configured working-memory write-policy limit govern both retained entries and continuity/prompt-visible working-memory context.
+  - Scope: Working-memory continuity composition, turn-engine policy propagation, and focused memory/conversation/prompt tests.
+  - Validation: Focused pytest PASS (`83 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/memory/test_working_memory.py backend/tests/unit/conversation/test_session_manager.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/conversation/test_continuity_policy.py backend/tests/unit/cognition/test_prompt_assembler.py`.
+  - Notes: Existing entry ordering, trimming, suppression, and continuity behavior were retained; episodic, semantic, retrieval, desktop, and performance behavior were unchanged.
+
+---
+
 - Timestamp: 2026-07-25 15:12
   - Host class(es): Windows AMD64
   - Summary: Made authorized closed-session curation jobs wake the existing background worker during normal runtime while preserving interactive-priority LLM admission.

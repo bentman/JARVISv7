@@ -72,7 +72,6 @@ class ContinuityPacket:
 class ContinuityPacketBuilder:
     max_turns: int = 3
     max_text_chars: int = 240
-    max_working_memory_entries: int = 5
 
     def build(
         self,
@@ -97,7 +96,7 @@ class ContinuityPacketBuilder:
         interruption_context = _interruption_context(last_turn)
         excluded_context: tuple[str, ...] = ()
         assistant_response = _bounded(last_turn.response_text if last_turn else None, self.max_text_chars)
-        bounded_working_memory = tuple((working_memory or [])[-self.max_working_memory_entries :])
+        bounded_working_memory = tuple(working_memory or [])
         if suppress_assistant_context:
             assistant_response = None
             bounded_working_memory = ()
