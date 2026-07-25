@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 07:15
+  - Host class(es): Windows AMD64
+  - Summary: Exposed typed, bounded governed-memory policy, inspection, lifecycle, forgetting, and curation-status contracts through the backend API with optimistic-concurrency conflict reporting and sanitized responses.
+  - Scope: Memory application service, API schemas/routes/dependency injection, startup composition, focused service/API coverage, and the approved resident-voice hook test synchronization.
+  - Validation: Focused memory tests PASS (`13 passed`); services tests PASS (`174 passed`); API tests PASS (`77 passed`); unit validator PASS (`851 passed, 4 skipped`); integration validator PASS (`10 passed`); focused Ruff checks PASS.
+  - Notes: PR #48 preserved the existing curation drain route and added no retry endpoint; desktop, retrieval, curation, lifecycle, and model behavior were unchanged, and forgetting does not erase separate source turn/session artifacts.
+
+---
+
 - Timestamp: 2026-07-25 06:13
   - Host class(es): Windows AMD64
   - Summary: Added lifecycle-aware governed semantic retrieval with source-stable RRF fusion, semantic revision cache identity, untrusted prompt references, and structured turn-artifact provenance.
