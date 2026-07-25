@@ -27,6 +27,30 @@ function backendStartupError(error) {
   return wrapped;
 }
 
+function memoryApiError(error) {
+  const message = String(error?.message || error || "Memory operation failed.");
+  let payload;
+  try {
+    payload = JSON.parse(message);
+  } catch {
+    payload = { status: null, body: null, message };
+  }
+  const detail = payload.body?.detail;
+  const wrapped = new Error(detail?.message || payload.message || "Memory operation failed.");
+  wrapped.status = payload.status ?? null;
+  wrapped.body = payload.body ?? null;
+  wrapped.detail = detail ?? null;
+  return wrapped;
+}
+
+async function invokeMemory(invoke, command, args = {}) {
+  try {
+    return parseJson(await invoke(command, args));
+  } catch (error) {
+    throw memoryApiError(error);
+  }
+}
+
 export function createApiClient(invoke) {
   if (!invoke) return null;
 
@@ -56,6 +80,27 @@ export function createApiClient(invoke) {
     selectPersonality: async (profileId) => parseJson(await invoke("select_personality", { profileId })),
     getOperatorConfig: async () => parseJson(await invoke("get_operator_config")),
     writeOperatorConfig: async (fields) => parseJson(await invoke("write_operator_config", { fields })),
+    getMemoryPolicy: () => invokeMemory(invoke, "get_memory_policy"),
+    updateMemoryPolicy: (automaticCurationEnabled, expectedRevision) =>
+      invokeMemory(invoke, "update_memory_policy", { automaticCurationEnabled, expectedRevision }),
+    listMemories: ({ lifecycleState = null, kind = null, query = null, offset = 0, limit = 20 } = {}) =>
+      invokeMemory(invoke, "list_memories", { lifecycleState, kind, query, offset, limit }),
+    getMemoryDetail: (factId) => invokeMemory(invoke, "get_memory_detail", { factId }),
+    confirmMemory: (factId, expectedRevision, reason = null) =>
+      invokeMemory(invoke, "confirm_memory", { factId, expectedRevision, reason }),
+    correctMemory: (factId, expectedRevision, replacementText, replacementValue = null, reason = null) =>
+      invokeMemory(invoke, "correct_memory", {
+        factId,
+        expectedRevision,
+        replacementText,
+        replacementValue,
+        reason,
+      }),
+    disputeMemory: (factId, expectedRevision, reason = null) =>
+      invokeMemory(invoke, "dispute_memory", { factId, expectedRevision, reason }),
+    forgetMemory: (factId, expectedRevision, reason = null) =>
+      invokeMemory(invoke, "forget_memory", { factId, expectedRevision, reason }),
+    getMemoryCurationStatus: () => invokeMemory(invoke, "get_memory_curation_status"),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
   };
 }

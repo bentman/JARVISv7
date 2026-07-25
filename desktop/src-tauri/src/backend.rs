@@ -1,4 +1,5 @@
 use reqwest::blocking::Client;
+use reqwest::blocking::Response;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs::{self, File};
@@ -91,17 +92,28 @@ impl BackendProcessManager {
         let backend_script_path = self.backend_script_path();
 
         if !python_path.exists() {
-            return Err(format!("backend python not found: {}\n{}", python_path.display(), format_diagnostics(&diagnostics)));
+            return Err(format!(
+                "backend python not found: {}\n{}",
+                python_path.display(),
+                format_diagnostics(&diagnostics)
+            ));
         }
         if !backend_script_path.exists() {
-            return Err(format!("backend script not found: {}\n{}", backend_script_path.display(), format_diagnostics(&diagnostics)));
+            return Err(format!(
+                "backend script not found: {}\n{}",
+                backend_script_path.display(),
+                format_diagnostics(&diagnostics)
+            ));
         }
 
         if let Some(parent) = self.stdout_log.parent() {
-            fs::create_dir_all(parent).map_err(|err| format!("failed to create reports dir: {err}"))?;
+            fs::create_dir_all(parent)
+                .map_err(|err| format!("failed to create reports dir: {err}"))?;
         }
-        let stdout = File::create(&self.stdout_log).map_err(|err| format!("failed to create stdout log: {err}"))?;
-        let stderr = File::create(&self.stderr_log).map_err(|err| format!("failed to create stderr log: {err}"))?;
+        let stdout = File::create(&self.stdout_log)
+            .map_err(|err| format!("failed to create stdout log: {err}"))?;
+        let stderr = File::create(&self.stderr_log)
+            .map_err(|err| format!("failed to create stderr log: {err}"))?;
 
         let mut command = Command::new(&python_path);
         command
@@ -117,9 +129,17 @@ impl BackendProcessManager {
         #[cfg(windows)]
         command.creation_flags(CREATE_NO_WINDOW);
 
-        let mut child = command.spawn().map_err(|err| format!("failed to spawn backend: {err}\n{}", format_diagnostics(&diagnostics)))?;
+        let mut child = command.spawn().map_err(|err| {
+            format!(
+                "failed to spawn backend: {err}\n{}",
+                format_diagnostics(&diagnostics)
+            )
+        })?;
         std::thread::sleep(Duration::from_millis(350));
-        if let Some(status) = child.try_wait().map_err(|err| format!("failed to inspect backend process: {err}"))? {
+        if let Some(status) = child
+            .try_wait()
+            .map_err(|err| format!("failed to inspect backend process: {err}"))?
+        {
             return Err(format!(
                 "backend exited during startup with status {status}\n{}\nstdout tail:\n{}\nstderr tail:\n{}",
                 format_diagnostics(&diagnostics),
@@ -144,7 +164,10 @@ impl BackendProcessManager {
 
     pub fn exited_status(&mut self) -> Result<Option<String>, String> {
         if let Some(child) = self.child.as_mut() {
-            if let Some(status) = child.try_wait().map_err(|err| format!("failed to inspect backend process: {err}"))? {
+            if let Some(status) = child
+                .try_wait()
+                .map_err(|err| format!("failed to inspect backend process: {err}"))?
+            {
                 self.child = None;
                 return Ok(Some(status.to_string()));
             }
@@ -176,7 +199,12 @@ impl Drop for BackendProcessManager {
     }
 }
 
-pub fn wait_healthy<F>(client: &Client, base_url: &str, timeout: Duration, mut child_exit_status: F) -> Result<(), String>
+pub fn wait_healthy<F>(
+    client: &Client,
+    base_url: &str,
+    timeout: Duration,
+    mut child_exit_status: F,
+) -> Result<(), String>
 where
     F: FnMut() -> Result<Option<String>, String>,
 {
@@ -186,9 +214,15 @@ where
 
     while Instant::now() < deadline {
         if let Some(status) = child_exit_status()? {
-            return Err(format!("backend exited before health check passed: {status}"));
+            return Err(format!(
+                "backend exited before health check passed: {status}"
+            ));
         }
-        match client.get(&health_url).timeout(Duration::from_millis(700)).send() {
+        match client
+            .get(&health_url)
+            .timeout(Duration::from_millis(700))
+            .send()
+        {
             Ok(response) if response.status().is_success() => return Ok(()),
             Ok(response) => last_error = format!("/health returned {}", response.status()),
             Err(err) => last_error = err.to_string(),
@@ -196,13 +230,20 @@ where
         std::thread::sleep(Duration::from_millis(250));
     }
 
-    Err(format!("timed out waiting for /health at {health_url}: {last_error}"))
+    Err(format!(
+        "timed out waiting for /health at {health_url}: {last_error}"
+    ))
 }
 
 pub fn get_json(client: &Client, base_url: &str, path: &str) -> Result<String, String> {
-    let response = client.get(format!("{base_url}{path}")).send().map_err(|err| format!("GET {path} failed: {err}"))?;
+    let response = client
+        .get(format!("{base_url}{path}"))
+        .send()
+        .map_err(|err| format!("GET {path} failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("GET {path} body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("GET {path} body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("GET {path} returned {status}: {body}"));
     }
@@ -210,13 +251,20 @@ pub fn get_json(client: &Client, base_url: &str, path: &str) -> Result<String, S
 }
 
 pub fn create_session(client: &Client, base_url: &str) -> Result<SessionCreateResponse, String> {
-    let response = client.post(format!("{base_url}/session/create")).json(&json!({})).send().map_err(|err| format!("POST /session/create failed: {err}"))?;
+    let response = client
+        .post(format!("{base_url}/session/create"))
+        .json(&json!({}))
+        .send()
+        .map_err(|err| format!("POST /session/create failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST /session/create body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST /session/create body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST /session/create returned {status}: {body}"));
     }
-    serde_json::from_str(&body).map_err(|err| format!("invalid /session/create response: {err}; body={body}"))
+    serde_json::from_str(&body)
+        .map_err(|err| format!("invalid /session/create response: {err}; body={body}"))
 }
 
 pub fn get_session_status(client: &Client, base_url: &str) -> Result<String, String> {
@@ -228,9 +276,15 @@ pub fn get_desktop_status(client: &Client, base_url: &str) -> Result<String, Str
 }
 
 pub fn invoke_resident_ptt(client: &Client, base_url: &str) -> Result<String, String> {
-    let response = client.post(format!("{base_url}/session/ptt")).json(&json!({})).send().map_err(|err| format!("POST /session/ptt failed: {err}"))?;
+    let response = client
+        .post(format!("{base_url}/session/ptt"))
+        .json(&json!({}))
+        .send()
+        .map_err(|err| format!("POST /session/ptt failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST /session/ptt body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST /session/ptt body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST /session/ptt returned {status}: {body}"));
     }
@@ -253,38 +307,64 @@ pub fn stop_resident_voice_stream(client: &Client, base_url: &str) -> Result<Str
     post_resident_voice_action(client, base_url, "/status/resident-voice/stop")
 }
 
-pub fn set_resident_voice_mode(client: &Client, base_url: &str, mode: &str) -> Result<String, String> {
+pub fn set_resident_voice_mode(
+    client: &Client,
+    base_url: &str,
+    mode: &str,
+) -> Result<String, String> {
     let response = client
         .put(format!("{base_url}/status/resident-voice/mode"))
         .json(&json!({"mode": mode}))
         .send()
         .map_err(|err| format!("PUT /status/resident-voice/mode failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("PUT /status/resident-voice/mode body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("PUT /status/resident-voice/mode body read failed: {err}"))?;
     if !status.is_success() {
-        return Err(format!("PUT /status/resident-voice/mode returned {status}: {body}"));
+        return Err(format!(
+            "PUT /status/resident-voice/mode returned {status}: {body}"
+        ));
     }
     Ok(body)
 }
 
-pub fn set_resident_voice_tts_voice(client: &Client, base_url: &str, voice: &str) -> Result<String, String> {
+pub fn set_resident_voice_tts_voice(
+    client: &Client,
+    base_url: &str,
+    voice: &str,
+) -> Result<String, String> {
     let response = client
         .put(format!("{base_url}/status/resident-voice/tts-voice"))
         .json(&json!({"voice": voice}))
         .send()
         .map_err(|err| format!("PUT /status/resident-voice/tts-voice failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("PUT /status/resident-voice/tts-voice body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("PUT /status/resident-voice/tts-voice body read failed: {err}"))?;
     if !status.is_success() {
-        return Err(format!("PUT /status/resident-voice/tts-voice returned {status}: {body}"));
+        return Err(format!(
+            "PUT /status/resident-voice/tts-voice returned {status}: {body}"
+        ));
     }
     Ok(body)
 }
 
-fn post_resident_voice_action(client: &Client, base_url: &str, path: &str) -> Result<String, String> {
-    let response = client.post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
+fn post_resident_voice_action(
+    client: &Client,
+    base_url: &str,
+    path: &str,
+) -> Result<String, String> {
+    let response = client
+        .post(format!("{base_url}{path}"))
+        .json(&json!({}))
+        .send()
+        .map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST {path} body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST {path} body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST {path} returned {status}: {body}"));
     }
@@ -292,9 +372,15 @@ fn post_resident_voice_action(client: &Client, base_url: &str, path: &str) -> Re
 }
 
 fn post_wake_action(client: &Client, base_url: &str, path: &str) -> Result<String, String> {
-    let response = client.post(format!("{base_url}{path}")).json(&json!({})).send().map_err(|err| format!("POST {path} failed: {err}"))?;
+    let response = client
+        .post(format!("{base_url}{path}"))
+        .json(&json!({}))
+        .send()
+        .map_err(|err| format!("POST {path} failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST {path} body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST {path} body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST {path} returned {status}: {body}"));
     }
@@ -317,34 +403,251 @@ pub fn get_personality_list(client: &Client, base_url: &str) -> Result<String, S
     get_json(client, base_url, "/personality/list")
 }
 
-pub fn select_personality(client: &Client, base_url: &str, profile_id: &str) -> Result<String, String> {
-    let response = client.post(format!("{base_url}/personality/select")).json(&json!({"profile_id": profile_id})).send().map_err(|err| format!("POST /personality/select failed: {err}"))?;
+pub fn select_personality(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+) -> Result<String, String> {
+    let response = client
+        .post(format!("{base_url}/personality/select"))
+        .json(&json!({"profile_id": profile_id}))
+        .send()
+        .map_err(|err| format!("POST /personality/select failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST /personality/select body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST /personality/select body read failed: {err}"))?;
     if !status.is_success() {
-        return Err(format!("POST /personality/select returned {status}: {body}"));
+        return Err(format!(
+            "POST /personality/select returned {status}: {body}"
+        ));
     }
     Ok(body)
 }
 
 pub fn get_operator_config(client: &Client, base_url: &str) -> Result<String, String> {
-    let response = client.get(format!("{base_url}/config/operator")).send().map_err(|err| format!("GET /config/operator failed: {err}"))?;
+    let response = client
+        .get(format!("{base_url}/config/operator"))
+        .send()
+        .map_err(|err| format!("GET /config/operator failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("GET /config/operator body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("GET /config/operator body read failed: {err}"))?;
     if status.is_success() || status.as_u16() == 409 {
         return Ok(body);
     }
     Err(format!("GET /config/operator returned {status}: {body}"))
 }
 
-pub fn write_operator_config(client: &Client, base_url: &str, fields: Value) -> Result<String, String> {
-    let response = client.post(format!("{base_url}/config/operator")).json(&json!({"fields": fields})).send().map_err(|err| format!("POST /config/operator failed: {err}"))?;
+pub fn write_operator_config(
+    client: &Client,
+    base_url: &str,
+    fields: Value,
+) -> Result<String, String> {
+    let response = client
+        .post(format!("{base_url}/config/operator"))
+        .json(&json!({"fields": fields}))
+        .send()
+        .map_err(|err| format!("POST /config/operator failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST /config/operator body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST /config/operator body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST /config/operator returned {status}: {body}"));
     }
     Ok(body)
+}
+
+fn memory_transport_error(operation: &str, error: reqwest::Error) -> String {
+    json!({
+        "status": Value::Null,
+        "body": Value::Null,
+        "message": format!("{operation} failed: {error}"),
+    })
+    .to_string()
+}
+
+fn memory_response(operation: &str, response: Response) -> Result<String, String> {
+    let status = response.status();
+    let body = response
+        .text()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    if status.is_success() {
+        return Ok(body);
+    }
+    let structured_body =
+        serde_json::from_str::<Value>(&body).unwrap_or_else(|_| json!({ "message": body }));
+    Err(json!({
+        "status": status.as_u16(),
+        "body": structured_body,
+    })
+    .to_string())
+}
+
+pub fn get_memory_policy(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /memory/policy";
+    let response = client
+        .get(format!("{base_url}/memory/policy"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn update_memory_policy(
+    client: &Client,
+    base_url: &str,
+    automatic_curation_enabled: bool,
+    expected_revision: u64,
+) -> Result<String, String> {
+    let operation = "PUT /memory/policy";
+    let response = client
+        .put(format!("{base_url}/memory/policy"))
+        .json(&json!({
+            "automatic_curation_enabled": automatic_curation_enabled,
+            "expected_revision": expected_revision,
+        }))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn list_memories(
+    client: &Client,
+    base_url: &str,
+    state: Option<&str>,
+    kind: Option<&str>,
+    query: Option<&str>,
+    offset: u32,
+    limit: u32,
+) -> Result<String, String> {
+    let operation = "GET /memory";
+    let mut params = vec![("offset", offset.to_string()), ("limit", limit.to_string())];
+    if let Some(value) = state {
+        params.push(("state", value.to_string()));
+    }
+    if let Some(value) = kind {
+        params.push(("kind", value.to_string()));
+    }
+    if let Some(value) = query {
+        params.push(("query", value.to_string()));
+    }
+    let response = client
+        .get(format!("{base_url}/memory"))
+        .query(&params)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_memory_detail(client: &Client, base_url: &str, fact_id: &str) -> Result<String, String> {
+    let operation = "GET /memory/{fact_id}";
+    let response = client
+        .get(format!("{base_url}/memory/{fact_id}"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+fn post_memory_action(
+    client: &Client,
+    base_url: &str,
+    fact_id: &str,
+    action: &str,
+    body: Value,
+) -> Result<String, String> {
+    let operation = format!("POST /memory/{{fact_id}}/{action}");
+    let response = client
+        .post(format!("{base_url}/memory/{fact_id}/{action}"))
+        .json(&body)
+        .send()
+        .map_err(|error| memory_transport_error(&operation, error))?;
+    memory_response(&operation, response)
+}
+
+pub fn confirm_memory(
+    client: &Client,
+    base_url: &str,
+    fact_id: &str,
+    expected_revision: u64,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    post_memory_action(
+        client,
+        base_url,
+        fact_id,
+        "confirm",
+        json!({ "expected_revision": expected_revision, "reason": reason }),
+    )
+}
+
+pub fn correct_memory(
+    client: &Client,
+    base_url: &str,
+    fact_id: &str,
+    expected_revision: u64,
+    replacement_text: &str,
+    replacement_value: Option<&str>,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    post_memory_action(
+        client,
+        base_url,
+        fact_id,
+        "correct",
+        json!({
+            "expected_revision": expected_revision,
+            "replacement_text": replacement_text,
+            "replacement_value": replacement_value,
+            "reason": reason,
+        }),
+    )
+}
+
+pub fn dispute_memory(
+    client: &Client,
+    base_url: &str,
+    fact_id: &str,
+    expected_revision: u64,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    post_memory_action(
+        client,
+        base_url,
+        fact_id,
+        "dispute",
+        json!({ "expected_revision": expected_revision, "reason": reason }),
+    )
+}
+
+pub fn forget_memory(
+    client: &Client,
+    base_url: &str,
+    fact_id: &str,
+    expected_revision: u64,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    let operation = "DELETE /memory/{fact_id}";
+    let mut params = vec![("expected_revision", expected_revision.to_string())];
+    if let Some(value) = reason {
+        params.push(("reason", value.to_string()));
+    }
+    let response = client
+        .delete(format!("{base_url}/memory/{fact_id}"))
+        .query(&params)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_memory_curation_status(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /memory/curation/status";
+    let response = client
+        .get(format!("{base_url}/memory/curation/status"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
 }
 
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
@@ -354,7 +657,14 @@ pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Resul
         .json(&json!({"session_id": session_id, "final_state": "IDLE"}))
         .send()
         .map_err(|err| format!("POST /session/close failed: {err}"))?;
-    if response.status().is_success() { Ok(()) } else { Err(format!("POST /session/close returned {}", response.status())) }
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "POST /session/close returned {}",
+            response.status()
+        ))
+    }
 }
 
 pub fn drain_memory_curation(client: &Client, base_url: &str) -> Result<(), String> {
@@ -374,10 +684,21 @@ pub fn drain_memory_curation(client: &Client, base_url: &str) -> Result<(), Stri
     }
 }
 
-pub fn submit_text_turn(client: &Client, base_url: &str, text: &str, session_id: Option<&str>) -> Result<String, String> {
-    let response = client.post(format!("{base_url}/task/text")).json(&json!({"text": text, "session_id": session_id})).send().map_err(|err| format!("POST /task/text failed: {err}"))?;
+pub fn submit_text_turn(
+    client: &Client,
+    base_url: &str,
+    text: &str,
+    session_id: Option<&str>,
+) -> Result<String, String> {
+    let response = client
+        .post(format!("{base_url}/task/text"))
+        .json(&json!({"text": text, "session_id": session_id}))
+        .send()
+        .map_err(|err| format!("POST /task/text failed: {err}"))?;
     let status = response.status();
-    let body = response.text().map_err(|err| format!("POST /task/text body read failed: {err}"))?;
+    let body = response
+        .text()
+        .map_err(|err| format!("POST /task/text body read failed: {err}"))?;
     if !status.is_success() {
         return Err(format!("POST /task/text returned {status}: {body}"));
     }
@@ -399,7 +720,10 @@ fn format_diagnostics(diagnostics: &BackendDiagnostics) -> String {
 
 fn tail_file(path: &PathBuf) -> String {
     let mut content = String::new();
-    if File::open(path).and_then(|mut file| file.read_to_string(&mut content)).is_err() {
+    if File::open(path)
+        .and_then(|mut file| file.read_to_string(&mut content))
+        .is_err()
+    {
         return "<unavailable>".to_string();
     }
     let mut lines = content.lines().rev().take(20).collect::<Vec<_>>();
@@ -442,7 +766,6 @@ fn kill_process_by_pid(pid: u32) {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::python_path_for_host;
@@ -484,7 +807,9 @@ mod tests {
 
         let client = Client::builder().build().expect("health client");
         let base_url = manager.base_url();
-        let result = super::wait_healthy(&client, &base_url, Duration::from_secs(90), || manager.exited_status());
+        let result = super::wait_healthy(&client, &base_url, Duration::from_secs(90), || {
+            manager.exited_status()
+        });
         manager.kill_backend();
         result.expect("desktop-launched backend health");
     }

@@ -114,12 +114,14 @@
             <div id="wake-indicator" class="wake-indicator">Wake status unavailable.</div>
           </section>
           <section class="panel-section operator-actions">
-            <div class="settings-trigger-group">
+            <div class="settings-trigger-group operator-trigger-group">
+              <button id="memory-trigger" class="icon-button" type="button" aria-label="Memory" title="Memory"><span aria-hidden="true">M</span></button>
+              <strong>Memory</strong>
               <button id="settings-trigger" class="icon-button" type="button" aria-label="Settings" title="Settings"><span aria-hidden="true">⚙</span></button>
               <strong>Settings</strong>
             </div>
-            <p class="profile-detail">Runtime changes apply after restart.</p>
           </section>
+          <section id="memory-panel" class="profile-detail memory-panel" hidden></section>
           <section id="settings-panel" class="profile-detail settings-panel" hidden></section>
         </aside>
       </section>
