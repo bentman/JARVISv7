@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 15:05
+  - Host class(es): Windows AMD64
+  - Summary: Upgraded the active semantic-memory database from schema version 2 to version 3 through the production initializer and expanded v2 migration coverage for stored governed data.
+  - Scope: Active semantic-memory schema initialization and focused semantic-memory migration test coverage; no extraction, retrieval, desktop, or cleanup behavior changed.
+  - Validation: Focused pytest PASS (`4 passed, 27 deselected`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/memory/test_semantic.py -k 'version_two or repeat_initialization_after_migration or unknown_future_user_version or partial_version_zero or rollback'`. Production initializer reported `schema_ready=True`, `schema_error=None`, and the active database reported `user_version=3` with all eight version-3 curation result columns.
+  - Notes: The transactional v2-to-v3 migration was already present in production code; this work exercised it against the active database and added preservation assertions for facts, evidence/events, policy, content revision, and curation jobs.
+
+---
+
 - Timestamp: 2026-07-25 14:49
   - Host class(es): Windows AMD64
   - Summary: Removed inactive semantic-memory controls from the turn write policy so persisted curation policy remains the sole authority for post-session semantic curation.

@@ -5,6 +5,17 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from backend.app.memory.curation import (
+    EvidenceInput,
+    GovernedEvidenceAuthority,
+    GovernedFactInput,
+    LifecycleState,
+    OperationStatus,
+)
+from backend.app.memory.curation_contract import (
+    GovernedClaimIdentity,
+    GovernedMemoryKind,
+)
 from backend.app.memory.semantic import (
     SEMANTIC_SCHEMA_VERSION,
     SemanticMemory,
@@ -470,12 +481,45 @@ def test_version_two_curation_rows_migrate_as_readable_legacy_results(
 ) -> None:
     db_path = tmp_path / "version-two.sqlite"
     original = SemanticMemory(db_path)
-    original.update_policy(automatic_curation_enabled=True, expected_revision=1)
-    original.enqueue_curation_job(
+    policy = original.update_policy(automatic_curation_enabled=True, expected_revision=1)
+    assert policy.status is OperationStatus.SUCCESS
+    fact = original.create_governed_fact(
+        GovernedFactInput(
+            text="The user lives in Chicago.",
+            identity=GovernedClaimIdentity(
+                kind=GovernedMemoryKind.PERSONAL_FACT,
+                claim_key="claim.home_city",
+            ),
+            value_text="Chicago",
+            evidence_authority=GovernedEvidenceAuthority.DIRECT_USER_STATEMENT,
+            state=LifecycleState.ACTIVE,
+            confidence=0.7,
+            importance=0.6,
+            evidence=(
+                EvidenceInput(
+                    authority=GovernedEvidenceAuthority.DIRECT_USER_STATEMENT,
+                    observed_at="2026-07-25T00:00:00+00:00",
+                    source_session_id="legacy-session",
+                    source_turn_id="legacy-turn",
+                    source_field="transcript",
+                ),
+            ),
+        )
+    )
+    assert fact.status is OperationStatus.SUCCESS
+    assert fact.value is not None
+    job = original.enqueue_curation_job(
         session_id="legacy-job",
         artifact_ref="sessions/legacy-job/session.json",
         policy_revision=2,
     )
+    assert job.status is OperationStatus.SUCCESS
+    before_fact = original.read_fact(fact.value.fact_id)
+    before_policy = original.read_policy()
+    before_revision = original.read_content_revision()
+    assert before_fact.status is OperationStatus.SUCCESS
+    assert before_policy.status is OperationStatus.SUCCESS
+    assert before_revision.status is OperationStatus.SUCCESS
     result_columns = (
         "result_candidates_proposed",
         "result_candidates_rejected",
@@ -495,6 +539,11 @@ def test_version_two_curation_rows_migrate_as_readable_legacy_results(
     legacy = migrated.read_curation_job("legacy-job").value
 
     assert migrated._schema_ready is True
+    with migrated._get_conn() as conn:
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == SEMANTIC_SCHEMA_VERSION
+    assert migrated.read_fact(fact.value.fact_id).value == before_fact.value
+    assert migrated.read_policy().value == before_policy.value
+    assert migrated.read_content_revision().value == before_revision.value
     assert legacy is not None
     assert legacy.status.value == "pending"
     assert legacy.result_candidates_proposed is None
@@ -505,6 +554,12 @@ def test_version_two_curation_rows_migrate_as_readable_legacy_results(
     assert legacy.result_records_superseded_or_disputed is None
     assert legacy.result_duplicate_noops is None
     assert legacy.result_failure_count is None
+
+    restarted = SemanticMemory(db_path)
+    assert restarted._schema_ready is True
+    assert restarted.read_fact(fact.value.fact_id).value == before_fact.value
+    assert restarted.read_policy().value == before_policy.value
+    assert restarted.read_content_revision().value == before_revision.value
 
 
 def test_unknown_future_user_version_fails_closed_without_mutation(tmp_path: Path) -> None:
