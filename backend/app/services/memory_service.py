@@ -149,6 +149,19 @@ class MemoryCorrectionView:
 
 
 @dataclass(frozen=True, slots=True)
+class CurationResultView:
+    reason_code: str
+    candidates_proposed: int
+    candidates_rejected: int
+    active_records_created: int
+    pending_review_created: int
+    records_reinforced: int
+    records_superseded_or_disputed: int
+    duplicate_noops: int
+    failure_count: int
+
+
+@dataclass(frozen=True, slots=True)
 class CurationJobView:
     job_id: str
     session_id: str
@@ -162,6 +175,7 @@ class CurationJobView:
     last_reason: str | None
     blocked_reason: str | None
     retry_condition: str
+    result: CurationResultView | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -180,6 +194,7 @@ class MemoryCurationStatusView:
     current_job_id: str | None
     current_session_id: str | None
     last_result_reason: str | None
+    last_result: CurationResultView | None
     last_updated_at: str | None
     retry_blocked: bool
     jobs_returned: int
@@ -429,6 +444,14 @@ class MemoryService:
             None,
         )
         latest_result = next((job for job in recent if job.last_reason is not None), None)
+        latest_processor_result = next(
+            (
+                result
+                for job in recent
+                if (result := self._curation_result_view(job)) is not None
+            ),
+            None,
+        )
         degraded_reasons: list[str] = []
         if not runtime.processor_available:
             degraded_reasons.append("processor_unavailable")
@@ -454,6 +477,7 @@ class MemoryService:
             current_job_id=current.job_id if current else None,
             current_session_id=current.session_id if current else None,
             last_result_reason=latest_result.last_reason if latest_result else None,
+            last_result=latest_processor_result,
             last_updated_at=latest_result.updated_at if latest_result else None,
             retry_blocked=retry_blocked,
             jobs_returned=len(jobs),
@@ -587,6 +611,42 @@ class MemoryService:
             raise MemoryServiceError(422, "invalid_input", f"{label} is outside the bounded range")
 
     @staticmethod
+    def _curation_result_view(job: CurationJob) -> CurationResultView | None:
+        counts = (
+            job.result_candidates_proposed,
+            job.result_candidates_rejected,
+            job.result_active_records_created,
+            job.result_pending_review_created,
+            job.result_records_reinforced,
+            job.result_records_superseded_or_disputed,
+            job.result_duplicate_noops,
+            job.result_failure_count,
+        )
+        if job.last_result_reason is None or any(value is None for value in counts):
+            return None
+        (
+            candidates_proposed,
+            candidates_rejected,
+            active_records_created,
+            pending_review_created,
+            records_reinforced,
+            records_superseded_or_disputed,
+            duplicate_noops,
+            failure_count,
+        ) = (int(value) for value in counts if value is not None)
+        return CurationResultView(
+            reason_code=job.last_result_reason,
+            candidates_proposed=candidates_proposed,
+            candidates_rejected=candidates_rejected,
+            active_records_created=active_records_created,
+            pending_review_created=pending_review_created,
+            records_reinforced=records_reinforced,
+            records_superseded_or_disputed=records_superseded_or_disputed,
+            duplicate_noops=duplicate_noops,
+            failure_count=failure_count,
+        )
+
+    @staticmethod
     def _curation_job_view(job: CurationJob) -> CurationJobView:
         if job.status.value == "retry_wait" and job.attempt_count < job.max_attempts:
             retry_condition = "automatic_retry_pending"
@@ -607,6 +667,7 @@ class MemoryService:
             last_reason=job.last_reason,
             blocked_reason=job.blocked_reason,
             retry_condition=retry_condition,
+            result=MemoryService._curation_result_view(job),
         )
 
 

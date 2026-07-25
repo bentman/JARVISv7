@@ -250,3 +250,54 @@ def test_curation_status_is_sanitized_and_does_not_trigger_drain(tmp_path: Path)
     assert status.jobs_truncated is False
     assert status.recent_jobs == ()
     assert curation.status().drain_active is False
+
+
+def test_curation_status_exposes_only_durable_processor_summary(tmp_path: Path) -> None:
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    enabled = memory.update_policy(
+        automatic_curation_enabled=True,
+        expected_revision=1,
+    )
+    assert enabled.value is not None
+    memory.enqueue_curation_job(
+        session_id="session-result",
+        artifact_ref="C:/private/source.json",
+        policy_revision=enabled.value.revision,
+    )
+    claimed = memory.claim_curation_job(
+        worker_id="boot",
+        boot_id="boot",
+        max_attempts=3,
+        lease_seconds=30,
+    )
+    assert claimed.value is not None and claimed.value.claim_token is not None
+    memory.complete_curation_job(
+        session_id="session-result",
+        lease_token=claimed.value.claim_token,
+        boot_id="boot",
+        reason="review_only_candidates_resolved",
+        candidates_proposed=3,
+        candidates_rejected=1,
+        pending_review_created=2,
+        duplicate_noops=1,
+    )
+    curation = MemoryCurationService(
+        semantic_memory=memory,
+        sessions_root=tmp_path / "sessions",
+        turns_root=tmp_path / "turns",
+        coordinator=LLMExecutionCoordinator(),
+        session_is_active=lambda: False,
+        processor=lambda _evidence: None,  # type: ignore[arg-type]
+    )
+
+    status = MemoryService(
+        semantic_memory=memory,
+        curation_service=curation,
+    ).curation_status()
+
+    assert status.last_result is not None
+    assert status.last_result.reason_code == "review_only_candidates_resolved"
+    assert status.last_result.candidates_proposed == 3
+    assert status.last_result.pending_review_created == 2
+    assert status.recent_jobs[0].result == status.last_result
+    assert "private" not in repr(status)

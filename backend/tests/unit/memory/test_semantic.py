@@ -465,6 +465,48 @@ def test_repeat_initialization_after_migration_is_idempotent(tmp_path: Path) -> 
         assert tuple(conn.execute("SELECT * FROM semantic_policy").fetchone()) == policy_before
 
 
+def test_version_two_curation_rows_migrate_as_readable_legacy_results(
+    tmp_path: Path,
+) -> None:
+    db_path = tmp_path / "version-two.sqlite"
+    original = SemanticMemory(db_path)
+    original.update_policy(automatic_curation_enabled=True, expected_revision=1)
+    original.enqueue_curation_job(
+        session_id="legacy-job",
+        artifact_ref="sessions/legacy-job/session.json",
+        policy_revision=2,
+    )
+    result_columns = (
+        "result_candidates_proposed",
+        "result_candidates_rejected",
+        "result_active_records_created",
+        "result_pending_review_created",
+        "result_records_reinforced",
+        "result_records_superseded_or_disputed",
+        "result_duplicate_noops",
+        "result_failure_count",
+    )
+    with original._get_conn() as conn:
+        for column_name in result_columns:
+            conn.execute(f"ALTER TABLE semantic_curation_job DROP COLUMN {column_name}")
+        conn.execute("PRAGMA user_version = 2")
+
+    migrated = SemanticMemory(db_path)
+    legacy = migrated.read_curation_job("legacy-job").value
+
+    assert migrated._schema_ready is True
+    assert legacy is not None
+    assert legacy.status.value == "pending"
+    assert legacy.result_candidates_proposed is None
+    assert legacy.result_candidates_rejected is None
+    assert legacy.result_active_records_created is None
+    assert legacy.result_pending_review_created is None
+    assert legacy.result_records_reinforced is None
+    assert legacy.result_records_superseded_or_disputed is None
+    assert legacy.result_duplicate_noops is None
+    assert legacy.result_failure_count is None
+
+
 def test_unknown_future_user_version_fails_closed_without_mutation(tmp_path: Path) -> None:
     db_path = tmp_path / "future.sqlite"
     with sqlite3.connect(db_path) as conn:

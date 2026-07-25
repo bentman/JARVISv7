@@ -842,6 +842,63 @@ def test_curation_jobs_can_complete_and_cancel_with_owned_leases(
     assert _revision(memory) == 0
 
 
+def test_curation_completion_atomically_fences_and_persists_bounded_result(
+    tmp_path: Path,
+) -> None:
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    memory.update_policy(automatic_curation_enabled=True, expected_revision=1)
+    memory.enqueue_curation_job(
+        session_id="session-result",
+        artifact_ref="sessions/session-result/session.json",
+        policy_revision=2,
+    )
+    claimed = memory.claim_curation_job(
+        worker_id="current-boot",
+        boot_id="current-boot",
+        max_attempts=3,
+        lease_seconds=30,
+    )
+    assert claimed.value is not None and claimed.value.claim_token is not None
+
+    stale = memory.complete_curation_job(
+        session_id="session-result",
+        lease_token="stale-claim",
+        boot_id="current-boot",
+        reason="must_not_persist",
+        candidates_proposed=3,
+    )
+    before = memory.read_curation_job("session-result").value
+    completed = memory.complete_curation_job(
+        session_id="session-result",
+        lease_token=claimed.value.claim_token,
+        boot_id="current-boot",
+        reason="review_only_candidates_resolved",
+        candidates_proposed=3,
+        candidates_rejected=1,
+        pending_review_created=2,
+        duplicate_noops=1,
+    )
+
+    assert stale.status is OperationStatus.CONFLICT
+    assert before is not None and before.status is CurationJobStatus.PROCESSING
+    assert before.last_result_reason is None
+    assert before.result_candidates_proposed is None
+    assert completed.value is not None
+    assert completed.value.status is CurationJobStatus.SUCCEEDED
+    assert completed.value.last_result_reason == "review_only_candidates_resolved"
+    assert completed.value.result_candidates_proposed == 3
+    assert completed.value.result_candidates_rejected == 1
+    assert completed.value.result_pending_review_created == 2
+    assert completed.value.result_duplicate_noops == 1
+
+    invalid = memory.complete_curation_job(
+        session_id="session-result",
+        lease_token=claimed.value.claim_token,
+        candidates_proposed=4,
+    )
+    assert invalid.status is OperationStatus.INVALID
+
+
 def test_bounded_busy_conflict_does_not_partially_mutate(tmp_path: Path) -> None:
     db_path = tmp_path / "memory.sqlite"
     memory = SemanticMemory(db_path)

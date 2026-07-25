@@ -42,7 +42,7 @@ from backend.app.memory.curation import (
 )
 from backend.app.memory.curation_contract import GovernedMemoryKind, validate_claim_key
 
-SEMANTIC_SCHEMA_VERSION = 2
+SEMANTIC_SCHEMA_VERSION = 3
 EVIDENCE_AUTHORITIES = (
     "direct_user_statement",
     "direct_user_action",
@@ -266,6 +266,15 @@ class SemanticMemory:
                 conn.execute("BEGIN IMMEDIATE")
                 try:
                     self._migrate_curation_jobs_to_v2(conn)
+                    conn.execute(f"PRAGMA user_version = {SEMANTIC_SCHEMA_VERSION}")
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
+                    raise
+            elif version == 2:
+                conn.execute("BEGIN IMMEDIATE")
+                try:
+                    self._migrate_curation_jobs_to_v3(conn)
                     conn.execute(f"PRAGMA user_version = {SEMANTIC_SCHEMA_VERSION}")
                     conn.commit()
                 except Exception:
@@ -531,7 +540,7 @@ class SemanticMemory:
             )
             """
         )
-        self._create_curation_job_v2(conn)
+        self._create_curation_job_v3(conn)
         conn.execute(
             """
             CREATE TABLE semantic_policy (
@@ -608,7 +617,7 @@ class SemanticMemory:
             )
 
     @staticmethod
-    def _create_curation_job_v2(
+    def _create_curation_job_v3(
         conn: sqlite3.Connection,
         *,
         table_name: str = "semantic_curation_job",
@@ -649,6 +658,30 @@ class SemanticMemory:
                 last_error_at TEXT,
                 blocked_reason TEXT,
                 last_result_reason TEXT,
+                result_candidates_proposed INTEGER
+                    CHECK (result_candidates_proposed IS NULL
+                           OR result_candidates_proposed BETWEEN 0 AND 3),
+                result_candidates_rejected INTEGER
+                    CHECK (result_candidates_rejected IS NULL
+                           OR result_candidates_rejected BETWEEN 0 AND 3),
+                result_active_records_created INTEGER
+                    CHECK (result_active_records_created IS NULL
+                           OR result_active_records_created BETWEEN 0 AND 3),
+                result_pending_review_created INTEGER
+                    CHECK (result_pending_review_created IS NULL
+                           OR result_pending_review_created BETWEEN 0 AND 3),
+                result_records_reinforced INTEGER
+                    CHECK (result_records_reinforced IS NULL
+                           OR result_records_reinforced BETWEEN 0 AND 3),
+                result_records_superseded_or_disputed INTEGER
+                    CHECK (result_records_superseded_or_disputed IS NULL
+                           OR result_records_superseded_or_disputed BETWEEN 0 AND 3),
+                result_duplicate_noops INTEGER
+                    CHECK (result_duplicate_noops IS NULL
+                           OR result_duplicate_noops BETWEEN 0 AND 3),
+                result_failure_count INTEGER
+                    CHECK (result_failure_count IS NULL
+                           OR result_failure_count BETWEEN 0 AND 3),
                 runtime_name TEXT,
                 model_id TEXT,
                 serve_profile_id TEXT,
@@ -671,7 +704,7 @@ class SemanticMemory:
         )
 
     def _migrate_curation_jobs_to_v2(self, conn: sqlite3.Connection) -> None:
-        self._create_curation_job_v2(
+        self._create_curation_job_v3(
             conn,
             table_name="semantic_curation_job_v2",
         )
@@ -723,6 +756,26 @@ class SemanticMemory:
         conn.execute(
             "ALTER TABLE semantic_curation_job_v2 RENAME TO semantic_curation_job"
         )
+
+    @staticmethod
+    def _migrate_curation_jobs_to_v3(conn: sqlite3.Connection) -> None:
+        for column_name in (
+            "result_candidates_proposed",
+            "result_candidates_rejected",
+            "result_active_records_created",
+            "result_pending_review_created",
+            "result_records_reinforced",
+            "result_records_superseded_or_disputed",
+            "result_duplicate_noops",
+            "result_failure_count",
+        ):
+            conn.execute(
+                f"""
+                ALTER TABLE semantic_curation_job
+                ADD COLUMN {column_name} INTEGER
+                    CHECK ({column_name} IS NULL OR {column_name} BETWEEN 0 AND 3)
+                """
+            )
 
     def _create_fts_if_available(
         self,
@@ -785,6 +838,50 @@ class SemanticMemory:
         )
         if self._table_columns(conn, "semantic_fact") != expected_fact_columns:
             raise RuntimeError("versioned semantic_fact layout is not recognized")
+        expected_job_columns = {
+            "job_id",
+            "session_id",
+            "session_artifact_path",
+            "policy_revision",
+            "status",
+            "attempt_count",
+            "max_attempts",
+            "authorized_at",
+            "enqueued_at",
+            "next_attempt_at",
+            "updated_at",
+            "boot_id",
+            "claim_token",
+            "claimed_at",
+            "lease_expires_at",
+            "generation_started_at",
+            "generation_finished_at",
+            "generation_duration_ms",
+            "persisted_at",
+            "completed_at",
+            "cancel_requested_at",
+            "cancelled_at",
+            "cancel_reason",
+            "last_error_code",
+            "last_error_detail",
+            "last_error_at",
+            "blocked_reason",
+            "last_result_reason",
+            "result_candidates_proposed",
+            "result_candidates_rejected",
+            "result_active_records_created",
+            "result_pending_review_created",
+            "result_records_reinforced",
+            "result_records_superseded_or_disputed",
+            "result_duplicate_noops",
+            "result_failure_count",
+            "runtime_name",
+            "model_id",
+            "serve_profile_id",
+            "accelerator",
+        }
+        if set(self._table_columns(conn, "semantic_curation_job")) != expected_job_columns:
+            raise RuntimeError("versioned semantic_curation_job layout is not recognized")
         for table_name in ("semantic_policy", "semantic_meta"):
             singleton_ids = [
                 row["singleton_id"]
@@ -943,6 +1040,20 @@ class SemanticMemory:
             last_error_at=cast(str | None, row["last_error_at"]),
             blocked_reason=cast(str | None, row["blocked_reason"]),
             last_result_reason=cast(str | None, row["last_result_reason"]),
+            result_candidates_proposed=cast(int | None, row["result_candidates_proposed"]),
+            result_candidates_rejected=cast(int | None, row["result_candidates_rejected"]),
+            result_active_records_created=cast(
+                int | None, row["result_active_records_created"]
+            ),
+            result_pending_review_created=cast(
+                int | None, row["result_pending_review_created"]
+            ),
+            result_records_reinforced=cast(int | None, row["result_records_reinforced"]),
+            result_records_superseded_or_disputed=cast(
+                int | None, row["result_records_superseded_or_disputed"]
+            ),
+            result_duplicate_noops=cast(int | None, row["result_duplicate_noops"]),
+            result_failure_count=cast(int | None, row["result_failure_count"]),
             runtime_name=cast(str | None, row["runtime_name"]),
             model_id=cast(str | None, row["model_id"]),
             serve_profile_id=cast(str | None, row["serve_profile_id"]),
@@ -2586,6 +2697,14 @@ class SemanticMemory:
         reason: str = "succeeded",
         boot_id: str | None = None,
         generation_duration_ms: float | None = None,
+        candidates_proposed: int = 0,
+        candidates_rejected: int = 0,
+        active_records_created: int = 0,
+        pending_review_created: int = 0,
+        records_reinforced: int = 0,
+        records_superseded_or_disputed: int = 0,
+        duplicate_noops: int = 0,
+        failure_count: int = 0,
     ) -> StoreResult[CurationJob]:
         try:
             validate_job_identity(session_id)
@@ -2593,6 +2712,25 @@ class SemanticMemory:
             validate_reason(reason)
             if boot_id is not None:
                 validate_worker_identity(boot_id)
+            result_counts = (
+                candidates_proposed,
+                candidates_rejected,
+                active_records_created,
+                pending_review_created,
+                records_reinforced,
+                records_superseded_or_disputed,
+                duplicate_noops,
+                failure_count,
+            )
+            if any(
+                isinstance(value, bool)
+                or not isinstance(value, int)
+                or not 0 <= value <= 3
+                for value in result_counts
+            ):
+                raise CurationValidationError(
+                    "curation result counts must be integers between 0 and 3"
+                )
         except CurationValidationError as exc:
             return StoreResult(OperationStatus.INVALID, message=str(exc))
 
@@ -2634,6 +2772,14 @@ class SemanticMemory:
                     cancel_reason = CASE WHEN ? = 'cancelled' THEN 'policy_revision_changed'
                                          ELSE cancel_reason END,
                     last_result_reason = ?,
+                    result_candidates_proposed = ?,
+                    result_candidates_rejected = ?,
+                    result_active_records_created = ?,
+                    result_pending_review_created = ?,
+                    result_records_reinforced = ?,
+                    result_records_superseded_or_disputed = ?,
+                    result_duplicate_noops = ?,
+                    result_failure_count = ?,
                     boot_id = NULL,
                     claim_token = NULL,
                     claimed_at = NULL,
@@ -2654,6 +2800,14 @@ class SemanticMemory:
                     now,
                     status,
                     reason,
+                    candidates_proposed,
+                    candidates_rejected,
+                    active_records_created,
+                    pending_review_created,
+                    records_reinforced,
+                    records_superseded_or_disputed,
+                    duplicate_noops,
+                    failure_count,
                     session_id,
                     lease_token,
                     expected_boot,

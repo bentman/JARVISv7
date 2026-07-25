@@ -104,6 +104,18 @@ class MemoryCorrectionResponse(StrictMemoryModel):
     relation: str
 
 
+class CurationResultResponse(StrictMemoryModel):
+    reason_code: str = Field(min_length=1, max_length=128)
+    candidates_proposed: int = Field(ge=0, le=3)
+    candidates_rejected: int = Field(ge=0, le=3)
+    active_records_created: int = Field(ge=0, le=3)
+    pending_review_created: int = Field(ge=0, le=3)
+    records_reinforced: int = Field(ge=0, le=3)
+    records_superseded_or_disputed: int = Field(ge=0, le=3)
+    duplicate_noops: int = Field(ge=0, le=3)
+    failure_count: int = Field(ge=0, le=3)
+
+
 class CurationJobResponse(StrictMemoryModel):
     job_id: str
     session_id: str
@@ -117,6 +129,7 @@ class CurationJobResponse(StrictMemoryModel):
     last_reason: str | None
     blocked_reason: str | None
     retry_condition: str
+    result: CurationResultResponse | None
 
 
 class MemoryCurationStatusResponse(StrictMemoryModel):
@@ -134,6 +147,7 @@ class MemoryCurationStatusResponse(StrictMemoryModel):
     current_job_id: str | None
     current_session_id: str | None
     last_result_reason: str | None
+    last_result: CurationResultResponse | None
     last_updated_at: str | None
     retry_blocked: bool
     jobs_returned: int

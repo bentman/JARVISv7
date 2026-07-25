@@ -10,6 +10,7 @@ import {
   createMemoryPanelController,
   createOperatorPanelCoordinator,
   curationActivityState,
+  formatCurationResult,
   memoryActionsEnabled,
 } from "../src/components/memory-panel.js";
 
@@ -820,6 +821,26 @@ assert.equal(
   curationActivityState({ ...availableIdleCuration, retry_blocked: true }),
   "blocked",
   "backend blocked status must remain blocked",
+);
+assert.equal(
+  formatCurationResult({
+    reason_code: "review_only_candidates_resolved",
+    candidates_proposed: 3,
+    candidates_rejected: 1,
+    active_records_created: 0,
+    pending_review_created: 2,
+    records_reinforced: 0,
+    records_superseded_or_disputed: 0,
+    duplicate_noops: 1,
+    failure_count: 0,
+  }),
+  "review_only_candidates_resolved · proposed 3 · pending review 2 · active 0 · rejected 1 · duplicates 1 · reinforced 0 · superseded/disputed 0 · failures 0",
+  "desktop curation outcome must render only the structured backend result",
+);
+assert.equal(
+  formatCurationResult(null),
+  "",
+  "desktop must not infer a processor result when backend truth is absent",
 );
 
 const panelEvents = [];
