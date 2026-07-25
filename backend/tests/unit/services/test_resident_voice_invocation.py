@@ -311,6 +311,7 @@ def test_invocation_suspends_and_resumes_wake_monitor_hooks(tmp_path: Path) -> N
     resident.ptt()
 
     _wait_for(lambda: service.status().last_transcript == "resident transcript")
+    _wait_for(lambda: calls == ["pause", "resume:True"])
     assert calls == ["pause", "resume:True"]
 
 

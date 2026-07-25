@@ -32,6 +32,7 @@ from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.memory_curation_processor import ReviewOnlyMemoryCurationProcessor
 from backend.app.services.memory_curation_service import MemoryCurationService
+from backend.app.services.memory_service import MemoryService
 from backend.app.services.resident_voice_invocation import (
     ResidentVoiceInvocationService,
     default_utterance_segmenter,
@@ -72,6 +73,7 @@ class ApiState:
     semantic_memory: SemanticMemory | None = None
     llm_coordinator: LLMExecutionCoordinator | None = None
     memory_curation_service: MemoryCurationService | None = None
+    memory_service: MemoryService | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -167,6 +169,10 @@ def build_startup_state() -> ApiState:
             "accelerator": getattr(llm_trace, "accelerator", None),
         },
     )
+    memory_service = MemoryService(
+        semantic_memory=semantic_memory,
+        curation_service=memory_curation_service,
+    )
     session_service = SessionService(
         session_manager=session_manager,
         engine=engine,
@@ -220,6 +226,7 @@ def build_startup_state() -> ApiState:
         semantic_memory=semantic_memory,
         llm_coordinator=llm_coordinator,
         memory_curation_service=memory_curation_service,
+        memory_service=memory_service,
     )
     return state
 
@@ -271,6 +278,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
         config,
         diagnostics,
         health,
+        memory,
         memory_curation,
         personality,
         readiness,
@@ -289,5 +297,6 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.include_router(diagnostics.router)
     app.include_router(status.router)
     app.include_router(config.router)
+    app.include_router(memory.router)
     app.include_router(memory_curation.router)
     return app
