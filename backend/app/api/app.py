@@ -14,6 +14,7 @@ from backend.app.memory.curation_reconciliation import (
     ReviewOnlyCurationPolicy,
     collect_application_owned_values,
 )
+from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.semantic import SemanticMemory
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
@@ -70,6 +71,7 @@ class ApiState:
     resident_voice: ResidentVoiceInvocationService | None = None
     llm_trace: SelectionTrace | None = None
     local_llm_sidecar: LocalLLMSidecarService | None = None
+    episodic_memory: EpisodicMemory | None = None
     semantic_memory: SemanticMemory | None = None
     llm_coordinator: LLMExecutionCoordinator | None = None
     memory_curation_service: MemoryCurationService | None = None
@@ -85,6 +87,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         personality=state.personality,
         session_manager=manager,
         cache_manager=state.cache_manager,
+        episodic=state.episodic_memory,
         semantic=state.semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
@@ -118,6 +121,7 @@ def build_startup_state() -> ApiState:
     llm, llm_trace = select_llm(local=local_llm.runtime)
     session_manager = SessionManager()
     cache_manager = CacheManager()
+    episodic_memory = EpisodicMemory()
     semantic_memory = SemanticMemory()
     llm_coordinator = LLMExecutionCoordinator()
     settings = load_settings()
@@ -135,6 +139,7 @@ def build_startup_state() -> ApiState:
         personality=personality,
         session_manager=session_manager,
         cache_manager=cache_manager,
+        episodic=episodic_memory,
         semantic=semantic_memory,
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(resident_audio_stream),
@@ -223,6 +228,7 @@ def build_startup_state() -> ApiState:
         resident_voice=resident_voice,
         llm_trace=llm_trace,
         local_llm_sidecar=local_llm.sidecar,
+        episodic_memory=episodic_memory,
         semantic_memory=semantic_memory,
         llm_coordinator=llm_coordinator,
         memory_curation_service=memory_curation_service,

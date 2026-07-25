@@ -10,7 +10,10 @@ from backend.app.artifacts.storage import (
     write_turn_artifact,
 )
 from backend.app.artifacts.turn_artifact import TurnArtifact
-from backend.app.api.app import lifespan
+from backend.app.api.app import build_engine, lifespan
+from backend.app.cache.manager import CacheManager
+from backend.app.conversation.session_manager import SessionManager
+from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.semantic import SemanticMemory
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.memory_curation_service import (
@@ -21,6 +24,35 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 NOW = "2026-07-24T12:00:00+00:00"
+
+
+def test_build_engine_wires_state_episodic_memory_for_new_sessions(tmp_path: Path) -> None:
+    episodic = EpisodicMemory(
+        base_dir=tmp_path / "memory" / "episodic",
+        sessions_base_dir=tmp_path / "sessions",
+    )
+    manager = SessionManager(
+        session_id="session-1",
+        turns_base_dir=tmp_path / "turns",
+        sessions_base_dir=tmp_path / "sessions",
+    )
+    state = SimpleNamespace(
+        stt=object(),
+        tts=object(),
+        llm=object(),
+        personality=object(),
+        session_manager=manager,
+        cache_manager=CacheManager(),
+        episodic_memory=episodic,
+        semantic_memory=None,
+        resident_audio_stream=None,
+        llm_coordinator=None,
+    )
+
+    engine = build_engine(state, manager)
+
+    assert engine.episodic is episodic
+    assert engine.episodic.base_dir == tmp_path / "memory" / "episodic"
 
 
 class _Stopper:

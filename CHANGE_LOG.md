@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 14:42
+  - Host class(es): Windows AMD64
+  - Summary: Wired the default backend startup path to construct and retain episodic memory, making it available to initial and replacement session turn engines.
+  - Scope: Backend API startup composition and focused application-lifecycle coverage; existing episodic write, retrieval, retention, and failure-isolation behavior was reused unchanged.
+  - Validation: Focused pytest PASS (`63 passed, 1 warning`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/api/test_app_lifecycle.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/memory/test_episodic.py`.
+  - Notes: No model generation, live runtime validation, policy change, schema change, or configuration change was performed.
+
+---
+
 - Timestamp: 2026-07-25 09:21
   - Host class(es): Windows AMD64
   - Summary: Added the governed semantic-memory desktop surface for opt-in retention, bounded inspection, evidence/lifecycle review, backend-owned actions, forgetting, and truthful curation status.
