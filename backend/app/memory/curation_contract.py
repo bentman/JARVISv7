@@ -60,6 +60,11 @@ class GovernedMemoryKind(StrEnum):
     SUMMARY = "summary"
 
 
+SUPPORTED_ADVISORY_MEMORY_KINDS = tuple(
+    kind for kind in GovernedMemoryKind if kind is not GovernedMemoryKind.UNCLASSIFIED
+)
+
+
 class EvidenceField(StrEnum):
     TRANSCRIPT = "transcript"
     RESPONSE_TEXT = "response_text"
@@ -243,6 +248,8 @@ def _parse_candidate(value: Any) -> ModelMemoryProposal:
         advisory_kind = GovernedMemoryKind(value["kind"])
     except (TypeError, ValueError) as exc:
         raise ProposalContractError("candidate kind is outside the advisory vocabulary") from exc
+    if advisory_kind not in SUPPORTED_ADVISORY_MEMORY_KINDS:
+        raise ProposalContractError("candidate kind is outside the advisory vocabulary")
     advisory_claim_key = validate_claim_key(value["claim_key"])
     candidate_value = value["value"]
     if candidate_value is not None and (

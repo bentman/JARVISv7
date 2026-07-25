@@ -13,6 +13,7 @@ from backend.app.memory.curation_contract import (
     GovernedMemoryKind,
     PersistedTurnEvidence,
     ProposalContractError,
+    SUPPORTED_ADVISORY_MEMORY_KINDS,
     apply_identity_decision,
     build_provisional_candidate,
     build_provisional_candidates,
@@ -81,6 +82,25 @@ def test_governed_kind_vocabulary_is_application_owned_and_exact() -> None:
     assert GovernedMemoryKind.UNCLASSIFIED.value == PROVISIONAL_MEMORY_KIND
 
 
+def test_supported_advisory_kind_vocabulary_excludes_application_only_kind() -> None:
+    assert tuple(kind.value for kind in SUPPORTED_ADVISORY_MEMORY_KINDS) == (
+        "user_preference",
+        "personal_fact",
+        "project_fact",
+        "decision",
+        "commitment",
+        "relationship",
+        "summary",
+    )
+
+
+@pytest.mark.parametrize("kind", SUPPORTED_ADVISORY_MEMORY_KINDS)
+def test_strict_parser_accepts_each_supported_advisory_kind(kind: GovernedMemoryKind) -> None:
+    proposal = parse_model_proposals(_raw(_candidate(kind=kind.value)))[0]
+
+    assert proposal.advisory_kind is kind
+
+
 def test_strict_parser_accepts_measured_shape_and_surrounding_whitespace() -> None:
     proposal = parse_model_proposals(f" \n{_raw()}\t ")[0]
 
@@ -122,6 +142,9 @@ def test_strict_parser_rejects_unknown_nested_fields_and_invalid_numbers() -> No
     candidate["confidence"] = True
     with pytest.raises(ProposalContractError, match="JSON number"):
         parse_model_proposals(_raw(candidate))
+
+    with pytest.raises(ProposalContractError, match="advisory vocabulary"):
+        parse_model_proposals(_raw(_candidate(kind="unclassified")))
 
 
 def test_evidence_verification_derives_authority_from_persisted_field() -> None:

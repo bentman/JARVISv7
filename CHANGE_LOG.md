@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 15:27
+  - Host class(es): Windows AMD64
+  - Summary: Aligned the model-facing memory-extraction kind contract with an explicit parser-supported advisory vocabulary and rejected application-only kinds at the model boundary.
+  - Scope: Memory extraction output contract, advisory-kind parsing contract, and focused extraction/curation-processor tests.
+  - Validation: Focused pytest PASS (`30 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/cognition/test_memory_extraction.py backend/tests/unit/memory/test_curation_contract.py backend/tests/unit/services/test_memory_curation_processor.py`.
+  - Notes: Strict JSON parsing, bounded candidates, evidence verification, application-owned identity, and review-only persistence were unchanged.
+
+---
+
 - Timestamp: 2026-07-25 15:19
   - Host class(es): Windows AMD64
   - Summary: Made the configured working-memory write-policy limit govern both retained entries and continuity/prompt-visible working-memory context.
