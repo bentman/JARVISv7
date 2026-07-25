@@ -29,15 +29,6 @@
 
 ---
 
-- Timestamp: 2026-07-24 15:32
-  - Host class(es): Windows AMD64
-  - Summary: Merged approved PR #45, completing issue #36’s resumable deferred memory-curation execution with durable shutdown drain and shared single-slot LLM coordination.
-  - Scope: Backend curation persistence, service lifecycle, session/turn arbitration, POST drain API, Tauri shutdown bridge, and deterministic behavior tests.
-  - Validation: PR #45 merged as `0e1a906`; repository unit validator PASS on merged `main` (`808 passed, 4 skipped`).
-  - Notes: Issue #36 was closed; production extraction, reconciliation policy, automatic semantic writes, and memory management UI remain out of scope.
-
----
-
 - Timestamp: 2026-07-24 14:56
   - Host class(es): Windows AMD64
   - Summary: Prevented FastAPI shutdown from stopping the managed LLM sidecar while an in-flight non-preemptible curation processor still owns the shared coordinator, and narrowed the curation API to the required POST drain bridge.
@@ -56,30 +47,12 @@
 
 ---
 
-- Timestamp: 2026-07-24 13:53
-  - Host class(es): Windows AMD64
-  - Summary: Merged approved PR #44, completing transactional governed semantic-memory lifecycle operations on `main`.
-  - Scope: `backend/app/memory/curation.py`, `backend/app/memory/semantic.py`, `backend/tests/unit/memory/test_semantic_lifecycle.py`
-  - Validation: PR #44 merged as `48e7e24`; memory tests PASS (`101 passed`) and unit validator PASS (`788 passed, 5 skipped`).
-  - Notes: Closed #34; model extraction, workers, retrieval changes, APIs, desktop code, and physical source-artifact deletion remain out of scope.
-
----
-
 - Timestamp: 2026-07-24 13:27
   - Host class(es): Windows AMD64
   - Summary: Added deterministic transactional semantic-memory lifecycle, evidence, policy, curation-job, and content-revision operations with optimistic concurrency and bounded SQLite writer-conflict handling.
   - Scope: `backend/app/memory/curation.py`, `backend/app/memory/semantic.py`, `backend/tests/unit/memory/test_semantic_lifecycle.py`
   - Validation: Focused lifecycle tests PASS (`30 passed`); complete memory tests PASS (`101 passed`); unit validator PASS (`788 passed, 5 skipped`); focused Ruff and Python 3.12 mypy checks PASS.
   - Notes: Governed creation requires the application-owned kind/identity contract from #32; model extraction, workers, retrieval changes, APIs, desktop code, and physical source-artifact deletion remain out of scope.
-
----
-
-- Timestamp: 2026-07-24 12:58
-  - Host class(es): Windows AMD64
-  - Summary: Merged approved PR #43, establishing deterministic application-owned semantic-memory candidate identity and evidence validation on `main`.
-  - Scope: `backend/app/memory/curation_contract.py`, `backend/tests/unit/memory/test_curation_contract.py`
-  - Validation: PR #43 merged as `7693b46`; focused tests PASS (`20 passed`), retained diagnostic compatibility PASS (`96 outputs, 0 mismatches`), and unit validator PASS (`758 passed, 5 skipped`).
-  - Notes: Closed #32; lifecycle persistence and later memory-governance children remain out of scope.
 
 ---
 
