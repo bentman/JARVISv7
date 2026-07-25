@@ -6,8 +6,8 @@ import uuid
 from collections import deque
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from pathlib import Path
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 
 from backend.app.artifacts.session_artifact import SessionArtifact
@@ -43,6 +43,32 @@ class CurationProcessorResult:
     reason_code: str = "processor_succeeded"
     error_detail: str | None = None
     retryable: bool = True
+    candidates_proposed: int = 0
+    candidates_rejected: int = 0
+    active_records_created: int = 0
+    pending_review_created: int = 0
+    records_reinforced: int = 0
+    records_superseded_or_disputed: int = 0
+    duplicate_noops: int = 0
+    failure_count: int = 0
+
+    def __post_init__(self) -> None:
+        counts = (
+            self.candidates_proposed,
+            self.candidates_rejected,
+            self.active_records_created,
+            self.pending_review_created,
+            self.records_reinforced,
+            self.records_superseded_or_disputed,
+            self.duplicate_noops,
+            self.failure_count,
+        )
+        if any(isinstance(value, bool) or not 0 <= value <= 3 for value in counts):
+            raise ValueError("processor result counts must be integers between 0 and 3")
+        if not self.reason_code or len(self.reason_code) > 128:
+            raise ValueError("processor reason_code must contain 1..128 characters")
+        if self.error_detail is not None and len(self.error_detail) > 2048:
+            raise ValueError("processor error_detail must not exceed 2048 characters")
 
 
 class CurationProcessor(Protocol):

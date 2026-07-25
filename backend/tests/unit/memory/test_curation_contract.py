@@ -69,6 +69,7 @@ def _turn(
 
 def test_governed_kind_vocabulary_is_application_owned_and_exact() -> None:
     assert {kind.value for kind in GovernedMemoryKind} == {
+        "unclassified",
         "user_preference",
         "personal_fact",
         "project_fact",
@@ -77,7 +78,7 @@ def test_governed_kind_vocabulary_is_application_owned_and_exact() -> None:
         "relationship",
         "summary",
     }
-    assert PROVISIONAL_MEMORY_KIND not in {kind.value for kind in GovernedMemoryKind}
+    assert GovernedMemoryKind.UNCLASSIFIED.value == PROVISIONAL_MEMORY_KIND
 
 
 def test_strict_parser_accepts_measured_shape_and_surrounding_whitespace() -> None:

@@ -3,36 +3,41 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 
-
-from fastapi import FastAPI
-
-
 from backend.app.cache.manager import CacheManager
+from backend.app.cognition.memory_extraction import MemoryCandidateExtractor
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
-from backend.app.memory.semantic import SemanticMemory
+from backend.app.core.settings import load_settings
 from backend.app.hardware.preflight import PreflightResult
+from backend.app.memory.curation_reconciliation import (
+    ReviewOnlyCurationPolicy,
+    collect_application_owned_values,
+)
+from backend.app.memory.semantic import SemanticMemory
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.llm.base import LLMBase
-from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
+from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.base import TTSBase
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
-from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
-from backend.app.routing.runtime_selector import SelectionTrace, select_llm
 from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
+from backend.app.services.audio_stream import ResidentAudioStream
+from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
-from backend.app.services.session_service import SessionService
-from backend.app.services.audio_stream import ResidentAudioStream
+from backend.app.services.memory_curation_processor import ReviewOnlyMemoryCurationProcessor
+from backend.app.services.memory_curation_service import MemoryCurationService
 from backend.app.services.resident_voice_invocation import (
     ResidentVoiceInvocationService,
     default_utterance_segmenter,
     resident_interruption_chunks,
 )
+from backend.app.services.session_service import SessionService
 from backend.app.services.startup_context import ReadinessMap, load_startup_context
 from backend.app.services.utterance_segmenter import (
     WAKE_COMMAND_SILENCE_END_S,
@@ -40,8 +45,8 @@ from backend.app.services.utterance_segmenter import (
     UtteranceSegmenter,
 )
 from backend.app.services.wake_monitor import WakeMonitorService
-from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
-from backend.app.services.memory_curation_service import MemoryCurationService
+from fastapi import FastAPI
+
 
 @dataclass(slots=True)
 class ApiState:
@@ -113,6 +118,7 @@ def build_startup_state() -> ApiState:
     cache_manager = CacheManager()
     semantic_memory = SemanticMemory()
     llm_coordinator = LLMExecutionCoordinator()
+    settings = load_settings()
     resident_audio_stream = ResidentAudioStream()
     utterance_segmenter = default_utterance_segmenter()
     wake_utterance_segmenter = replace(
@@ -139,7 +145,19 @@ def build_startup_state() -> ApiState:
         turns_root=session_manager.turns_base_dir,
         coordinator=llm_coordinator,
         session_is_active=lambda: session_service.is_session_active(),
-        processor=None,
+        processor=ReviewOnlyMemoryCurationProcessor(
+            MemoryCandidateExtractor(llm),
+            ReviewOnlyCurationPolicy(
+                semantic_memory,
+                application_owned_values_provider=lambda: (
+                    collect_application_owned_values(
+                        settings,
+                        session_service.active_personality(),
+                        profile,
+                    )
+                ),
+            ),
+        ),
         runtime_status=lambda: {
             "ready": bool(llm.is_available()),
             "runtime_name": type(llm).__name__,
