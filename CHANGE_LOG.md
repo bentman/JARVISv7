@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 14:49
+  - Host class(es): Windows AMD64
+  - Summary: Removed inactive semantic-memory controls from the turn write policy so persisted curation policy remains the sole authority for post-session semantic curation.
+  - Scope: Write-policy contract and focused memory/session-service tests; working-memory and episodic-memory policy controls were unchanged.
+  - Validation: Focused pytest PASS (`40 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/memory/test_working_memory.py backend/tests/unit/memory/test_episodic.py backend/tests/unit/services/test_session_service.py`.
+  - Notes: No extraction, lifecycle, retrieval, desktop, schema, migration, or runtime-policy behavior changed.
+
+---
+
 - Timestamp: 2026-07-25 14:42
   - Host class(es): Windows AMD64
   - Summary: Wired the default backend startup path to construct and retain episodic memory, making it available to initial and replacement session turn engines.

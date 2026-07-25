@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from dataclasses import fields
+
 from backend.app.memory.working import WorkingMemory
 from backend.app.memory.write_policy import WritePolicy
 
@@ -48,3 +50,14 @@ def test_write_policy_defaults_enable_bounded_working_memory():
 
     assert policy.write_to_working_memory is True
     assert policy.max_working_memory_entries == 10
+
+
+def test_write_policy_exposes_only_working_and_episodic_controls():
+    assert [field.name for field in fields(WritePolicy)] == [
+        "write_to_working_memory",
+        "max_working_memory_entries",
+        "write_to_episodic_memory",
+        "episodic_min_response_length",
+        "episodic_skip_failed_turns",
+        "episodic_retention_sessions",
+    ]
