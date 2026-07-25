@@ -222,6 +222,10 @@ class TurnEngine:
                     )
                 except Exception:
                     retrieved_context = []
+            retrieved_memory_refs = [fact.turn_id for fact in retrieved_context]
+            retrieved_memory_evidence = [
+                fact.to_artifact_evidence() for fact in retrieved_context
+            ]
             policy = compile_personality_policy(self.personality)
             prompt_envelope = assemble_prompt_envelope(
                 transcript,
@@ -271,7 +275,8 @@ class TurnEngine:
                     response_text=stored_response,
                     voice_text=voice_text,
                     final_prompt_text=prompt,
-                    retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
+                    retrieved_memory_refs=retrieved_memory_refs,
+                    retrieved_memory_evidence=retrieved_memory_evidence,
                     raw_audio_path=raw_audio_path,
                     phase_durations_ms=phase_durations_ms,
                     voice_turn_started_at=voice_turn_started_at,
@@ -292,7 +297,8 @@ class TurnEngine:
                 context,
                 result,
                 final_prompt_text=prompt,
-                retrieved_memory_refs=[fact.turn_id for fact in retrieved_context],
+                retrieved_memory_refs=retrieved_memory_refs,
+                retrieved_memory_evidence=retrieved_memory_evidence,
             )
             return result
         except Exception as exc:
@@ -315,6 +321,7 @@ class TurnEngine:
         final_prompt_text: str,
         voice_text: str | None = None,
         retrieved_memory_refs: list[str] | None = None,
+        retrieved_memory_evidence: list[dict[str, object]] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
@@ -340,6 +347,7 @@ class TurnEngine:
                 result,
                 final_prompt_text=final_prompt_text,
                 retrieved_memory_refs=retrieved_memory_refs,
+                retrieved_memory_evidence=retrieved_memory_evidence,
             )
             return result
 
@@ -354,6 +362,7 @@ class TurnEngine:
                 response_text=response_text,
                 final_prompt_text=final_prompt_text,
                 retrieved_memory_refs=retrieved_memory_refs,
+                retrieved_memory_evidence=retrieved_memory_evidence,
                 raw_audio_path=raw_audio_path,
                 phase_durations_ms=phase_durations_ms,
                 voice_turn_started_at=voice_turn_started_at,
@@ -374,6 +383,7 @@ class TurnEngine:
             response_text=response_text,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=retrieved_memory_refs,
+            retrieved_memory_evidence=retrieved_memory_evidence,
             raw_audio_path=raw_audio_path,
             phase_durations_ms=phase_durations_ms,
             voice_turn_started_at=voice_turn_started_at,
@@ -407,6 +417,7 @@ class TurnEngine:
         response_text: str,
         final_prompt_text: str,
         retrieved_memory_refs: list[str] | None = None,
+        retrieved_memory_evidence: list[dict[str, object]] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
@@ -425,6 +436,7 @@ class TurnEngine:
                         sample_rate=sample_rate,
                         interruption_chunks=interruption_chunks,
                         retrieved_memory_refs=retrieved_memory_refs,
+                        retrieved_memory_evidence=retrieved_memory_evidence,
                         raw_audio_path=raw_audio_path,
                         phase_durations_ms=phase_durations_ms,
                         voice_turn_started_at=voice_turn_started_at,
@@ -456,6 +468,7 @@ class TurnEngine:
             result,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=retrieved_memory_refs,
+            retrieved_memory_evidence=retrieved_memory_evidence,
         )
         return result
 
@@ -469,6 +482,7 @@ class TurnEngine:
         response_text: str,
         final_prompt_text: str,
         retrieved_memory_refs: list[str] | None = None,
+        retrieved_memory_evidence: list[dict[str, object]] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
@@ -602,6 +616,7 @@ class TurnEngine:
             result,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=retrieved_memory_refs,
+            retrieved_memory_evidence=retrieved_memory_evidence,
         )
         return result
 
@@ -616,6 +631,7 @@ class TurnEngine:
         sample_rate: int,
         interruption_chunks: Iterator[np.ndarray],
         retrieved_memory_refs: list[str] | None = None,
+        retrieved_memory_evidence: list[dict[str, object]] | None = None,
         raw_audio_path: str | None = None,
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
@@ -661,6 +677,7 @@ class TurnEngine:
                     result,
                     final_prompt_text=final_prompt_text,
                     retrieved_memory_refs=retrieved_memory_refs,
+                    retrieved_memory_evidence=retrieved_memory_evidence,
                 )
                 return result
 
@@ -683,6 +700,7 @@ class TurnEngine:
             result,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=retrieved_memory_refs,
+            retrieved_memory_evidence=retrieved_memory_evidence,
         )
         return result
 
@@ -754,6 +772,7 @@ class TurnEngine:
         *,
         final_prompt_text: str | None,
         retrieved_memory_refs: list[str] | None = None,
+        retrieved_memory_evidence: list[dict[str, object]] | None = None,
     ) -> None:
         if self.session_manager is None:
             return
@@ -766,6 +785,9 @@ class TurnEngine:
             transcript=result.transcript,
             final_prompt_text=final_prompt_text,
             retrieved_memory_refs=list(retrieved_memory_refs or []),
+            retrieved_memory_evidence=[
+                dict(record) for record in (retrieved_memory_evidence or [])
+            ],
             raw_audio_path=result.raw_audio_path,
             response_text=result.response_text,
             final_state=result.final_state.value,

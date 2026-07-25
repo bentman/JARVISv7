@@ -709,7 +709,19 @@ def test_engine_populates_retrieved_memory_refs_in_artifact(tmp_path: Path) -> N
                 session_id="session-b",
                 content="second",
                 source_field="transcript",
-                relevance_method="keyword",
+                relevance_method="lexical+vector",
+                source_kind="semantic",
+                semantic_fact_id="fact-b",
+                governed_kind="personal_fact",
+                evidence_authority="direct_user_statement",
+                lifecycle_state="active",
+                source_evidence_refs=(
+                    {
+                        "source_session_id": "session-b",
+                        "source_turn_id": "turn-b",
+                        "source_field": "transcript",
+                    },
+                ),
             ),
         ]
     )
@@ -721,6 +733,30 @@ def test_engine_populates_retrieved_memory_refs_in_artifact(tmp_path: Path) -> N
     assert result.final_state == ConversationState.IDLE
     artifact = manager.turn_artifacts[0]
     assert artifact.retrieved_memory_refs == ["turn-a", "turn-b"]
+    assert artifact.retrieved_memory_evidence == [
+        {
+            "source_kind": "episodic",
+            "session_id": "session-a",
+            "turn_id": "turn-a",
+            "source_field": "response_text",
+            "relevance_method": "keyword",
+        },
+        {
+            "source_kind": "semantic",
+            "semantic_fact_id": "fact-b",
+            "governed_kind": "personal_fact",
+            "evidence_authority": "direct_user_statement",
+            "lifecycle_state": "active",
+            "source_evidence_refs": [
+                {
+                    "source_session_id": "session-b",
+                    "source_turn_id": "turn-b",
+                    "source_field": "transcript",
+                }
+            ],
+            "relevance_method": "lexical+vector",
+        },
+    ]
 
 
 def test_engine_retrieval_failure_does_not_fail_turn(tmp_path: Path) -> None:

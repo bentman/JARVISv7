@@ -95,6 +95,7 @@ def test_turn_schema_fields_are_canonical():
         "transcript",
         "final_prompt_text",
         "retrieved_memory_refs",
+        "retrieved_memory_evidence",
         "tools_invoked",
         "reasoning_trace_metadata",
         "response_text",
@@ -110,6 +111,39 @@ def test_turn_schema_fields_are_canonical():
         "phase_durations_ms",
         "failure_phase",
     )
+
+
+def test_turn_artifact_structured_retrieval_provenance_roundtrips() -> None:
+    artifact = _turn_artifact()
+    artifact.retrieved_memory_refs = ["source-turn"]
+    artifact.retrieved_memory_evidence = [
+        {
+            "source_kind": "semantic",
+            "semantic_fact_id": "fact-1",
+            "governed_kind": "personal_fact",
+            "evidence_authority": "direct_user_statement",
+            "lifecycle_state": "active",
+            "source_evidence_refs": [
+                {
+                    "source_session_id": "source-session",
+                    "source_turn_id": "source-turn",
+                    "source_field": "transcript",
+                }
+            ],
+            "relevance_method": "lexical+vector",
+        }
+    ]
+
+    assert TurnArtifact.from_json(artifact.to_json()) == artifact
+
+
+def test_old_turn_artifact_loads_without_structured_retrieval_provenance() -> None:
+    payload = _turn_artifact().to_dict()
+    payload.pop("retrieved_memory_evidence")
+
+    loaded = TurnArtifact.from_dict(payload)
+
+    assert loaded.retrieved_memory_evidence == []
 
 
 def test_mutable_defaults_are_not_shared():
