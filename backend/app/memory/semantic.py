@@ -146,6 +146,13 @@ class SemanticEntry:
     vector_dim: int
     vector_blob: bytes
     text_hash: str
+    evidence_authority: str = "legacy_unknown"
+    state: str = "active"
+    importance: float | None = None
+    reinforcement_count: int = 1
+    expires_at: str | None = None
+    superseded_by_fact_id: str | None = None
+    evidence_refs: tuple[dict[str, str], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -163,10 +170,22 @@ class SemanticEntry:
             "vector_dim": self.vector_dim,
             "vector_blob": self.vector_blob,
             "text_hash": self.text_hash,
+            "evidence_authority": self.evidence_authority,
+            "state": self.state,
+            "importance": self.importance,
+            "reinforcement_count": self.reinforcement_count,
+            "expires_at": self.expires_at,
+            "superseded_by_fact_id": self.superseded_by_fact_id,
+            "evidence_refs": self.evidence_refs,
         }
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> SemanticEntry:
+    def from_row(
+        cls,
+        row: sqlite3.Row,
+        *,
+        evidence_refs: tuple[dict[str, str], ...] = (),
+    ) -> SemanticEntry:
         try:
             metadata = json.loads(row["metadata_json"])
         except Exception:
@@ -186,6 +205,13 @@ class SemanticEntry:
             vector_dim=row["vector_dim"],
             vector_blob=row["vector_blob"],
             text_hash=row["text_hash"],
+            evidence_authority=row["evidence_authority"],
+            state=row["state"],
+            importance=row["importance"],
+            reinforcement_count=row["reinforcement_count"],
+            expires_at=row["expires_at"],
+            superseded_by_fact_id=row["superseded_by_fact_id"],
+            evidence_refs=evidence_refs,
         )
 
 
@@ -3017,10 +3043,91 @@ class SemanticMemory:
                     "SELECT * FROM semantic_fact WHERE fact_id = ?", (fact_id,)
                 ).fetchone()
                 if row is not None:
-                    return SemanticEntry.from_row(row)
+                    return self._retrieval_entry(conn, row)
             return None
         except Exception:
             return None
+
+    @staticmethod
+    def _retrieval_eligibility_sql(alias: str = "semantic_fact") -> str:
+        permitted_kinds = ("fact", *(kind.value for kind in GovernedMemoryKind))
+        placeholders = ", ".join(f"'{kind}'" for kind in permitted_kinds)
+        return (
+            f"{alias}.kind IN ({placeholders}) "
+            f"AND {alias}.state = 'active' "
+            f"AND ({alias}.expires_at IS NULL "
+            f"OR julianday({alias}.expires_at) > julianday(?)) "
+            f"AND {alias}.superseded_by_fact_id IS NULL"
+        )
+
+    @staticmethod
+    def _retrieval_evidence_refs(
+        conn: sqlite3.Connection,
+        fact_id: str,
+        *,
+        limit: int = 8,
+    ) -> tuple[dict[str, str], ...]:
+        rows = conn.execute(
+            """
+            SELECT
+                evidence_id, evidence_authority,
+                source_session_id, source_turn_id, source_field,
+                action_id, action_surface
+            FROM semantic_evidence
+            WHERE fact_id = ?
+            ORDER BY created_at ASC, evidence_id ASC
+            LIMIT ?
+            """,
+            (fact_id, limit),
+        ).fetchall()
+        refs: list[dict[str, str]] = []
+        for row in rows:
+            ref = {
+                "evidence_id": cast(str, row["evidence_id"]),
+                "evidence_authority": cast(str, row["evidence_authority"]),
+            }
+            for field in (
+                "source_session_id",
+                "source_turn_id",
+                "source_field",
+                "action_id",
+                "action_surface",
+            ):
+                value = cast(str | None, row[field])
+                if value is not None:
+                    ref[field] = value
+            refs.append(ref)
+        return tuple(refs)
+
+    @classmethod
+    def _retrieval_entry(
+        cls,
+        conn: sqlite3.Connection,
+        row: sqlite3.Row,
+    ) -> SemanticEntry:
+        evidence_refs = cls._retrieval_evidence_refs(
+            conn,
+            cast(str, row["fact_id"]),
+        )
+        if (
+            not evidence_refs
+            and row["source_session_id"] is not None
+            and row["source_turn_id"] is not None
+            and row["source_field"] is not None
+        ):
+            evidence_refs = (
+                {
+                    "evidence_id": f"legacy:{cast(str, row['fact_id'])}",
+                    "evidence_authority": cast(str, row["evidence_authority"]),
+                    "source_session_id": cast(str, row["source_session_id"]),
+                    "source_turn_id": cast(str, row["source_turn_id"]),
+                    "source_field": cast(str, row["source_field"]),
+                },
+            )
+        return SemanticEntry.from_row(
+            row,
+            evidence_refs=evidence_refs,
+        )
 
     def search_lexical(self, query: str, n: int = 5) -> list[SemanticEntry]:
         """Performs lexical query match using FTS5 (or falling back to LIKE if FTS5 fails or is disabled)."""
@@ -3032,19 +3139,23 @@ class SemanticMemory:
                 return []
 
             with self._get_conn() as conn:
+                now = _iso_now()
+                eligibility = self._retrieval_eligibility_sql("f")
                 if self.supports_fts:
                     try:
                         rows = conn.execute(
-                            """
+                            f"""
                             SELECT f.* FROM semantic_fact f
-                            JOIN semantic_fact_fts fts ON f.rowid = fts.rowid
-                            WHERE fts.text MATCH ?
+                            JOIN semantic_fact_fts ON f.rowid = semantic_fact_fts.rowid
+                            WHERE semantic_fact_fts.text MATCH ?
+                              AND {eligibility}
+                            ORDER BY bm25(semantic_fact_fts) ASC, f.fact_id ASC
                             LIMIT ?
                             """,
-                            (query, n),
+                            (query, now, n),
                         ).fetchall()
                         for row in rows:
-                            results.append(SemanticEntry.from_row(row))
+                            results.append(self._retrieval_entry(conn, row))
                         return results
                     except sqlite3.OperationalError:
                         # If FTS syntax is invalid or search failed, fallback to LIKE
@@ -3053,15 +3164,17 @@ class SemanticMemory:
                 # Fallback to standard LIKE
                 like_pattern = f"%{query}%"
                 rows = conn.execute(
-                    """
-                    SELECT * FROM semantic_fact
-                    WHERE text LIKE ?
+                    f"""
+                    SELECT f.* FROM semantic_fact f
+                    WHERE f.text LIKE ?
+                      AND {eligibility}
+                    ORDER BY f.fact_id ASC
                     LIMIT ?
                     """,
-                    (like_pattern, n),
+                    (like_pattern, now, n),
                 ).fetchall()
                 for row in rows:
-                    results.append(SemanticEntry.from_row(row))
+                    results.append(self._retrieval_entry(conn, row))
                 return results
         except Exception:
             return []
@@ -3080,9 +3193,18 @@ class SemanticMemory:
 
             candidates: list[tuple[SemanticEntry, float]] = []
             with self._get_conn() as conn:
-                rows = conn.execute("SELECT * FROM semantic_fact").fetchall()
+                eligibility = self._retrieval_eligibility_sql("f")
+                rows = conn.execute(
+                    f"""
+                    SELECT f.*
+                    FROM semantic_fact f
+                    WHERE {eligibility}
+                    ORDER BY f.fact_id ASC
+                    """,
+                    (_iso_now(),),
+                ).fetchall()
                 for row in rows:
-                    entry = SemanticEntry.from_row(row)
+                    entry = self._retrieval_entry(conn, row)
                     try:
                         v_arr = np.frombuffer(entry.vector_blob, dtype="<f4")
                         if len(v_arr) != entry.vector_dim:
@@ -3096,7 +3218,7 @@ class SemanticMemory:
                     except Exception:
                         continue
 
-            candidates.sort(key=lambda item: item[1], reverse=True)
+            candidates.sort(key=lambda item: (-item[1], item[0].fact_id))
             return candidates[:n]
         except Exception:
             return []

@@ -958,3 +958,120 @@ def test_initialization_and_reads_do_not_change_content_or_behavior(tmp_path: Pa
         assert conn.execute("SELECT COUNT(*) FROM semantic_evidence").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM semantic_event").fetchone()[0] == 0
         assert conn.execute("SELECT COUNT(*) FROM semantic_curation_job").fetchone()[0] == 0
+
+
+def test_lexical_eligibility_is_applied_before_limit_and_reads_do_not_mutate(
+    tmp_path: Path,
+) -> None:
+    memory = SemanticMemory(tmp_path / "eligibility.sqlite")
+    ineligible_id = memory.write_fact("needle pending candidate")
+    eligible_id = memory.write_fact("needle eligible candidate")
+    assert ineligible_id is not None and eligible_id is not None
+    memory.supports_fts = False
+    with memory._get_conn() as conn:
+        conn.execute(
+            "UPDATE semantic_fact SET fact_id = '000-ineligible', state = 'pending_review' "
+            "WHERE fact_id = ?",
+            (ineligible_id,),
+        )
+        conn.execute(
+            "UPDATE semantic_fact SET fact_id = 'zzz-eligible' WHERE fact_id = ?",
+            (eligible_id,),
+        )
+        before = conn.execute(
+            """
+            SELECT fact_id, state, expires_at, superseded_by_fact_id, revision
+            FROM semantic_fact
+            ORDER BY fact_id
+            """
+        ).fetchall()
+    revision_before = memory.read_content_revision()
+
+    results = memory.search_lexical("needle", n=1)
+
+    with memory._get_conn() as conn:
+        after = conn.execute(
+            """
+            SELECT fact_id, state, expires_at, superseded_by_fact_id, revision
+            FROM semantic_fact
+            ORDER BY fact_id
+            """
+        ).fetchall()
+    revision_after = memory.read_content_revision()
+    assert [entry.fact_id for entry in results] == ["zzz-eligible"]
+    assert [tuple(row) for row in after] == [tuple(row) for row in before]
+    assert revision_after == revision_before
+
+
+def test_vector_eligibility_is_applied_before_scoring(tmp_path: Path) -> None:
+    memory = SemanticMemory(tmp_path / "vector-eligibility.sqlite")
+    ineligible_id = memory.write_fact("exact vector", vector=[1.0, 0.0])
+    eligible_id = memory.write_fact("eligible vector", vector=[0.0, 1.0])
+    assert ineligible_id is not None and eligible_id is not None
+    with memory._get_conn() as conn:
+        conn.execute(
+            "UPDATE semantic_fact SET state = 'disputed' WHERE fact_id = ?",
+            (ineligible_id,),
+        )
+
+    results = memory.search_vector([1.0, 0.0], n=1)
+
+    assert len(results) == 1
+    assert results[0][0].fact_id == eligible_id
+
+
+def test_normal_search_excludes_every_ineligible_lifecycle_and_unknown_kind(
+    tmp_path: Path,
+) -> None:
+    memory = SemanticMemory(tmp_path / "all-ineligible.sqlite")
+    ids = {
+        label: memory.write_fact(f"governed filter {label}")
+        for label in (
+            "eligible",
+            "pending",
+            "disputed",
+            "superseded",
+            "forgotten",
+            "expired_by_time",
+            "unknown_kind",
+            "superseded_pointer",
+        )
+    }
+    assert all(ids.values())
+    replacement_id = memory.write_fact("replacement anchor")
+    assert replacement_id is not None
+    with memory._get_conn() as conn:
+        for label, state in (
+            ("pending", "pending_review"),
+            ("disputed", "disputed"),
+            ("superseded", "superseded"),
+            ("forgotten", "forgotten"),
+        ):
+            conn.execute(
+                "UPDATE semantic_fact SET state = ? WHERE fact_id = ?",
+                (state, ids[label]),
+            )
+        conn.execute(
+            """
+            UPDATE semantic_fact
+            SET expires_at = '2020-01-01T00:00:00+00:00'
+            WHERE fact_id = ?
+            """,
+            (ids["expired_by_time"],),
+        )
+        conn.execute(
+            "UPDATE semantic_fact SET kind = 'unknown_kind' WHERE fact_id = ?",
+            (ids["unknown_kind"],),
+        )
+        conn.execute(
+            "UPDATE semantic_fact SET superseded_by_fact_id = ? WHERE fact_id = ?",
+            (replacement_id, ids["superseded_pointer"]),
+        )
+
+    lexical = memory.search_lexical("governed", n=20)
+    vector = memory.search_vector(text_to_vector("governed filter"), n=20)
+
+    assert {entry.fact_id for entry in lexical} == {ids["eligible"]}
+    assert {entry.fact_id for entry, _score in vector if "governed filter" in entry.text} == {
+        ids["eligible"]
+    }
