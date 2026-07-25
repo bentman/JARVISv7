@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 15:53
+  - Host class(es): Windows AMD64
+  - Summary: Removed model-generated confidence and importance from review-only memory extraction and assigned deterministic application-owned values to pending-review facts.
+  - Scope: Extraction contract, proposal/candidate contracts, review-only reconciliation persistence, and focused deterministic tests.
+  - Validation: Focused pytest PASS (`26 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/cognition/test_memory_extraction.py backend/tests/unit/memory/test_curation_contract.py backend/tests/unit/memory/test_curation_reconciliation.py backend/tests/unit/services/test_memory_curation_processor.py`.
+  - Notes: Existing persisted records remain schema-compatible; strict parsing, candidate bounds, evidence verification, review-only lifecycle, and retrieval behavior were unchanged.
+
+---
+
 - Timestamp: 2026-07-25 15:44
   - Host class(es): Windows AMD64
   - Summary: Raised the bounded memory-extraction generation budget to conservatively cover every strict-parser-valid response within the existing maximum output character cap.

@@ -48,8 +48,6 @@ def _output() -> str:
                         "excerpt": f"I lived in {city}.",
                     }
                 ],
-                "confidence": 0.8,
-                "importance": 0.6,
             }
         )
     return json.dumps({"candidates": candidates})

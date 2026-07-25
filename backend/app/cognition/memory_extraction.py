@@ -30,8 +30,7 @@ _INSTRUCTION = (
 )
 _OUTPUT_CONTRACT = """Return exactly one JSON object with the single field "candidates".
 "candidates" must contain 0..3 objects. Each object must contain exactly:
-text (1..240 chars), evidence_refs (1..3 exact objects), confidence (finite 0..1),
-importance (finite 0..1).
+text (1..240 chars), evidence_refs (1..3 exact objects).
 Each evidence object contains exactly source_turn_id (1..64 chars),
 source_field (transcript|response_text), and excerpt (an exact 1..160 char substring).
 Do not add fences, prefixes, suffixes, comments, or additional fields."""

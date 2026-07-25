@@ -10,7 +10,11 @@ from backend.app.memory.curation_contract import (
     build_provisional_candidate,
     parse_model_proposals,
 )
-from backend.app.memory.curation_reconciliation import ReviewOnlyCurationPolicy
+from backend.app.memory.curation_reconciliation import (
+    REVIEW_ONLY_CONFIDENCE,
+    REVIEW_ONLY_IMPORTANCE,
+    ReviewOnlyCurationPolicy,
+)
 from backend.app.memory.semantic import SemanticMemory
 
 NOW = "2026-07-24T12:00:00+00:00"
@@ -29,8 +33,6 @@ def _proposal(*, text: str, excerpt: str):
                             "excerpt": excerpt,
                         }
                     ],
-                    "confidence": 0.9,
-                    "importance": 0.7,
                 }
             ]
         }
@@ -75,6 +77,8 @@ def test_review_candidate_is_unclassified_pending_and_idempotent(tmp_path: Path)
     assert fact.state == LifecycleState.PENDING_REVIEW.value
     assert fact.claim_key == candidate.claim_key
     assert fact.value_text is None
+    assert fact.confidence == REVIEW_ONLY_CONFIDENCE
+    assert fact.importance == REVIEW_ONLY_IMPORTANCE
     assert fact.reinforcement_count == 1
     detail = memory.read_fact(fact.fact_id).value
     assert detail is not None

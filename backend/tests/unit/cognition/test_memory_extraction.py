@@ -78,6 +78,8 @@ def test_extractor_uses_trusted_contract_untrusted_bounded_evidence() -> None:
     assert "kind" not in contract
     assert "claim_key" not in contract
     assert "relation" not in contract
+    assert "confidence" not in contract
+    assert "importance" not in contract
 
 
 def test_extraction_budget_covers_maximum_valid_bounded_output() -> None:
@@ -87,21 +89,21 @@ def test_extraction_budget_covers_maximum_valid_bounded_output() -> None:
         "excerpt": "e" * MAX_EXCERPT_CHARS,
     }
     candidate = {
-        "text": "x" * MAX_TEXT_CHARS,
-        "evidence_refs": [evidence] * MAX_EVIDENCE_REFS,
-        "confidence": 0,
-        "importance": 0,
+        # The repeated candidate appears three times.  Forty-seven ASCII
+        # characters offset the three escaped copies to the raw-output cap.
+        "text": "a" * 47 + "é" * (MAX_TEXT_CHARS - 47),
+        "evidence_refs": [
+            {
+                **evidence,
+                "source_turn_id": "é" * MAX_TURN_ID_CHARS,
+                "excerpt": "é" * MAX_EXCERPT_CHARS,
+            }
+        ]
+        * MAX_EVIDENCE_REFS,
     }
     raw_output = json.dumps(
         {"candidates": [candidate] * MAX_CANDIDATES},
         separators=(",", ":"),
-    )
-    padding = MAX_MODEL_OUTPUT_CHARS - len(raw_output)
-    assert padding > 1
-    raw_output = raw_output.replace(
-        '"confidence":0',
-        '"confidence":0.' + "0" * (padding - 1),
-        1,
     )
     assert len(raw_output) == MAX_MODEL_OUTPUT_CHARS
 

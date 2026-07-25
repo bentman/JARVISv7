@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import math
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -31,8 +30,6 @@ _CANDIDATE_FIELDS = frozenset(
     {
         "text",
         "evidence_refs",
-        "confidence",
-        "importance",
     }
 )
 _EVIDENCE_FIELDS = frozenset({"source_turn_id", "source_field", "excerpt"})
@@ -80,8 +77,6 @@ class ModelEvidenceRef:
 class ModelMemoryProposal:
     text: str
     evidence_refs: tuple[ModelEvidenceRef, ...]
-    confidence: float
-    importance: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,8 +107,6 @@ class ProvisionalMemoryCandidate:
     kind: str
     claim_key: str
     evidence_refs: tuple[VerifiedEvidenceRef, ...]
-    confidence: float
-    importance: float
     disposition: CandidateDisposition
     can_auto_activate: bool = False
     can_auto_reinforce: bool = False
@@ -165,15 +158,6 @@ def _require_bounded_string(value: Any, label: str, maximum: int) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
         raise ProposalContractError(f"{label} must be a non-blank string of 1..{maximum} chars")
     return value
-
-
-def _require_score(value: Any, label: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ProposalContractError(f"{label} must be a JSON number")
-    score = float(value)
-    if not math.isfinite(score) or not 0.0 <= score <= 1.0:
-        raise ProposalContractError(f"{label} must be finite and between 0 and 1")
-    return score
 
 
 def validate_claim_key(value: str) -> str:
@@ -232,8 +216,6 @@ def _parse_candidate(value: Any) -> ModelMemoryProposal:
     return ModelMemoryProposal(
         text=text,
         evidence_refs=evidence_refs,
-        confidence=_require_score(value["confidence"], "confidence"),
-        importance=_require_score(value["importance"], "importance"),
     )
 
 
@@ -356,8 +338,6 @@ def build_provisional_candidate(
         kind=PROVISIONAL_MEMORY_KIND,
         claim_key=derive_provisional_claim_key(evidence_refs),
         evidence_refs=evidence_refs,
-        confidence=proposal.confidence,
-        importance=proposal.importance,
         disposition=CandidateDisposition.REVIEW_REQUIRED,
     )
 
@@ -382,7 +362,7 @@ def apply_identity_decision(
     candidate: ProvisionalMemoryCandidate,
     decision: ApplicationIdentityDecision,
 ) -> GovernedClaimIdentity:
-    """Apply trusted application identity, ignoring every advisory model identity field."""
+    """Apply trusted application identity to a review-only candidate."""
 
     claim_key = decision.related_claim_key or candidate.claim_key
     return GovernedClaimIdentity(kind=decision.kind, claim_key=validate_claim_key(claim_key))

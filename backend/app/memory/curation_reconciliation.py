@@ -26,6 +26,8 @@ from backend.app.memory.semantic import SemanticMemory
 
 MAX_OWNED_VALUES = 512
 MAX_OWNED_VALUE_CHARS = 256
+REVIEW_ONLY_CONFIDENCE = 0.5
+REVIEW_ONLY_IMPORTANCE = 0.5
 
 _SECRET_PATTERNS = (
     re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----", re.IGNORECASE),
@@ -108,8 +110,8 @@ class ReviewOnlyCurationPolicy:
             value_text=None,
             evidence_authority=GovernedEvidenceAuthority.DIRECT_USER_STATEMENT,
             state=LifecycleState.PENDING_REVIEW,
-            confidence=candidate.confidence,
-            importance=candidate.importance,
+            confidence=REVIEW_ONLY_CONFIDENCE,
+            importance=REVIEW_ONLY_IMPORTANCE,
             evidence=evidence,
             metadata={
                 "curation_contract": "review_only_v1",

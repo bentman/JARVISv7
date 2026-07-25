@@ -35,8 +35,6 @@ def _candidate(
                 "excerpt": excerpt,
             }
         ],
-        "confidence": 0.9,
-        "importance": 0.7,
     }
 
 
@@ -78,7 +76,6 @@ def test_strict_parser_accepts_measured_shape_and_surrounding_whitespace() -> No
 
     assert proposal.text == "The user lives in Chicago."
     assert proposal.evidence_refs[0].source_field is EvidenceField.TRANSCRIPT
-    assert proposal.confidence == 0.9
 
 
 @pytest.mark.parametrize(
@@ -89,8 +86,7 @@ def test_strict_parser_accepts_measured_shape_and_surrounding_whitespace() -> No
         '{"candidates":[],"unknown":true}',
         '{"candidates":[]} trailing',
         '```json\n{"candidates":[]}\n```',
-        '{"candidates":[{"text":"x","evidence_refs":[],'
-        '"confidence":NaN,"importance":0.5}]}',
+        '{"candidates":[{"text":"x","evidence_refs":[]}]}',
         "[]",
     ],
 )
@@ -99,7 +95,7 @@ def test_strict_parser_rejects_recovered_or_nonstandard_json(raw_output: str) ->
         parse_model_proposals(raw_output)
 
 
-def test_strict_parser_rejects_unknown_nested_fields_and_invalid_numbers() -> None:
+def test_strict_parser_rejects_unknown_nested_and_model_judgment_fields() -> None:
     candidate = _candidate()
     evidence = candidate["evidence_refs"][0]  # type: ignore[index]
     evidence["unknown"] = "value"  # type: ignore[index]
@@ -107,12 +103,13 @@ def test_strict_parser_rejects_unknown_nested_fields_and_invalid_numbers() -> No
         parse_model_proposals(_raw(candidate))
 
     candidate = _candidate()
-    candidate["confidence"] = True
-    with pytest.raises(ProposalContractError, match="JSON number"):
+    candidate["kind"] = "personal_fact"
+    with pytest.raises(ProposalContractError, match="candidate fields"):
         parse_model_proposals(_raw(candidate))
 
     candidate = _candidate()
-    candidate["kind"] = "personal_fact"
+    candidate["confidence"] = 0.9
+    candidate["importance"] = 0.7
     with pytest.raises(ProposalContractError, match="candidate fields"):
         parse_model_proposals(_raw(candidate))
 
