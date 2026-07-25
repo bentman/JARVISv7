@@ -18,13 +18,6 @@ const MEMORY_STATES = [
   "forgotten",
 ];
 
-const ACTION_STATES = {
-  confirm: new Set(["pending_review", "disputed"]),
-  correct: new Set(["pending_review", "active", "disputed"]),
-  dispute: new Set(["pending_review", "active"]),
-  forget: new Set(["pending_review", "active", "disputed"]),
-};
-
 function errorMessage(error, fallback) {
   return error?.detail?.message || error?.message || fallback;
 }
@@ -269,6 +262,17 @@ function formatValue(value) {
   return String(value);
 }
 
+export function memoryActionsEnabled(record, mutationPending) {
+  return Boolean(record) && !mutationPending;
+}
+
+export function curationActivityState(status) {
+  if (!status.service_available || !status.processor_available || status.retry_blocked) return "blocked";
+  if (status.degraded) return "degraded";
+  if (status.drain_active || status.current_job_id || Number(status.processing_count) > 0) return "running";
+  return "idle";
+}
+
 function labeledValue(parent, label, value) {
   const row = document.createElement("div");
   row.className = "memory-field";
@@ -312,11 +316,7 @@ function renderCuration(state) {
 
   const status = state.curation;
   if (status) {
-    let statusName = "idle";
-    if (!status.service_available || !status.processor_available) statusName = "blocked";
-    else if (status.retry_blocked) statusName = "blocked";
-    else if (status.degraded) statusName = "degraded";
-    else if (status.worker_running || status.drain_active) statusName = "running";
+    const statusName = curationActivityState(status);
     const badge = appendText(section, statusName, "strong", "memory-status");
     badge.dataset.state = statusName;
     const facts = document.createElement("dl");
@@ -464,23 +464,24 @@ function renderActions(state, record) {
   section.className = "memory-actions";
   appendText(section, "Actions", "h4");
   const pending = state.mutationPending;
+  const actionsEnabled = memoryActionsEnabled(record, pending);
 
   const confirm = document.createElement("button");
   confirm.type = "button";
   confirm.textContent = "Confirm";
-  confirm.disabled = pending || !ACTION_STATES.confirm.has(record.lifecycle_state);
+  confirm.disabled = !actionsEnabled;
   confirm.addEventListener("click", () => state.actions.confirm());
 
   const dispute = document.createElement("button");
   dispute.type = "button";
   dispute.textContent = "Dispute";
-  dispute.disabled = pending || !ACTION_STATES.dispute.has(record.lifecycle_state);
+  dispute.disabled = !actionsEnabled;
   dispute.addEventListener("click", () => state.actions.dispute());
 
   const forget = document.createElement("button");
   forget.type = "button";
   forget.textContent = "Forget";
-  forget.disabled = pending || !ACTION_STATES.forget.has(record.lifecycle_state);
+  forget.disabled = !actionsEnabled;
   forget.addEventListener("click", () => state.actions.forget());
 
   const correction = document.createElement("form");
@@ -502,7 +503,7 @@ function renderActions(state, record) {
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.textContent = "Correct";
-  submit.disabled = pending || !ACTION_STATES.correct.has(record.lifecycle_state);
+  submit.disabled = !actionsEnabled;
   correction.append(textLabel, valueLabel, submit);
   correction.addEventListener("submit", (event) => {
     event.preventDefault();

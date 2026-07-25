@@ -953,6 +953,8 @@ def test_issue_40_memory_bridge_and_panel_contract() -> None:
     assert "listSequence" in memory_panel
     assert "detailSequence" in memory_panel
     assert "mutationPending" in memory_panel
+    assert "memoryActionsEnabled" in memory_panel
+    assert "curationActivityState" in memory_panel
     assert "expectedRevision" in api_client
     assert "replacementText" in api_client
     assert "replacementValue" in api_client
@@ -962,6 +964,9 @@ def test_issue_40_memory_bridge_and_panel_contract() -> None:
     assert "sqlite" not in memory_panel.lower()
     assert "database_path" not in memory_panel
     assert "artifact_path" not in memory_panel
+    assert "ACTION_STATES" not in memory_panel
+    assert ".has(record.lifecycle_state)" not in memory_panel
+    assert "status.worker_running || status.drain_active" not in memory_panel
     assert "/memory" not in api_client
 
 

@@ -6,7 +6,12 @@ import { collectDegradedConditions, selectedFamilyBlockers } from "../src/compon
 import { createDesktopState } from "../src/components/desktop-state.js";
 import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
-import { createMemoryPanelController, createOperatorPanelCoordinator } from "../src/components/memory-panel.js";
+import {
+  createMemoryPanelController,
+  createOperatorPanelCoordinator,
+  curationActivityState,
+  memoryActionsEnabled,
+} from "../src/components/memory-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -735,6 +740,88 @@ assert.equal(correctionDetailId, "memory-2", "successful correction must refresh
 assert.equal(correctionController.snapshot().correction.original.superseded_by_fact_id, "memory-2", "correction must retain original supersession truth");
 assert.equal(correctionController.snapshot().correction.replacement.fact_id, "memory-2", "correction must retain replacement truth");
 
+assert.equal(
+  memoryActionsEnabled(memoryRecord({ lifecycle_state: "superseded" }), false),
+  true,
+  "renderer must not disable actions from lifecycle transition policy",
+);
+assert.equal(
+  memoryActionsEnabled(memoryRecord({ lifecycle_state: "backend_future_state" }), true),
+  false,
+  "the in-flight mutation lock must remain the only renderer action gate",
+);
+
+let submittedRevision = null;
+const invalidTransition = new Error("invalid transition");
+invalidTransition.detail = {
+  error: "invalid_transition",
+  message: "confirm memory transition is not allowed",
+};
+const backendOwnedTransitionController = createMemoryPanelController({
+  getMemoryDetail: () =>
+    Promise.resolve(memoryDetail(memoryRecord({ revision: 7, lifecycle_state: "superseded" }))),
+  confirmMemory: (_factId, expectedRevision) => {
+    submittedRevision = expectedRevision;
+    return Promise.reject(invalidTransition);
+  },
+});
+await backendOwnedTransitionController.selectMemory("memory-1");
+await backendOwnedTransitionController.confirm();
+assert.equal(submittedRevision, 7, "renderer must submit the current revision and let the backend decide transition validity");
+assert.equal(
+  backendOwnedTransitionController.snapshot().detail.record.lifecycle_state,
+  "superseded",
+  "backend transition rejection must retain the inspected record",
+);
+assert.equal(
+  backendOwnedTransitionController.snapshot().detailError,
+  "confirm memory transition is not allowed",
+  "backend transition rejection must display typed backend truth",
+);
+
+const availableIdleCuration = {
+  service_available: true,
+  processor_available: true,
+  worker_running: true,
+  drain_active: false,
+  degraded: false,
+  retry_blocked: false,
+  pending_count: 0,
+  processing_count: 0,
+  failed_count: 0,
+  current_job_id: null,
+};
+assert.equal(
+  curationActivityState(availableIdleCuration),
+  "idle",
+  "an available worker without active work must display idle",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, processing_count: 1 }),
+  "running",
+  "a processing job must display running",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, current_job_id: "job-1" }),
+  "running",
+  "a current job must display running",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, drain_active: true }),
+  "running",
+  "an active drain must display running",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, degraded: true }),
+  "degraded",
+  "backend degraded status must remain degraded",
+);
+assert.equal(
+  curationActivityState({ ...availableIdleCuration, retry_blocked: true }),
+  "blocked",
+  "backend blocked status must remain blocked",
+);
+
 const panelEvents = [];
 let memoryOpen = false;
 let settingsOpen = true;
@@ -798,6 +885,8 @@ for (const field of [
 assert.ok(!memoryPanel.includes("innerHTML"), "memory panel must render backend text without innerHTML");
 assert.ok(!memoryPanel.includes("fetch("), "memory panel must not call backend HTTP directly");
 assert.ok(!memoryPanel.includes("localStorage"), "memory policy must not be persisted in renderer storage");
+assert.ok(!memoryPanel.includes("ACTION_STATES"), "renderer must not duplicate lifecycle transition policy");
+assert.ok(!memoryPanel.includes(".has(record.lifecycle_state)"), "action availability must not be inferred from lifecycle state");
 assert.ok(index.includes('id="memory-trigger"'), "operator area must expose one Memory control");
 assert.ok(index.includes('id="memory-panel"'), "operator area must include one hidden Memory panel");
 
