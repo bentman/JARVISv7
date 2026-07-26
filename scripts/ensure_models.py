@@ -1030,6 +1030,18 @@ def _ensure_entry(entry: ModelEntry, dry_run: bool) -> dict[str, Any]:
     elif source_type == "url":
         acquired = _download_urls(entry, dry_run)
     elif source_type == "url_zip":
+        if isinstance(entry.source.get("handoff_package"), str) and not entry.source.get("url"):
+            verify = _verify_entry(entry)
+            return {
+                "family": entry.family,
+                "model": entry.name,
+                "dry_run": dry_run,
+                "acquired": [],
+                "ready": True,
+                "missing": verify["missing"],
+                "state": "ready" if verify["ready"] else "skipped",
+                "degraded_reason": None if verify["ready"] else "SKIP-local-handoff-artifact-missing",
+            }
         acquired = _download_url_zip(entry, dry_run)
     else:
         raise ValueError(f"model '{entry.name}' has unsupported source type '{source_type}'")

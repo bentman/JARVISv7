@@ -4,6 +4,8 @@ import io
 import zipfile
 from pathlib import Path
 
+import pytest
+
 from backend.app.core.capabilities import HardwareProfile
 from scripts import ensure_models
 
@@ -101,6 +103,47 @@ def test_download_url_zip_preserves_relative_layout(tmp_path: Path, monkeypatch)
     assert (model_root / "models" / "encoder_model.onnx").is_file()
     assert (model_root / "models" / "decoder_model_merged.onnx").is_file()
     assert (model_root / "models" / "assets" / "weights.bin").is_file()
+
+
+def test_ensure_entry_skips_missing_local_handoff_without_download(tmp_path: Path, monkeypatch) -> None:
+    entry = ensure_models.ModelEntry(
+        family="stt",
+        name="whisper-qualcomm-qnn",
+        config={
+            "local_path": str(tmp_path / "models" / "stt" / "whisper-qualcomm-qnn"),
+            "source": {
+                "type": "url_zip",
+                "handoff_package": "docs/temp/whisper-qnn.zip",
+                "required_files_anywhere": ["model.onnx", "model.bin", "manifest.json"],
+            },
+        },
+    )
+    monkeypatch.setattr(
+        ensure_models,
+        "_download_url_zip",
+        lambda entry, dry_run: (_ for _ in ()).throw(AssertionError("local handoff must not download")),
+    )
+
+    result = ensure_models._ensure_entry(entry, dry_run=False)
+
+    assert result["ready"] is True
+    assert result["acquired"] == []
+    assert result["state"] == "skipped"
+    assert result["degraded_reason"] == "SKIP-local-handoff-artifact-missing"
+
+
+def test_invalid_url_zip_definition_without_handoff_still_fails(tmp_path: Path) -> None:
+    entry = ensure_models.ModelEntry(
+        family="stt",
+        name="broken-download",
+        config={
+            "local_path": str(tmp_path / "models" / "stt" / "broken-download"),
+            "source": {"type": "url_zip", "required_files_anywhere": ["model.onnx"]},
+        },
+    )
+
+    with pytest.raises(ValueError, match="invalid url for url_zip source"):
+        ensure_models._ensure_entry(entry, dry_run=False)
 
 
 def test_verify_llm_single_file_artifact_reports_present_when_file_exists(tmp_path: Path) -> None:

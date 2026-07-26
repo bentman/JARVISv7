@@ -57,7 +57,8 @@ def test_selector_returns_directml_runtime_when_dml_ep_proven():
     assert runtime.providers == ["DmlExecutionProvider", "CPUExecutionProvider"]
 
 
-def test_selector_returns_qnn_runtime_when_qnn_tokens_are_present():
+def test_selector_returns_qnn_runtime_when_qnn_tokens_and_model_are_available(monkeypatch):
+    monkeypatch.setattr(QnnWhisperRuntime, "is_available", lambda self: True)
     preflight = PreflightResult(
         tokens=["import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"],
         dll_discovery_log=[],
@@ -69,6 +70,21 @@ def test_selector_returns_qnn_runtime_when_qnn_tokens_are_present():
 
     assert isinstance(runtime, QnnWhisperRuntime)
     assert runtime.device == "qnn"
+
+
+def test_selector_falls_back_to_cpu_when_qnn_model_is_unavailable(monkeypatch):
+    monkeypatch.setattr(QnnWhisperRuntime, "is_available", lambda self: False)
+    preflight = PreflightResult(
+        tokens=["import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"],
+        dll_discovery_log=[],
+        probe_errors={},
+    )
+    profile = HardwareProfile(npu_available=True, npu_vendor="qualcomm")
+
+    runtime = select_stt_runtime(preflight, profile)
+
+    assert isinstance(runtime, OnnxWhisperRuntime)
+    assert runtime.device == "cpu"
 
 
 def test_selector_returns_degraded_runtime_when_device_not_ready():
