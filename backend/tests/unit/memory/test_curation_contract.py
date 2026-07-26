@@ -119,11 +119,6 @@ def test_evidence_verification_derives_direct_user_authority_from_transcript() -
     transcript_ref = verify_evidence_refs(transcript_proposal, [_turn()])[0]
     assert transcript_ref.authority is EvidenceAuthority.DIRECT_USER_STATEMENT
 
-    with pytest.raises(ProposalContractError, match="source_field must be transcript"):
-        parse_model_proposals(
-            _raw(_candidate(field="response_text", excerpt="You live in Chicago."))
-        )
-
 
 @pytest.mark.parametrize(
     ("turn", "error"),

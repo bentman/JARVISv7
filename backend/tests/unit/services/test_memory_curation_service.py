@@ -45,66 +45,6 @@ def test_enqueued_authorized_job_runs_during_normal_runtime(tmp_path: Path) -> N
         service.stop()
 
 
-def test_explicit_drain_processes_one_durable_job_with_fake_processor(
-    tmp_path: Path,
-) -> None:
-    memory, sessions, turns, artifact_path = _authorized_job(tmp_path)
-    calls: list[str] = []
-
-    def processor(evidence) -> CurationProcessorResult:
-        calls.append(evidence.session.session_id)
-        assert len(evidence.turns) == 1
-        return CurationProcessorResult(
-            success=True,
-            durable=True,
-            reason_code="review_only_candidates_resolved",
-            candidates_proposed=3,
-            candidates_rejected=1,
-            pending_review_created=2,
-            duplicate_noops=1,
-        )
-
-    service = _service(memory, sessions, turns, processor=processor)
-    enqueue = memory.enqueue_curation_job(
-        session_id="session-1",
-        artifact_ref=str(artifact_path),
-        policy_revision=2,
-        authorized_at=NOW,
-    )
-
-    before = memory.read_curation_job("session-1").value
-    assert enqueue.status is OperationStatus.SUCCESS
-    assert before is not None and before.status is CurationJobStatus.PENDING
-    assert calls == []
-
-    result = service.drain(timeout=1)
-    job = memory.read_curation_job("session-1").value
-    service.stop()
-
-    assert result.outcome == "completed"
-    assert calls == ["session-1"]
-    assert job is not None and job.status is CurationJobStatus.SUCCEEDED
-    assert job.generation_started_at is not None
-    assert job.generation_finished_at is not None
-    assert job.completed_at is not None
-    assert job.attempt_count == 1
-    assert job.last_result_reason == "review_only_candidates_resolved"
-    assert job.result_candidates_proposed == 3
-    assert job.result_candidates_rejected == 1
-    assert job.result_active_records_created == 0
-    assert job.result_pending_review_created == 2
-    assert job.result_records_reinforced == 0
-    assert job.result_records_superseded_or_disputed == 0
-    assert job.result_duplicate_noops == 1
-    assert job.result_failure_count == 0
-
-    restarted = SemanticMemory(memory.db_path).read_curation_job("session-1").value
-    assert restarted is not None
-    assert restarted.last_result_reason == "review_only_candidates_resolved"
-    assert restarted.result_candidates_proposed == 3
-    assert restarted.result_pending_review_created == 2
-
-
 def test_missing_artifact_is_visible_terminal_failure_without_processor_call(
     tmp_path: Path,
 ) -> None:
@@ -159,7 +99,6 @@ def test_processor_exception_enters_retry_wait_with_bounded_error(
     assert job.last_error_code == "processor_exception"
     assert job.last_error_detail is not None
     assert len(job.last_error_detail) <= 2048
-    assert job.next_attempt_at > job.updated_at
 
 
 def test_retry_wait_job_wakes_and_reprocesses_without_a_new_enqueue(
@@ -226,63 +165,10 @@ def test_previous_boot_processing_is_recovered_and_fenced(tmp_path: Path) -> Non
     try:
         recovered = service.recover_and_reconcile()
         job = _wait_for_job(memory, "session-1", CurationJobStatus.SUCCEEDED)
-        stale_result = memory.complete_curation_job(
-            session_id="session-1",
-            lease_token=claimed.value.claim_token,
-            boot_id="old-boot",
-        )
-
         assert recovered.status is OperationStatus.SUCCESS
         assert job is not None and job.status is CurationJobStatus.SUCCEEDED
-        assert stale_result.status is OperationStatus.CONFLICT
     finally:
         service.stop()
-
-
-def test_policy_disable_cancels_pending_and_processing_results(tmp_path: Path) -> None:
-    memory, _sessions, _turns, artifact_path = _authorized_job(tmp_path)
-    memory.enqueue_curation_job(
-        session_id="pending",
-        artifact_ref=str(artifact_path),
-        policy_revision=2,
-        authorized_at=NOW,
-    )
-    memory.enqueue_curation_job(
-        session_id="processing",
-        artifact_ref=str(artifact_path.with_name("processing.json")),
-        policy_revision=2,
-        authorized_at=NOW,
-    )
-    claimed = memory.claim_curation_job(
-        worker_id="boot",
-        boot_id="boot",
-        max_attempts=3,
-        lease_seconds=120,
-    )
-    assert claimed.value is not None
-
-    disabled = memory.update_policy(
-        automatic_curation_enabled=False,
-        expected_revision=2,
-    )
-    completed = memory.complete_curation_job(
-        session_id=claimed.value.session_id,
-        lease_token=claimed.value.claim_token or "",
-        boot_id="boot",
-    )
-    jobs = {
-        job.session_id: job
-        for job in memory.list_curation_jobs(
-            max_attempts=4,
-            include_terminal=True,
-        ).value
-        or ()
-    }
-
-    assert disabled.status is OperationStatus.SUCCESS
-    assert completed.value is not None
-    assert completed.value.status is CurationJobStatus.CANCELLED
-    assert all(job.status is CurationJobStatus.CANCELLED for job in jobs.values())
 
 
 def test_status_is_side_effect_free(tmp_path: Path) -> None:

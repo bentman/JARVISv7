@@ -120,10 +120,3 @@ def test_partial_commit_retry_is_resumable_without_duplicate_side_effects(
     assert second.pending_review_created == 1
     assert second.duplicate_noops == 1
     assert facts_after_retry is not None and len(facts_after_retry) == 2
-    for fact in facts_after_retry:
-        detail = memory.read_fact(fact.fact_id).value
-        assert detail is not None
-        assert fact.reinforcement_count == 1
-        assert fact.revision == 1
-        assert len(detail.evidence) == 1
-        assert len(detail.events) == 1

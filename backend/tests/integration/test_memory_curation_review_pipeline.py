@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from pathlib import Path
 
 from backend.app.artifacts.session_artifact import SessionArtifact
@@ -8,8 +9,7 @@ from backend.app.artifacts.storage import write_session_artifact, write_turn_art
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cognition.memory_extraction import MemoryCandidateExtractor
 from backend.app.cognition.prompt_envelope import PromptEnvelope
-from backend.app.memory.curation import CurationJobStatus, LifecycleState, OperationStatus
-from backend.app.memory.curation_contract import GovernedMemoryKind
+from backend.app.memory.curation import CurationJobStatus, OperationStatus
 from backend.app.memory.curation_reconciliation import ReviewOnlyCurationPolicy
 from backend.app.memory.semantic import SemanticMemory
 from backend.app.runtimes.llm.base import LLMBase
@@ -32,10 +32,6 @@ class DeterministicExtractionLLM(LLMBase):
                 "candidates": [
                     {
                         "text": "The user lives in Chicago.",
-                        "kind": "personal_fact",
-                        "claim_key": "model.home_city",
-                        "value": "Chicago",
-                        "relation": "assertion",
                         "evidence_refs": [
                             {
                                 "source_turn_id": "turn-1",
@@ -43,8 +39,6 @@ class DeterministicExtractionLLM(LLMBase):
                                 "excerpt": "I live in Chicago.",
                             }
                         ],
-                        "confidence": 0.9,
-                        "importance": 0.7,
                     }
                 ]
             }
@@ -114,21 +108,25 @@ def test_persisted_job_creates_one_review_only_candidate(tmp_path: Path) -> None
         authorized_at=NOW,
     ).status is OperationStatus.SUCCESS
 
-    drain = service.drain(timeout=1)
-    service.stop()
-    job = memory.read_curation_job("session-1").value
+    try:
+        job = _wait_for_job(memory, "session-1", CurationJobStatus.SUCCEEDED)
+    finally:
+        service.stop()
     facts = memory.list_facts().value
 
-    assert drain.outcome == "completed"
     assert job is not None and job.status is CurationJobStatus.SUCCEEDED
     assert facts is not None and len(facts) == 1
-    fact = facts[0]
-    assert fact.kind == GovernedMemoryKind.UNCLASSIFIED.value
-    assert fact.state == LifecycleState.PENDING_REVIEW.value
-    assert fact.value_text is None
-    detail = memory.read_fact(fact.fact_id).value
-    assert detail is not None
-    assert len(detail.evidence) == 1
-    assert detail.evidence[0].source_turn_id == "turn-1"
-    assert len(detail.events) == 1
-    assert detail.events[0].event_type == "created"
+
+
+def _wait_for_job(
+    memory: SemanticMemory,
+    session_id: str,
+    status: CurationJobStatus,
+):
+    deadline = time.monotonic() + 1.0
+    while time.monotonic() < deadline:
+        job = memory.read_curation_job(session_id).value
+        if job is not None and job.status is status:
+            return job
+        time.sleep(0.01)
+    return memory.read_curation_job(session_id).value

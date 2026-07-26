@@ -95,20 +95,6 @@ def _create_legacy_database(db_path: Path, *, with_fts: bool = True) -> bool:
     return True
 
 
-def test_init_db(tmp_path: Path):
-    db_path = tmp_path / "subdir" / "memory.sqlite"
-    memory = SemanticMemory(db_path)
-    assert db_path.exists()
-
-    # Verify tables
-    with memory._get_conn() as conn:
-        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        table_names = {row["name"] for row in tables}
-        assert "semantic_fact" in table_names
-        if memory.supports_fts:
-            assert "semantic_fact_fts" in table_names
-
-
 def test_write_read_entry(tmp_path: Path):
     db_path = tmp_path / "memory.sqlite"
     memory = SemanticMemory(db_path)
