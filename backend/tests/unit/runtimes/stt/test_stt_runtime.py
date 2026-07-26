@@ -14,6 +14,7 @@ from backend.app.runtimes.stt.onnx_whisper_runtime import (
     providers_for_device,
 )
 from backend.app.runtimes.stt.stt_runtime import DegradedSTTRuntime, select_stt_runtime
+from backend.tests.conftest import SKIP_UNLESS_QNN
 
 
 def test_selector_returns_cpu_runtime_when_readiness_says_cpu():
@@ -380,13 +381,21 @@ def test_qnn_runtime_reports_non_silent_empty_transcript_with_decode_context(mon
         runtime.transcribe(np.full(16000, 0.1, dtype=np.float32), 16000)
 
 
-def test_qnn_runtime_real_transformers_preprocessor_import_boundary():
-    transformers = pytest.importorskip("transformers")
+if not SKIP_UNLESS_QNN:
 
-    from transformers import WhisperFeatureExtractor, WhisperTokenizer
+    @pytest.mark.qnn
+    @pytest.mark.stt
+    def test_qnn_runtime_real_transformers_preprocessor_path(tmp_path):
+        runtime = QnnWhisperRuntime(model_path=tmp_path)
 
-    assert WhisperFeatureExtractor is transformers.WhisperFeatureExtractor
-    assert WhisperTokenizer is transformers.WhisperTokenizer
+        runtime._ensure_preprocessors()
+
+        assert runtime._feature_extractor is not None
+        assert runtime._tokenizer is not None
+        assert runtime._whisper_config is not None
+        assert runtime._whisper_config.return_dict is False
+        assert runtime._whisper_config.tie_word_embeddings is False
+        assert runtime._whisper_config.mask_neg == -100.0
 
 
 def test_onnx_whisper_qnn_guard_does_not_expose_slice_reference():
