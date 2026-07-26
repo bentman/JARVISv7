@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-26 05:12
+  - Host class(es): Windows AMD64
+  - Summary: Declared and provisioned `httpx2` for Starlette TestClient compatibility, removing the deprecated plain-`httpx` test-client path.
+  - Scope: Python base dependency declaration and generated base requirements lockfile.
+  - Validation: API unit pytest PASS (`79 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/api`; backend unit validator PASS (`871 passed, 4 skipped`): `backend/.venv/Scripts/python.exe scripts/validate_backend.py unit`.
+  - Notes: The dependency was installed through `scripts/provision.py install`; no warning suppression was added.
+
+---
+
 - Timestamp: 2026-07-25 19:16
   - Host class(es): Windows AMD64
   - Summary: Corrected remaining memory runtime defects in delayed curation retry, extraction evidence alignment, working-memory prompt authority, episodic retrieval-cache invalidation, bounded policy validation, and memory-failure logging.
