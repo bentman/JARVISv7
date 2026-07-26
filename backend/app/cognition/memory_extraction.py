@@ -15,11 +15,11 @@ from backend.app.memory.curation_contract import (
 )
 from backend.app.runtimes.llm.base import LLMBase
 
-MAX_EXTRACTION_TURNS = 12
-MAX_TURN_FIELD_CHARS = 500
-# A strict parser accepts at most this many output characters.  The generation
-# budget uses the conservative one-token-per-character bound so any valid
-# bounded JSON response can complete without relying on tokenizer behavior.
+MAX_EXTRACTION_TURNS = 2
+MAX_TURN_FIELD_CHARS = 120
+# The smallest configured serving context is 2,048 tokens.  This leaves room
+# for two bounded source turns and the fixed contract while keeping the output
+# budget conservatively no larger than the strict raw-output ceiling.
 EXTRACTION_MAX_TOKENS = MAX_MODEL_OUTPUT_CHARS
 
 _INSTRUCTION = (
@@ -29,10 +29,10 @@ _INSTRUCTION = (
     "Return zero candidates when durable direct-user evidence is unsupported."
 )
 _OUTPUT_CONTRACT = """Return exactly one JSON object with the single field "candidates".
-"candidates" must contain 0..3 objects. Each object must contain exactly:
-text (1..240 chars), evidence_refs (1..3 exact objects).
-Each evidence object contains exactly source_turn_id (1..64 chars),
-source_field (transcript|response_text), and excerpt (an exact 1..160 char substring).
+"candidates" must contain 0..2 objects. Each object must contain exactly:
+text (1..96 chars), evidence_refs (exactly 1 object).
+The evidence object contains exactly source_turn_id (1..48 chars),
+source_field (transcript), and excerpt (an exact 1..64 char substring).
 Do not add fences, prefixes, suffixes, comments, or additional fields."""
 
 

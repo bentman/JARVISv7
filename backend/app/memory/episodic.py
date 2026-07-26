@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import hashlib
+import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,6 +12,8 @@ from backend.app.artifacts import storage
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.core.paths import DATA_DIR
 from backend.app.memory.write_policy import WritePolicy
+
+logger = logging.getLogger(__name__)
 
 
 def _iso_now() -> str:
@@ -85,6 +89,27 @@ class EpisodicMemory:
             self._prune_sessions(policy)
             return entry
         except Exception:
+            logger.warning("episodic memory write failed", extra={"turn_id": artifact.turn_id})
+            return None
+
+    def read_content_revision(self) -> str | None:
+        """Return a stable fingerprint for cache invalidation without loading entries."""
+        try:
+            if not self.base_dir.exists():
+                return "empty"
+            digest = hashlib.sha256()
+            paths = sorted(
+                (path for path in self.base_dir.rglob("*.json") if path.is_file()),
+                key=lambda path: path.relative_to(self.base_dir).as_posix(),
+            )
+            for path in paths:
+                stat = path.stat()
+                digest.update(path.relative_to(self.base_dir).as_posix().encode("utf-8"))
+                digest.update(str(stat.st_mtime_ns).encode("ascii"))
+                digest.update(str(stat.st_size).encode("ascii"))
+            return digest.hexdigest()
+        except Exception:
+            logger.warning("episodic memory revision read failed")
             return None
 
     def retrieve_recent(self, n: int = 5, base_dir: Path | None = None) -> list[EpisodicEntry]:
@@ -106,6 +131,7 @@ class EpisodicMemory:
                     break
             return matched
         except Exception:
+            logger.warning("episodic memory keyword retrieval failed")
             return []
 
     def _retrieve(self, *, base_dir: Path | None, n: int) -> list[EpisodicEntry]:
@@ -127,6 +153,7 @@ class EpisodicMemory:
             entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
             return entries[:n]
         except Exception:
+            logger.warning("episodic memory retrieval failed")
             return []
 
     def _prune_sessions(self, policy: WritePolicy) -> None:

@@ -15,8 +15,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
-MAX_MODEL_OUTPUT_CHARS = 16_384
-MAX_CANDIDATES = 3
+MAX_MODEL_OUTPUT_CHARS = 768
+MAX_CANDIDATES = 2
+MAX_MODEL_TEXT_CHARS = 96
+MAX_MODEL_EVIDENCE_REFS = 1
+MAX_MODEL_TURN_ID_CHARS = 48
+MAX_MODEL_EXCERPT_CHARS = 64
 MAX_TEXT_CHARS = 240
 MAX_CLAIM_KEY_CHARS = 80
 MAX_EVIDENCE_REFS = 3
@@ -197,7 +201,7 @@ def parse_model_proposals(raw_output: str) -> tuple[ModelMemoryProposal, ...]:
     _require_exact_fields(document, frozenset({"candidates"}), "root")
     candidates = document["candidates"]
     if not isinstance(candidates, list) or len(candidates) > MAX_CANDIDATES:
-        raise ProposalContractError("candidates must be an array of 0..3 objects")
+        raise ProposalContractError("candidates must be an array of 0..2 objects")
     return tuple(_parse_candidate(candidate) for candidate in candidates)
 
 
@@ -205,13 +209,13 @@ def _parse_candidate(value: Any) -> ModelMemoryProposal:
     if not isinstance(value, dict):
         raise ProposalContractError("candidate must be an object")
     _require_exact_fields(value, _CANDIDATE_FIELDS, "candidate")
-    text = _require_bounded_string(value["text"], "candidate text", MAX_TEXT_CHARS)
+    text = _require_bounded_string(value["text"], "candidate text", MAX_MODEL_TEXT_CHARS)
     evidence_values = value["evidence_refs"]
     if (
         not isinstance(evidence_values, list)
-        or not 1 <= len(evidence_values) <= MAX_EVIDENCE_REFS
+        or not 1 <= len(evidence_values) <= MAX_MODEL_EVIDENCE_REFS
     ):
-        raise ProposalContractError("candidate evidence_refs must contain 1..3 objects")
+        raise ProposalContractError("candidate evidence_refs must contain 1 object")
     evidence_refs = tuple(_parse_evidence_ref(item) for item in evidence_values)
     return ModelMemoryProposal(
         text=text,
@@ -226,13 +230,16 @@ def _parse_evidence_ref(value: Any) -> ModelEvidenceRef:
     turn_id = _require_bounded_string(
         value["source_turn_id"],
         "source_turn_id",
-        MAX_TURN_ID_CHARS,
+        MAX_MODEL_TURN_ID_CHARS,
     )
-    try:
-        source_field = EvidenceField(value["source_field"])
-    except (TypeError, ValueError) as exc:
-        raise ProposalContractError("source_field must be transcript or response_text") from exc
-    excerpt = _require_bounded_string(value["excerpt"], "evidence excerpt", MAX_EXCERPT_CHARS)
+    if value["source_field"] != EvidenceField.TRANSCRIPT:
+        raise ProposalContractError("source_field must be transcript")
+    source_field = EvidenceField.TRANSCRIPT
+    excerpt = _require_bounded_string(
+        value["excerpt"],
+        "evidence excerpt",
+        MAX_MODEL_EXCERPT_CHARS,
+    )
     return ModelEvidenceRef(
         source_turn_id=turn_id,
         source_field=source_field,

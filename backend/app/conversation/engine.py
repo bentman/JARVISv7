@@ -5,6 +5,7 @@ import time
 import wave
 import threading
 import queue
+import logging
 from dataclasses import dataclass, field
 from typing import Any, Callable, Iterable, Iterator
 from uuid import uuid4
@@ -35,6 +36,8 @@ from backend.app.services.llm_execution_coordinator import (
     InteractiveTicket,
     LLMExecutionCoordinator,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +231,7 @@ class TurnEngine:
                         semantic=self.semantic,
                     )
                 except Exception:
+                    logger.warning("memory retrieval failed; continuing without retrieved memory")
                     retrieved_context = []
             retrieved_memory_refs = [fact.turn_id for fact in retrieved_context]
             retrieved_memory_evidence = [
@@ -813,7 +817,7 @@ class TurnEngine:
             try:
                 self.episodic.write_entry(artifact, self.write_policy)
             except Exception:
-                pass
+                logger.warning("episodic memory write failed; continuing without episodic storage")
         if result.failure_reason is None:
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
 

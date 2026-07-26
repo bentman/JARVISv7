@@ -11,11 +11,11 @@ from backend.app.cognition.memory_extraction import (
 )
 from backend.app.memory.curation_contract import (
     MAX_CANDIDATES,
-    MAX_EVIDENCE_REFS,
-    MAX_EXCERPT_CHARS,
     MAX_MODEL_OUTPUT_CHARS,
-    MAX_TEXT_CHARS,
-    MAX_TURN_ID_CHARS,
+    MAX_MODEL_EVIDENCE_REFS,
+    MAX_MODEL_EXCERPT_CHARS,
+    MAX_MODEL_TEXT_CHARS,
+    MAX_MODEL_TURN_ID_CHARS,
 )
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.runtimes.llm.base import LLMBase
@@ -61,7 +61,7 @@ def test_extractor_uses_trusted_contract_untrusted_bounded_evidence() -> None:
 
     assert result.proposals == ()
     assert len(result.persisted_turns) == MAX_EXTRACTION_TURNS
-    assert result.persisted_turns[0].turn_id == "turn-2"
+    assert result.persisted_turns[0].turn_id == "turn-12"
     assert len(result.persisted_turns[0].transcript or "") == MAX_TURN_FIELD_CHARS
     assert llm.envelope is not None
     assert llm.envelope.generation == {"max_tokens": EXTRACTION_MAX_TOKENS}
@@ -72,39 +72,35 @@ def test_extractor_uses_trusted_contract_untrusted_bounded_evidence() -> None:
         ("user", False),
     ]
     session_payload = json.loads(llm.envelope.segments[2].text)
-    assert session_payload["turns"][0]["turn_id"] == "turn-2"
+    assert session_payload["turns"][0]["turn_id"] == "turn-12"
     contract = llm.envelope.segments[1].text
-    assert "text (1..240 chars), evidence_refs" in contract
+    assert "text (1..96 chars), evidence_refs" in contract
     assert "kind" not in contract
     assert "claim_key" not in contract
     assert "relation" not in contract
     assert "confidence" not in contract
     assert "importance" not in contract
+    assert "source_field (transcript)" in contract
+    assert "response_text" not in contract
 
 
 def test_extraction_budget_covers_maximum_valid_bounded_output() -> None:
-    evidence = {
-        "source_turn_id": "t" * MAX_TURN_ID_CHARS,
-        "source_field": "transcript",
-        "excerpt": "e" * MAX_EXCERPT_CHARS,
-    }
     candidate = {
-        # The repeated candidate appears three times.  Forty-seven ASCII
-        # characters offset the three escaped copies to the raw-output cap.
-        "text": "a" * 47 + "é" * (MAX_TEXT_CHARS - 47),
+        "text": "x" * MAX_MODEL_TEXT_CHARS,
         "evidence_refs": [
             {
-                **evidence,
-                "source_turn_id": "é" * MAX_TURN_ID_CHARS,
-                "excerpt": "é" * MAX_EXCERPT_CHARS,
+                "source_turn_id": "t" * MAX_MODEL_TURN_ID_CHARS,
+                "source_field": "transcript",
+                "excerpt": "e" * MAX_MODEL_EXCERPT_CHARS,
             }
         ]
-        * MAX_EVIDENCE_REFS,
+        * MAX_MODEL_EVIDENCE_REFS,
     }
     raw_output = json.dumps(
         {"candidates": [candidate] * MAX_CANDIDATES},
         separators=(",", ":"),
     )
+    raw_output += " " * (MAX_MODEL_OUTPUT_CHARS - len(raw_output))
     assert len(raw_output) == MAX_MODEL_OUTPUT_CHARS
 
     llm = FakeEnvelopeLLM(raw_output)

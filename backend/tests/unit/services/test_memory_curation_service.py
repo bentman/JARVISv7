@@ -162,6 +162,44 @@ def test_processor_exception_enters_retry_wait_with_bounded_error(
     assert job.next_attempt_at > job.updated_at
 
 
+def test_retry_wait_job_wakes_and_reprocesses_without_a_new_enqueue(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    memory, sessions, turns, artifact_path = _authorized_job(tmp_path)
+    calls = 0
+    monkeypatch.setattr(
+        "backend.app.memory.semantic.CURATION_RETRY_DELAYS_SECONDS",
+        (0.01, 0.01),
+    )
+
+    def processor(_evidence) -> CurationProcessorResult:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return CurationProcessorResult(
+                success=False,
+                durable=False,
+                reason_code="temporary_failure",
+                retryable=True,
+            )
+        return CurationProcessorResult(success=True, durable=True)
+
+    service = _service(memory, sessions, turns, processor=processor)
+    try:
+        service.enqueue_closed_session(
+            session_id="session-1",
+            artifact_path=artifact_path,
+            policy_revision=2,
+            authorized_at=NOW,
+        )
+        job = _wait_for_job(memory, "session-1", CurationJobStatus.SUCCEEDED)
+        assert job is not None and job.attempt_count == 2
+        assert calls == 2
+    finally:
+        service.stop()
+
+
 def test_previous_boot_processing_is_recovered_and_fenced(tmp_path: Path) -> None:
     memory, sessions, turns, artifact_path = _authorized_job(tmp_path)
     memory.enqueue_curation_job(
@@ -185,19 +223,20 @@ def test_previous_boot_processing_is_recovered_and_fenced(tmp_path: Path) -> Non
         processor=lambda _evidence: CurationProcessorResult(True, True),
         boot_id="new-boot",
     )
-    recovered = service.recover_and_reconcile()
-    job = memory.read_curation_job("session-1").value
+    try:
+        recovered = service.recover_and_reconcile()
+        job = _wait_for_job(memory, "session-1", CurationJobStatus.SUCCEEDED)
+        stale_result = memory.complete_curation_job(
+            session_id="session-1",
+            lease_token=claimed.value.claim_token,
+            boot_id="old-boot",
+        )
 
-    stale_result = memory.complete_curation_job(
-        session_id="session-1",
-        lease_token=claimed.value.claim_token,
-        boot_id="old-boot",
-    )
-
-    assert recovered.status is OperationStatus.SUCCESS
-    assert job is not None and job.status is CurationJobStatus.RETRY_WAIT
-    assert job.last_error_code == "previous_boot_recovered"
-    assert stale_result.status is OperationStatus.CONFLICT
+        assert recovered.status is OperationStatus.SUCCESS
+        assert job is not None and job.status is CurationJobStatus.SUCCEEDED
+        assert stale_result.status is OperationStatus.CONFLICT
+    finally:
+        service.stop()
 
 
 def test_policy_disable_cancels_pending_and_processing_results(tmp_path: Path) -> None:

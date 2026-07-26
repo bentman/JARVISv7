@@ -114,21 +114,15 @@ def test_strict_parser_rejects_unknown_nested_and_model_judgment_fields() -> Non
         parse_model_proposals(_raw(candidate))
 
 
-def test_evidence_verification_derives_authority_from_persisted_field() -> None:
+def test_evidence_verification_derives_direct_user_authority_from_transcript() -> None:
     transcript_proposal = parse_model_proposals(_raw())[0]
     transcript_ref = verify_evidence_refs(transcript_proposal, [_turn()])[0]
     assert transcript_ref.authority is EvidenceAuthority.DIRECT_USER_STATEMENT
 
-    response_proposal = parse_model_proposals(
-        _raw(
-            _candidate(
-                field="response_text",
-                excerpt="You live in Chicago.",
-            )
+    with pytest.raises(ProposalContractError, match="source_field must be transcript"):
+        parse_model_proposals(
+            _raw(_candidate(field="response_text", excerpt="You live in Chicago."))
         )
-    )[0]
-    response_ref = verify_evidence_refs(response_proposal, [_turn()])[0]
-    assert response_ref.authority is EvidenceAuthority.ASSISTANT_INFERENCE
 
 
 @pytest.mark.parametrize(
@@ -195,12 +189,11 @@ def test_provisional_key_is_order_stable_and_changes_with_evidence_origin() -> N
     assert derive_provisional_claim_key([first_ref]) != derive_provisional_claim_key([second_ref])
 
 
-def test_response_only_proposals_cannot_become_provisional_memory() -> None:
-    proposal = parse_model_proposals(
-        _raw(_candidate(field="response_text", excerpt="You live in Chicago."))
-    )[0]
-    with pytest.raises(ProposalContractError, match="direct transcript evidence"):
-        build_provisional_candidate(proposal, [_turn()])
+def test_response_only_proposals_are_rejected_at_the_model_contract_boundary() -> None:
+    with pytest.raises(ProposalContractError, match="source_field must be transcript"):
+        parse_model_proposals(
+            _raw(_candidate(field="response_text", excerpt="You live in Chicago."))
+        )
 
 
 def test_duplicate_evidence_identity_requires_operator_disambiguation() -> None:

@@ -7,6 +7,7 @@ from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.memory.write_policy import WritePolicy
+import pytest
 
 
 def test_session_manager_creates_stable_session_id(tmp_path):
@@ -128,6 +129,13 @@ def test_write_policy_capacity_bounds_storage_and_continuity_working_memory(tmp_
     assert manager.working_memory.as_list() == ["two", "three"]
     assert manager.get_working_context(policy) == ["two", "three"]
     assert packet.working_memory == ("two", "three")
+
+
+@pytest.mark.parametrize("field", ["max_working_memory_entries", "episodic_min_response_length", "episodic_retention_sessions"])
+@pytest.mark.parametrize("value", [0, -1, True])
+def test_write_policy_rejects_non_positive_capacity_values(field: str, value: int | bool) -> None:
+    with pytest.raises(ValueError, match=f"{field} must be a positive integer"):
+        WritePolicy(**{field: value})  # type: ignore[arg-type]
 
 
 def test_build_continuity_packet_excludes_stale_same_session_context(tmp_path):

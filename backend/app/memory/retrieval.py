@@ -137,16 +137,26 @@ class RetrievalManager:
         has_episodic: bool = False,
         has_semantic: bool = False,
         semantic_revision: int | None = None,
+        episodic_revision: str | None = None,
     ) -> str:
         # Backend availability is part of the cached result's identity: a result
         # computed with a backend absent must not be served once it is back.
         backends = f"e{int(has_episodic)}s{int(has_semantic)}"
+        episodic_suffix = f"e{episodic_revision}" if has_episodic else ""
         if query is None:
-            return make_key(NS_RETRIEVAL, "recency", backends, str(n))
+            return make_key(NS_RETRIEVAL, "recency", backends, episodic_suffix, str(n))
         query_hash = hashlib.md5(query.encode("utf-8"), usedforsecurity=False).hexdigest()[:8]
         suffix = "hybrid" if has_semantic else "keyword"
         revision = f"r{semantic_revision}" if has_semantic else ""
-        return make_key(NS_RETRIEVAL, suffix, backends, revision, query_hash, str(n))
+        return make_key(
+            NS_RETRIEVAL,
+            suffix,
+            backends,
+            revision,
+            episodic_suffix,
+            query_hash,
+            str(n),
+        )
 
     def _facts_from_cache_value(self, payload: str) -> list[RetrievedFact]:
         raw = json.loads(payload)
@@ -250,6 +260,8 @@ class RetrievalManager:
 
         semantic_revision: int | None = None
         semantic_cache_safe = True
+        episodic_revision: str | None = None
+        episodic_cache_safe = True
         if query is not None and semantic is not None:
             try:
                 revision_result = semantic.read_content_revision()
@@ -259,17 +271,28 @@ class RetrievalManager:
             except Exception:
                 semantic_revision = None
             semantic_cache_safe = semantic_revision is not None
+        if episodic is not None:
+            try:
+                episodic_revision = episodic.read_content_revision()
+            except Exception:
+                episodic_revision = None
+            episodic_cache_safe = episodic_revision is not None
         key = self._cache_key(
             query=query,
             n=n,
             has_episodic=(episodic is not None),
             has_semantic=(semantic is not None),
             semantic_revision=semantic_revision,
+            episodic_revision=episodic_revision,
         )
         can_use_cache = False
         if cache_manager is not None:
             try:
-                can_use_cache = semantic_cache_safe and cache_manager.is_available()
+                can_use_cache = (
+                    semantic_cache_safe
+                    and episodic_cache_safe
+                    and cache_manager.is_available()
+                )
             except Exception:
                 can_use_cache = False
 

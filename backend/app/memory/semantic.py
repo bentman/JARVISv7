@@ -70,6 +70,7 @@ CURATION_JOB_STATUSES = (
 _WRITE_BUSY_RETRIES = 3
 _WRITE_BUSY_TIMEOUT_MS = 250
 _WRITE_BUSY_BACKOFF_SECONDS = 0.02
+CURATION_RETRY_DELAYS_SECONDS = (60, 300)
 
 _LEGACY_FACT_COLUMNS = (
     "fact_id",
@@ -2860,7 +2861,7 @@ class SemanticMemory:
             attempts = int(row["attempt_count"])
             terminal = not retryable or attempts >= int(row["max_attempts"])
             now_dt = datetime.now(UTC)
-            delay = 60 if attempts == 1 else 300
+            delay = CURATION_RETRY_DELAYS_SECONDS[min(attempts - 1, 1)]
             next_attempt_at = (
                 now_dt if terminal else now_dt + timedelta(seconds=delay)
             ).isoformat()

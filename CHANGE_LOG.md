@@ -20,6 +20,24 @@
 
 ## Change Entries
 
+- Timestamp: 2026-07-25 19:16
+  - Host class(es): Windows AMD64
+  - Summary: Corrected remaining memory runtime defects in delayed curation retry, extraction evidence alignment, working-memory prompt authority, episodic retrieval-cache invalidation, bounded policy validation, and memory-failure logging.
+  - Scope: Memory curation worker/coordinator, extraction contract/parser, continuity prompt composition, episodic/retrieval storage, write policy, turn engine, and focused tests.
+  - Validation: Backend unit validator PASS (`872 passed, 4 skipped, 1 warning`): `backend/.venv/Scripts/python.exe scripts/validate_backend.py unit`; focused pytest PASS (`142 passed`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/memory/test_curation_contract.py backend/tests/unit/cognition/test_memory_extraction.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/conversation/test_session_manager.py backend/tests/unit/memory/test_retrieval.py backend/tests/unit/services/test_memory_curation_service.py backend/tests/unit/services/test_llm_execution_coordinator.py backend/tests/unit/memory/test_episodic.py`.
+  - Notes: Unit validation skipped one missing optional `transformers` dependency and three POSIX-only filesystem tests; the warning is the installed FastAPI/Starlette `httpx` deprecation notice. No live model generation was run.
+
+---
+
+- Timestamp: 2026-07-25 16:05
+  - Host class(es): Windows AMD64
+  - Summary: Corrected memory-runtime bounds for the smallest configured serving context and resolved shutdown-drain completion when a normal-runtime curation job is in flight.
+  - Scope: Model-output-only extraction bounds, curation worker shutdown coordination, recovered-job expectations, and the focused memory runtime cross-check.
+  - Validation: Focused pytest PASS (`171 passed, 1 warning`): `backend/.venv/Scripts/python.exe -m pytest -q backend/tests/unit/api/test_app_lifecycle.py backend/tests/unit/conversation/test_engine.py backend/tests/unit/conversation/test_session_manager.py backend/tests/unit/memory/test_working_memory.py backend/tests/unit/memory/test_episodic.py backend/tests/unit/memory/test_semantic.py backend/tests/unit/cognition/test_memory_extraction.py backend/tests/unit/memory/test_curation_contract.py backend/tests/unit/memory/test_curation_reconciliation.py backend/tests/unit/services/test_memory_curation_processor.py backend/tests/unit/services/test_memory_curation_service.py backend/tests/unit/services/test_llm_execution_coordinator.py backend/tests/unit/services/test_session_service.py`.
+  - Notes: The warning is FastAPI/Starlette's installed `httpx` deprecation notice. No live model generation, retrieval redesign, schema migration, desktop work, or configuration change was performed.
+
+---
+
 - Timestamp: 2026-07-25 15:53
   - Host class(es): Windows AMD64
   - Summary: Removed model-generated confidence and importance from review-only memory extraction and assigned deterministic application-owned values to pending-review facts.

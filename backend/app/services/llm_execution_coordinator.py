@@ -4,7 +4,7 @@ import threading
 from collections import deque
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Iterator
+from typing import Callable, Iterator
 
 
 class ShutdownDrainInProgress(RuntimeError):
@@ -44,6 +44,23 @@ class LLMExecutionCoordinator:
         self._background_active = False
         self._shutdown_drain_active = False
         self._stopping = False
+        self._state_listeners: set[Callable[[], None]] = set()
+
+    def subscribe_state_changes(self, listener: Callable[[], None]) -> Callable[[], None]:
+        with self._condition:
+            self._state_listeners.add(listener)
+
+        def unsubscribe() -> None:
+            with self._condition:
+                self._state_listeners.discard(listener)
+
+        return unsubscribe
+
+    def _notify_state_changes(self) -> None:
+        with self._condition:
+            listeners = tuple(self._state_listeners)
+        for listener in listeners:
+            listener()
 
     def register_interactive(
         self,
@@ -59,7 +76,8 @@ class LLMExecutionCoordinator:
             ticket = InteractiveTicket(self, self._next_sequence)
             self._interactive_waiters.append(ticket.sequence)
             self._condition.notify_all()
-            return ticket
+        self._notify_state_changes()
+        return ticket
 
     def begin_shutdown_drain(self) -> None:
         with self._condition:
@@ -100,13 +118,14 @@ class LLMExecutionCoordinator:
             ):
                 return False
             self._background_active = True
-            return True
+        return True
 
     def release_background(self) -> None:
         with self._condition:
             if self._background_active:
                 self._background_active = False
                 self._condition.notify_all()
+        self._notify_state_changes()
 
     def snapshot(self) -> dict[str, object]:
         with self._condition:
@@ -131,7 +150,7 @@ class LLMExecutionCoordinator:
                     self._interactive_waiters.popleft()
                     self._interactive_active = True
                     ticket._owned = True
-                    return
+                    break
                 self._condition.wait()
 
     def _release_interactive_owner(self, ticket: InteractiveTicket) -> None:
@@ -140,6 +159,7 @@ class LLMExecutionCoordinator:
                 ticket._owned = False
                 self._interactive_active = False
                 self._condition.notify_all()
+        self._notify_state_changes()
 
     def _release_ticket(self, ticket: InteractiveTicket) -> None:
         with self._condition:
@@ -151,3 +171,4 @@ class LLMExecutionCoordinator:
             except ValueError:
                 pass
             self._condition.notify_all()
+        self._notify_state_changes()

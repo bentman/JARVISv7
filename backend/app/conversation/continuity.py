@@ -50,9 +50,6 @@ class ContinuityPacket:
             lines.append(f"- interruption_context: {self.interruption_context}")
         if self.recent_retrieved_memory_refs:
             lines.append(f"- recent_retrieved_memory_refs: {', '.join(self.recent_retrieved_memory_refs)}")
-        if self.working_memory:
-            lines.append("- working_memory:")
-            lines.extend(f"  - {line}" for line in self.working_memory)
         if self.excluded_context:
             lines.append("- excluded_context:")
             lines.extend(f"  - {line}" for line in self.excluded_context)

@@ -143,6 +143,9 @@ class MemoryCurationService:
         self._drain_done: threading.Event | None = None
         self._drain_result: DrainResult | None = None
         self._enqueue_failures: deque[EnqueueFailure] = deque(maxlen=MAX_ENQUEUE_FAILURES)
+        self._unsubscribe_coordinator = self._coordinator.subscribe_state_changes(
+            self._notify_work_available
+        )
 
     def recover_and_reconcile(self) -> StoreResult[int]:
         recovered = self._memory.recover_stale_curation_jobs(
@@ -190,12 +193,19 @@ class MemoryCurationService:
 
     def stop(self, timeout: float = 1.0) -> bool:
         self._coordinator.mark_stopping()
+        stopping_result = self._snapshot_drain("blocked", "worker_stopping")
         with self._condition:
             self._stop_requested = True
+            if self._drain_requested and self._drain_done is not None:
+                self._drain_result = stopping_result
+                self._drain_requested = False
+                self._drain_done.set()
+                self._drain_done = None
             self._condition.notify_all()
             worker = self._worker
         if worker is not None:
             worker.join(max(0.0, timeout))
+        self._unsubscribe_coordinator()
         return worker is None or not worker.is_alive()
 
     def enqueue_closed_session(
@@ -231,7 +241,6 @@ class MemoryCurationService:
 
     def drain(self, timeout: float = 8.0) -> DrainResult:
         self._coordinator.begin_shutdown_drain()
-        self.start()
         done = threading.Event()
         with self._condition:
             if self._drain_requested:
@@ -240,6 +249,7 @@ class MemoryCurationService:
             self._drain_done = done
             self._drain_result = None
             self._condition.notify_all()
+        self.start()
         if not done.wait(max(0.0, timeout)):
             return self._snapshot_drain("timed_out", None)
         with self._condition:
@@ -285,7 +295,11 @@ class MemoryCurationService:
                     and not self._drain_requested
                     and not self._stop_requested
                 ):
-                    self._condition.wait()
+                    delay = self._seconds_until_next_job()
+                    if delay is not None and delay <= 0:
+                        self._work_requested = True
+                        break
+                    self._condition.wait(delay)
                 if self._stop_requested:
                     return
                 done = self._drain_done
@@ -305,6 +319,27 @@ class MemoryCurationService:
                     self._drain_done = None
                 if is_drain and done is not None:
                     done.set()
+
+    def _notify_work_available(self) -> None:
+        with self._condition:
+            if not self._stop_requested:
+                delay = self._seconds_until_next_job()
+                if delay is not None and delay <= 0:
+                    self._work_requested = True
+                self._condition.notify_all()
+
+    def _seconds_until_next_job(self) -> float | None:
+        queued = self._memory.list_curation_jobs(
+            max_attempts=MAX_ATTEMPTS,
+            limit=1,
+        )
+        if not queued.succeeded or not queued.value:
+            return None
+        try:
+            due_at = datetime.fromisoformat(queued.value[0].next_attempt_at)
+            return max(0.0, (due_at - datetime.now(UTC)).total_seconds())
+        except ValueError:
+            return None
 
     def _attempt_one(self) -> DrainResult:
         queued = self._memory.list_curation_jobs(max_attempts=MAX_ATTEMPTS, limit=1)

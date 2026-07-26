@@ -283,6 +283,46 @@ def test_cache_key_distinguishes_backend_availability():
     assert len(keys) == 5
 
 
+def test_episodic_revision_changes_cache_identity_after_a_write(tmp_path: Path) -> None:
+    episodic = EpisodicMemory(
+        base_dir=tmp_path / "episodic",
+        sessions_base_dir=tmp_path / "sessions",
+    )
+    cache = MockCacheManager()
+    retrieval = RetrievalManager()
+    policy = WritePolicy()
+
+    episodic.write_entry(
+        TurnArtifact(
+            turn_id="turn-1",
+            session_id="session-1",
+            input_modality="text",
+            final_state="IDLE",
+            transcript="first",
+            response_text="first episodic response",
+        ),
+        policy,
+    )
+    first = retrieval.retrieve("episodic", n=3, cache_manager=cache, episodic=episodic)
+
+    episodic.write_entry(
+        TurnArtifact(
+            turn_id="turn-2",
+            session_id="session-1",
+            input_modality="text",
+            final_state="IDLE",
+            transcript="episodic",
+            response_text="second episodic response",
+        ),
+        policy,
+    )
+    refreshed = retrieval.retrieve("episodic", n=3, cache_manager=cache, episodic=episodic)
+
+    assert [fact.turn_id for fact in first] == ["turn-1"]
+    assert [fact.turn_id for fact in refreshed] == ["turn-2", "turn-1"]
+    assert len(cache.store) == 2
+
+
 def _semantic_entry(
     fact_id: str,
     *,

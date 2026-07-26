@@ -544,8 +544,8 @@ def test_engine_uses_write_policy_capacity_for_storage_and_prompt_context(tmp_pa
     )
 
     assert manager.working_memory.as_list() == ["three", "four"]
-    assert "- two" in session_context and "- three" in session_context
-    assert "- one" not in session_context
+    assert "working_memory:" not in session_context
+    assert "- two" not in session_context and "- three" not in session_context
     assert "- two" in working_context and "- three" in working_context
     assert "- one" not in working_context
 
@@ -673,12 +673,13 @@ def test_engine_calls_episodic_write_after_artifact_write_when_injected(tmp_path
     assert episodic.calls == 1
 
 
-def test_engine_episodic_write_exception_does_not_fail_turn(tmp_path: Path) -> None:
+def test_engine_episodic_write_exception_does_not_fail_turn_and_is_logged(tmp_path: Path, caplog) -> None:
     manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
     episodic = FakeEpisodic()
     episodic.raise_on_write = True
     result = _engine(session_manager=manager, episodic=episodic).run_text_turn("hello")
     assert result.final_state == ConversationState.IDLE
+    assert "episodic memory write failed" in caplog.text
 
 
 def test_engine_calls_retrieval_when_episodic_is_set(tmp_path: Path) -> None:
@@ -794,7 +795,7 @@ def test_engine_populates_retrieved_memory_refs_in_artifact(tmp_path: Path) -> N
     ]
 
 
-def test_engine_retrieval_failure_does_not_fail_turn(tmp_path: Path) -> None:
+def test_engine_retrieval_failure_does_not_fail_turn_and_is_logged(tmp_path: Path, caplog) -> None:
     manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
     episodic = FakeEpisodic()
     retrieval = FakeRetrieval(error=RuntimeError("retrieval failed"))
@@ -807,6 +808,7 @@ def test_engine_retrieval_failure_does_not_fail_turn(tmp_path: Path) -> None:
     assert result.failure_reason is None
     assert retrieval.calls == [("hello", 3, episodic)]
     assert "Relevant prior context:" not in engine.llm.prompts[0]
+    assert "memory retrieval failed" in caplog.text
 
 
 def test_barge_in_detector_ignores_guard_time_input():
