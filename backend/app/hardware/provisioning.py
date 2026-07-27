@@ -69,14 +69,24 @@ def resolve_required_extras(profile: HardwareProfile) -> list[str]:
     elif profile.arch == "amd64":
         extras.append("hw-x64-base")
         has_accel_ort = (
-            (profile.gpu_available and profile.gpu_vendor == "nvidia" and profile.cuda_available)
+            (
+                profile.os_name != "linux"
+                and profile.gpu_available
+                and profile.gpu_vendor == "nvidia"
+                and profile.cuda_available
+            )
             or (profile.gpu_available and profile.gpu_vendor in {"amd", "intel"})
             or (profile.npu_available and profile.npu_vendor == "qualcomm")
         )
         if not has_accel_ort:
             extras.append("hw-x64-ort-cpu")
 
-    if profile.gpu_available and profile.gpu_vendor == "nvidia" and profile.cuda_available:
+    if (
+        profile.os_name != "linux"
+        and profile.gpu_available
+        and profile.gpu_vendor == "nvidia"
+        and profile.cuda_available
+    ):
         extras.append("hw-gpu-nvidia-cuda")
     if profile.gpu_available and profile.gpu_vendor == "amd":
         extras.append("hw-gpu-amd")
