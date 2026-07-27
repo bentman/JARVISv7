@@ -25,13 +25,36 @@ def test_resolver_returns_base_plus_arch_for_cpu_only_arm64() -> None:
     ]
 
 
-def test_resolver_adds_cuda_for_nvidia_with_cuda() -> None:
-    profile = HardwareProfile(arch="amd64", gpu_available=True, gpu_vendor="nvidia", cuda_available=True)
+def test_resolver_adds_cuda_for_windows_nvidia_with_cuda() -> None:
+    profile = HardwareProfile(
+        os_name="windows",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
 
     assert resolve_required_extras(profile) == [
         "hw-cpu-base",
         "hw-x64-base",
         "hw-gpu-nvidia-cuda",
+        "dev",
+    ]
+
+
+def test_resolver_keeps_cpu_ort_for_linux_nvidia_with_cuda() -> None:
+    profile = HardwareProfile(
+        os_name="linux",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
+
+    assert resolve_required_extras(profile) == [
+        "hw-cpu-base",
+        "hw-x64-base",
+        "hw-x64-ort-cpu",
         "dev",
     ]
 
