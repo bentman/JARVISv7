@@ -130,7 +130,7 @@ hw-arm64-ort-cpu = [
 # Note: onnxruntime-gpu is x64-only on Windows; the resolver should only
 # return this extra when platform is x64-capable.
 hw-gpu-nvidia-cuda = [
-  "onnxruntime-gpu>=1.17",
+  "onnxruntime-gpu>=1.17; sys_platform=='win32'",
 ]
 
 # AMD GPU (DirectML on Windows; ROCm on Linux skipped intentionally).

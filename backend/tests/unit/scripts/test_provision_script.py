@@ -12,6 +12,26 @@ def _arm64_qnn_profile() -> HardwareProfile:
     return HardwareProfile(arch="arm64", npu_available=True, npu_vendor="qualcomm")
 
 
+def _linux_cuda_profile() -> HardwareProfile:
+    return HardwareProfile(
+        os_name="linux",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
+
+
+def _windows_cuda_profile() -> HardwareProfile:
+    return HardwareProfile(
+        os_name="windows",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
+
+
 def _report_for(profile: HardwareProfile):
     return type("R", (), {"profile": profile, "flags": None})()
 
@@ -33,13 +53,7 @@ def test_dry_run_prints_plan_and_does_not_install(monkeypatch, capsys) -> None:
 
 
 def test_linux_cuda_dry_run_keeps_cpu_ort_voice_extra(monkeypatch, capsys) -> None:
-    profile = HardwareProfile(
-        os_name="linux",
-        arch="amd64",
-        gpu_available=True,
-        gpu_vendor="nvidia",
-        cuda_available=True,
-    )
+    profile = _linux_cuda_profile()
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(profile))
 
     exit_code = provision.main(["dry-run"])
@@ -51,7 +65,7 @@ def test_linux_cuda_dry_run_keeps_cpu_ort_voice_extra(monkeypatch, capsys) -> No
 
     assert exit_code == 0
     assert "hw-x64-ort-cpu" in output
-    assert "hw-gpu-nvidia-cuda" not in output
+    assert "hw-gpu-nvidia-cuda" in output
     assert "onnxruntime" in names
     assert "onnxruntime_gpu" not in names
 
@@ -75,13 +89,13 @@ def test_install_composes_correct_pip_command_from_resolver(monkeypatch, capsys)
     output = capsys.readouterr().out
 
     assert exit_code == 0
-    assert provision._build_pip_install_command(["hw-cpu-base", "hw-x64-base", "dev"]) == [
+    assert provision._build_pip_install_command(["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu", "dev"]) == [
         provision.sys.executable,
         "-m",
         "pip",
         "install",
         "-e",
-        ".[hw-cpu-base,hw-x64-base,dev]",
+        ".[hw-cpu-base,hw-x64-base,hw-x64-ort-cpu,dev]",
     ]
     assert "pip install -e" in output
 
@@ -133,17 +147,9 @@ def test_base_requirements_keep_sounddevice_without_soundfile() -> None:
     assert "soundfile" not in requirement_names
 
 
-def test_openwakeword_requirement_applies_to_supported_linux_and_windows_hosts() -> None:
+def test_openwakeword_requirement_applies_to_linux_x64_and_windows_hosts() -> None:
     requirement = "openwakeword==0.6.0; sys_platform=='win32' or sys_platform=='linux'"
 
-    assert provision._requirement_applies_to_profile(
-        requirement,
-        HardwareProfile(os_name="linux", arch="amd64"),
-    )
-    assert provision._requirement_applies_to_profile(
-        requirement,
-        HardwareProfile(os_name="linux", arch="arm64"),
-    )
     assert provision._requirement_applies_to_profile(
         requirement,
         HardwareProfile(os_name="windows", arch="amd64"),
@@ -151,6 +157,10 @@ def test_openwakeword_requirement_applies_to_supported_linux_and_windows_hosts()
     assert provision._requirement_applies_to_profile(
         requirement,
         HardwareProfile(os_name="windows", arch="arm64"),
+    )
+    assert provision._requirement_applies_to_profile(
+        requirement,
+        HardwareProfile(os_name="linux", arch="amd64"),
     )
     assert not provision._requirement_applies_to_profile(
         requirement,
@@ -161,7 +171,7 @@ def test_openwakeword_requirement_applies_to_supported_linux_and_windows_hosts()
 def test_linux_install_uses_no_deps_only_for_openwakeword(monkeypatch) -> None:
     commands: list[list[str]] = []
     profile = HardwareProfile(os_name="linux", arch="amd64")
-    extras = ["hw-cpu-base", "hw-x64-base", "dev"]
+    extras = ["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu", "dev"]
     requirements = [
         "fastapi>=0.110",
         "onnxruntime>=1.17; platform_machine=='AMD64' or platform_machine=='x86_64'",
@@ -179,6 +189,20 @@ def test_linux_install_uses_no_deps_only_for_openwakeword(monkeypatch) -> None:
         [provision.sys.executable, "-m", "pip", "install", *requirements[:-1]],
         [provision.sys.executable, "-m", "pip", "install", "--no-deps", "openwakeword==0.6.0"],
     ]
+
+
+def test_linux_cuda_install_does_not_swap_cpu_ort_for_gpu_ort(monkeypatch) -> None:
+    commands: list[list[str]] = []
+    profile = _linux_cuda_profile()
+    extras = ["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu", "hw-gpu-nvidia-cuda", "dev"]
+    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
+
+    exit_code = provision._run_install(profile, extras)
+
+    assert exit_code == 0
+    assert commands[0] == [provision.sys.executable, "-m", "pip", "uninstall", "-y", "openwakeword"]
+    assert [provision.sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime"] not in commands
+    assert not any("--force-reinstall" in command for command in commands)
 
 
 def test_linux_arm64_resolves_openwakeword_without_x64_requirements() -> None:
@@ -201,6 +225,26 @@ def test_linux_arm64_resolves_openwakeword_without_x64_requirements() -> None:
     assert "tflite_runtime" not in names
 
 
+def test_linux_cuda_selected_requirements_keep_cpu_ort_and_openwakeword_without_gpu_ort() -> None:
+    requirements = provision._selected_requirement_specs(_linux_cuda_profile())
+    names = {provision._normalize_requirement_name(requirement) for requirement in requirements}
+
+    assert "onnxruntime" in names
+    assert "kokoro_onnx" in names
+    assert "onnxruntime_gpu" not in names
+    assert "openwakeword" in names
+    assert "tflite_runtime" not in names
+
+
+def test_windows_cuda_selected_requirements_keep_gpu_ort() -> None:
+    requirements = provision._selected_requirement_specs(_windows_cuda_profile())
+    names = {provision._normalize_requirement_name(requirement) for requirement in requirements}
+
+    assert "onnxruntime_gpu" in names
+    assert "onnxruntime" not in names
+    assert "openwakeword" in names
+
+
 def test_windows_openwakeword_resolution_keeps_the_editable_install_path() -> None:
     for arch, extra in (("amd64", "hw-x64-base"), ("arm64", "hw-arm64-base")):
         profile = HardwareProfile(os_name="windows", arch=arch)
@@ -217,6 +261,7 @@ def test_windows_openwakeword_resolution_keeps_the_editable_install_path() -> No
 def test_verify_reports_drift_when_installed_set_differs(monkeypatch, capsys) -> None:
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("amd64")))
     monkeypatch.setattr(provision, "_installed_distribution_versions", lambda: {"fastapi": "1.0", "uvicorn": "1.0"})
+    monkeypatch.setattr(provision, "_run_pip_check", lambda: (0, "No broken requirements found."))
 
     exit_code = provision.main(["verify"])
     output = capsys.readouterr().out
@@ -244,6 +289,7 @@ def test_verify_reports_version_drift_for_exact_pins(monkeypatch, capsys) -> Non
         "_installed_distribution_versions",
         lambda: {"example_exact": "2.0.0"},
     )
+    monkeypatch.setattr(provision, "_run_pip_check", lambda: (0, "No broken requirements found."))
 
     exit_code = provision.main(["verify"])
     output = capsys.readouterr().out
@@ -251,6 +297,107 @@ def test_verify_reports_version_drift_for_exact_pins(monkeypatch, capsys) -> Non
     assert exit_code == 1
     assert "version_mismatches" in output
     assert "example_exact" in output
+
+
+def test_verify_reports_pip_check_failure(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("amd64")))
+    monkeypatch.setattr(provision, "_expected_distribution_names", lambda profile: set())
+    monkeypatch.setattr(provision, "_expected_exact_distribution_versions", lambda profile: {})
+    monkeypatch.setattr(provision, "_installed_distribution_versions", lambda: {})
+    monkeypatch.setattr(
+        provision,
+        "_run_pip_check",
+        lambda: (1, "kokoro-onnx 0.5.0 requires onnxruntime, which is not installed."),
+    )
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "pip_check=FAIL" in output
+    assert "kokoro-onnx" in output
+
+
+def test_verify_waives_only_linux_openwakeword_unused_tflite_metadata(monkeypatch, capsys) -> None:
+    profile = _linux_cuda_profile()
+    expected_names = provision._expected_distribution_names(profile)
+    expected_versions = provision._expected_exact_distribution_versions(profile)
+
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(profile))
+    monkeypatch.setattr(
+        provision,
+        "_installed_distribution_versions",
+        lambda: {name: expected_versions.get(name, "1.0.0") for name in expected_names},
+    )
+    monkeypatch.setattr(
+        provision,
+        "_package_importable",
+        lambda name: name in {"openwakeword", "onnxruntime"},
+    )
+    monkeypatch.setattr(
+        provision,
+        "_run_pip_check",
+        lambda: (1, "openwakeword 0.6.0 requires tflite-runtime, which is not installed."),
+    )
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "pip_check=PASS" in output
+    assert "pip_check_waived" in output
+
+
+def test_verify_does_not_waive_openwakeword_missing_onnxruntime(monkeypatch, capsys) -> None:
+    profile = _linux_cuda_profile()
+
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(profile))
+    monkeypatch.setattr(
+        provision,
+        "_expected_distribution_names",
+        lambda selected_profile: {"openwakeword", "onnxruntime"},
+    )
+    monkeypatch.setattr(provision, "_expected_exact_distribution_versions", lambda selected_profile: {})
+    monkeypatch.setattr(
+        provision,
+        "_installed_distribution_versions",
+        lambda: {"openwakeword": "0.6.0", "onnxruntime": "1.28.0"},
+    )
+    monkeypatch.setattr(provision, "_package_importable", lambda name: True)
+    monkeypatch.setattr(
+        provision,
+        "_run_pip_check",
+        lambda: (1, "openwakeword 0.6.0 requires onnxruntime, which is not installed."),
+    )
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "pip_check=FAIL" in output
+
+
+def test_verify_accepts_linux_cuda_selected_dependency_set(monkeypatch, capsys) -> None:
+    profile = _linux_cuda_profile()
+    expected_names = provision._expected_distribution_names(profile)
+    expected_versions = provision._expected_exact_distribution_versions(profile)
+
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(profile))
+    monkeypatch.setattr(
+        provision,
+        "_installed_distribution_versions",
+        lambda: {name: expected_versions.get(name, "1.0.0") for name in expected_names},
+    )
+    monkeypatch.setattr(provision, "_run_pip_check", lambda: (0, "No broken requirements found."))
+
+    exit_code = provision.main(["verify"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "onnxruntime" in output
+    assert "onnxruntime_gpu" not in output
+    assert "openwakeword" in output
+    assert "missing" not in output
 
 
 def test_verify_accepts_paired_onnxruntime_with_arm64_qnn(monkeypatch, capsys) -> None:
@@ -270,6 +417,7 @@ def test_verify_accepts_paired_onnxruntime_with_arm64_qnn(monkeypatch, capsys) -
         "_installed_distribution_versions",
         lambda: {"onnxruntime": "1.24.4", "onnxruntime_qnn": "2.3.0"},
     )
+    monkeypatch.setattr(provision, "_run_pip_check", lambda: (0, "No broken requirements found."))
 
     exit_code = provision.main(["verify"])
     output = capsys.readouterr().out
@@ -291,6 +439,7 @@ def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) 
         "_installed_distribution_versions",
         lambda: {"pre_commit": "1.0", "huggingface_hub": "1.0", "python_dotenv": "1.0"},
     )
+    monkeypatch.setattr(provision, "_run_pip_check", lambda: (0, "No broken requirements found."))
 
     exit_code = provision.main(["verify"])
     output = capsys.readouterr().out

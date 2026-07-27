@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.metadata
+import importlib.util
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -159,15 +160,15 @@ def _build_pip_install_command(extras: list[str]) -> list[str]:
     return [sys.executable, "-m", "pip", "install", "-e", f".[{extras_spec}]"]
 
 
-def _linux_openwakeword_requirement(profile: HardwareProfile) -> str:
+def _linux_openwakeword_requirement(profile: HardwareProfile) -> str | None:
     requirements = [
         requirement.split(";", 1)[0].strip()
         for requirement in _selected_requirement_specs(profile)
         if _normalize_requirement_name(requirement) == OPENWAKEWORD_PACKAGE
     ]
-    if len(requirements) != 1:
-        raise ValueError("Linux OpenWakeWord provisioning requires exactly one declared package")
-    return requirements[0]
+    if len(requirements) > 1:
+        raise ValueError("Linux OpenWakeWord provisioning requires one declared package")
+    return requirements[0] if requirements else None
 
 
 def _install_commands(
@@ -179,6 +180,9 @@ def _install_commands(
         return [editable_command]
 
     openwakeword_requirement = _linux_openwakeword_requirement(profile)
+    if openwakeword_requirement is None:
+        return [editable_command]
+
     requirements = [
         requirement
         for requirement in _selected_requirement_specs(profile)
@@ -220,6 +224,66 @@ def _emit_plan(
 def _run_pip_install(command: list[str]) -> int:
     completed = subprocess.run(command, check=False)
     return completed.returncode
+
+
+def _run_pip_check() -> tuple[int, str]:
+    completed = subprocess.run(
+        [sys.executable, "-m", "pip", "check"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    output = "\n".join(
+        part.rstrip("\n")
+        for part in (completed.stdout, completed.stderr)
+        if part
+    )
+    return completed.returncode, output
+
+
+def _package_importable(name: str) -> bool:
+    return importlib.util.find_spec(name) is not None
+
+
+def _pip_check_line_is_linux_openwakeword_tflite_metadata(line: str) -> bool:
+    normalized = line.strip().lower()
+    return (
+        normalized.startswith("openwakeword ")
+        and " requires tflite-runtime" in normalized
+        and "not installed" in normalized
+    )
+
+
+def _linux_openwakeword_onnxruntime_waiver_applies(profile: HardwareProfile) -> bool:
+    if profile.os_name != "linux":
+        return False
+    if OPENWAKEWORD_PACKAGE not in _expected_distribution_names(profile):
+        return False
+    installed_versions = _installed_distribution_versions()
+    return (
+        OPENWAKEWORD_PACKAGE in installed_versions
+        and "onnxruntime" in installed_versions
+        and _package_importable("openwakeword")
+        and _package_importable("onnxruntime")
+    )
+
+
+def _evaluate_pip_check(
+    profile: HardwareProfile,
+    pip_check_code: int,
+    pip_check_output: str,
+) -> tuple[bool, list[str]]:
+    if pip_check_code == 0:
+        return True, []
+    lines = [line for line in pip_check_output.splitlines() if line.strip()]
+    if not lines or not _linux_openwakeword_onnxruntime_waiver_applies(profile):
+        return False, []
+    waived = [
+        line
+        for line in lines
+        if _pip_check_line_is_linux_openwakeword_tflite_metadata(line)
+    ]
+    return len(waived) == len(lines), waived
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace:
@@ -275,22 +339,7 @@ def _run_install(profile: HardwareProfile, extras: list[str]) -> int:
         if install_rc != 0:
             return install_rc
 
-    cuda_profile = (
-        profile.arch == "amd64"
-        and profile.gpu_available
-        and profile.gpu_vendor == "nvidia"
-        and profile.cuda_available
-    )
-    if not cuda_profile:
-        return 0
-
-    uninstall_cpu_ort = [sys.executable, "-m", "pip", "uninstall", "-y", "onnxruntime"]
-    uninstall_rc = _run_pip_install(uninstall_cpu_ort)
-    if uninstall_rc != 0:
-        return uninstall_rc
-
-    reinstall_gpu_ort = [sys.executable, "-m", "pip", "install", "--force-reinstall", "onnxruntime-gpu>=1.17"]
-    return _run_pip_install(reinstall_gpu_ort)
+    return 0
 
 
 def _run_verify(profile: HardwareProfile, extras: list[str]) -> int:
@@ -319,7 +368,18 @@ def _run_verify(profile: HardwareProfile, extras: list[str]) -> int:
         print(f"version_mismatches={version_mismatches}")
     if unexpected:
         print(f"present={unexpected}")
-    return 0 if not missing and not version_mismatches else 1
+    pip_check_code, pip_check_output = _run_pip_check()
+    pip_check_passed, waived_pip_check = _evaluate_pip_check(
+        profile,
+        pip_check_code,
+        pip_check_output,
+    )
+    print(f"pip_check={'PASS' if pip_check_passed else 'FAIL'}")
+    if waived_pip_check:
+        print(f"pip_check_waived={waived_pip_check}")
+    if pip_check_output:
+        print(pip_check_output)
+    return 0 if not missing and not version_mismatches and pip_check_passed else 1
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -55,6 +55,23 @@ def test_resolver_keeps_cpu_ort_for_linux_nvidia_with_cuda() -> None:
         "hw-cpu-base",
         "hw-x64-base",
         "hw-x64-ort-cpu",
+        "hw-gpu-nvidia-cuda",
+        "dev",
+    ]
+
+
+def test_resolver_keeps_cuda_extra_for_linux_cuda_when_gpu_probe_is_unavailable() -> None:
+    profile = HardwareProfile(
+        os_name="linux",
+        arch="amd64",
+        cuda_available=True,
+    )
+
+    assert resolve_required_extras(profile) == [
+        "hw-cpu-base",
+        "hw-x64-base",
+        "hw-x64-ort-cpu",
+        "hw-gpu-nvidia-cuda",
         "dev",
     ]
 

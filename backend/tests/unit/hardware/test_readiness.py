@@ -146,6 +146,16 @@ def test_wake_readiness_selects_cpu_when_openwakeword_imported() -> None:
     assert "import:openwakeword" in reason
 
 
+def test_linux_wake_readiness_degrades_when_openwakeword_import_is_missing() -> None:
+    selected_device, ready, reason = derive_wake_device_readiness(
+        _preflight(),
+        _profile(os_name="linux", arch="amd64"),
+    )
+
+    assert (selected_device, ready) == ("cpu", False)
+    assert reason == "import:openwakeword:MISSING; cpu unavailable in slice_a"
+
+
 def test_readiness_reason_strings_cite_evidence_tokens_verbatim() -> None:
     selected_device, ready, reason = derive_stt_device_readiness(
         _preflight("import:onnxruntime", "ep:DmlExecutionProvider"),
