@@ -96,14 +96,14 @@ mkdir -p "$TEMP" "$PIP_CACHE_DIR" "$HF_HOME"
 Prefer Python 3.13 when available:
 
 ```bash
-python3.13 -m venv backend/.venv
+/usr/local/bin/python3.13 -m venv backend/.venv
 backend/.venv/bin/python -m pip install --upgrade pip
 ```
 
 Fallback if needed:
 
 ```bash
-python3.12 -m venv backend/.venv
+/usr/local/bin/python3.12 -m venv backend/.venv
 backend/.venv/bin/python -m pip install --upgrade pip
 ```
 
