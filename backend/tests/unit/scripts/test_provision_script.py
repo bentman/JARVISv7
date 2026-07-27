@@ -32,6 +32,30 @@ def test_dry_run_prints_plan_and_does_not_install(monkeypatch, capsys) -> None:
     assert "hw-x64-base" in output
 
 
+def test_linux_cuda_dry_run_keeps_cpu_ort_voice_extra(monkeypatch, capsys) -> None:
+    profile = HardwareProfile(
+        os_name="linux",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
+    monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(profile))
+
+    exit_code = provision.main(["dry-run"])
+    output = capsys.readouterr().out
+    names = {
+        provision._normalize_requirement_name(requirement)
+        for requirement in provision._selected_requirement_specs(profile)
+    }
+
+    assert exit_code == 0
+    assert "hw-x64-ort-cpu" in output
+    assert "hw-gpu-nvidia-cuda" not in output
+    assert "onnxruntime" in names
+    assert "onnxruntime_gpu" not in names
+
+
 def test_explain_prints_reasons_for_each_extra(monkeypatch, capsys) -> None:
     monkeypatch.setattr(provision, "_load_profiler", lambda: lambda: _report_for(_profile("arm64")))
 
