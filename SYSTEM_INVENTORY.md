@@ -28,6 +28,47 @@
 
 ## Inventory Entries
 
+- Timestamp: 2026-07-25 19:16
+  - State: Verified
+  - Host class(es): Windows AMD64
+  - Summary: Governed local memory stack with bounded working memory, persisted episodic turn memory, governed semantic SQLite memory, lifecycle/evidence policy, review-only deferred curation, hybrid semantic/episodic retrieval, backend management API, and desktop inspection/control surface.
+  - Location:
+    - `backend/app/memory/working.py`
+    - `backend/app/memory/episodic.py`
+    - `backend/app/memory/write_policy.py`
+    - `backend/app/memory/semantic.py`
+    - `backend/app/memory/curation.py`
+    - `backend/app/memory/curation_contract.py`
+    - `backend/app/memory/curation_reconciliation.py`
+    - `backend/app/memory/retrieval.py`
+    - `backend/app/cognition/memory_extraction.py`
+    - `backend/app/services/memory_curation_service.py`
+    - `backend/app/services/memory_curation_processor.py`
+    - `backend/app/services/memory_service.py`
+    - `backend/app/api/routes/memory.py`
+    - `backend/app/api/routes/memory_curation.py`
+    - `desktop/src/components/memory-panel.js`
+    - `desktop/src/api-client.js`
+    - `desktop/src-tauri/src/backend.rs`
+    - `desktop/src-tauri/src/lib.rs`
+  - Evidence:
+    - Timestamp: 2026-07-24 12:01 - Versioned semantic-memory governance schema.
+    - Timestamp: 2026-07-24 12:26 - Application-owned memory identity and evidence contract.
+    - Timestamp: 2026-07-24 13:27 - Transactional semantic-memory lifecycle operations.
+    - Timestamp: 2026-07-24 14:30 - Resumable deferred memory-curation execution.
+    - Timestamp: 2026-07-24 18:48 - Bounded typed extraction and review-only reconciliation.
+    - Timestamp: 2026-07-25 06:13 - Lifecycle-aware governed retrieval and structured provenance.
+    - Timestamp: 2026-07-25 07:15 - Backend governed-memory API.
+    - Timestamp: 2026-07-25 09:21 - Desktop governed-memory inspection and controls.
+    - Timestamp: 2026-07-25 15:05 - Semantic-memory schema v3 active database/result-summary migration.
+    - Timestamp: 2026-07-25 19:16 - Focused memory runtime corrections and validation.
+    - Focused validation supplied by operator: `158 passed in 3.94s` on Windows AMD64, Python 3.12.10, covering memory, service, API, curation, and review-pipeline tests.
+  - Notes:
+    - Semantic memory authority is local SQLite under `data/memory/semantic/memory.sqlite`; episodic memory is local JSON under `data/memory/episodic/`.
+    - Automatic semantic retention remains opt-in and review-first. Model proposals do not directly become active durable facts.
+    - Redis/cache is retrieval acceleration only, not memory authority.
+    - This entry does not claim completion of the abandoned #31/#41 parent validation, live-model extraction reliability floor, decentralized sync, physical source-artifact erasure, procedural-memory database storage, or cross-device memory sharing.
+
 ---
 
 ## Inventory Appendix
