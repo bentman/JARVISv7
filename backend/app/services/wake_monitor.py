@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import threading
+from collections import deque
 from collections.abc import Callable, Iterable, Iterator
+from dataclasses import dataclass, field
 from time import monotonic
 
 import numpy as np
@@ -20,6 +22,8 @@ WAKE_SAMPLE_RATE = 16000
 WAKE_COMMAND_SECONDS = 3.0
 WAKE_IDLE_REASON = "wake listening"
 WAKE_IDLE_REFRESH_SECONDS = 1.0
+WAKE_ACTIVATION_WINDOW_CHUNKS = 3
+WAKE_ACTIVATION_MIN_HITS = 2
 WakeAudioChunk = AudioChunk | np.ndarray
 
 
@@ -40,6 +44,29 @@ def _chunks_to_stt_audio(chunks: list[WakeAudioChunk]) -> np.ndarray:
     if not chunks:
         return np.asarray([], dtype=np.float32)
     return np.concatenate([_chunk_to_float32(chunk) for chunk in chunks]).astype(np.float32, copy=False)
+
+
+@dataclass(slots=True)
+class _WakeActivationGate:
+    window_chunks: int = WAKE_ACTIVATION_WINDOW_CHUNKS
+    min_hits: int = WAKE_ACTIVATION_MIN_HITS
+    scores: deque[float] = field(default_factory=deque)
+
+    def update(self, *, detected: bool, score: float | None, threshold: float | None) -> bool:
+        if threshold is None:
+            return detected
+
+        score_value = float(score if score is not None else (threshold if detected else 0.0))
+        self.scores.append(score_value)
+        while len(self.scores) > self.window_chunks:
+            self.scores.popleft()
+
+        hits = sum(1 for value in self.scores if value >= threshold)
+        average_score = sum(self.scores) / float(len(self.scores)) if self.scores else 0.0
+        return detected and hits >= self.min_hits and average_score >= threshold
+
+    def reset(self) -> None:
+        self.scores.clear()
 
 
 class WakeMonitorService:
@@ -162,6 +189,7 @@ class WakeMonitorService:
 
     def _run(self, runtime: WakeBase) -> None:
         subscriber = None
+        activation_gate = _WakeActivationGate()
         try:
             if self._resident_stream is not None and self._resident_stream.status().running:
                 subscriber = self._resident_stream.subscribe()
@@ -172,18 +200,22 @@ class WakeMonitorService:
                 if self._stop_event.is_set():
                     break
                 chunk_audio = _wake_detection_audio(chunk)
-                if runtime.detect(chunk_audio):
+                detected = runtime.detect(chunk_audio)
+                if activation_gate.update(
+                    detected=detected,
+                    score=_runtime_score(runtime),
+                    threshold=_runtime_threshold(runtime),
+                ):
                     self._reset_idle_telemetry()
+                    activation_gate.reset()
                     self._session_service.record_wake_detection(
                         last_score=_runtime_score(runtime),
                         threshold=_runtime_threshold(runtime),
                     )
                     if self._invocation_callback is not None:
-                        command_audio, capture_diagnostics = self._collect_command_audio(source)
+                        command_audio, capture_diagnostics = self._collect_command_audio(source, initial_chunk=chunk)
                         if command_audio is None:
                             command_audio = np.asarray([], dtype=np.float32)
-                        else:
-                            command_audio = _chunks_to_stt_audio([chunk, command_audio])
                         self._invocation_callback(
                             "wake",
                             command_audio,
@@ -233,10 +265,12 @@ class WakeMonitorService:
     def _collect_command_audio(
         self,
         source: Iterator[WakeAudioChunk],
+        *,
+        initial_chunk: WakeAudioChunk,
     ) -> tuple[np.ndarray | None, dict[str, object] | None]:
         if self._utterance_segmenter is None:
-            return _chunks_to_stt_audio(self._collect_post_wake_chunks(source)), None
-        segment = self._utterance_segmenter.capture(_wake_audio_chunks(source))
+            return _chunks_to_stt_audio([initial_chunk, *self._collect_post_wake_chunks(source)]), None
+        segment = self._utterance_segmenter.capture(_wake_audio_chunks(_prepend_chunk(initial_chunk, source)))
         diagnostics = segment.diagnostics.as_dict()
         if not segment.speech_started or segment.audio.size == 0:
             return None, diagnostics
@@ -253,6 +287,11 @@ class WakeMonitorService:
                 break
             chunks.append(chunk)
         return chunks
+
+
+def _prepend_chunk(first: WakeAudioChunk, source: Iterator[WakeAudioChunk]) -> Iterator[WakeAudioChunk]:
+    yield first
+    yield from source
 
 
 def _resident_wake_chunks(subscriber, stop_event: threading.Event) -> Iterator[AudioChunk]:

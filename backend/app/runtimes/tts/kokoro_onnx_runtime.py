@@ -82,6 +82,8 @@ class KokoroOnnxRuntime(TTSBase):
             self._load_model()
 
     def synthesize(self, text: str) -> np.ndarray:
+        if not text.strip():
+            return np.array([], dtype=np.float32)
         audio, sample_rate = self._load_model().create(text, voice=self.voice)
         self._sample_rate = int(sample_rate)
         return np.asarray(audio, dtype=np.float32)
@@ -90,6 +92,8 @@ class KokoroOnnxRuntime(TTSBase):
         return self._sample_rate
 
     def synthesize_stream(self, text: str) -> Iterator[tuple[np.ndarray, int]]:
+        if not text.strip():
+            return
         model = self._load_model()
         voice = self.voice
         if isinstance(voice, str):

@@ -5,6 +5,7 @@ from collections.abc import Callable
 import numpy as np
 
 from backend.app.runtimes.vad import VADRuntime
+from backend.app.runtimes.vad.base import normalize_audio_samples
 
 
 class BargeInDetector:
@@ -36,7 +37,7 @@ class BargeInDetector:
         self._speech_chunks = 0
 
     def detect(self, audio_chunk: np.ndarray) -> bool:
-        samples = np.asarray(audio_chunk, dtype=np.float32)
+        samples = normalize_audio_samples(audio_chunk)
         if samples.size == 0:
             return False
         if self._started_at is not None and self._now() - self._started_at < self.guard_time_s:

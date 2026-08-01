@@ -12,6 +12,8 @@ from backend.app.runtimes.stt.base import STTBase
 ONNX_WHISPER_QNN_NOT_WIRED_REASON = (
     "QNN STT is not wired through OnnxWhisperRuntime; use QnnWhisperRuntime for verified QNN execution"
 )
+STT_SILENCE_RMS_THRESHOLD = 1e-5
+STT_SILENCE_PEAK_THRESHOLD = 1e-4
 
 
 def providers_for_device(device: str) -> list[str]:
@@ -24,6 +26,14 @@ def providers_for_device(device: str) -> list[str]:
     if device == "qnn":
         return []
     raise ValueError(f"unsupported STT device '{device}'")
+
+
+def _is_silent_audio(waveform: np.ndarray) -> bool:
+    if waveform.size == 0:
+        return True
+    audio_rms = float(np.sqrt(np.mean(np.square(waveform))))
+    audio_peak = float(np.max(np.abs(waveform)))
+    return audio_peak <= STT_SILENCE_PEAK_THRESHOLD or audio_rms <= STT_SILENCE_RMS_THRESHOLD
 
 
 class OnnxWhisperRuntime(STTBase):
@@ -83,6 +93,8 @@ class OnnxWhisperRuntime(STTBase):
         if not self.is_available():
             raise RuntimeError(f"STT model files are unavailable at {self.model_path}")
         waveform = np.asarray(audio, dtype=np.float32)
+        if _is_silent_audio(waveform):
+            return ""
         result = self._load_model().recognize(waveform, sample_rate=sample_rate)
         if isinstance(result, str):
             return result
@@ -194,6 +206,9 @@ class QnnWhisperRuntime(STTBase):
     def transcribe(self, audio: np.ndarray, sample_rate: int) -> str:
         if not self.is_available():
             raise RuntimeError(f"STT model files are unavailable at {self.model_path}")
+        waveform = np.asarray(audio, dtype=np.float32)
+        if _is_silent_audio(waveform):
+            return ""
         self._ensure_preprocessors()
 
         encoder = self._load_encoder_session()
@@ -204,7 +219,6 @@ class QnnWhisperRuntime(STTBase):
         if decoder.get_providers()[0] != "QNNExecutionProvider":
             raise RuntimeError("QNNExecutionProvider not primary; CPU fallback detected")
 
-        waveform = np.asarray(audio, dtype=np.float32)
         audio_rms = float(np.sqrt(np.mean(np.square(waveform)))) if waveform.size else 0.0
         audio_peak = float(np.max(np.abs(waveform))) if waveform.size else 0.0
         features = self._feature_extractor(

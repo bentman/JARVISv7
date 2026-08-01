@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from backend.app.runtimes.vad.base import VADDecision
+from backend.app.runtimes.vad.base import VADDecision, normalize_audio_samples
 
 
 @dataclass(frozen=True, slots=True)
@@ -14,7 +14,7 @@ class EnergyVADRuntime:
 
     def detect(self, samples: np.ndarray, sample_rate: int) -> VADDecision:
         del sample_rate
-        audio = np.asarray(samples, dtype=np.float32).reshape(-1)
+        audio = normalize_audio_samples(samples)
         if audio.size == 0:
             return VADDecision(speech=False, probability=0.0, rms=0.0)
 

@@ -187,6 +187,41 @@ def test_kokoro_runtime_uses_kokoro_helper(monkeypatch, tmp_path):
     ]
 
 
+def test_kokoro_runtime_skips_model_for_blank_synthesis(monkeypatch, tmp_path):
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    (model_path / "kokoro-v1.0.onnx").write_text("x", encoding="utf-8")
+    (model_path / "voices-v1.0.bin").write_text("x", encoding="utf-8")
+
+    def fail_load_model():
+        raise AssertionError("blank TTS text should not load the model")
+
+    runtime = KokoroOnnxRuntime(device="cpu", model_path=model_path)
+    monkeypatch.setattr(runtime, "_load_model", fail_load_model)
+
+    audio = runtime.synthesize("   ")
+
+    assert audio.dtype == np.float32
+    assert audio.size == 0
+    assert runtime.sample_rate() == KOKORO_SAMPLE_RATE
+
+
+def test_kokoro_runtime_skips_model_for_blank_stream(monkeypatch, tmp_path):
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    (model_path / "kokoro-v1.0.onnx").write_text("x", encoding="utf-8")
+    (model_path / "voices-v1.0.bin").write_text("x", encoding="utf-8")
+
+    def fail_load_model():
+        raise AssertionError("blank streamed TTS text should not load the model")
+
+    runtime = KokoroOnnxRuntime(device="cpu", model_path=model_path)
+    monkeypatch.setattr(runtime, "_load_model", fail_load_model)
+
+    assert list(runtime.synthesize_stream("   ")) == []
+    assert runtime.sample_rate() == KOKORO_SAMPLE_RATE
+
+
 def test_selector_uses_configured_yaml_voice_for_kokoro_runtime():
     preflight = PreflightResult(tokens=["import:kokoro_onnx"], dll_discovery_log=[], probe_errors={})
     profile = HardwareProfile()

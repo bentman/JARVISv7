@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+
 import numpy as np
 import pytest
 from backend.app.core.capabilities import HardwareProfile
@@ -11,6 +12,8 @@ from backend.app.runtimes.stt.onnx_whisper_runtime import (
     ONNX_WHISPER_QNN_NOT_WIRED_REASON,
     OnnxWhisperRuntime,
     QnnWhisperRuntime,
+    STT_SILENCE_PEAK_THRESHOLD,
+    STT_SILENCE_RMS_THRESHOLD,
     providers_for_device,
 )
 from backend.app.runtimes.stt.stt_runtime import DegradedSTTRuntime, select_stt_runtime
@@ -323,7 +326,7 @@ def test_qnn_runtime_uses_qualcomm_decode_loop(monkeypatch, tmp_path):
     monkeypatch.setattr(runtime, "_load_encoder_session", lambda: FakeEncoder())
     monkeypatch.setattr(runtime, "_load_decoder_session", lambda: decoder)
 
-    assert runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000) == "ok"
+    assert runtime.transcribe(np.full(16000, 0.1, dtype=np.float32), 16000) == "ok"
     assert decoder.input_ids == [50258, 42]
     assert decoder.position_ids == [0, 1]
     np.testing.assert_array_equal(
@@ -397,6 +400,35 @@ def test_qnn_runtime_reports_non_silent_empty_transcript_with_decode_context(mon
         runtime.transcribe(np.full(16000, 0.1, dtype=np.float32), 16000)
 
 
+def test_qnn_runtime_skips_sessions_for_empty_or_silent_audio(monkeypatch, tmp_path):
+    model_path = tmp_path / "qnn-model"
+    model_path.mkdir()
+    (model_path / "encoder.onnx").write_text("x", encoding="utf-8")
+    (model_path / "decoder.onnx").write_text("x", encoding="utf-8")
+
+    runtime = QnnWhisperRuntime(model_path=model_path)
+    monkeypatch.setattr(
+        runtime,
+        "_ensure_preprocessors",
+        lambda: (_ for _ in ()).throw(AssertionError("silent audio should not load QNN preprocessors")),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_load_encoder_session",
+        lambda: (_ for _ in ()).throw(AssertionError("silent audio should not load QNN encoder")),
+    )
+    monkeypatch.setattr(
+        runtime,
+        "_load_decoder_session",
+        lambda: (_ for _ in ()).throw(AssertionError("silent audio should not load QNN decoder")),
+    )
+
+    assert runtime.transcribe(np.array([], dtype=np.float32), 16000) == ""
+    assert runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000) == ""
+    assert runtime.transcribe(np.full(16000, STT_SILENCE_PEAK_THRESHOLD, dtype=np.float32), 16000) == ""
+    assert runtime.transcribe(np.full(16000, STT_SILENCE_RMS_THRESHOLD, dtype=np.float32), 16000) == ""
+
+
 if not SKIP_UNLESS_QNN:
 
     @pytest.mark.qnn
@@ -464,8 +496,42 @@ def test_onnx_whisper_runtime_uses_onnx_asr_helper(monkeypatch, tmp_path):
     monkeypatch.setitem(sys.modules, "onnx_asr", SimpleNamespace(load_model=fake_load_model))
     runtime = OnnxWhisperRuntime(device="cpu", model_path=model_path)
 
-    assert runtime.transcribe(np.zeros(16000), 16000) == "hello world"
+    assert runtime.transcribe(np.full(16000, 0.1), 16000) == "hello world"
     assert calls == [(np.dtype("float32"), 16000)]
+
+
+def test_onnx_whisper_runtime_skips_model_for_empty_or_silent_audio(monkeypatch, tmp_path):
+    model_path = tmp_path / "model"
+    model_path.mkdir()
+    for filename in (
+        "encoder_model.onnx",
+        "decoder_model_merged.onnx",
+        "config.json",
+        "generation_config.json",
+        "preprocessor_config.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "special_tokens_map.json",
+        "vocab.json",
+        "merges.txt",
+        "normalizer.json",
+        "added_tokens.json",
+    ):
+        (model_path / filename).write_text("x", encoding="utf-8")
+
+    def fake_load_model(*args, **kwargs):
+        _ = args, kwargs
+        raise AssertionError("silent audio should not load the STT model")
+
+    import sys
+
+    monkeypatch.setitem(sys.modules, "onnx_asr", SimpleNamespace(load_model=fake_load_model))
+    runtime = OnnxWhisperRuntime(device="cpu", model_path=model_path)
+
+    assert runtime.transcribe(np.array([], dtype=np.float32), 16000) == ""
+    assert runtime.transcribe(np.zeros(16000, dtype=np.float32), 16000) == ""
+    assert runtime.transcribe(np.full(16000, STT_SILENCE_PEAK_THRESHOLD, dtype=np.float32), 16000) == ""
+    assert runtime.transcribe(np.full(16000, STT_SILENCE_RMS_THRESHOLD, dtype=np.float32), 16000) == ""
 
 
 def test_catalog_model_path_resolves_existing_stt_catalog():
@@ -496,6 +562,19 @@ def test_barge_in_detector_uses_rms_threshold_and_guard_time():
 
     now = 100.6
     assert detector.detect(np.ones(160, dtype=np.float32)) is True
+
+
+def test_barge_in_detector_normalizes_signed_pcm_input() -> None:
+    detector = BargeInDetector(
+        energy_threshold=0.02,
+        guard_time_s=0.0,
+        min_speech_s=0.0,
+        sample_rate=16000,
+        time_source=lambda: 1.0,
+    )
+
+    assert detector.detect(np.full(160, 100, dtype=np.int16)) is False
+    assert detector.detect(np.full(160, 3276, dtype=np.int16)) is True
 
 
 def test_barge_in_detector_requires_minimum_speech_duration_with_vad() -> None:
@@ -578,7 +657,7 @@ def test_onnx_whisper_runtime_transcribe_avoids_repeated_file_probes(monkeypatch
     monkeypatch.setattr(Path, "is_file", mock_is_file)
 
     # transcribe first time
-    res = runtime.transcribe(np.zeros(160, dtype=np.float32), 16000)
+    res = runtime.transcribe(np.full(160, 0.1, dtype=np.float32), 16000)
     assert res == "recognized text"
     assert is_file_calls == 0
 
@@ -628,6 +707,6 @@ def test_qnn_whisper_runtime_transcribe_avoids_repeated_file_probes(monkeypatch)
     monkeypatch.setattr(Path, "is_file", mock_is_file)
 
     # transcribe first time
-    res = runtime.transcribe(np.zeros(160, dtype=np.float32), 16000)
+    res = runtime.transcribe(np.full(160, 0.1, dtype=np.float32), 16000)
     assert res == "qnn recognized"
     assert is_file_calls == 0

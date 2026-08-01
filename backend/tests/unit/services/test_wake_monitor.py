@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import threading
 import time
+import wave
 from pathlib import Path
 
 import numpy as np
+import pytest
 from backend.app.runtimes.vad import EnergyVADRuntime
+from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES
 from backend.app.services import wake_monitor
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
@@ -39,6 +42,14 @@ def _segmenter() -> UtteranceSegmenter:
         silence_end_s=0.0005,
         no_speech_timeout_s=0.0005,
     )
+
+
+def _load_wav_int16(path: Path) -> np.ndarray:
+    with wave.open(str(path), "rb") as wav_file:
+        assert wav_file.getnchannels() == 1
+        assert wav_file.getframerate() == 16000
+        assert wav_file.getsampwidth() == 2
+        return np.frombuffer(wav_file.readframes(wav_file.getnframes()), dtype="<i2").copy()
 
 
 def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
@@ -192,7 +203,7 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, True]),
         chunk_source=source,
         invocation_callback=invoke,
     )
@@ -235,7 +246,7 @@ def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(mon
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, True]),
         chunk_source=lambda stop_event: (_ for _ in ()).throw(AssertionError("shared stream should be used")),
         invocation_callback=invoke,
         resident_stream=stream,
@@ -261,9 +272,9 @@ def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(mon
     assert sample_rate == 16000
     assert audio is not None
     assert audio.dtype == np.float32
-    assert np.array_equal(audio, np.concatenate([chunk.samples for chunk in published[1:4]]))
-    assert np.array_equal(audio[:4], published[1].samples)
-    assert np.array_equal(audio[4:8], published[2].samples)
+    assert np.array_equal(audio, np.concatenate([chunk.samples for chunk in published[2:4]]))
+    assert np.array_equal(audio[:4], published[2].samples)
+    assert np.array_equal(audio[4:8], published[3].samples)
     assert not np.array_equal(audio[:4], published[0].samples)
     assert capture_diagnostics is not None
     assert capture_diagnostics["reason"] == "silence"
@@ -307,6 +318,8 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
 
     def source(stop_event):
         yield np.ones(4, dtype=np.int16)
+        yield np.ones(4, dtype=np.int16)
+        yield np.zeros(4, dtype=np.int16)
         yield np.zeros(4, dtype=np.int16)
         yield np.zeros(4, dtype=np.int16)
         while not stop_event.is_set():
@@ -314,7 +327,7 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[True]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[True, True]),
         chunk_source=source,
         invocation_callback=lambda source_name, audio, sample_rate, diagnostics: invocations.append(
             (source_name, audio, sample_rate, diagnostics)
@@ -332,6 +345,59 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
     assert invocations[0][2] == 16000
     assert invocations[0][3] is not None
     assert invocations[0][3]["reason"] == "no-speech"
+
+
+def test_wake_monitor_ignores_single_positive_spike(tmp_path: Path) -> None:
+    service = _service(tmp_path)
+    invocations: list[tuple[str, np.ndarray | None, int | None, dict[str, object] | None]] = []
+
+    def source(stop_event):
+        _ = stop_event
+        yield np.zeros(4, dtype=np.int16)
+        yield np.ones(4, dtype=np.int16)
+        yield np.zeros(4, dtype=np.int16)
+
+    monitor = WakeMonitorService(
+        session_service=service,
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, False]),
+        chunk_source=source,
+        invocation_callback=lambda source_name, audio, sample_rate, diagnostics: invocations.append(
+            (source_name, audio, sample_rate, diagnostics)
+        ),
+    )
+
+    monitor.start()
+    _wait_for(lambda: monitor._thread is None)
+    status = service.wake_status()
+
+    assert invocations == []
+    assert status.detection_count == 0
+    assert status.reason == "wake listening"
+    assert status.last_score == 0.2
+
+
+def test_wake_activation_gate_accepts_reference_fixtures_with_real_model() -> None:
+    runtime = OpenWakeWordRuntime(device="cpu")
+    if not runtime.is_available():
+        pytest.skip(f"wake model files are unavailable at {runtime.model_path}")
+
+    fixture_dir = Path(__file__).resolve().parents[2] / "fixtures"
+    for fixture_name in ("hey_jarvis.wav", "hey_jarvis_ref.wav"):
+        runtime.reset()
+        gate = wake_monitor._WakeActivationGate()
+        audio = _load_wav_int16(fixture_dir / fixture_name)
+        confirmed = False
+        for start in range(0, len(audio), WAKE_CHUNK_SAMPLES):
+            detected = runtime.detect(audio[start : start + WAKE_CHUNK_SAMPLES])
+            confirmed = gate.update(
+                detected=detected,
+                score=runtime.last_score,
+                threshold=runtime.threshold,
+            )
+            if confirmed:
+                break
+
+        assert confirmed, f"{fixture_name} did not pass wake activation gate; score={runtime.last_score:.6f}"
 
 
 def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:
@@ -493,14 +559,14 @@ def test_wake_monitor_debounces_identical_idle_status_until_bounded_refresh(
     clock_values = iter((0.0, 0.2, 0.4, 0.6, 1.0, 1.1))
     monkeypatch.setattr(wake_monitor, "monotonic", lambda: next(clock_values, 1.1))
     runtime = _FakeWakeRuntime()
+    runtime.last_score = 0.2
     monitor = WakeMonitorService(
         session_service=service,
         runtime_factory=lambda: runtime,
-        chunk_source=lambda stop: [np.zeros(4, dtype=np.int16) for _ in range(5)],
     )
 
-    monitor.start()
-    _wait_for(lambda: monitor._thread is None)
+    for _ in range(5):
+        monitor._record_wake_idle_if_due(runtime)
     runtime.last_score = 0.3
     monitor._record_wake_idle_if_due(runtime)
 
@@ -511,4 +577,3 @@ def test_wake_monitor_debounces_identical_idle_status_until_bounded_refresh(
     ]
     assert service.wake_status().last_score == 0.3
     assert service.wake_status().threshold == 0.5
-
