@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-08-01 04:00
+  - Host class(es): Linux AMD64 / WSL2
+  - Summary: Optimized resident voice wake, STT, TTS, and VAD behavior by filtering isolated wake spikes, short-circuiting silent STT and blank TTS inputs, and normalizing PCM amplitude handling for VAD and barge-in paths.
+  - Scope: Wake monitor service, ONNX/QNN Whisper STT runtimes, Kokoro ONNX TTS runtime, VAD normalization/runtime adapters, barge-in detector, and focused unit coverage for wake/STT/TTS/VAD behavior.
+  - Validation: Quick provision verification PASS with the documented Linux OpenWakeWord `tflite-runtime` metadata waiver: `env TEMP=.../cache/temp TMP=.../cache/temp TMPDIR=.../cache/temp PIP_CACHE_DIR=.../cache/pip HF_HOME=.../cache/huggingface backend/.venv/bin/python scripts/provision.py verify`; backend profile validator PASS (`readiness=ready; tokens=12`): `env ... backend/.venv/bin/python scripts/validate_backend.py profile`; backend unit validator PASS (`896 passed, 2 warnings`): `env ... backend/.venv/bin/python scripts/validate_backend.py unit`.
+  - Notes: ARM64 validation is intentionally separate and will be performed by the user; no live audio, completed voice turn, or accelerator runtime proof is claimed by this entry.
+
+---
+
 - Timestamp: 2026-07-26 05:12
   - Host class(es): Windows AMD64
   - Summary: Declared and provisioned `httpx2` for Starlette TestClient compatibility, removing the deprecated plain-`httpx` test-client path.
