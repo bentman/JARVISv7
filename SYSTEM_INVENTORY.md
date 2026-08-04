@@ -73,6 +73,11 @@
 
 ## Inventory Appendix
 
+- Timestamp: 2026-08-04 05:08
+  - Clarification: Historical `Host class(es)` values record the host classes used for the cited validation evidence. They are not current-host proof and should not be generalized to unverified hosts.
+  - Applies to: `## Inventory Entries` and `## Consolidated Inventory History`.
+  - Current audit host: Linux AMD64 / WSL2 with NVIDIA CUDA capability. Current-host validation must be reported separately from historical Windows AMD64, Windows ARM64, Linux ARM64, or other host-class evidence.
+
 ---
 
 ## Consolidated Inventory History

@@ -118,6 +118,11 @@ def resolve_required_requirement_names(profile: HardwareProfile) -> list[str]:
 def resolve_required_requirement_specs(profile: HardwareProfile) -> list[str]:
     requirement_specs: list[str] = []
     for extra in resolve_required_extras(profile):
+        if extra == "hw-gpu-nvidia-cuda" and profile.os_name != "windows":
+            # The CUDA extra is still selected on Linux for llama.cpp runtime-artifact
+            # selection, but pyproject.toml gates onnxruntime-gpu to Windows. Linux
+            # application ONNX runtimes use the CPU ORT extra selected above.
+            continue
         for requirement in _EXTRA_REQUIREMENT_SPECS.get(extra, ()):
             if requirement not in requirement_specs:
                 requirement_specs.append(requirement)

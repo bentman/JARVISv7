@@ -76,6 +76,36 @@ def test_resolver_keeps_cuda_extra_for_linux_cuda_when_gpu_probe_is_unavailable(
     ]
 
 
+def test_linux_cuda_requirement_names_keep_cpu_ort_without_gpu_ort() -> None:
+    profile = HardwareProfile(
+        os_name="linux",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
+
+    requirement_names = resolve_required_requirement_names(profile)
+
+    assert "onnxruntime" in requirement_names
+    assert "onnxruntime-gpu" not in requirement_names
+
+
+def test_windows_cuda_requirement_names_keep_gpu_ort_without_cpu_ort() -> None:
+    profile = HardwareProfile(
+        os_name="windows",
+        arch="amd64",
+        gpu_available=True,
+        gpu_vendor="nvidia",
+        cuda_available=True,
+    )
+
+    requirement_names = resolve_required_requirement_names(profile)
+
+    assert "onnxruntime-gpu" in requirement_names
+    assert "onnxruntime" not in requirement_names
+
+
 def test_resolver_omits_cuda_for_nvidia_without_cuda() -> None:
     profile = HardwareProfile(arch="amd64", gpu_available=True, gpu_vendor="nvidia", cuda_available=False)
 

@@ -253,3 +253,29 @@ def test_catalog_encodes_family_sampling_and_host_tier_policy() -> None:
             profile_id: profile["launch"]["ctx_size"]
             for profile_id, profile in profiles.items()
         } == expected_contexts
+
+
+def test_catalog_linux_cuda_profiles_include_cpu_ort_and_cuda_capability_extras() -> None:
+    catalog = _catalog()
+    expected_linux_cuda_extras = [
+        "hw-cpu-base",
+        "hw-x64-base",
+        "hw-x64-ort-cpu",
+        "hw-gpu-nvidia-cuda",
+    ]
+
+    for model in catalog["models"].values():
+        profile = model["serve_profiles"]["hardware_profiles"]["linux_amd64_gpu_nvidia_cuda"]
+
+        assert profile["provisioning_extras"] == expected_linux_cuda_extras
+        assert profile["accelerator"] == "gpu.cuda"
+
+
+def test_catalog_windows_cuda_profiles_keep_cuda_extra_only() -> None:
+    catalog = _catalog()
+
+    for model in catalog["models"].values():
+        profile = model["serve_profiles"]["hardware_profiles"]["windows_amd64_gpu_nvidia_cuda"]
+
+        assert profile["provisioning_extras"] == ["hw-gpu-nvidia-cuda"]
+        assert profile["accelerator"] == "gpu.cuda"
