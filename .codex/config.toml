@@ -1,4 +1,8 @@
-sandbox_mode = "workspace-write"
+# JARVISv7\.codex\config.toml
 
-[sandbox_workspace_write]
-network_access = true
+sandbox_mode = "danger-full-access"
+approval_policy = "on-request"
+approvals_reviewer = "auto_review"
+
+[windows]
+sandbox = "unelevated"

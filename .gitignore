@@ -7,9 +7,12 @@
 /.env
 /.env.local
 /.env.*
-
 # tracked example
 !/.env.example
+# local agent/client state
+/.agents/
+/.claude/
+/.codex/
 
 # ------------------------------------------------------------
 # Python
