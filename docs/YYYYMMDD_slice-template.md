@@ -1,8 +1,8 @@
 # YYYYMMDD_slice-template.md
 ## Slice {Group} — {Short Title}
 
-> Status: planned.  
-> This document is an implementation contract for a coding agent.  
+> Status: planned.
+> This document is an implementation contract.
 > It is not completion evidence.
 
 ---
@@ -15,9 +15,9 @@ Every sub-slice, file touch, validation command, and closeout criterion must tra
 
 ---
 
-## Agent Contract
+## Implementation Contract
 
-State the rules an implementation agent must follow for this slice.
+State the rules that constrain repository changes for this slice.
 
 Include only rules that constrain implementation. Avoid restating the whole repository contract unless the slice needs a sharper boundary.
 
@@ -29,6 +29,10 @@ Required baseline rules:
 - Add or update focused tests with each behavior change.
 - Record validation evidence before governance updates.
 - Do not update `SYSTEM_INVENTORY.md` until the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
+- Keep source, test, and documentation text free of authoring-session, task-history, implementation-phase, diff, and completed-work narration.
+- Default to no source comment; retain comments only for non-obvious invariants, constraints, workarounds, or public contracts.
+- State positive ownership boundaries: identify what owns behavior and evidence rather than describing rejected mechanisms.
+- Link between repository documents only in approved hub or ADR consequence sections, and only when correct operation requires the target.
 
 Add slice-specific rules below:
 
@@ -53,7 +57,7 @@ If a claimed baseline is missing, stop and resolve that gap before implementatio
 
 ## Out of Scope
 
-List non-goals explicitly. These should be concrete enough for an agent to reject scope creep.
+List non-goals explicitly. These should be concrete enough to prevent scope expansion.
 
 - No {nearby capability not included}.
 - No {architecture/runtime/setup/UI/domain outside this slice}.
@@ -124,7 +128,7 @@ Rules:
 - Show form, not final implementation detail.
 - Mark placeholders explicitly.
 - Do not imply planned capability is already implemented.
-- If implementation diverges materially, update this slice doc before continuing.
+- If the required behavior or evidence boundary changes materially, update this slice doc before continuing.
 
 ---
 
@@ -148,19 +152,28 @@ Rules:
 
 ### Goal
 
-Capture current behavior before implementation so later failures can be separated from intentional changes.
+Capture or consume verified current behavior before repository changes so later failures can be separated from intentional contract changes.
 
 ### Scope
 
-Inspect:
+Inspect or consume verified evidence for:
 
 - `{path-or-surface}` — {why inspected}.
 - `{path-or-surface}` — {why inspected}.
 - `{existing-test-or-validation-area}` — {why inspected}.
 
-### Files Not to Modify
+### Evidence Reuse Rules
 
-- All files, unless this slice explicitly needs a baseline test update.
+- A Sub-Slice 0 baseline may consume results already present in the active execution context when each result includes the exact command, outcome, host class, and minimal output excerpt or report path.
+- Confirm that relevant tracked code, configuration, test targets, dependencies, and host facts have not changed since the consumed result.
+- Rerun evidence when its command or target changed, relevant repository state changed, the host environment changed materially, required fields are missing, or the result is no longer reproducible with reasonable confidence.
+- Do not copy generated reports into tracked files solely to preserve contextual evidence.
+
+### Ownership Boundaries
+
+- Repository files remain unchanged during baseline capture unless an explicitly approved baseline test is required.
+- Existing validation commands and reports own executable baseline evidence.
+- This contract or the closeout record owns the concise command, outcome, host class, and evidence summary.
 
 ### Validation
 
@@ -174,7 +187,7 @@ Inspect:
 ```text
 PASS or documented pre-existing failure for baseline validation.
 No implementation files changed.
-Baseline behavior recorded in agent closeout notes.
+Baseline behavior recorded in this contract or closeout evidence.
 ```
 
 ---
@@ -192,10 +205,10 @@ Create/modify:
 - `{path}` — {intended change}.
 - `{path}` — {intended change}.
 
-### Files Not to Modify
+### Ownership Boundaries
 
-- `{path-or-area}` — {reason}.
-- `{path-or-area}` — {reason}.
+- `{path-or-area}` owns {behavior or evidence retained unchanged}.
+- `{path-or-area}` owns {behavior or evidence retained unchanged}.
 
 ### Validation
 
@@ -232,9 +245,9 @@ State key precedence, fallback, or fail-closed rules if applicable:
 2. {Rule or precedence step}.
 3. {Failure/skip/degraded behavior}.
 
-### Files Not to Modify
+### Ownership Boundaries
 
-- `{path-or-area}` — {reason}.
+- `{path-or-area}` owns {behavior or evidence retained unchanged}.
 
 ### Validation
 
@@ -266,9 +279,9 @@ Create/modify:
 - `{path}` — {intended change}.
 - `{path}` — {intended change}.
 
-### Files Not to Modify
+### Ownership Boundaries
 
-- `{path-or-area}` — {reason}.
+- `{path-or-area}` owns {behavior or evidence retained unchanged}.
 
 ### Validation
 
@@ -300,9 +313,9 @@ Create/modify:
 - `{path-or-surface}` — {intended change}.
 - `{path-or-surface}` — {intended change}.
 
-### Files Not to Modify
+### Ownership Boundaries
 
-- `{path-or-area}` — {reason}.
+- `{path-or-area}` owns {behavior or evidence retained unchanged}.
 
 ### Validation
 
@@ -407,7 +420,11 @@ All criteria must be observable and testable.
 - `CHANGE_LOG.md`: append only after validation. Include exact command, outcome, host class, and minimal evidence excerpt or report path.
 - `SYSTEM_INVENTORY.md`: update only after the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
 - User-facing docs: update only when user-facing setup, operation, or behavior changes.
-- Slice docs: if implementation diverges from the plan, update the slice doc before continuing.
+- Source and test text: describe active behavior, ownership, invariants, and public contracts without authoring-session, task-history, implementation-phase, diff, or completed-work narration.
+- Comments: omit by default; retain only when they explain a non-obvious invariant, constraint, workaround, or public contract.
+- Scope boundaries: state which mechanism owns behavior and evidence.
+- Cross-references: link between repository documents only in approved hub sections or an ADR's own Consequences section, and only when required for correct operation.
+- Slice docs: update the contract before continuing when required behavior or evidence boundaries change materially.
 - Use append-only corrections for governance files; do not rewrite history.
 
 ---

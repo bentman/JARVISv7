@@ -125,14 +125,29 @@ Honor `.agentignore` as a repository contract for files agents should not read, 
 
 Do not commit generated artifacts unless the task explicitly requires it. Ensure `.gitignore` covers any new generated output. Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
 
+## Documentation and code
+
+- Source code and tests describe the system as it exists. Development
+  narration belongs in chat, commits, pull requests, or durable ADRs.
+- Default to no comment. A comment survives only when it explains a
+  non-obvious invariant, constraint, workaround, or public contract.
+- Source artifacts contain no conversation or session residue. Comments,
+  docstrings, documentation, and tests never reference the development task,
+  coding agent, authoring conversation, implementation phase or diff, previous
+  implementation, temporary planning document, or completed-work document.
+- Positive scope boundaries — say what a module does and which mechanism
+  owns it, not what it "is not."
+- Just-in-time cross-references — link between docs only in hub sections
+  (README's Architecture/Storage tables, an ADR's own Consequences), and
+  only where acting correctly requires reading the target.
+  
 Artifact/helper docs are maintenance surfaces for approved designs, not design authority. Use existing helpers as documented; do not invent a new helper workflow when config/catalog/runtime design should own the behavior.
 
 Naming conventions for approved helper artifacts:
 
-- docs: `docs/<area>-<purpose>.md`
-- PowerShell helper: `docs/<area>-<purpose>.ps1`
+- docs: `docs/helpers/<area>-<purpose>.md`
+- PowerShell helper: `docs/helpers/<area>-<purpose>.ps1`
 - temporary handoff package: `docs/temp/<name>-YYYYMMDDHHMMSS.zip`
-- provenance: `provenance/manifest.json`
 
 ## 7. CHANGE_LOG and SYSTEM_INVENTORY
 
