@@ -4,7 +4,12 @@ from backend.app.cognition.prompt_assembler import assemble_prompt, assemble_pro
 from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.memory.retrieval import RetrievedFact
-from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 
 
 def _profile(system: str = "Use a calm voice.") -> PersonalityProfile:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import numpy as np
-
 from backend.app.runtimes.vad import EnergyVADRuntime, VADDecision
 
 

@@ -4,7 +4,6 @@ import time
 
 import numpy as np
 import pytest
-
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.runtimes.vad import EnergyVADRuntime

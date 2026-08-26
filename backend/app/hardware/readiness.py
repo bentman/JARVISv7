@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from backend.app.core.capabilities import HardwareProfile
-from backend.app.models.catalog import get_model_path
 from backend.app.hardware.preflight import PreflightResult
 
 
@@ -30,8 +29,7 @@ def derive_stt_device_readiness(
             return ("qnn", True, "qnn prerequisites proven; selecting qnn")
         return ("cpu", True, "selecting cpu")
 
-    # x64 NVIDIA path (I.2 normalization, H.4 baseline):
-    # prefer CUDA only when vendor/capability/provider evidence all agree.
+    # CUDA selection requires matching vendor, capability, and provider evidence.
     if (
         profile.gpu_vendor == "nvidia"
         and profile.cuda_available

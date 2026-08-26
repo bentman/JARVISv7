@@ -217,41 +217,6 @@ def _selected_degraded_reasons(local_model_path: Path, binary_path: Path) -> lis
     return reasons
 
 
-def _degraded_accelerator_candidates(
-    serve_profiles: dict[str, Any],
-    profile: HardwareProfile,
-    preflight: PreflightResult,
-    flags: CapabilityFlags | None,
-    local_model_path: Path,
-) -> list[ServeProfileCandidate]:
-    candidates: list[ServeProfileCandidate] = []
-    for profile_id, candidate in serve_profiles.items():
-        if not isinstance(candidate, dict):
-            continue
-        if candidate.get("os") != profile.os_name or candidate.get("arch") != profile.arch:
-            continue
-        accelerator = str(candidate.get("accelerator", "cpu"))
-        if accelerator == "cpu":
-            continue
-        reason = _accelerator_degraded_reason(
-            profile_id,
-            candidate,
-            profile,
-            preflight,
-            flags,
-            local_model_path,
-        )
-        if reason is not None:
-            candidates.append(
-                ServeProfileCandidate(
-                    profile_id=profile_id,
-                    accelerator=accelerator,
-                    reason=reason,
-                )
-            )
-    return candidates
-
-
 def _accelerator_degraded_reason(
     profile_id: str,
     candidate: dict[str, Any],

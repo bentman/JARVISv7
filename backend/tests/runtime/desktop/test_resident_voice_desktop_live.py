@@ -7,9 +7,7 @@ import urllib.error
 import urllib.request
 
 import pytest
-
 from backend.tests.conftest import SKIP_UNLESS_LIVE
-
 
 BACKEND_BASE_URL = os.getenv("JARVISV7_BACKEND_URL", "http://127.0.0.1:8765").rstrip("/")
 

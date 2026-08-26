@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from fastapi.testclient import TestClient
-
 from backend.app.api.app import ApiState, create_app
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
@@ -18,6 +16,7 @@ from backend.app.personality.schema import (
     PersonalityTraits,
 )
 from backend.app.services.session_service import SessionService
+from fastapi.testclient import TestClient
 
 
 class _FakeRuntime:
@@ -92,8 +91,9 @@ def _client() -> TestClient:
         engine=engine,  # type: ignore[arg-type]
         engine_factory=lambda manager: _Engine(),  # type: ignore[arg-type]
     )
-    from backend.app.services.wake_monitor import WakeMonitorService
     from unittest.mock import MagicMock
+
+    from backend.app.services.wake_monitor import WakeMonitorService
     wake_monitor = WakeMonitorService(
         session_service=session_service,
         runtime_factory=lambda: MagicMock(),
@@ -217,8 +217,9 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
 
     engine = build_engine(manager)
     session_service = SessionService(session_manager=manager, engine=engine, engine_factory=build_engine)
-    from backend.app.services.wake_monitor import WakeMonitorService
     from unittest.mock import MagicMock
+
+    from backend.app.services.wake_monitor import WakeMonitorService
     wake_monitor = WakeMonitorService(
         session_service=session_service,
         runtime_factory=lambda: MagicMock(),

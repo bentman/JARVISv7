@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import ast
-from pathlib import Path
 from dataclasses import dataclass
+from pathlib import Path
 from types import SimpleNamespace
 
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
@@ -211,7 +211,7 @@ def test_llm_cuda_runtime_filter_selects_managed_llama_cpp_live_tests() -> None:
         assert {"live", "llm", "cuda"} <= markers
 
 
-def test_ci_subcommand_suppresses_live_markers(monkeypatch, capsys) -> None:
+def test_ci_subcommand_runs_quality_and_test_commands_in_order(monkeypatch, capsys) -> None:
     calls: list[list[str]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
@@ -226,7 +226,29 @@ def test_ci_subcommand_suppresses_live_markers(monkeypatch, capsys) -> None:
     capsys.readouterr()
 
     assert exit_code == 0
-    assert any("not live" in part for part in calls[0])
+    assert [command[2] for command in calls] == ["ruff", "mypy", "pytest", "pytest", "pytest"]
+    assert calls[0][3:] == ["check", "backend", "scripts"]
+    assert calls[1][3:] == ["backend/app"]
+    assert all("not live" in command for command in calls[2:])
+
+
+def test_ci_subcommand_propagates_quality_failure(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
+    _patch_context(monkeypatch)
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=1 if command[2] == "mypy" else 0)
+
+    monkeypatch.setattr(validate_backend.subprocess, "run", fake_run)
+
+    exit_code = validate_backend.main(["ci"])
+    capsys.readouterr()
+
+    assert exit_code == 1
+    assert [command[2] for command in calls] == ["ruff", "mypy", "pytest", "pytest", "pytest"]
 
 
 def test_exit_codes_map_documented_states_correctly(monkeypatch) -> None:

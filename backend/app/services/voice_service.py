@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import threading
 from collections.abc import Iterable
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
-
 from backend.app.core.settings import load_settings
 from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES
 from backend.app.services.audio_stream import ResidentAudioStream
@@ -200,8 +199,11 @@ def describe_input_device(sounddevice: Any | None = None) -> str | None:
     try:
         sd = sounddevice
         if sd is None:
-            import sounddevice as sd
-        default_device = getattr(sd, "default").device
+            import sounddevice as sounddevice_module
+
+            sd = sounddevice_module
+        assert sd is not None
+        default_device = sd.default.device
         input_index = default_device[0] if isinstance(default_device, (list, tuple)) else default_device
         if input_index is None or input_index == -1:
             return "sounddevice default input"

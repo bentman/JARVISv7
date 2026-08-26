@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from fastapi import APIRouter, Depends
-
-from backend.app.api.dependencies import get_api_state
 from backend.app.api.app import ApiState
-from backend.app.api.schemas.diagnostics import DiagnosticsAudioIngressResponse, DiagnosticsPreflightResponse, DiagnosticsProfileResponse
+from backend.app.api.dependencies import get_api_state
+from backend.app.api.schemas.diagnostics import (
+    DiagnosticsAudioIngressResponse,
+    DiagnosticsPreflightResponse,
+    DiagnosticsProfileResponse,
+)
 from backend.app.services.voice_service import diagnose_audio_ingress
+from fastapi import APIRouter, Depends
 
 router = APIRouter()
 

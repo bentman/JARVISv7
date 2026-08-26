@@ -161,7 +161,7 @@ models:
       repo_id: Qwen/Qwen2.5-0.5B-Instruct-GGUF
       file: qwen2.5-0.5b-instruct-q4_k_m.gguf
       expected_size_mb: 491
-    routes:
+    routes: &shared_llm_routes
       - voice_chat
       - text_chat
       - research
@@ -180,41 +180,7 @@ models:
         - "Assistant:"
     serve_profiles:
       hardware_profiles:
-        linux_amd64_cpu:
-          profile_id: linux_amd64_cpu
-          os: linux
-          arch: amd64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-x64-base
-            - hw-x64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_tar_gz
-              release: b9704
-              asset: llama-b9704-bin-ubuntu-x64.tar.gz
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-ubuntu-x64.tar.gz
-            binary_path: runtimes/llama.cpp/linux-amd64-cpu/llama-server
-            required_files:
-              - llama-server
-          binary_path: runtimes/llama.cpp/linux-amd64-cpu/llama-server
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 6
-            threads_batch: 12
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q8_0
-            cache_type_v: q8_0
-            parallel: 1
-            cont_batching: true
-            warmup: true
+        <<: *linux_amd64_serve_profiles
         linux_arm64_cpu:
           profile_id: linux_arm64_cpu
           os: linux
@@ -251,58 +217,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        linux_amd64_gpu_nvidia_cuda:
-          profile_id: linux_amd64_gpu_nvidia_cuda
-          os: linux
-          arch: amd64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-x64-base
-            - hw-x64-ort-cpu
-            - hw-gpu-nvidia-cuda
-          accelerator: gpu.cuda
-          runtime_artifact:
-            source:
-              type: source_tar_gz_build
-              release: b9704
-              commit: 10786217e9d40c848ac0133cbe9c5f22a52421bb
-              asset: llama.cpp-b9704.tar.gz
-              url: https://github.com/ggml-org/llama.cpp/archive/refs/tags/b9704.tar.gz
-              sha256: bb288a8045a8fda3fc3be6ffa0e02161ed70d45788b360107fba55a331f93741
-              cuda_compiler: /usr/local/cuda-12.4/bin/nvcc
-              cuda_toolkit_root: /usr/local/cuda-12.4
-            binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
-            required_files:
-              - llama-server
-              - libllama-server-impl.so
-              - libllama-common.so.0
-              - libggml.so
-              - libggml-base.so
-              - libggml-cpu.so
-              - libggml-cuda.so
-              - libllama.so
-              - libmtmd.so
-          binary_path: runtimes/llama.cpp/linux-amd64-cuda/llama-server
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 8192
-            gpu_layers: all
-            split_mode: layer
-            main_gpu: 0
-            flash_attn: "on"
-            batch_size: 2048
-            ubatch_size: 512
-            cache_type_k: f16
-            cache_type_v: f16
-            cache_ram_mb: 8192
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_amd64_cpu:
+        windows_amd64_cpu: &shared_windows_amd64_cpu_profile
           profile_id: windows_amd64_cpu
           os: windows
           arch: amd64
@@ -340,7 +255,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        windows_arm64_cpu:
+        windows_arm64_cpu: &shared_windows_arm64_cpu_profile
           profile_id: windows_arm64_cpu
           os: windows
           arch: arm64
@@ -379,7 +294,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        windows_amd64_gpu_nvidia_cuda:
+        windows_amd64_gpu_nvidia_cuda: &shared_windows_amd64_gpu_nvidia_cuda_profile
           profile_id: windows_amd64_gpu_nvidia_cuda
           os: windows
           arch: amd64
@@ -423,7 +338,7 @@ models:
             cache_type_k: f16
             cache_type_v: f16
             cache_ram_mb: 8192
-        windows_amd64_gpu_amd:
+        windows_amd64_gpu_amd: &shared_windows_amd64_gpu_amd_profile
           profile_id: windows_amd64_gpu_amd
           os: windows
           arch: amd64
@@ -454,7 +369,7 @@ models:
             gpu_layers: all
             flash_attn: auto
             cache_ram_mb: 8192
-        windows_amd64_gpu_intel:
+        windows_amd64_gpu_intel: &shared_windows_amd64_gpu_intel_profile
           profile_id: windows_amd64_gpu_intel
           os: windows
           arch: amd64
@@ -486,7 +401,7 @@ models:
             gpu_layers: all
             flash_attn: auto
             cache_ram_mb: 8192
-        windows_arm64_npu_qualcomm_base:
+        windows_arm64_npu_qualcomm_base: &shared_windows_arm64_npu_qualcomm_base_profile
           profile_id: windows_arm64_npu_qualcomm_base
           os: windows
           arch: arm64
@@ -573,7 +488,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        windows_arm64_npu_qualcomm_qnn:
+        windows_arm64_npu_qualcomm_qnn: &shared_windows_arm64_npu_qualcomm_qnn_profile
           profile_id: windows_arm64_npu_qualcomm_qnn
           os: windows
           arch: arm64
@@ -623,13 +538,8 @@ models:
       repo_id: Qwen/Qwen3-0.6B-GGUF
       file: Qwen3-0.6B-Q8_0.gguf
       expected_size_mb: 640
-    routes:
-      - voice_chat
-      - text_chat
-      - research
-      - code_plan
-      - tool_plan
-    generation_defaults:
+    routes: *shared_llm_routes
+    generation_defaults: &shared_qwen3_generation_defaults
       temperature: 0.7
       top_p: 0.8
       top_k: 20
@@ -645,227 +555,12 @@ models:
     serve_profiles:
       hardware_profiles:
         <<: *linux_amd64_serve_profiles
-        windows_amd64_cpu:
-          profile_id: windows_amd64_cpu
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-x64-base
-            - hw-x64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-x64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 6
-            threads_batch: 12
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q8_0
-            cache_type_v: q8_0
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_arm64_cpu:
-          profile_id: windows_arm64_cpu
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-arm64-base
-            - hw-arm64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-arm64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-arm64.zip
-            binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 4
-            threads_batch: 8
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_amd64_gpu_nvidia_cuda:
-          profile_id: windows_amd64_gpu_nvidia_cuda
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-nvidia-cuda
-          accelerator: gpu.cuda
-          runtime_artifact:
-            source:
-              type: url_zip_set
-              release: b9704
-              cuda_version: "13.3"
-              archives:
-                - asset: llama-b9704-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cuda-13.3-x64.zip
-                - asset: cudart-llama-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/cudart-llama-bin-win-cuda-13.3-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-            required_files:
-              - llama-server.exe
-              - ggml-cuda.dll
-              - cudart64_13.dll
-              - cublas64_13.dll
-              - cublasLt64_13.dll
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 8192
-            gpu_layers: all
-            split_mode: layer
-            main_gpu: 0
-            flash_attn: "on"
-            batch_size: 2048
-            ubatch_size: 512
-            cache_type_k: f16
-            cache_type_v: f16
-            cache_ram_mb: 8192
-        windows_amd64_gpu_amd:
-          profile_id: windows_amd64_gpu_amd
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-amd
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - hip
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_amd64_gpu_intel:
-          profile_id: windows_amd64_gpu_intel
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-intel
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - openvino
-                - sycl
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_arm64_npu_qualcomm_base:
-          profile_id: windows_arm64_npu_qualcomm_base
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.hexagon_candidate
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 2048
-            threads: 4
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
+        windows_amd64_cpu: *shared_windows_amd64_cpu_profile
+        windows_arm64_cpu: *shared_windows_arm64_cpu_profile
+        windows_amd64_gpu_nvidia_cuda: *shared_windows_amd64_gpu_nvidia_cuda_profile
+        windows_amd64_gpu_amd: *shared_windows_amd64_gpu_amd_profile
+        windows_amd64_gpu_intel: *shared_windows_amd64_gpu_intel_profile
+        windows_arm64_npu_qualcomm_base: *shared_windows_arm64_npu_qualcomm_base_profile
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
           os: windows
@@ -916,44 +611,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        windows_arm64_npu_qualcomm_qnn:
-          profile_id: windows_arm64_npu_qualcomm_qnn
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.qnn
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              project_label: npu.qnn
-              runtime_mapping: pending-hexagon-qnn-viability
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-no-sidecar-binary
-          launch:
-            ctx_size: 4096
-            device: qnn
-            batch_size: 128
-            ubatch_size: 128
-            cache_ram_mb: 4096
+        windows_arm64_npu_qualcomm_qnn: *shared_windows_arm64_npu_qualcomm_qnn_profile
   assistant-qwen3-4b-q4-portable:
     family: llm
     runtime: llama_cpp
@@ -965,250 +623,18 @@ models:
       repo_id: Qwen/Qwen3-4B-GGUF
       file: Qwen3-4B-Q4_K_M.gguf
       expected_size_mb: 2498
-    routes:
-      - voice_chat
-      - text_chat
-      - research
-      - code_plan
-      - tool_plan
-    generation_defaults:
-      temperature: 0.7
-      top_p: 0.8
-      top_k: 20
-      repeat_penalty: 1.0
-      max_tokens: 256
-      chat_template_kwargs:
-        enable_thinking: false
-      stop:
-        - "\nUser:"
-        - "\nAssistant:"
-        - "User:"
-        - "Assistant:"
+    routes: *shared_llm_routes
+    generation_defaults: *shared_qwen3_generation_defaults
     serve_profiles:
       hardware_profiles:
         <<: *linux_amd64_serve_profiles
-        windows_amd64_cpu:
-          profile_id: windows_amd64_cpu
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-x64-base
-            - hw-x64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-x64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 6
-            threads_batch: 12
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q8_0
-            cache_type_v: q8_0
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_arm64_cpu:
-          profile_id: windows_arm64_cpu
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-arm64-base
-            - hw-arm64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-arm64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-arm64.zip
-            binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 4
-            threads_batch: 8
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_amd64_gpu_nvidia_cuda:
-          profile_id: windows_amd64_gpu_nvidia_cuda
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-nvidia-cuda
-          accelerator: gpu.cuda
-          runtime_artifact:
-            source:
-              type: url_zip_set
-              release: b9704
-              cuda_version: "13.3"
-              archives:
-                - asset: llama-b9704-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cuda-13.3-x64.zip
-                - asset: cudart-llama-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/cudart-llama-bin-win-cuda-13.3-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-            required_files:
-              - llama-server.exe
-              - ggml-cuda.dll
-              - cudart64_13.dll
-              - cublas64_13.dll
-              - cublasLt64_13.dll
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 8192
-            gpu_layers: all
-            split_mode: layer
-            main_gpu: 0
-            flash_attn: "on"
-            batch_size: 2048
-            ubatch_size: 512
-            cache_type_k: f16
-            cache_type_v: f16
-            cache_ram_mb: 8192
-        windows_amd64_gpu_amd:
-          profile_id: windows_amd64_gpu_amd
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-amd
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - hip
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_amd64_gpu_intel:
-          profile_id: windows_amd64_gpu_intel
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-intel
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - openvino
-                - sycl
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_arm64_npu_qualcomm_base:
-          profile_id: windows_arm64_npu_qualcomm_base
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.hexagon_candidate
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 2048
-            threads: 4
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
-        windows_arm64_gpu_qualcomm_adreno_opencl:
+        windows_amd64_cpu: *shared_windows_amd64_cpu_profile
+        windows_arm64_cpu: *shared_windows_arm64_cpu_profile
+        windows_amd64_gpu_nvidia_cuda: *shared_windows_amd64_gpu_nvidia_cuda_profile
+        windows_amd64_gpu_amd: *shared_windows_amd64_gpu_amd_profile
+        windows_amd64_gpu_intel: *shared_windows_amd64_gpu_intel_profile
+        windows_arm64_npu_qualcomm_base: *shared_windows_arm64_npu_qualcomm_base_profile
+        windows_arm64_gpu_qualcomm_adreno_opencl: &shared_q4_adreno_opencl_profile
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
           os: windows
           arch: arm64
@@ -1258,44 +684,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        windows_arm64_npu_qualcomm_qnn:
-          profile_id: windows_arm64_npu_qualcomm_qnn
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.qnn
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              project_label: npu.qnn
-              runtime_mapping: pending-hexagon-qnn-viability
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-no-sidecar-binary
-          launch:
-            ctx_size: 4096
-            device: qnn
-            batch_size: 128
-            ubatch_size: 128
-            cache_ram_mb: 4096
+        windows_arm64_npu_qualcomm_qnn: *shared_windows_arm64_npu_qualcomm_qnn_profile
   assistant-qwen3-8b-q5-balanced:
     family: llm
     runtime: llama_cpp
@@ -1307,249 +696,17 @@ models:
       repo_id: Qwen/Qwen3-8B-GGUF
       file: Qwen3-8B-Q5_K_M.gguf
       expected_size_mb: 5852
-    routes:
-      - voice_chat
-      - text_chat
-      - research
-      - code_plan
-      - tool_plan
-    generation_defaults:
-      temperature: 0.7
-      top_p: 0.8
-      top_k: 20
-      repeat_penalty: 1.0
-      max_tokens: 256
-      chat_template_kwargs:
-        enable_thinking: false
-      stop:
-        - "\nUser:"
-        - "\nAssistant:"
-        - "User:"
-        - "Assistant:"
+    routes: *shared_llm_routes
+    generation_defaults: *shared_qwen3_generation_defaults
     serve_profiles:
       hardware_profiles:
         <<: *linux_amd64_serve_profiles
-        windows_amd64_cpu:
-          profile_id: windows_amd64_cpu
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-x64-base
-            - hw-x64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-x64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 6
-            threads_batch: 12
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q8_0
-            cache_type_v: q8_0
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_arm64_cpu:
-          profile_id: windows_arm64_cpu
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-arm64-base
-            - hw-arm64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-arm64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-arm64.zip
-            binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 4
-            threads_batch: 8
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_amd64_gpu_nvidia_cuda:
-          profile_id: windows_amd64_gpu_nvidia_cuda
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-nvidia-cuda
-          accelerator: gpu.cuda
-          runtime_artifact:
-            source:
-              type: url_zip_set
-              release: b9704
-              cuda_version: "13.3"
-              archives:
-                - asset: llama-b9704-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cuda-13.3-x64.zip
-                - asset: cudart-llama-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/cudart-llama-bin-win-cuda-13.3-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-            required_files:
-              - llama-server.exe
-              - ggml-cuda.dll
-              - cudart64_13.dll
-              - cublas64_13.dll
-              - cublasLt64_13.dll
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 8192
-            gpu_layers: all
-            split_mode: layer
-            main_gpu: 0
-            flash_attn: "on"
-            batch_size: 2048
-            ubatch_size: 512
-            cache_type_k: f16
-            cache_type_v: f16
-            cache_ram_mb: 8192
-        windows_amd64_gpu_amd:
-          profile_id: windows_amd64_gpu_amd
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-amd
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - hip
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_amd64_gpu_intel:
-          profile_id: windows_amd64_gpu_intel
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-intel
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - openvino
-                - sycl
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_arm64_npu_qualcomm_base:
-          profile_id: windows_arm64_npu_qualcomm_base
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.hexagon_candidate
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 2048
-            threads: 4
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
+        windows_amd64_cpu: *shared_windows_amd64_cpu_profile
+        windows_arm64_cpu: *shared_windows_arm64_cpu_profile
+        windows_amd64_gpu_nvidia_cuda: *shared_windows_amd64_gpu_nvidia_cuda_profile
+        windows_amd64_gpu_amd: *shared_windows_amd64_gpu_amd_profile
+        windows_amd64_gpu_intel: *shared_windows_amd64_gpu_intel_profile
+        windows_arm64_npu_qualcomm_base: *shared_windows_arm64_npu_qualcomm_base_profile
         windows_arm64_gpu_qualcomm_adreno_opencl:
           profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
           os: windows
@@ -1600,44 +757,7 @@ models:
             parallel: 1
             cont_batching: true
             warmup: true
-        windows_arm64_npu_qualcomm_qnn:
-          profile_id: windows_arm64_npu_qualcomm_qnn
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.qnn
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              project_label: npu.qnn
-              runtime_mapping: pending-hexagon-qnn-viability
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-no-sidecar-binary
-          launch:
-            ctx_size: 4096
-            device: qnn
-            batch_size: 128
-            ubatch_size: 128
-            cache_ram_mb: 4096
+        windows_arm64_npu_qualcomm_qnn: *shared_windows_arm64_npu_qualcomm_qnn_profile
   assistant-qwen3-14b-q4-quality:
     family: llm
     runtime: llama_cpp
@@ -1649,334 +769,16 @@ models:
       repo_id: Qwen/Qwen3-14B-GGUF
       file: Qwen3-14B-Q4_K_M.gguf
       expected_size_mb: 9002
-    routes:
-      - voice_chat
-      - text_chat
-      - research
-      - code_plan
-      - tool_plan
-    generation_defaults:
-      temperature: 0.7
-      top_p: 0.8
-      top_k: 20
-      repeat_penalty: 1.0
-      max_tokens: 256
-      chat_template_kwargs:
-        enable_thinking: false
-      stop:
-        - "\nUser:"
-        - "\nAssistant:"
-        - "User:"
-        - "Assistant:"
+    routes: *shared_llm_routes
+    generation_defaults: *shared_qwen3_generation_defaults
     serve_profiles:
       hardware_profiles:
         <<: *linux_amd64_serve_profiles
-        windows_amd64_cpu:
-          profile_id: windows_amd64_cpu
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-x64-base
-            - hw-x64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-x64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 6
-            threads_batch: 12
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q8_0
-            cache_type_v: q8_0
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_arm64_cpu:
-          profile_id: windows_arm64_cpu
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-cpu-base
-            - hw-arm64-base
-            - hw-arm64-ort-cpu
-          accelerator: cpu
-          runtime_artifact:
-            source:
-              type: url_zip
-              release: b9704
-              asset: llama-b9704-bin-win-cpu-arm64.zip
-              url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cpu-arm64.zip
-            binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-cpu/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          launch:
-            ctx_size: 4096
-            threads: 4
-            threads_batch: 8
-            batch_size: 512
-            ubatch_size: 128
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_amd64_gpu_nvidia_cuda:
-          profile_id: windows_amd64_gpu_nvidia_cuda
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-nvidia-cuda
-          accelerator: gpu.cuda
-          runtime_artifact:
-            source:
-              type: url_zip_set
-              release: b9704
-              cuda_version: "13.3"
-              archives:
-                - asset: llama-b9704-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/llama-b9704-bin-win-cuda-13.3-x64.zip
-                - asset: cudart-llama-bin-win-cuda-13.3-x64.zip
-                  url: https://github.com/ggml-org/llama.cpp/releases/download/b9704/cudart-llama-bin-win-cuda-13.3-x64.zip
-            binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-            required_files:
-              - llama-server.exe
-              - ggml-cuda.dll
-              - cudart64_13.dll
-              - cublas64_13.dll
-              - cublasLt64_13.dll
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-cuda/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: validated
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 8192
-            gpu_layers: all
-            split_mode: layer
-            main_gpu: 0
-            flash_attn: "on"
-            batch_size: 2048
-            ubatch_size: 512
-            cache_type_k: f16
-            cache_type_v: f16
-            cache_ram_mb: 8192
-        windows_amd64_gpu_amd:
-          profile_id: windows_amd64_gpu_amd
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-amd
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - hip
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-amd/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_amd64_gpu_intel:
-          profile_id: windows_amd64_gpu_intel
-          os: windows
-          arch: amd64
-          provisioning_extras:
-            - hw-gpu-intel
-          accelerator: gpu.vulkan
-          runtime_artifact:
-            source:
-              type: pending-pinned-release
-              reason: S-G1-pending
-              candidate_artifact_families:
-                - vulkan
-                - openvino
-                - sycl
-            binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-amd64-gpu-intel/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 4096
-            gpu_layers: all
-            flash_attn: auto
-            cache_ram_mb: 8192
-        windows_arm64_npu_qualcomm_base:
-          profile_id: windows_arm64_npu_qualcomm_base
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.hexagon_candidate
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-npu-qualcomm/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-accelerator-unavailable
-          launch:
-            ctx_size: 2048
-            threads: 4
-            gpu_layers: 0
-            cache_type_k: q4_0
-            cache_type_v: q4_0
-            cache_ram_mb: 4096
-        windows_arm64_gpu_qualcomm_adreno_opencl:
-          profile_id: windows_arm64_gpu_qualcomm_adreno_opencl
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-arm64-base
-          accelerator: gpu.opencl.adreno
-          runtime_artifact:
-            source:
-              type: build-required
-              reason: no-pinned-release-asset
-              upstream:
-                backend: llama.cpp Adreno OpenCL
-                build_flag: GGML_OPENCL=ON
-                platform: Windows on Snapdragon
-                prerequisites:
-                  - Visual Studio 2022
-                  - LLVM 19
-                  - CMake
-                  - Ninja
-                  - Khronos OpenCL-Headers
-                  - Khronos OpenCL-ICD-Loader
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-flow
-                gpu_backend: adreno-opencl
-                release_asset: none-confirmed
-                optimized_quantization: Q4_0
-                current_model_quantization: q4_k_m
-            binary_path: runtimes/llama.cpp/windows-arm64-adreno-opencl/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-adreno-opencl/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-opencl-build-required
-          launch:
-            ctx_size: 4096
-            batch_size: 128
-            ubatch_size: 32
-            gpu_layers: all
-            flash_attn: "off"
-            cache_ram_mb: 4096
-            parallel: 1
-            cont_batching: true
-            warmup: true
-        windows_arm64_npu_qualcomm_qnn:
-          profile_id: windows_arm64_npu_qualcomm_qnn
-          os: windows
-          arch: arm64
-          provisioning_extras:
-            - hw-npu-qualcomm-qnn
-          accelerator: npu.qnn
-          runtime_artifact:
-            source:
-              type: pending-viability
-              reason: S-G1-pending
-              project_label: npu.qnn
-              runtime_mapping: pending-hexagon-qnn-viability
-              candidate_runtime_findings:
-                windows_on_snapdragon: build-package-flow
-                device_examples:
-                  - cpu
-                  - adreno-opencl
-                  - hexagon-htp
-                release_asset: none-confirmed
-            binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-            required_files:
-              - llama-server.exe
-            required_adjacent:
-              dll_extensions:
-                - .dll
-          binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-          host: 127.0.0.1
-          port: 8080
-          base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
-          close_if_unavailable: Degraded-no-sidecar-binary
-          launch:
-            ctx_size: 4096
-            device: qnn
-            batch_size: 128
-            ubatch_size: 128
-            cache_ram_mb: 4096
+        windows_amd64_cpu: *shared_windows_amd64_cpu_profile
+        windows_arm64_cpu: *shared_windows_arm64_cpu_profile
+        windows_amd64_gpu_nvidia_cuda: *shared_windows_amd64_gpu_nvidia_cuda_profile
+        windows_amd64_gpu_amd: *shared_windows_amd64_gpu_amd_profile
+        windows_amd64_gpu_intel: *shared_windows_amd64_gpu_intel_profile
+        windows_arm64_npu_qualcomm_base: *shared_windows_arm64_npu_qualcomm_base_profile
+        windows_arm64_gpu_qualcomm_adreno_opencl: *shared_q4_adreno_opencl_profile
+        windows_arm64_npu_qualcomm_qnn: *shared_windows_arm64_npu_qualcomm_qnn_profile

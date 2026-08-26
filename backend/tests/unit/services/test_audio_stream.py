@@ -6,7 +6,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.voice_service import capture_audio, wake_chunk_source
 

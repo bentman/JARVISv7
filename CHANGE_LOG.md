@@ -20,6 +20,24 @@
 
 ## Change Entries
 
+- Timestamp: 2026-08-25 16:55
+  - Host class(es): Windows AMD64
+  - Summary: Restored enforceable Ruff and mypy gates, resolved application diagnostics without changing runtime policy, and added ordered quality checks to backend CI validation.
+  - Scope: Ruff/mypy configuration and dependencies, lint/type corrections across `backend/` and `scripts/`, CI validator orchestration, and focused gate tests.
+  - Validation: Ruff PASS; mypy PASS (`132 source files`); focused pytest PASS (`310 passed` across three scoped runs); repository provisioning verify and `pip check` PASS; `git diff --check` PASS.
+  - Notes: CI retains existing aggregate exit-code behavior and executes Ruff, mypy, unit, integration, and regression commands in that order.
+
+---
+
+- Timestamp: 2026-08-25 13:07
+  - Host class(es): Windows AMD64
+  - Summary: Removed verified dead code, inactive configuration and dependencies, obsolete artifacts, and duplicate tests; hardened ZIP extraction, consolidated desktop contracts, and compacted the LLM catalog without changing parsed model values.
+  - Scope: DD.1 behavior-preserving hygiene across backend/runtime configuration, provisioning metadata, archive extraction, model catalog, desktop static tests, and obsolete repository artifacts.
+  - Validation: Focused pytest PASS (`276 passed, 3 skipped` across six scoped runs); provision lock/verify and `pip check` PASS; Ruff unused-symbol check PASS; desktop Node tests PASS; Rust `cargo check` PASS; LLM canonical digest unchanged (`9f231792427c04a8f18d0190e6099dbd622e47b34674a96b3181c367a73a9d15`); `git diff --check` PASS.
+  - Notes: Internet-search runtimes and tests remain disconnected and retained; no cross-host runtime validation or capability inventory change is claimed.
+
+---
+
 - Timestamp: 2026-08-01 04:00
   - Host class(es): Linux AMD64 / WSL2
   - Summary: Optimized resident voice wake, STT, TTS, and VAD behavior by filtering isolated wake spikes, short-circuiting silent STT and blank TTS inputs, and normalizing PCM amplitude handling for VAD and barge-in paths.

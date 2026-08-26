@@ -5,7 +5,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 STT_DEVICES = {"cpu", "cuda", "directml", "qnn"}
 
 
@@ -27,4 +26,4 @@ class STTBase(ABC):
 
     def warmup(self) -> None:
         """Pre-load model weights and warm up execution providers."""
-        pass
+        return None

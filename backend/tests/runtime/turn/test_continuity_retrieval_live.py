@@ -1,12 +1,11 @@
 from __future__ import annotations
 
+import wave
 from dataclasses import dataclass
 from pathlib import Path
-import wave
 
 import numpy as np
 import pytest
-
 from backend.app.artifacts.storage import read_turn_artifact
 from backend.app.conversation.engine import TurnEngine, TurnResult
 from backend.app.conversation.session_manager import SessionManager
@@ -15,11 +14,9 @@ from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.retrieval import RetrievedFact
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.loader import load_default_personality
-from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 from backend.app.runtimes.stt.base import STTBase
-from backend.app.runtimes.stt.onnx_whisper_runtime import OnnxWhisperRuntime
 from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime
 from backend.tests.conftest import (
     LLAMA_CPP_READY_PROMPT,
@@ -28,7 +25,6 @@ from backend.tests.conftest import (
     assert_llama_cpp_ready_contract,
     ollama_base_url,
 )
-
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
 
@@ -102,17 +98,17 @@ def _engine(tmp_path: Path, preflight, profile) -> tuple[TurnEngine, SessionMana
         turns_base_dir=tmp_path / "turns",
         sessions_base_dir=tmp_path / "sessions",
     )
-    from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
     from backend.app.personality.schema import (
         PersonalityExample,
         PersonalityProfile,
         PersonalityStyle,
         PersonalityTraits,
     )
+    from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
     stt = select_stt_runtime(preflight, profile)
     engine = TurnEngine(
         stt=stt,
-        tts=NullTTSRuntime(reason="C.4 continuity test uses explicit TTS degradation"),
+        tts=NullTTSRuntime(reason="continuity test uses explicit TTS degradation"),
         llm=OllamaLLM(base_url=ollama_base_url()),
         personality=PersonalityProfile(
             profile_id="runtime-c4",
@@ -228,7 +224,7 @@ def test_two_spoken_turns_in_one_session_write_artifacts_and_inject_memory(
         pytest.param(RetrievalCase("retrieve-recent"), id="retrieve-recent"),
         pytest.param(
             RetrievalCase("retrieved-memory-refs"),
-            marks=[pytest.mark.g2_required, pytest.mark.requires_ollama],
+            marks=pytest.mark.requires_ollama,
             id="retrieved-memory-refs",
         ),
     ],

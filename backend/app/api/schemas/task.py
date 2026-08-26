@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+
 class TextTurnRequest(BaseModel):
     text: str
     session_id: str | None = None

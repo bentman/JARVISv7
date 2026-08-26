@@ -7,13 +7,16 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.models.catalog import get_model_entry
 from backend.app.runtimes.tts.kokoro_onnx_runtime import KOKORO_SAMPLE_RATE, KokoroOnnxRuntime
 from backend.app.runtimes.tts.playback import describe_output_device, is_playing, stop
-from backend.app.runtimes.tts.tts_runtime import NullTTSRuntime, select_tts_runtime, validate_tts_voice
+from backend.app.runtimes.tts.tts_runtime import (
+    NullTTSRuntime,
+    select_tts_runtime,
+    validate_tts_voice,
+)
 
 
 def test_selector_returns_cpu_runtime_when_readiness_says_cpu():
@@ -308,12 +311,9 @@ def test_is_playing_uses_sounddevice_stream_stopped_state_when_active_missing(mo
 def test_playback_records_default_output_device(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
-    class Default:
-        device = [2, 7]
-
     calls = []
     fake_sounddevice = SimpleNamespace(
-        default=Default(),
+        default=SimpleNamespace(device=[2, 7]),
         query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
         play=lambda audio, samplerate: calls.append((audio.shape, samplerate)),
         wait=lambda: None,
@@ -331,16 +331,13 @@ def test_playback_records_default_output_device(monkeypatch):
 def test_playback_wait_is_bounded_when_sounddevice_wait_blocks(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
-    class Default:
-        device = [2, 7]
-
     calls: list[str] = []
 
     def blocking_wait():
         time.sleep(5.0)
 
     fake_sounddevice = SimpleNamespace(
-        default=Default(),
+        default=SimpleNamespace(device=[2, 7]),
         query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
         play=lambda audio, samplerate: calls.append("play"),
         wait=blocking_wait,
@@ -360,11 +357,8 @@ def test_playback_wait_is_bounded_when_sounddevice_wait_blocks(monkeypatch):
 def test_playback_wait_error_is_propagated(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
-    class Default:
-        device = [2, 7]
-
     fake_sounddevice = SimpleNamespace(
-        default=Default(),
+        default=SimpleNamespace(device=[2, 7]),
         query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
         play=lambda audio, samplerate: None,
         wait=lambda: (_ for _ in ()).throw(RuntimeError("playback wait failed")),
@@ -380,15 +374,12 @@ def test_playback_wait_error_is_propagated(monkeypatch):
 def test_iterable_player_wait_survives_underrun_until_sentinel_and_buffer_drain(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
-    class CallbackStop(Exception):
+    class CallbackStop(Exception):  # noqa: N818
         pass
-
-    class Default:
-        device = [0, 1]
 
     playback._sounddevice = SimpleNamespace(
         CallbackStop=CallbackStop,
-        default=Default(),
+        default=SimpleNamespace(device=[0, 1]),
         query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
     )
     playback._sounddevice_error = None
@@ -424,11 +415,8 @@ def test_iterable_player_wait_survives_underrun_until_sentinel_and_buffer_drain(
 def test_iterable_player_wait_times_out_when_producer_never_sends_sentinel(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
-    class Default:
-        device = [0, 1]
-
     playback._sounddevice = SimpleNamespace(
-        default=Default(),
+        default=SimpleNamespace(device=[0, 1]),
         query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
     )
     playback._sounddevice_error = None
@@ -446,11 +434,8 @@ def test_iterable_player_wait_times_out_when_producer_never_sends_sentinel(monke
 def test_iterable_player_explicit_stop_releases_waiter(monkeypatch):
     import backend.app.runtimes.tts.playback as playback
 
-    class Default:
-        device = [0, 1]
-
     playback._sounddevice = SimpleNamespace(
-        default=Default(),
+        default=SimpleNamespace(device=[0, 1]),
         query_devices=lambda index, kind: {"name": f"{kind}-{index}"},
     )
     playback._sounddevice_error = None

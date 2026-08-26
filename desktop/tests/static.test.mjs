@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { renderConversationDebug } from "../src/components/conversation-debug.js";
 import { renderBackendDiagnostics } from "../src/components/backend-diagnostics.js";
@@ -26,7 +26,116 @@ const memoryPanel = readFileSync(new URL("../src/components/memory-panel.js", im
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+const style = readFileSync(new URL("../src/style.css", import.meta.url), "utf8");
+const cargoToml = readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.url), "utf8");
+const tauriConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 const desktopSource = main + apiClient + residentVoice;
+
+for (const relativePath of [
+  "../package.json",
+  "../src/index.html",
+  "../src/api-client.js",
+  "../src/main.js",
+  "../src/components/appearance-controls.js",
+  "../src/components/backend-diagnostics.js",
+  "../src/components/settings-panel.js",
+  "../src/components/memory-panel.js",
+  "../src/components/resident-voice.js",
+  "../src/components/service-status.js",
+  "../src/components/desktop-polling.js",
+  "../src/style.css",
+  "../src-tauri/Cargo.toml",
+  "../src-tauri/build.rs",
+  "../src-tauri/tauri.conf.json",
+  "../src-tauri/src/main.rs",
+  "../src-tauri/src/lib.rs",
+  "../src-tauri/src/backend.rs",
+  "../src-tauri/icons/icon.png",
+  "../src-tauri/icons/icon.ico",
+]) {
+  assert.ok(existsSync(new URL(relativePath, import.meta.url)), `required desktop file missing: ${relativePath}`);
+}
+
+assert.deepEqual(tauriConfig.bundle.icon, ["icons/icon.png", "icons/icon.ico"]);
+assert.ok(cargoToml.includes("tray-icon"), "Tauri must enable tray-icon support");
+assert.ok(lib.includes("TrayIconBuilder"), "Tauri shell must build the tray icon");
+for (const label of ["Start Backend", "Stop Backend", "Show Window", "Quit"]) {
+  assert.ok(lib.includes(label), `tray menu must include ${label}`);
+}
+assert.ok(backend.includes("run_backend.py"), "desktop must launch the backend entrypoint");
+assert.ok(!`${backend}\n${lib}`.includes("run_jarvis.py"), "desktop must not launch the proving-host entrypoint");
+
+const tokenStart = "/* JARVIS_V7_TOKENS_START */";
+const tokenEnd = "/* JARVIS_V7_TOKENS_END */";
+assert.equal(style.split("JARVIS_V7_TOKENS_START").length - 1, 1);
+assert.equal(style.split("JARVIS_V7_TOKENS_END").length - 1, 1);
+assert.ok(style.indexOf(tokenStart) < style.indexOf(tokenEnd));
+for (const token of [
+  "--color-bg-base",
+  "--color-accent",
+  "--color-ready",
+  "--color-degraded",
+  "--color-failed",
+  "--color-capture",
+  "--color-text-primary",
+  "--space-1",
+]) {
+  assert.ok(style.includes(token), `style token missing: ${token}`);
+}
+const outsideTokens = style.slice(0, style.indexOf(tokenStart)) + style.slice(style.indexOf(tokenEnd) + tokenEnd.length);
+assert.doesNotMatch(outsideTokens, /#[0-9a-fA-F]{3,8}\b/);
+for (const rawColorFunction of ["rgb(", "rgba(", "hsl(", "hsla("]) {
+  assert.ok(!outsideTokens.includes(rawColorFunction), `raw color function outside token section: ${rawColorFunction}`);
+}
+for (const selector of [
+  '[data-state="LISTENING"]',
+  '[data-state="REASONING"]',
+  '[data-state="SPEAKING"]',
+  '[data-state="DEGRADED"]',
+  '[data-state="FAILED"]',
+  '[data-capture-state="recording"]',
+  '[data-capture-state="processing"]',
+  'data-readiness-state="ready"',
+  'data-readiness-state="degraded"',
+  'data-readiness-state="failed"',
+  ".degraded-condition",
+  "capture-pulse",
+  ".message.user",
+  ".message.assistant",
+  ".message.system",
+  ".message.presence",
+]) {
+  assert.ok(style.includes(selector), `desktop style contract missing: ${selector}`);
+}
+assert.ok(!index.includes(" style="), "desktop markup must not use inline styles");
+assert.ok(style.includes("grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(260px, 340px);"));
+for (const selector of [
+  ".status-panel",
+  ".conversation-panel",
+  ".operator-panel",
+  ".panel-section",
+  ".operator-header",
+  ".operator-actions",
+  ".settings-panel",
+  ".appearance-panel",
+]) {
+  assert.ok(style.includes(selector), `desktop layout contract missing: ${selector}`);
+}
+assert.match(style, /\.status-panel,\s*\.operator-panel\s*{\s*overflow-y:\s*auto;/);
+assert.ok(style.includes("@media (max-width: 820px)"));
+assert.ok(!style.includes("@media (max-width: 1180px)"));
+assert.ok(!style.includes("grid-template-areas"));
+for (const snippet of [
+  'document.createElement("article")',
+  'document.createElement("span")',
+  'document.createElement("strong")',
+  'document.createElement("p")',
+  'bodyEl.textContent = text || "(no text returned)"',
+  "entry.append(stampEl, roleEl, bodyEl)",
+]) {
+  assert.ok(main.includes(snippet), `message rendering contract missing: ${snippet}`);
+}
+assert.ok(!main.includes("entry.innerHTML"), "message rendering must use DOM text APIs");
 
 assert.equal(sessionPollingInterval({ state: "reasoning" }), 100, "active sessions must retain responsive polling");
 assert.equal(sessionPollingInterval({ state: "IDLE" }), 2000, "idle sessions must reduce polling churn");
@@ -269,7 +378,6 @@ assert.ok(!settingsPanel.includes("LLM_MODEL_MODE"), "settings panel must not ha
 assert.ok(!settingsPanel.includes("Local LLM intent (llama.cpp)"), "settings panel must not hardcode backend sections");
 assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
 
-// Slice Z.4: Desktop State Smoothing assertions
 assert.ok(index.includes("System State"), "desktop must display System State label");
 assert.ok(index.includes("turn-status-anchor"), "desktop must include turn status anchor container");
 assert.ok(index.includes("system-state-card"), "desktop must size System State to Operator column");

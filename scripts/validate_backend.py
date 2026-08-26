@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 import argparse
-import io
 import importlib.util
-from dataclasses import asdict, dataclass
+import io
 import json
-from datetime import datetime, timezone
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -18,7 +18,10 @@ if str(REPO_ROOT) not in sys.path:
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
-from backend.app.services.startup_context import load_startup_context, selected_path_readiness_summary
+from backend.app.services.startup_context import (
+    load_startup_context,
+    selected_path_readiness_summary,
+)
 
 REPORTS_DIR = APP_REPO_ROOT / "reports"
 DIAGNOSTICS_DIR = REPORTS_DIR / "diagnostics"
@@ -32,11 +35,11 @@ def _load_context():
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _timestamp_slug() -> str:
-    return datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+    return datetime.now(UTC).strftime("%Y%m%d%H%M%S")
 
 
 def _capture_host_fingerprint(profile, extras, readiness: str) -> str:
@@ -116,11 +119,7 @@ def _collect_regression_rows(xml_path: Path) -> tuple[list[_RegressionTestRow], 
             status = "PASS"
         rows.append(_RegressionTestRow(status=status, classname=classname, test_name=test_name))
 
-    suite_elements: list[ET.Element]
-    if root.tag == "testsuites":
-        suite_elements = list(root.findall("testsuite"))
-    else:
-        suite_elements = [root]
+    suite_elements = list(root.findall("testsuite")) if root.tag == "testsuites" else [root]
 
     summary = _RegressionSuiteSummary()
     for suite in suite_elements:
@@ -242,71 +241,16 @@ def _run_pytest(targets: list[str], marker_expr: str | None = None) -> int:
     return completed.returncode
 
 
-def _run_pytest_with_report(
-    command_name: str,
-    targets: list[str],
-    marker_expr: str | None = None,
-    *,
-    report_directory: Path = VALIDATION_DIR,
-    fingerprint_line: str,
-) -> int:
-    if not _pytest_available():
-        message = "pytest is not installed in backend/.venv"
-        report = "\n".join(
-            [
-                f"title: validate_backend {command_name}",
-                f"timestamp_utc: {_current_timestamp()}",
-                f"host_fingerprint: {fingerprint_line}",
-                f"command: {' '.join(_build_pytest_command(targets, marker_expr=marker_expr))}",
-                "return_code: 3",
-                "summary: SKIPPED",
-                "stdout:",
-                message,
-                "stderr:",
-                "",
-            ]
-        )
-        _write_report(report_directory, command_name, report)
-        print(message)
+def _run_quality_tool(module: str, arguments: list[str]) -> int:
+    if importlib.util.find_spec(module) is None:
+        print(f"{module} is not installed in backend/.venv")
         return 3
-
-    command = _build_pytest_command(targets, marker_expr=marker_expr)
     completed = subprocess.run(
-        command,
+        [sys.executable, "-m", module, *arguments],
         cwd=APP_REPO_ROOT,
-        capture_output=True,
-        text=True,
         check=False,
     )
-
-    if completed.stdout:
-        sys.stdout.write(completed.stdout)
-    if completed.stderr:
-        sys.stderr.write(completed.stderr)
-
-    validator_code = 2 if completed.returncode == 5 else completed.returncode
-    summary = {0: "PASS", 1: "FAIL", 2: "SKIPPED", 3: "ENVIRONMENT_UNSATISFIED"}.get(
-        validator_code,
-        "FAIL",
-    )
-    report = "\n".join(
-        [
-            f"title: validate_backend {command_name}",
-            f"timestamp_utc: {_current_timestamp()}",
-            f"host_fingerprint: {fingerprint_line}",
-            f"command: {' '.join(command)}",
-            f"subprocess_return_code: {completed.returncode}",
-            f"validator_return_code: {validator_code}",
-            f"summary: {summary}",
-            "stdout:",
-            completed.stdout.rstrip("\n"),
-            "stderr:",
-            completed.stderr.rstrip("\n"),
-            "",
-        ]
-    )
-    _write_report(report_directory, command_name, report)
-    return validator_code
+    return 0 if completed.returncode == 0 else 1
 
 
 def _runtime_marker_expr(families: str | None, devices: str | None) -> str:
@@ -357,20 +301,6 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _emit_profile_report(report, extras, preflight) -> int:
-    payload = {
-        "profile": asdict(report.profile),
-        "flags": asdict(report.flags),
-        "preflight": {
-            "tokens": preflight.tokens,
-            "dll_discovery_log": preflight.dll_discovery_log,
-            "probe_errors": preflight.probe_errors,
-        },
-    }
-    print(json.dumps(payload, sort_keys=True))
-    return 0
-
-
 def _command_unit() -> int:
     return _run_pytest(["backend/tests/unit"])
 
@@ -410,6 +340,8 @@ def _command_ci() -> int:
     marker_expr = "not live"
     return _combine_codes(
         [
+            _run_quality_tool("ruff", ["check", "backend", "scripts"]),
+            _run_quality_tool("mypy", ["backend/app"]),
             _run_pytest(["backend/tests/unit"], marker_expr=marker_expr),
             _run_pytest(["backend/tests/integration"], marker_expr=marker_expr),
             _run_pytest(_regression_targets(), marker_expr=marker_expr),

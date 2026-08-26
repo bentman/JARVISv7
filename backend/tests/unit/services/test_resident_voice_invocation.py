@@ -12,12 +12,12 @@ from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.states import ConversationState
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services.audio_stream import ResidentAudioStream
+from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.resident_voice_invocation import (
     RESIDENT_STREAM_STOPPED_PTT_REASON,
     ResidentVoiceInvocationService,
     resident_interruption_chunks,
 )
-from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 from backend.tests.unit.services.test_session_service import _service
 

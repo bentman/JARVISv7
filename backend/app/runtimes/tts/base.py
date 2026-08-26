@@ -6,7 +6,6 @@ from pathlib import Path
 
 import numpy as np
 
-
 TTS_DEVICES = {"cpu", "cuda", "directml", "qnn"}
 
 
@@ -44,4 +43,4 @@ class TTSBase(ABC):
 
     def warmup(self) -> None:
         """Pre-load model weights and warm up execution providers."""
-        pass
+        return None

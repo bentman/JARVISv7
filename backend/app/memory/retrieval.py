@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from contextlib import suppress
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime
 from typing import Any, Literal, cast
@@ -81,7 +82,7 @@ class RetrievedFact:
 def _optional_score(value: object) -> float | None:
     if value is None:
         return None
-    score = float(value)
+    score = float(cast(Any, value))
     if not math.isfinite(score):
         raise ValueError("cached retrieval score must be finite")
     return score
@@ -342,24 +343,24 @@ class RetrievalManager:
             episodic_candidates: list[RetrievedFact] = []
             if episodic is not None:
                 entries = episodic.retrieve_by_keyword(query, n=n)
-                for entry in entries:
-                    if entry.response_text and entry.response_text.strip():
+                for episode in entries:
+                    if episode.response_text and episode.response_text.strip():
                         episodic_candidates.append(
                             RetrievedFact(
-                                turn_id=entry.turn_id,
-                                session_id=entry.session_id,
-                                content=entry.response_text,
+                                turn_id=episode.turn_id,
+                                session_id=episode.session_id,
+                                content=episode.response_text,
                                 source_field="response_text",
                                 relevance_method="keyword",
                                 source_kind="episodic",
                             )
                         )
-                    elif entry.transcript and entry.transcript.strip():
+                    elif episode.transcript and episode.transcript.strip():
                         episodic_candidates.append(
                             RetrievedFact(
-                                turn_id=entry.turn_id,
-                                session_id=entry.session_id,
-                                content=entry.transcript,
+                                turn_id=episode.turn_id,
+                                session_id=episode.session_id,
+                                content=episode.transcript,
                                 source_field="transcript",
                                 relevance_method="keyword",
                                 source_kind="episodic",
@@ -371,48 +372,48 @@ class RetrievalManager:
             if semantic is not None:
                 # Lexical
                 lex_entries = semantic.search_lexical(query, n=n)
-                for entry in lex_entries:
+                for semantic_entry in lex_entries:
                     semantic_lexical_candidates.append(
                         RetrievedFact(
-                            turn_id=entry.source_turn_id or "",
-                            session_id=entry.source_session_id or "",
-                            content=entry.text,
-                            source_field=entry.source_field or "text",
+                            turn_id=semantic_entry.source_turn_id or "",
+                            session_id=semantic_entry.source_session_id or "",
+                            content=semantic_entry.text,
+                            source_field=semantic_entry.source_field or "text",
                             relevance_method="lexical",
                             source_kind="semantic",
-                            semantic_fact_id=entry.fact_id,
-                            governed_kind=entry.kind,
-                            evidence_authority=entry.evidence_authority,
-                            lifecycle_state=entry.state,
-                            confidence=entry.confidence,
-                            importance=entry.importance,
-                            reinforcement_count=entry.reinforcement_count,
-                            updated_at=entry.updated_at,
-                            source_evidence_refs=entry.evidence_refs,
+                            semantic_fact_id=semantic_entry.fact_id,
+                            governed_kind=semantic_entry.kind,
+                            evidence_authority=semantic_entry.evidence_authority,
+                            lifecycle_state=semantic_entry.state,
+                            confidence=semantic_entry.confidence,
+                            importance=semantic_entry.importance,
+                            reinforcement_count=semantic_entry.reinforcement_count,
+                            updated_at=semantic_entry.updated_at,
+                            source_evidence_refs=semantic_entry.evidence_refs,
                             retrieval_scores={},
                         )
                     )
                 # Vector
                 q_vec = text_to_vector(query)
                 vec_results = semantic.search_vector(q_vec, n=n)
-                for entry, vector_score in vec_results:
+                for semantic_entry, vector_score in vec_results:
                     semantic_vector_candidates.append(
                         RetrievedFact(
-                            turn_id=entry.source_turn_id or "",
-                            session_id=entry.source_session_id or "",
-                            content=entry.text,
-                            source_field=entry.source_field or "text",
+                            turn_id=semantic_entry.source_turn_id or "",
+                            session_id=semantic_entry.source_session_id or "",
+                            content=semantic_entry.text,
+                            source_field=semantic_entry.source_field or "text",
                             relevance_method="vector",
                             source_kind="semantic",
-                            semantic_fact_id=entry.fact_id,
-                            governed_kind=entry.kind,
-                            evidence_authority=entry.evidence_authority,
-                            lifecycle_state=entry.state,
-                            confidence=entry.confidence,
-                            importance=entry.importance,
-                            reinforcement_count=entry.reinforcement_count,
-                            updated_at=entry.updated_at,
-                            source_evidence_refs=entry.evidence_refs,
+                            semantic_fact_id=semantic_entry.fact_id,
+                            governed_kind=semantic_entry.kind,
+                            evidence_authority=semantic_entry.evidence_authority,
+                            lifecycle_state=semantic_entry.state,
+                            confidence=semantic_entry.confidence,
+                            importance=semantic_entry.importance,
+                            reinforcement_count=semantic_entry.reinforcement_count,
+                            updated_at=semantic_entry.updated_at,
+                            source_evidence_refs=semantic_entry.evidence_refs,
                             retrieval_scores={"vector_similarity": vector_score},
                         )
                     )
@@ -469,8 +470,6 @@ class RetrievalManager:
                     )
 
         if can_use_cache and cache_manager is not None:
-            try:
+            with suppress(Exception):
                 cache_manager.set(key, self._facts_to_cache_value(facts), ttl=DEFAULT_RETRIEVAL_TTL)
-            except Exception:
-                pass
         return facts

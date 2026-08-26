@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
 import re
 import wave
+from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import pytest
-
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import HardwareProfile
@@ -29,7 +28,6 @@ from backend.tests.conftest import (
     SKIP_UNLESS_X64,
     ollama_base_url,
 )
-
 
 ALLOWED_STATE_PREFIXES = ("PASS", "SKIP-", "NOT-WIRED", "N/A")
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hello_world.wav"
@@ -220,14 +218,14 @@ def _assert_successful_voice_turn(
             id="cpu-current-host",
         ),
         pytest.param(
-            VoiceSmokeCase(device="cuda", tts_reason="x64 I.3 STT+LLM full-turn proof", expected_device="cuda"),
+            VoiceSmokeCase(device="cuda", tts_reason="x64 STT and LLM full-turn proof", expected_device="cuda"),
             marks=[pytest.mark.stt, pytest.mark.cuda, pytest.mark.x64, pytest.mark.skipif(SKIP_UNLESS_X64, reason="requires x64 host")],
             id="x64-cuda",
         ),
         pytest.param(
             VoiceSmokeCase(
                 device="qnn",
-                tts_reason="arm64 I.3 STT+LLM full-turn proof",
+                tts_reason="arm64 STT and LLM full-turn proof",
                 expected_device="qnn",
                 allow_qnn_cpu_fallback=True,
             ),
@@ -235,7 +233,7 @@ def _assert_successful_voice_turn(
             id="arm64-qnn-with-cpu-fallback",
         ),
         pytest.param(
-            VoiceSmokeCase(device="cpu", tts_reason="arm64 I.3 CPU fallback full-turn proof", expected_device="cpu"),
+            VoiceSmokeCase(device="cpu", tts_reason="arm64 CPU fallback full-turn proof", expected_device="cpu"),
             marks=[pytest.mark.stt, pytest.mark.arm64, pytest.mark.skipif(SKIP_UNLESS_ARM64, reason="requires ARM64 host")],
             id="arm64-cpu-fallback",
         ),
@@ -273,7 +271,7 @@ def test_voice_acceleration_matrix_live_smoke(
         assert getattr(engine.stt, "device", None) == case.expected_device
         return
 
-    fallback_engine = _build_voice_engine(OnnxWhisperRuntime(device="cpu"), "arm64 I.3 deterministic fallback proof after qnn path failure")
+    fallback_engine = _build_voice_engine(OnnxWhisperRuntime(device="cpu"), "arm64 deterministic fallback proof after qnn path failure")
     _assert_successful_voice_turn(fallback_engine, audio, sample_rate)
     assert getattr(fallback_engine.stt, "device", None) == "cpu"
 

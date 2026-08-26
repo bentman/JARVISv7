@@ -11,11 +11,12 @@ from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.core.paths import DATA_DIR
-from backend.app.personality.schema import PersonalityProfile
-from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
-from backend.app.memory.semantic import SemanticMemory
 from backend.app.memory.curation import OperationStatus
+from backend.app.memory.semantic import SemanticMemory
+from backend.app.personality.schema import PersonalityProfile
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
+from backend.app.services.memory_curation_service import MemoryCurationService
+from backend.app.services.wake_status import WakeMonitorStatus, WakeRuntime, WakeStatusStore
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,7 +79,7 @@ class SessionService:
         active: bool = True,
         personality: PersonalityProfile | None = None,
         semantic_memory: SemanticMemory | None = None,
-        memory_curation_service: object | None = None,
+        memory_curation_service: MemoryCurationService | None = None,
         llm_coordinator: LLMExecutionCoordinator | None = None,
     ) -> None:
         self._session_manager = session_manager
@@ -158,6 +159,7 @@ class SessionService:
         if authorized_at is None:
             artifact_path = self._session_manager.close_session(final_state)
         else:
+            assert policy is not None
             artifact_path = self._session_manager.close_session(
                 final_state,
                 memory_curation_authorized_at=authorized_at,

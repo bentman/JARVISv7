@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+from typing import Any, cast
+
 from backend.app.api.app import ApiState, update_resident_interruption_source
 from backend.app.api.dependencies import get_api_state
+from backend.app.api.routes.session import build_session_status_response
 from backend.app.api.schemas.status import (
     DesktopStatusSnapshotResponse,
     ResidentVoiceModeRequest,
@@ -10,7 +13,6 @@ from backend.app.api.schemas.status import (
     ResidentVoiceTTSVoiceRequest,
     WakeStatusResponse,
 )
-from backend.app.api.routes.session import build_session_status_response
 from backend.app.runtimes.tts.tts_runtime import tts_voice_config, validate_tts_voice
 from backend.app.services.wake_status import WakeMonitorStatus
 from fastapi import APIRouter, Depends, HTTPException
@@ -134,6 +136,9 @@ def build_resident_voice_status(
     )
     barge_in_supported = barge_in_wired and mode in {"hands-free", "continuous"}
     tts_voice = _tts_voice_response(state)
+    supported_voices = tts_voice.get("supported_voices")
+    if not isinstance(supported_voices, list):
+        supported_voices = []
     return ResidentVoiceStatusResponse(
         mode=mode,
         available=state.resident_voice is not None
@@ -167,7 +172,7 @@ def build_resident_voice_status(
         follow_up_source=follow_up.source if follow_up is not None else None,
         continuous_active=follow_up.continuous_active if follow_up is not None else False,
         tts_voice=str(tts_voice.get("voice") or "") or None,
-        tts_supported_voices=list(tts_voice.get("supported_voices") or []),
+        tts_supported_voices=[voice for voice in supported_voices if isinstance(voice, str)],
         tts_voice_restart_required=bool(tts_voice.get("restart_required", True)),
         tts_voice_model=str(tts_voice.get("model") or "") or None,
     )
@@ -201,7 +206,7 @@ def _apply_tts_voice(state: ApiState, voice: str) -> None:
         if runtime is None or id(runtime) in seen:
             continue
         seen.add(id(runtime))
-        setattr(runtime, "voice", voice)
+        cast(Any, runtime).voice = voice
 
 
 def _tts_voice_response(state: ApiState) -> dict[str, object]:

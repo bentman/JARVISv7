@@ -5,7 +5,7 @@ import importlib.metadata
 import importlib.util
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -13,14 +13,13 @@ REPO_ROOT = SCRIPT_DIR.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
+from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.paths import REPO_ROOT as APP_REPO_ROOT
-from backend.app.core.capabilities import HardwareProfile
 from backend.app.hardware.provisioning import (
     explain_required_extras,
     resolve_required_extras,
 )
-
 
 REQUIREMENTS_PATH = APP_REPO_ROOT / "backend" / "requirements.txt"
 OPENWAKEWORD_PACKAGE = "openwakeword"
@@ -33,7 +32,7 @@ def _load_profiler():
 
 
 def _current_timestamp() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
 def _read_base_requirements() -> list[str]:
@@ -59,10 +58,6 @@ def _read_extra_requirements(extra: str) -> list[str]:
     optional_dependencies = data.get("project", {}).get("optional-dependencies", {})
     dependencies = optional_dependencies.get(extra, [])
     return [str(item).strip() for item in dependencies if str(item).strip()]
-
-
-def _installed_distribution_names() -> set[str]:
-    return set(_installed_distribution_versions())
 
 
 def _installed_distribution_versions() -> dict[str, str]:
@@ -207,18 +202,6 @@ def _write_requirements_lockfile(path: Path | None = None) -> None:
     lines.extend(_read_base_requirements())
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def _emit_plan(
-    profile: HardwareProfile,
-    extras: list[str],
-    out=None,
-) -> None:
-    if out is None:
-        out = sys.stdout
-    emit_host_fingerprint(profile, extras, out=out)
-    for extra, reason in explain_required_extras(profile):
-        print(f"{extra}: {reason}", file=out)
 
 
 def _run_pip_install(command: list[str]) -> int:

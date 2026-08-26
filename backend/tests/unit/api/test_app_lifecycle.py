@@ -4,13 +4,13 @@ import threading
 from pathlib import Path
 from types import SimpleNamespace
 
+from backend.app.api.app import build_engine, lifespan
 from backend.app.artifacts.session_artifact import SessionArtifact
 from backend.app.artifacts.storage import (
     write_session_artifact,
     write_turn_artifact,
 )
 from backend.app.artifacts.turn_artifact import TurnArtifact
-from backend.app.api.app import build_engine, lifespan
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.memory.episodic import EpisodicMemory

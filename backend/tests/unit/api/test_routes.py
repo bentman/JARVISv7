@@ -5,24 +5,28 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
-
 from backend.app.api import app as app_module
 from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
 from backend.app.api.routes import config as config_route
 from backend.app.api.routes import status as status_route
+from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, FullCapabilityReport, HardwareProfile
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import PersonalityProfileError, PersonalityProfileList
-from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 from backend.app.routing.runtime_selector import SelectionTrace
-from backend.app.artifacts.turn_artifact import TurnArtifact
-from backend.app.services.startup_context import StartupContext
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.session_service import SessionService
+from backend.app.services.startup_context import StartupContext
 from backend.app.services.wake_monitor import WakeMonitorService
 from fastapi.testclient import TestClient
 
@@ -1059,7 +1063,7 @@ def test_resident_voice_tts_voice_endpoint_applies_runtime_voice_without_rewriti
     assert accepted.json()["tts_voice"] == "af_bella"
     assert "af_bella" in accepted.json()["tts_supported_voices"]
     assert accepted.json()["tts_voice_restart_required"] is False
-    assert getattr(client.app.state.jarvis_state.tts, "voice") == "af_bella"
+    assert client.app.state.jarvis_state.tts.voice == "af_bella"
     assert rejected.status_code == 400
     assert "unsupported tts voice" in rejected.json()["detail"]
     assert config_path.read_text(encoding="utf-8") == before
@@ -1378,7 +1382,6 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["USE_OLLAMA"]["editable"] is True
     assert fields["USE_OLLAMA"]["restart_required"] is True
     assert fields["USE_OLLAMA"]["description"]
-    assert fields["APP_NAME"]["section"] == "App Defaults"
     assert fields["JARVIS_LANGUAGE"]["section"] == "App Defaults"
     assert fields["USE_LOCAL_MODEL"]["section"] == "Local LLM intent (llama.cpp)"
     assert fields["USE_LOCAL_MODEL"]["advanced"] is False
@@ -1414,13 +1417,15 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert fields["REDIS_HOST"]["advanced"] is False
     assert fields["REDIS_PORT"]["section"] == "Optional Services"
     assert fields["REDIS_PORT"]["advanced"] is False
-    assert fields["DATA_PATH"]["section"] == "App Paths"
-    assert fields["CONFIG_PATH"]["section"] == "App Paths"
-    assert fields["MODEL_PATH"]["section"] == "App Paths"
-    assert fields["STT_MODELS"]["section"] == "App Paths"
-    assert fields["STT_MODELS"]["advanced"] is True
-    assert fields["WAKE_MODEL"]["section"] == "Optional Wake"
-    assert fields["WAKE_MODEL"]["advanced"] is True
+    assert {
+        "APP_NAME",
+        "CONFIG_PATH",
+        "DATA_PATH",
+        "MODEL_PATH",
+        "STT_MODELS",
+        "TTS_MODELS",
+        "WAKE_MODEL",
+    }.isdisjoint(fields)
     assert "secret-token" not in str(payload)
     assert "UNRELATED" not in fields
 
@@ -1450,13 +1455,13 @@ def test_operator_config_write_rejects_non_allowlisted_keys_and_preserves_unknow
 
     response = _client().post(
         "/config/operator",
-        json={"fields": {"USE_OLLAMA": "false", "TAVILY_API_KEY": "new-secret", "NOT_ALLOWED": "x"}},
+        json={"fields": {"USE_OLLAMA": "false", "TAVILY_API_KEY": "new-secret", "CONFIG_PATH": "x"}},
     )
 
     assert response.status_code == 200
     assert response.json() == {
         "written": ["USE_OLLAMA", "TAVILY_API_KEY"],
-        "rejected": [{"key": "NOT_ALLOWED", "reason": "not_allowlisted"}],
+        "rejected": [{"key": "CONFIG_PATH", "reason": "not_allowlisted"}],
     }
     assert env_file.read_text(encoding="utf-8") == (
         "# leading comment\n"

@@ -9,7 +9,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.settings import Settings
 from scripts import ensure_models
@@ -348,6 +347,22 @@ def test_runtime_url_zip_acquisition_extracts_and_verifies_required_files(
     assert (tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu" / "ggml.dll").is_file()
 
 
+def test_runtime_url_zip_rejects_unsafe_member_before_writes(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    payload = _zip_bytes({"../escape.dll": b"unsafe"})
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: _FakeClient(payload))
+    entry = _entry(tmp_path, source_type="url_zip")
+    profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
+    runtime_root = tmp_path / "runtimes" / "llama.cpp" / "windows-amd64-cpu"
+
+    with pytest.raises(RuntimeError, match="unsafe zip member path"):
+        ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=False)
+
+    assert not runtime_root.exists()
+
+
 def test_runtime_url_zip_acquisition_requires_configured_binary_path(
     tmp_path: Path,
     monkeypatch,
@@ -684,7 +699,7 @@ def test_runtime_source_metadata_rejects_missing_source_type(tmp_path: Path) -> 
     profile = ensure_models._hardware_profiles(entry)["windows_amd64_cpu"]
     profile["runtime_artifact"]["source"] = {}
 
-    with pytest.raises(ValueError, match="source.type"):
+    with pytest.raises(ValueError, match=r"source\.type"):
         ensure_models._ensure_runtime_profile("windows_amd64_cpu", profile, dry_run=True)
 
 

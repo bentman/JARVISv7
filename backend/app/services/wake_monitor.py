@@ -3,6 +3,7 @@ from __future__ import annotations
 import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Iterator
+from contextlib import suppress
 from dataclasses import dataclass, field
 from time import monotonic
 
@@ -128,10 +129,8 @@ class WakeMonitorService:
             if not available:
                 return self._session_service.record_wake_unavailable()
             if hasattr(runtime, "reset"):
-                try:
+                with suppress(Exception):
                     runtime.reset()
-                except Exception:
-                    pass
             self._stop_event.clear()
             self._runtime = runtime
             self._discard_runtime_on_exit = False
@@ -191,6 +190,7 @@ class WakeMonitorService:
         subscriber = None
         activation_gate = _WakeActivationGate()
         try:
+            source: Iterator[WakeAudioChunk]
             if self._resident_stream is not None and self._resident_stream.status().running:
                 subscriber = self._resident_stream.subscribe()
                 source = _resident_wake_chunks(subscriber, self._stop_event)
@@ -247,9 +247,12 @@ class WakeMonitorService:
         signature = (WAKE_IDLE_REASON, _runtime_score(runtime), _runtime_threshold(runtime))
         recorded_at = self._last_idle_recorded_at
         now = monotonic()
-        if signature == self._last_idle_signature and recorded_at is not None:
-            if now - recorded_at < WAKE_IDLE_REFRESH_SECONDS:
-                return
+        if (
+            signature == self._last_idle_signature
+            and recorded_at is not None
+            and now - recorded_at < WAKE_IDLE_REFRESH_SECONDS
+        ):
+            return
         self._session_service.record_wake_idle(
             WAKE_IDLE_REASON,
             last_score=signature[1],
@@ -271,7 +274,7 @@ class WakeMonitorService:
         if self._utterance_segmenter is None:
             return _chunks_to_stt_audio([initial_chunk, *self._collect_post_wake_chunks(source)]), None
         segment = self._utterance_segmenter.capture(_wake_audio_chunks(_prepend_chunk(initial_chunk, source)))
-        diagnostics = segment.diagnostics.as_dict()
+        diagnostics: dict[str, object] = dict(segment.diagnostics.as_dict())
         if not segment.speech_started or segment.audio.size == 0:
             return None, diagnostics
         return segment.audio, diagnostics

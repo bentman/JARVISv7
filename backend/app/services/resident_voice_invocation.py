@@ -3,30 +3,32 @@ from __future__ import annotations
 import queue
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from contextlib import suppress
 from dataclasses import dataclass
+from typing import Any, cast
 
 import numpy as np
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.realtime.events import RealtimeEvent
 from backend.app.conversation.realtime.session import RealtimeConversationSession
 from backend.app.core.settings import load_settings
+from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.services import voice_service
 from backend.app.services.audio_stream import AudioChunk, ResidentAudioStream
-from backend.app.services.session_service import SessionService, SessionStatus
 from backend.app.services.llm_execution_coordinator import (
     InteractiveTicket,
     LLMExecutionCoordinator,
 )
+from backend.app.services.session_service import SessionService, SessionStatus
 from backend.app.services.utterance_segmenter import UtteranceSegmenter
 
 AudioCapture = Callable[[], tuple[np.ndarray, int]]
 EngineProvider = Callable[[], TurnEngine]
 InterruptionAudioFactory = Callable[[], Iterable[np.ndarray] | None]
-BeforeInvocation = Callable[[], object]
-AfterInvocation = Callable[[object], object]
+BeforeInvocation = Callable[[], Any]
+AfterInvocation = Callable[[Any], object]
 NO_SPEECH_PTT_REASON = "No speech detected during PTT"
 RESIDENT_STREAM_STOPPED_PTT_REASON = "resident audio stream is stopped; start resident voice stream before PTT"
 RESIDENT_VOICE_MODES = frozenset({"ptt-only", "ptt+wake", "hands-free", "continuous"})
@@ -163,8 +165,8 @@ class ResidentVoiceInvocationService:
         hook_state: object = None
         realtime_session: RealtimeConversationSession | None = None
         engine: TurnEngine | None = None
-        previous_barge_in_detector: object = None
-        previous_interruption_audio_chunks: object = None
+        previous_barge_in_detector: BargeInDetector | None = None
+        previous_interruption_audio_chunks: InterruptionAudioFactory | Iterable[np.ndarray] | None = None
         try:
             if self._before_invocation is not None:
                 hook_state = self._before_invocation()
@@ -186,8 +188,14 @@ class ResidentVoiceInvocationService:
             engine_provider = self._engine_provider
             if self._mode in RESIDENT_BARGE_IN_DISABLED_MODES:
                 engine = self._engine_provider()
-                previous_barge_in_detector = getattr(engine, "barge_in_detector", None)
-                previous_interruption_audio_chunks = getattr(engine, "interruption_audio_chunks", None)
+                previous_barge_in_detector = cast(
+                    BargeInDetector | None,
+                    getattr(engine, "barge_in_detector", None),
+                )
+                previous_interruption_audio_chunks = cast(
+                    InterruptionAudioFactory | Iterable[np.ndarray] | None,
+                    getattr(engine, "interruption_audio_chunks", None),
+                )
                 engine.barge_in_detector = None
                 engine.interruption_audio_chunks = None
 
@@ -314,7 +322,7 @@ def _subscriber_chunks(subscriber: queue.Queue[AudioChunk], resident_stream: Res
             break
 
 
-def _capture_diagnostics_with_timing(diagnostics: dict[str, object], capture_ms: float) -> dict[str, object]:
+def _capture_diagnostics_with_timing(diagnostics: Mapping[str, object], capture_ms: float) -> dict[str, object]:
     return {**diagnostics, "capture_ms": max(0.0, capture_ms)}
 
 

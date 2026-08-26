@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 import httpx
-
 from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.core.settings import load_settings

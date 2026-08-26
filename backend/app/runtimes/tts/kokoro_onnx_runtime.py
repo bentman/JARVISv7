@@ -5,10 +5,8 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-
 from backend.app.models.catalog import get_model_path
 from backend.app.runtimes.tts.base import TTSBase
-
 
 KOKORO_SAMPLE_RATE = 24000
 PROVIDER_OVERRIDE_MISSING_REASON = "provider-override-missing"
@@ -57,8 +55,8 @@ class KokoroOnnxRuntime(TTSBase):
         if self._model is None:
             if not self.is_available():
                 raise RuntimeError(f"TTS model files are unavailable at {self.model_path}")
-            from kokoro_onnx import Kokoro
             import onnxruntime as rt
+            from kokoro_onnx import Kokoro
 
             provider_name = _provider_for_device(self.device)
             if provider_name == "QNNExecutionProvider":

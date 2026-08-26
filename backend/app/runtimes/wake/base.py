@@ -9,7 +9,7 @@ import numpy as np
 class WakeBase(ABC):
     def __init__(self, device: str, model_path: Path) -> None:
         if device != "cpu":
-            raise ValueError("wake runtime supports only device='cpu' in Slice B")
+            raise ValueError("wake runtime supports only device='cpu'")
         self.device = device
         self.model_path = model_path
 
@@ -23,8 +23,8 @@ class WakeBase(ABC):
 
     def warmup(self) -> None:
         """Pre-load model weights and warm up execution providers."""
-        pass
+        return None
 
     def reset(self) -> None:
         """Reset the internal state of the wake word model (e.g. buffers, prediction history)."""
-        pass
+        return None

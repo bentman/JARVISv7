@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-
 from backend.app.artifacts.storage import read_session_artifact, read_turn_artifact
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager

@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import logging
 from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 def _iso_now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 def _parse_iso(value: str) -> datetime | None:
@@ -41,7 +41,7 @@ class EpisodicEntry:
         return json.dumps(asdict(self), indent=2, sort_keys=True)
 
     @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> "EpisodicEntry":
+    def from_dict(cls, payload: dict[str, Any]) -> EpisodicEntry:
         return cls(
             turn_id=str(payload.get("turn_id", "")),
             session_id=str(payload.get("session_id", "")),
@@ -150,7 +150,7 @@ class EpisodicMemory:
                     except Exception:
                         continue
                     entries.append(entry)
-            entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=timezone.utc), reverse=True)
+            entries.sort(key=lambda item: _parse_iso(item.written_at) or datetime.min.replace(tzinfo=UTC), reverse=True)
             return entries[:n]
         except Exception:
             logger.warning("episodic memory retrieval failed")

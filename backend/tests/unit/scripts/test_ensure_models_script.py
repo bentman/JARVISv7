@@ -5,7 +5,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-
 from backend.app.core.capabilities import HardwareProfile
 from scripts import ensure_models
 
@@ -103,6 +102,43 @@ def test_download_url_zip_preserves_relative_layout(tmp_path: Path, monkeypatch)
     assert (model_root / "models" / "encoder_model.onnx").is_file()
     assert (model_root / "models" / "decoder_model_merged.onnx").is_file()
     assert (model_root / "models" / "assets" / "weights.bin").is_file()
+
+
+@pytest.mark.parametrize(
+    "member_name",
+    [
+        "../escape.bin",
+        "/absolute.bin",
+        "C:/drive.bin",
+        r"C:\drive.bin",
+        r"\\server\share\unc.bin",
+        ".",
+    ],
+)
+def test_download_url_zip_rejects_unsafe_member_before_writes(
+    tmp_path: Path,
+    monkeypatch,
+    member_name: str,
+) -> None:
+    payload = _zip_bytes({member_name: b"unsafe"})
+    monkeypatch.setattr(ensure_models.httpx, "Client", lambda **kwargs: _FakeClient(payload))
+    model_root = tmp_path / "models" / "stt" / "unsafe"
+    entry = ensure_models.ModelEntry(
+        family="stt",
+        name="unsafe-zip-test",
+        config={
+            "local_path": str(model_root),
+            "source": {
+                "type": "url_zip",
+                "url": "https://example.invalid/model.zip",
+            },
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="unsafe zip member path"):
+        ensure_models._download_url_zip(entry, dry_run=False)
+
+    assert not model_root.exists()
 
 
 def test_ensure_entry_skips_missing_local_handoff_without_download(tmp_path: Path, monkeypatch) -> None:

@@ -9,15 +9,15 @@ from backend.app.cognition.memory_extraction import (
     MAX_TURN_FIELD_CHARS,
     MemoryCandidateExtractor,
 )
+from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.memory.curation_contract import (
     MAX_CANDIDATES,
-    MAX_MODEL_OUTPUT_CHARS,
     MAX_MODEL_EVIDENCE_REFS,
     MAX_MODEL_EXCERPT_CHARS,
+    MAX_MODEL_OUTPUT_CHARS,
     MAX_MODEL_TEXT_CHARS,
     MAX_MODEL_TURN_ID_CHARS,
 )
-from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.runtimes.llm.base import LLMBase
 
 
@@ -110,6 +110,6 @@ def test_extraction_budget_covers_maximum_valid_bounded_output() -> None:
     )
 
     assert len(result.proposals) == MAX_CANDIDATES
-    assert EXTRACTION_MAX_TOKENS >= len(raw_output)
+    assert len(raw_output) <= EXTRACTION_MAX_TOKENS
     assert llm.envelope is not None
     assert llm.envelope.generation == {"max_tokens": EXTRACTION_MAX_TOKENS}

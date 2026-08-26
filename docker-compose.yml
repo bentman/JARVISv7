@@ -1,8 +1,6 @@
 # JARVISv7 docker-compose.yml
 #
-# Local service substrate (Group E of slices.md). Redis + SearXNG stand up
-# here so Group E onward doesn't redraw infrastructure boundaries. Local
-# llama.cpp is added in Group H.1.
+# Redis and SearXNG provide optional local service substrate.
 #
 # Fail-closed: the backend runs without these services present; subsystems
 # that need them report unavailable. Durable authority stays in data/.
@@ -51,5 +49,3 @@ services:
       timeout: 5s
       retries: 3
       start_period: 30s
-
-# Note: local llama.cpp service added in H.1 (Group H of slices.md).

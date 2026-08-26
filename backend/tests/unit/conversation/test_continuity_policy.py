@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from backend.app.conversation.continuity_policy import ContinuityPolicyInput, decide_continuity
 from backend.app.conversation.states import ConversationState
@@ -14,7 +14,7 @@ def test_continuity_policy_continues_same_active_session():
 
 
 def test_continuity_policy_excludes_stale_context():
-    now = datetime(2026, 6, 14, tzinfo=timezone.utc)
+    now = datetime(2026, 6, 14, tzinfo=UTC)
     result = decide_continuity(
         ContinuityPolicyInput(
             active_session=True,

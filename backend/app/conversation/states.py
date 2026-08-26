@@ -3,7 +3,7 @@ from __future__ import annotations
 from enum import Enum
 
 
-class ConversationState(str, Enum):
+class ConversationState(str, Enum):  # noqa: UP042
     BOOTSTRAP = "BOOTSTRAP"
     PROFILING = "PROFILING"
     IDLE = "IDLE"

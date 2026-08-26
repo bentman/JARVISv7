@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from pathlib import Path
 import wave
+from pathlib import Path
 
 import numpy as np
 import pytest
-
 from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime
 from backend.tests.conftest import SKIP_UNLESS_LIVE
-
 
 FIXTURE_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "hey_jarvis.wav"
 

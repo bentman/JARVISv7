@@ -3,7 +3,6 @@ from __future__ import annotations
 import time
 
 import pytest
-
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime
 from backend.app.services.audio_stream import ResidentAudioStream

@@ -2,19 +2,14 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from pathlib import Path
 
-from backend.app.core.paths import CONFIG_DIR, DATA_DIR, MODELS_DIR, REPO_ROOT
+from backend.app.core.paths import REPO_ROOT
 
 ENV_FILE = REPO_ROOT / ".env"
 ENV_EXAMPLE_FILE = REPO_ROOT / ".env.example"
 
 SETTING_ENV_CLASSIFICATION: dict[str, str] = {
-    "APP_NAME": "primary",
     "JARVIS_LANGUAGE": "primary",
-    "CONFIG_PATH": "advanced",
-    "DATA_PATH": "advanced",
-    "MODEL_PATH": "advanced",
     "USE_LOCAL_MODEL": "primary",
     "LLM_MODEL_MODE": "primary",
     "LLM_MODEL_POLICY": "primary",
@@ -35,9 +30,6 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "OLLAMA_NUM_CTX": "advanced",
     "OLLAMA_KEEP_ALIVE": "advanced",
     "JARVISV7_LIVE_TESTS": "test-only",
-    "TTS_MODELS": "advanced",
-    "STT_MODELS": "advanced",
-    "WAKE_MODEL": "advanced",
     "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD": "advanced",
     "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS": "advanced",
     "RESIDENT_VOICE_SILENCE_END_SECONDS": "advanced",
@@ -120,24 +112,13 @@ def _env_choice(name: str, choices: set[str], default: str) -> str:
     return selected
 
 
-def _env_path(name: str, default: Path | str) -> Path:
-    value = _env_str(name)
-    return Path(value) if value is not None else Path(default)
-
-
 def _endpoint_url_from_host_port(host: str, port: int) -> str:
     return f"http://{host}:{port}"
 
 
 @dataclass(slots=True)
 class Settings:
-    app_name: str = field(default_factory=lambda: _env_str("APP_NAME", "JARVISv7") or "JARVISv7")
     jarvis_language: str = field(default_factory=lambda: _env_str("JARVIS_LANGUAGE", "english") or "english")
-    config_path: Path = field(
-        default_factory=lambda: _env_path("CONFIG_PATH", CONFIG_DIR)
-    )
-    data_path: Path = field(default_factory=lambda: _env_path("DATA_PATH", DATA_DIR))
-    model_path: Path = field(default_factory=lambda: _env_path("MODEL_PATH", MODELS_DIR))
     use_local_model: bool = field(default_factory=lambda: _env_bool("USE_LOCAL_MODEL", True))
     local_model_fetch_explicit: bool = field(default_factory=lambda: _env_present("LOCAL_MODEL_FETCH"))
     local_model_fetch: bool = field(default_factory=lambda: _env_bool("LOCAL_MODEL_FETCH", False))
@@ -172,9 +153,6 @@ class Settings:
     ollama_num_ctx: int | None = field(default_factory=lambda: _env_int("OLLAMA_NUM_CTX") or 8192)
     ollama_keep_alive: str = field(default_factory=lambda: _env_str("OLLAMA_KEEP_ALIVE", "5m") or "5m")
     live_tests: bool = field(default_factory=lambda: _env_bool("JARVISV7_LIVE_TESTS", False))
-    tts_models: str | None = field(default_factory=lambda: _env_str("TTS_MODELS", "models/tts"))
-    stt_models: str | None = field(default_factory=lambda: _env_str("STT_MODELS", "models/stt"))
-    wake_model: str | None = field(default_factory=lambda: _env_str("WAKE_MODEL", "models/wake"))
     resident_voice_speech_rms_threshold: float = field(
         default_factory=lambda: _env_float("RESIDENT_VOICE_SPEECH_RMS_THRESHOLD") or 0.02
     )

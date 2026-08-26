@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import replace
-import time
-from typing import Protocol
+from typing import Protocol, cast
 
 import numpy as np
 from backend.app.conversation.engine import TurnEngine, TurnResult
@@ -13,8 +13,8 @@ from backend.app.conversation.realtime.ledger import RealtimeEventLedger
 from backend.app.conversation.realtime.response_queue import RealtimeResponseQueue
 from backend.app.conversation.realtime.turn_taking import has_committable_audio
 from backend.app.conversation.states import ConversationState
-from backend.app.services.session_service import SessionService
 from backend.app.services.llm_execution_coordinator import InteractiveTicket
+from backend.app.services.session_service import SessionService
 
 
 class AudioCapture(Protocol):
@@ -86,18 +86,20 @@ class RealtimeConversationSession:
                         **_audio_metadata(audio, sample_rate),
                     },
                 )
+            committed_audio = cast(np.ndarray, audio)
+            committed_sample_rate = cast(int, sample_rate)
             self.ledger.append(
                 RealtimeEventType.AUDIO_CAPTURE_COMPLETED,
                 source=source,
                 state=ConversationState.LISTENING,
-                metadata=_audio_metadata(audio, sample_rate),
+                metadata=_audio_metadata(committed_audio, committed_sample_rate),
             )
             self.ledger.append(RealtimeEventType.USER_TURN_COMMITTED, source=source)
             self._session_service.mark_voice_transient_state(ConversationState.TRANSCRIBING)
             self.ledger.append(RealtimeEventType.TRANSCRIBING, source=source, state=ConversationState.TRANSCRIBING)
             result = self._run_engine_with_live_status(
-                audio,
-                sample_rate,
+                committed_audio,
+                committed_sample_rate,
                 source=source,
                 capture_diagnostics=capture_diagnostics,
                 interactive_ticket=interactive_ticket,
@@ -175,7 +177,7 @@ class RealtimeConversationSession:
     ) -> TurnResult:
         engine = self._engine_provider()
         previous_observer = getattr(engine, "phase_observer", None)
-        setattr(engine, "phase_observer", self._observe_live_phase)
+        engine.phase_observer = self._observe_live_phase
         turn_runtime_context: dict[str, object] = {"invocation_source": source}
         if source == "wake" and capture_diagnostics is not None:
             turn_runtime_context["wake_capture_diagnostics"] = dict(capture_diagnostics)
@@ -193,7 +195,7 @@ class RealtimeConversationSession:
                 interactive_ticket=interactive_ticket,
             )
         finally:
-            setattr(engine, "phase_observer", previous_observer)
+            engine.phase_observer = previous_observer
 
     def _observe_live_phase(self, state: ConversationState) -> None:
         if state in LIVE_STATUS_PHASES:

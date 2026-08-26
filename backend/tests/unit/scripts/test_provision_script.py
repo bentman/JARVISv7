@@ -432,12 +432,12 @@ def test_verify_normalizes_hyphen_underscore_and_dot_names(monkeypatch, capsys) 
     monkeypatch.setattr(
         provision,
         "_expected_distribution_names",
-        lambda profile: {"pre_commit", "huggingface_hub", "python_dotenv"},
+        lambda profile: {"pytest_cov", "huggingface_hub", "python_dotenv"},
     )
     monkeypatch.setattr(
         provision,
         "_installed_distribution_versions",
-        lambda: {"pre_commit": "1.0", "huggingface_hub": "1.0", "python_dotenv": "1.0"},
+        lambda: {"pytest_cov": "1.0", "huggingface_hub": "1.0", "python_dotenv": "1.0"},
     )
     monkeypatch.setattr(provision, "_run_pip_check", lambda: (0, "No broken requirements found."))
 

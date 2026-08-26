@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import logging
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable, TextIO
+from typing import TextIO
 
 
 def configure_logging(level: str = "INFO", trace_to: str | Path | None = None) -> logging.Logger:

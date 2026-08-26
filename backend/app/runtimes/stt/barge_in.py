@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Callable
 
 import numpy as np
-
 from backend.app.runtimes.vad import VADRuntime
 from backend.app.runtimes.vad.base import normalize_audio_samples
 

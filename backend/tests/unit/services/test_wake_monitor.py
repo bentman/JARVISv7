@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from backend.app.runtimes.vad import EnergyVADRuntime
-from backend.app.runtimes.wake.openwakeword_runtime import OpenWakeWordRuntime, WAKE_CHUNK_SAMPLES
+from backend.app.runtimes.wake.openwakeword_runtime import WAKE_CHUNK_SAMPLES, OpenWakeWordRuntime
 from backend.app.services import wake_monitor
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.utterance_segmenter import UtteranceSegmenter

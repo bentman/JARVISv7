@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.app.conversation.states import ConversationState
 from backend.app.conversation.realtime.events import RealtimeEvent, RealtimeEventType
+from backend.app.conversation.states import ConversationState
 
 
 @dataclass(slots=True)

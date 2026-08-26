@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 
-
 _HEADERS = {
     ("application", True): "[APPLICATION RULES - trusted]",
     ("persona", True): "[PERSONALITY STYLE - trusted]",

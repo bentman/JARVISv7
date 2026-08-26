@@ -1,1 +1,1 @@
-"""Thin service boundaries for C.1 turn execution."""
+"""Operational services around runtimes and application lifecycle."""

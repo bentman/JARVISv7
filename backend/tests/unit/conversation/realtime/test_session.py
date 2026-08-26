@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.realtime.events import RealtimeEventType
 from backend.app.conversation.realtime.session import RealtimeConversationSession

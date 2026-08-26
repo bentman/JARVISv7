@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import json
 import os
-import socket
 import urllib.error
 import urllib.request
 
 import pytest
-
 from backend.tests.conftest import SKIP_UNLESS_LIVE
-
 
 BACKEND_BASE_URL = os.getenv("JARVISV7_BACKEND_URL", "http://127.0.0.1:8765").rstrip("/")
 LIVE_TIMEOUT_S = float(os.getenv("JARVISV7_LIVE_TIMEOUT_S", "60"))
@@ -68,7 +65,7 @@ def test_three_consecutive_turns_in_resident_session_complete_without_error() ->
                 {"session_id": session_id, "text": f"live turn {index}: reply with ready"},
                 timeout_s=LIVE_TIMEOUT_S,
             )
-        except socket.timeout as exc:
+        except TimeoutError as exc:
             raise AssertionError(
                 f"timeout calling /task/text after {LIVE_TIMEOUT_S}s (session_id={session_id}, turn_index={index})"
             ) from exc

@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
-
 from backend.app.api.schemas.config import (
     OperatorConfigField,
     OperatorConfigRejectedField,
@@ -13,6 +11,7 @@ from backend.app.api.schemas.config import (
     OperatorConfigWriteResponse,
 )
 from backend.app.core.paths import REPO_ROOT
+from fastapi import APIRouter, HTTPException
 
 router = APIRouter()
 
@@ -32,7 +31,6 @@ class OperatorFieldSpec:
 
 
 OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
-    OperatorFieldSpec("APP_NAME", "Application display name.", section="App Defaults"),
     OperatorFieldSpec("JARVIS_LANGUAGE", "Primary assistant language.", section="App Defaults"),
     OperatorFieldSpec("USE_LOCAL_MODEL", "Enable local llama.cpp runtime selection.", section="Local LLM intent (llama.cpp)"),
     OperatorFieldSpec(
@@ -78,12 +76,6 @@ OPERATOR_FIELD_SPECS: tuple[OperatorFieldSpec, ...] = (
     OperatorFieldSpec("REDIS_DB", "Redis database number.", section="Optional Services", advanced=True),
     OperatorFieldSpec("REDIS_MAX_CONNECTIONS", "Redis maximum connection count.", section="Optional Services", advanced=True),
     OperatorFieldSpec("REDIS_SOCKET_TIMEOUT", "Redis socket timeout in seconds.", section="Optional Services", advanced=True),
-    OperatorFieldSpec("DATA_PATH", "Application data path.", section="App Paths"),
-    OperatorFieldSpec("CONFIG_PATH", "Application config path.", section="App Paths"),
-    OperatorFieldSpec("MODEL_PATH", "Model artifact root path.", section="App Paths"),
-    OperatorFieldSpec("STT_MODELS", "Speech-to-text model path.", section="App Paths", advanced=True),
-    OperatorFieldSpec("TTS_MODELS", "Text-to-speech model path.", section="App Paths", advanced=True),
-    OperatorFieldSpec("WAKE_MODEL", "Wake model path.", section="Optional Wake", advanced=True),
 )
 
 _OPERATOR_FIELDS = {spec.key: spec for spec in OPERATOR_FIELD_SPECS}

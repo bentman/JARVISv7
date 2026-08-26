@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from types import SimpleNamespace
 
 import numpy as np
-
 from backend.app.conversation.engine import TurnResult
 from backend.app.conversation.states import ConversationState
 from backend.app.core.capabilities import CapabilityFlags, HardwareProfile

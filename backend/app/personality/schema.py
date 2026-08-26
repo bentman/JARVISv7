@@ -4,7 +4,6 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-
 _ALLOWED_FIELDS = {
     "profile_id",
     "display_name",
@@ -115,7 +114,7 @@ class PersonalityProfile:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PersonalityProfile":
+    def from_dict(cls, data: dict[str, Any]) -> PersonalityProfile:
         _reject_unknown_or_prohibited_fields(data)
         required = _ALLOWED_FIELDS - {"enabled"}
         missing = sorted(field_name for field_name in required if field_name not in data)

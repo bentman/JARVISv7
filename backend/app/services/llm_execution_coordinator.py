@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import threading
 from collections import deque
-from contextlib import contextmanager
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
-from typing import Callable, Iterator
 
 
-class ShutdownDrainInProgress(RuntimeError):
+class ShutdownDrainInProgress(RuntimeError):  # noqa: N818
     """Interactive work cannot be admitted after shutdown drain begins."""
 
 
 @dataclass(slots=True)
 class InteractiveTicket:
-    _coordinator: "LLMExecutionCoordinator"
+    _coordinator: LLMExecutionCoordinator
     sequence: int
     _released: bool = False
     _owned: bool = False
@@ -166,9 +166,7 @@ class LLMExecutionCoordinator:
             if ticket._owned:
                 ticket._owned = False
                 self._interactive_active = False
-            try:
+            with suppress(ValueError):
                 self._interactive_waiters.remove(ticket.sequence)
-            except ValueError:
-                pass
             self._condition.notify_all()
         self._notify_state_changes()

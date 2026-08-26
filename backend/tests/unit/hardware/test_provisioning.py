@@ -188,3 +188,10 @@ def test_resolver_dev_extra_always_included() -> None:
     profile = HardwareProfile(arch="amd64")
 
     assert resolve_required_extras(profile)[-1] == "dev"
+
+
+def test_dev_requirement_names_include_type_stubs() -> None:
+    requirement_names = resolve_required_requirement_names(HardwareProfile(arch="amd64"))
+
+    assert "types-pyyaml" in requirement_names
+    assert "types-psutil" in requirement_names

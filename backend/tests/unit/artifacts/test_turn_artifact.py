@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import suppress
 
 from backend.app.artifacts import storage
 from backend.app.artifacts.session_artifact import SESSION_ARTIFACT_FIELDS, SessionArtifact
@@ -207,10 +208,8 @@ def test_write_text_atomic_preserves_existing_file_when_replace_fails(tmp_path, 
         raise OSError("simulated crash before rename")
 
     monkeypatch.setattr(storage.os, "replace", _boom)
-    try:
+    with suppress(OSError):
         storage.write_text_atomic(target, "torn")
-    except OSError:
-        pass
 
     assert target.read_text(encoding="utf-8") == "intact"
 

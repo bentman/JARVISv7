@@ -1,20 +1,24 @@
 from __future__ import annotations
 
+import wave
 from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-import wave
 
 import numpy as np
 import pytest
-
+from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
-from backend.app.cognition.prompt_envelope import PromptEnvelope
-from backend.app.memory.write_policy import WritePolicy
 from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.retrieval import RetrievedFact
-from backend.app.personality.schema import PersonalityExample, PersonalityProfile, PersonalityStyle, PersonalityTraits
+from backend.app.memory.write_policy import WritePolicy
+from backend.app.personality.schema import (
+    PersonalityExample,
+    PersonalityProfile,
+    PersonalityStyle,
+    PersonalityTraits,
+)
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
@@ -1064,7 +1068,7 @@ def test_tts_synthesis_resolves_before_playback_starts():
 
 def test_partial_tts_playback_starts_before_synthesis_completes():
     import time
-    
+
     events = []
 
     class StreamingTTS(FakeTTS):
@@ -1113,7 +1117,7 @@ def test_partial_tts_playback_starts_before_synthesis_completes():
 
     class TrackingPlaybackAPI:
         IterablePlayer = TrackingPlayer
-        
+
         def last_output_device(self) -> str:
             return "tracking_device"
 
@@ -1134,7 +1138,7 @@ def test_partial_tts_playback_starts_before_synthesis_completes():
     idx_put_1 = events.index("player_put_chunk_1")
     idx_synth_2 = events.index("synthesis_chunk_2")
     assert idx_put_1 < idx_synth_2, f"Expected player_put_chunk_1 to precede synthesis_chunk_2, got events: {events}"
-    
+
     assert result.final_state == ConversationState.IDLE
 
 
@@ -1208,7 +1212,7 @@ def test_streaming_playback_start_failure_reports_playback_failure_phase():
 
     class FailingPlaybackAPI:
         IterablePlayer = FailingPlayer
-        
+
         def last_output_device(self) -> str:
             return "failing_device"
 

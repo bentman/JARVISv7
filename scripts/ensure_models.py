@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tarfile
 import zipfile
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -20,15 +20,14 @@ if str(REPO_ROOT) not in sys.path:
 
 os.environ.setdefault("HF_HOME", str(REPO_ROOT / "cache" / "huggingface"))
 
-import httpx  # noqa: E402
-from huggingface_hub import hf_hub_download  # noqa: E402
-
+import httpx
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.core.settings import load_settings
+from backend.app.hardware.provisioning import resolve_required_extras
 from backend.app.models.catalog import ModelEntry, get_model_entry, list_models
 from backend.app.models.llm_selection import select_llm_model
-from backend.app.hardware.provisioning import resolve_required_extras
+from huggingface_hub import hf_hub_download
 
 MODEL_FAMILIES = ("stt", "tts", "wake")
 ALL_FAMILIES = (*MODEL_FAMILIES, "llm")
@@ -439,15 +438,23 @@ def _download_runtime_url_zip(profile_id: str, profile: dict[str, Any], dry_run:
     if dry_run:
         return _runtime_required_files(profile_id, profile)
 
-    binary_path = _runtime_binary_path(profile_id, profile)
-    binary_path.parent.mkdir(parents=True, exist_ok=True)
-
-    extracted: list[str] = []
+    payloads: list[bytes] = []
     with httpx.Client(follow_redirects=True, timeout=300.0) as client:
         for runtime_archive in archives:
             response = client.get(runtime_archive["url"])
             response.raise_for_status()
-            extracted.extend(_extract_runtime_zip_payload(response.content, binary_path.parent))
+            payloads.append(response.content)
+
+    for payload in payloads:
+        with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+            strip_prefix = _zip_common_file_prefix(archive.infolist())
+            _validated_zip_file_targets(archive, strip_prefix)
+
+    binary_path = _runtime_binary_path(profile_id, profile)
+    binary_path.parent.mkdir(parents=True, exist_ok=True)
+    extracted: list[str] = []
+    for payload in payloads:
+        extracted.extend(_extract_runtime_zip_payload(payload, binary_path.parent))
     if not extracted:
         raise RuntimeError(f"runtime artifact source for profile '{profile_id}' extracted no files")
     return extracted
@@ -634,12 +641,8 @@ def _extract_runtime_zip_payload(payload: bytes, target_root: Path) -> list[str]
     extracted: list[str] = []
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
         strip_prefix = _zip_common_file_prefix(archive.infolist())
-        for member in archive.infolist():
-            if member.is_dir():
-                continue
-            target_name = _zip_member_target(member.filename, strip_prefix)
-            if target_name is None:
-                continue
+        targets = _validated_zip_file_targets(archive, strip_prefix)
+        for member, target_name in targets:
             target = target_root / target_name
             target.parent.mkdir(parents=True, exist_ok=True)
             with archive.open(member) as source, target.open("wb") as destination:
@@ -678,7 +681,6 @@ def _extract_runtime_tar_gz_payload(payload: bytes, target_root: Path) -> list[s
 
 
 def _ensure_runtime_profile(profile_id: str, profile: dict[str, Any], dry_run: bool) -> dict[str, Any]:
-    source = _runtime_source(profile)
     source_type = _runtime_source_type(profile)
     if dry_run:
         return _planned_runtime_profile(profile_id, profile)
@@ -755,9 +757,17 @@ def _zip_common_file_prefix(members: list[zipfile.ZipInfo]) -> str | None:
 
 
 def _zip_member_parts(member_name: str) -> tuple[str, ...]:
-    path = PurePosixPath(member_name.replace("\\", "/"))
+    normalized_name = member_name.replace("\\", "/")
+    path = PurePosixPath(normalized_name)
+    windows_path = PureWindowsPath(member_name)
     parts = tuple(part for part in path.parts if part not in {"", "."})
-    if not parts or any(part == ".." for part in parts):
+    if (
+        not parts
+        or path.is_absolute()
+        or bool(windows_path.drive)
+        or bool(windows_path.root)
+        or any(part == ".." for part in parts)
+    ):
         raise RuntimeError(f"unsafe zip member path: {member_name}")
     return parts
 
@@ -769,6 +779,19 @@ def _zip_member_target(member_name: str, strip_prefix: str | None) -> Path | Non
     if not parts:
         return None
     return Path(*parts)
+
+
+def _validated_zip_file_targets(
+    archive: zipfile.ZipFile,
+    strip_prefix: str | None,
+) -> list[tuple[zipfile.ZipInfo, Path]]:
+    targets: list[tuple[zipfile.ZipInfo, Path]] = []
+    for member in archive.infolist():
+        target = _zip_member_target(member.filename, strip_prefix)
+        if member.is_dir() or target is None:
+            continue
+        targets.append((member, target))
+    return targets
 
 
 def _tar_common_file_prefix(members: list[tarfile.TarInfo]) -> str | None:
@@ -993,7 +1016,6 @@ def _download_url_zip(entry: ModelEntry, dry_run: bool) -> list[str]:
             return [str(item) for item in required_files if isinstance(item, str)]
         return ["<archive-extracted>"]
 
-    entry.local_path.mkdir(parents=True, exist_ok=True)
     with httpx.Client(follow_redirects=True, timeout=300.0) as client:
         response = client.get(url)
         response.raise_for_status()
@@ -1001,11 +1023,14 @@ def _download_url_zip(entry: ModelEntry, dry_run: bool) -> list[str]:
 
     extracted: list[str] = []
     with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        for member in archive.infolist():
-            archive.extract(member, path=entry.local_path)
-            if member.is_dir():
-                continue
-            extracted.append(member.filename.replace("\\", "/"))
+        targets = _validated_zip_file_targets(archive, strip_prefix=None)
+        entry.local_path.mkdir(parents=True, exist_ok=True)
+        for member, target_name in targets:
+            target = entry.local_path / target_name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(member) as source, target.open("wb") as destination:
+                shutil.copyfileobj(source, destination)
+            extracted.append(target_name.as_posix())
 
     if not extracted:
         raise RuntimeError(f"zip source for model '{entry.name}' extracted no files")

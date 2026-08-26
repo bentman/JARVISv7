@@ -4,7 +4,6 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
-
 from backend.app.services.turn_service import run_text_turn, run_voice_turn
 
 

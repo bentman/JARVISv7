@@ -194,7 +194,7 @@ def test_preflight_ep_probe_skipped_when_onnxruntime_not_imported(monkeypatch) -
         calls.append(name)
         if name == "onnxruntime":
             raise AssertionError("onnxruntime should not be probed without the import token")
-        if name in {"pytest", "pytest_cov", "pytest_asyncio", "ruff", "mypy", "pre_commit"}:
+        if name in {"pytest", "pytest_cov", "httpx2", "ruff", "mypy"}:
             return SimpleNamespace(__name__=name)
         raise ModuleNotFoundError(name)
 

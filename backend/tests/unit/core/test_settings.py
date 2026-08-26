@@ -6,11 +6,7 @@ from pathlib import Path
 import pytest
 
 ENV_NAMES = (
-    "APP_NAME",
     "JARVIS_LANGUAGE",
-    "CONFIG_PATH",
-    "DATA_PATH",
-    "MODEL_PATH",
     "USE_LOCAL_MODEL",
     "LLM_MODEL_MODE",
     "LLM_MODEL_POLICY",
@@ -31,9 +27,6 @@ ENV_NAMES = (
     "OLLAMA_NUM_CTX",
     "OLLAMA_KEEP_ALIVE",
     "JARVISV7_LIVE_TESTS",
-    "TTS_MODELS",
-    "STT_MODELS",
-    "WAKE_MODEL",
     "RESIDENT_VOICE_SPEECH_RMS_THRESHOLD",
     "RESIDENT_VOICE_NO_SPEECH_TIMEOUT_SECONDS",
     "RESIDENT_VOICE_SILENCE_END_SECONDS",
@@ -54,8 +47,17 @@ ENV_NAMES = (
     "TAVILY_API_KEY",
 )
 
-ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
+RETIRED_SETTING_NAMES = {
     "APP_NAME",
+    "CONFIG_PATH",
+    "DATA_PATH",
+    "MODEL_PATH",
+    "STT_MODELS",
+    "TTS_MODELS",
+    "WAKE_MODEL",
+}
+
+ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "JARVIS_LANGUAGE",
     "USE_LOCAL_MODEL",
     "LLM_MODEL_MODE",
@@ -70,25 +72,10 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "TAVILY_API_KEY",
     "REDIS_HOST",
     "REDIS_PORT",
-    "DATA_PATH",
-    "CONFIG_PATH",
-    "MODEL_PATH",
-    "STT_MODELS",
-    "TTS_MODELS",
-    "WAKE_MODEL",
 }
 
 ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
     "JARVISV7_OLLAMA_URL",
-}
-
-ENV_EXAMPLE_PATH_NAMES: set[str] = {
-    "CONFIG_PATH",
-    "DATA_PATH",
-    "MODEL_PATH",
-    "STT_MODELS",
-    "TTS_MODELS",
-    "WAKE_MODEL",
 }
 
 ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
@@ -411,18 +398,15 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
     assert settings.ollama_num_ctx == 8192
     assert settings.ollama_keep_alive == "5m"
     assert settings.use_searxng is False
-    assert settings.model_path == settings_module.MODELS_DIR
-    assert settings.config_path == settings_module.CONFIG_DIR
-    assert settings.stt_models == "models/stt"
-    assert settings.tts_models == "models/tts"
-    assert settings.wake_model == "models/wake"
+    for name in RETIRED_SETTING_NAMES:
+        assert name not in settings_module.SETTING_ENV_CLASSIFICATION
 
 
 def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path):
     settings_module = _reload_settings(
         monkeypatch,
         tmp_path,
-        "USE_LOCAL_MODEL=\nLLM_MODEL_MODE=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nOLLAMA_KEEP_ALIVE=\nUSE_SEARXNG=\nCONFIG_PATH=\n",
+        "USE_LOCAL_MODEL=\nLLM_MODEL_MODE=\nLLM_MODEL_POLICY=\nOLLAMA_MODEL=\nOLLAMA_NUM_CTX=\nOLLAMA_KEEP_ALIVE=\nUSE_SEARXNG=\n",
         None,
     )
 
@@ -435,7 +419,6 @@ def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path)
     assert settings.ollama_num_ctx == 8192
     assert settings.ollama_keep_alive == "5m"
     assert settings.use_searxng is False
-    assert settings.config_path == settings_module.CONFIG_DIR
 
 
 def test_llm_model_mode_accepts_prod(monkeypatch, tmp_path):
@@ -507,7 +490,7 @@ def test_env_example_covers_current_settings_env_variables():
     assert values["LLM_MODEL_POLICY"] == "auto"
     assert values["LLM_MODEL_ID"] == ""
     assert values["OLLAMA_MODEL"] == "phi4-mini"
-    assert values["CONFIG_PATH"] == "config/"
+    assert RETIRED_SETTING_NAMES.isdisjoint(values)
     assert values["SEARXNG_PORT"] == "8888"
     assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_OLLAMA"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
@@ -521,9 +504,6 @@ def test_setting_env_classification_keeps_primary_starter_small():
     classification = settings_module.SETTING_ENV_CLASSIFICATION
 
     for name in ENV_EXAMPLE_REQUIRED_NAMES:
-        if name in ENV_EXAMPLE_PATH_NAMES:
-            assert classification[name] == "advanced"
-            continue
         if name == "LLM_MODEL_ID":
             assert classification[name] == "advanced"
             continue

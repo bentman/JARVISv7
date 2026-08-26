@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state
 from backend.app.api.schemas.personality import (
@@ -11,8 +9,12 @@ from backend.app.api.schemas.personality import (
     PersonalitySelectResponse,
     PersonalitySummary,
 )
-from backend.app.personality.loader import list_personality_profiles_with_errors, load_personality_profile
+from backend.app.personality.loader import (
+    list_personality_profiles_with_errors,
+    load_personality_profile,
+)
 from backend.app.personality.schema import PersonalityProfile
+from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
 

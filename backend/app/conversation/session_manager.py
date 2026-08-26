@@ -124,6 +124,7 @@ class SessionManager:
     ) -> Path:
         final_state_value = final_state.value if isinstance(final_state, ConversationState) else final_state
         self.record_timeline_event("session_closed", state=final_state_value)
+        assert self.timeline is not None
         timeline_path = storage.write_session_timeline(self.timeline, self.sessions_base_dir)
         continuity_summary = self.build_continuity_packet().summary()
         artifact = SessionArtifact(

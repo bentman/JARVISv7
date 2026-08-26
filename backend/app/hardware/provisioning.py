@@ -4,7 +4,6 @@ import re
 
 from backend.app.core.capabilities import HardwareProfile
 
-
 _REQUIREMENT_NAME_PATTERN = re.compile(r"^[A-Za-z0-9_.\-]+")
 
 
@@ -23,7 +22,15 @@ _EXTRA_REQUIREMENT_SPECS: dict[str, tuple[str, ...]] = {
         "onnx>=1.16",
         "transformers>=4.40",
     ),
-    "dev": ("pytest", "pytest-cov", "pytest-asyncio", "ruff", "mypy", "pre-commit"),
+    "dev": (
+        "pytest",
+        "pytest-cov",
+        "httpx2",
+        "ruff",
+        "mypy",
+        "types-PyYAML",
+        "types-psutil",
+    ),
 }
 
 

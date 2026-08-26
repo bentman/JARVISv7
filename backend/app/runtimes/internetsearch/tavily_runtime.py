@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import httpx
-
 from backend.app.core.settings import Settings
 from backend.app.runtimes.internetsearch.base import SearchBase, SearchResult
 

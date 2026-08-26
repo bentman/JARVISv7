@@ -4,7 +4,6 @@ import threading
 import time
 
 import pytest
-
 from backend.app.services.llm_execution_coordinator import (
     LLMExecutionCoordinator,
     ShutdownDrainInProgress,
