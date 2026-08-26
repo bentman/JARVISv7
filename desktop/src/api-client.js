@@ -102,5 +102,7 @@ export function createApiClient(invoke) {
       invokeMemory(invoke, "forget_memory", { factId, expectedRevision, reason }),
     getMemoryCurationStatus: () => invokeMemory(invoke, "get_memory_curation_status"),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
+    cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
+    openSearchSource: (url) => invoke("open_search_source", { url }),
   };
 }

@@ -44,6 +44,11 @@ class _SessionManager:
 
 
 class _Engine:
+    search_service = None
+
+    def prepare_close(self, timeout=10):
+        pass
+
     personality = PersonalityProfile(
         profile_id="default",
         display_name="JARVIS",

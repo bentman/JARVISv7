@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
+import pytest
 from backend.app.api import app as app_module
 from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
@@ -177,6 +178,13 @@ class _FakeSessionManager:
 
 class _FakeEngine:
     personality = _personality()
+    search_service = None
+
+    def prepare_close(self, timeout=10):
+        pass
+
+    def cancel_search(self, session_id, turn_id):
+        return bool(self.search_service and self.search_service.cancel(session_id, turn_id))
 
     def __init__(self) -> None:
         self.barge_in_detector = object()
@@ -689,7 +697,28 @@ def test_session_status_returns_active_session() -> None:
         "latest_turn": None,
         "voice_capture_diagnostics": None,
         "failure_phase": None,
+        "active_search": None,
     }
+
+
+@pytest.mark.search
+def test_search_cancel_api_scopes_turn_and_publishes_progress():
+    from backend.app.services.search_service import SearchService
+
+    client = _client()
+    service = client.app.state.jarvis_state.session_service
+    search = SearchService([])
+    service.engine().search_service = search
+    session_id = service.status().session_id
+    with search.operation(session_id, "active-turn") as operation:
+        status = client.get("/session/status").json()
+        assert status["active_search"]["stage"] == "planning"
+        assert client.post("/session/search/cancel", json={"session_id": session_id, "turn_id": "stale"}).json() == {"cancelled": False}
+        assert client.post("/session/search/cancel", json={"session_id": "stale-session", "turn_id": "active-turn"}).json() == {"cancelled": False}
+        for _ in range(2):
+            assert client.post("/session/search/cancel", json={"session_id": session_id, "turn_id": "active-turn"}).json() == {"cancelled": True}
+        assert operation.cancel.is_set()
+        assert client.get("/session/status").json()["active_search"]["cancel_requested"]
 
 
 def test_session_status_returns_latest_turn_summary() -> None:
@@ -722,6 +751,7 @@ def test_session_status_returns_latest_turn_summary() -> None:
         "runtime_context": {"llm": "fake-llm"},
         "phase_durations_ms": {},
         "failure_phase": None,
+        "search": None,
     }
 
 

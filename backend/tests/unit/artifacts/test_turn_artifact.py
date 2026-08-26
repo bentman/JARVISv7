@@ -98,6 +98,7 @@ def test_turn_schema_fields_are_canonical():
         "retrieved_memory_refs",
         "retrieved_memory_evidence",
         "tools_invoked",
+        "search",
         "reasoning_trace_metadata",
         "response_text",
         "audio_output_path",

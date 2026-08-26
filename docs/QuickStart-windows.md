@@ -217,7 +217,10 @@ Use `--all-llm` only when intentionally validating the full LLM catalog.
 
 Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
 
-SearXNG defaults to host port `8888`.
+> SearXNG defaults to host port `8080`, but that conflicts with `llama.cpp/llama-server`.  
+> SearXNG documents alternate port `8888`, but that conflicts with `unsloth/llama-server`. 
+> JARVISv7 sets SearXNG default to port `8910` in `docker-compose.yml` to avoid these conflicts.  
+> The SearXNG port is configurable in `.env:SEARXNG_PORT=****` if another port is required.  
 
 ```powershell
 docker compose up --detach

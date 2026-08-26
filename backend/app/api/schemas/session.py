@@ -26,6 +26,7 @@ class LatestTurnSummary(BaseModel):
     runtime_context: dict[str, object] | None = None
     phase_durations_ms: dict[str, float] | None = None
     failure_phase: str | None = None
+    search: dict[str, object] | None = None
 
 
 class SessionStatusResponse(BaseModel):
@@ -41,11 +42,21 @@ class SessionStatusResponse(BaseModel):
     latest_turn: LatestTurnSummary | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
     failure_phase: str | None = None
+    active_search: dict[str, object] | None = None
 
 
 class CloseSessionRequest(BaseModel):
     session_id: str
     final_state: str = "IDLE"
+
+
+class CancelSearchRequest(BaseModel):
+    session_id: str
+    turn_id: str
+
+
+class CancelSearchResponse(BaseModel):
+    cancelled: bool
 
 
 class CloseSessionResponse(BaseModel):

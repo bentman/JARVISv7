@@ -40,6 +40,12 @@ class OllamaLLM(LLMBase):
     def runtime_name(self) -> str:
         return "ollama"
 
+    def context_window(self) -> int:
+        return self.num_ctx or 2048
+
+    def generate_structured(self, envelope: PromptEnvelope, schema: dict[str, object]) -> str:
+        return self.generate_envelope(envelope, format=schema)
+
     def is_available(self) -> bool:
         if not self.enabled:
             self.reason = "ollama disabled by USE_OLLAMA"

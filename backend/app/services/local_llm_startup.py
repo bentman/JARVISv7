@@ -159,6 +159,7 @@ def prepare_managed_local_llm(
         model_policy=resolution.model_policy,
         model_role=resolution.model_role,
         model_selection_reason=resolution.model_selection_reason,
+        context_size=int(resolution.launch.get("ctx_size", 2048)),
     )
     return ManagedLocalLLMStartup(
         runtime=runtime,

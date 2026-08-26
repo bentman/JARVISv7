@@ -38,10 +38,11 @@ VALID_TRANSITIONS: dict[ConversationState, set[ConversationState]] = {
     ConversationState.REASONING: {
         ConversationState.ACTING,
         ConversationState.RESPONDING,
+        ConversationState.INTERRUPTED,
         ConversationState.FAILED,
     },
-    ConversationState.ACTING: {ConversationState.RESPONDING, ConversationState.FAILED},
-    ConversationState.RESPONDING: {ConversationState.SPEAKING, ConversationState.IDLE, ConversationState.FAILED},
+    ConversationState.ACTING: {ConversationState.REASONING, ConversationState.RESPONDING, ConversationState.INTERRUPTED, ConversationState.FAILED},
+    ConversationState.RESPONDING: {ConversationState.SPEAKING, ConversationState.IDLE, ConversationState.INTERRUPTED, ConversationState.FAILED},
     ConversationState.SPEAKING: {
         ConversationState.INTERRUPTED,
         ConversationState.IDLE,

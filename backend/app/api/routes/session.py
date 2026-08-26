@@ -3,6 +3,8 @@ from __future__ import annotations
 from backend.app.api.app import ApiState
 from backend.app.api.dependencies import get_api_state, get_session_service
 from backend.app.api.schemas.session import (
+    CancelSearchRequest,
+    CancelSearchResponse,
     CloseSessionRequest,
     CloseSessionResponse,
     CreateSessionRequest,
@@ -41,6 +43,8 @@ def close_session(
         result = session_service.end_session(request.session_id, request.final_state)
     except ValueError:
         raise HTTPException(status_code=404, detail="session_id is not active") from None
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from None
     return CloseSessionResponse(
         session_id=result.session_id,
         closed=result.closed,
@@ -55,6 +59,15 @@ def close_session(
 def session_status(session_service: SessionService = Depends(get_session_service)) -> SessionStatusResponse:
     status = session_service.status()
     return build_session_status_response(status)
+
+
+@router.post("/session/search/cancel", response_model=CancelSearchResponse)
+def cancel_search(request: CancelSearchRequest, session_service: SessionService = Depends(get_session_service)) -> CancelSearchResponse:
+    try:
+        session_service.assert_active_session(request.session_id)
+    except ValueError:
+        return CancelSearchResponse(cancelled=False)
+    return CancelSearchResponse(cancelled=session_service.engine().cancel_search(request.session_id, request.turn_id))
 
 
 @router.post("/session/ptt", response_model=SessionStatusResponse)
@@ -80,6 +93,7 @@ def build_session_status_response(status) -> SessionStatusResponse:
             runtime_context=status.latest_turn.runtime_context,
             phase_durations_ms=status.latest_turn.phase_durations_ms,
             failure_phase=status.latest_turn.failure_phase,
+            search=status.latest_turn.search,
         )
     return SessionStatusResponse(
         session_id=status.session_id,
@@ -94,4 +108,5 @@ def build_session_status_response(status) -> SessionStatusResponse:
         latest_turn=latest_turn,
         voice_capture_diagnostics=status.voice_capture_diagnostics,
         failure_phase=status.failure_phase,
+        active_search=status.active_search,
     )

@@ -3,10 +3,13 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from backend.app.conversation.states import ConversationState, validate_transition
+
+if TYPE_CHECKING:
+    from backend.app.services.search_service import SearchOperation
 
 
 def utc_now() -> datetime:
@@ -26,6 +29,7 @@ class TurnContext:
     phase_timestamps: dict[str, datetime] = field(default_factory=dict)
     runtime_context: dict[str, object] = field(default_factory=dict)
     phase_observer: PhaseObserver | None = None
+    search_operation: SearchOperation | None = None
 
     def __post_init__(self) -> None:
         self.phase_timestamps.setdefault(self.state.value, self.started_at)

@@ -8,7 +8,7 @@ from backend.app.cognition.memory_extraction import MemoryCandidateExtractor
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
-from backend.app.core.settings import load_settings
+from backend.app.core.settings import SETTING_ENV_CLASSIFICATION, Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.memory.curation_reconciliation import (
     ReviewOnlyCurationPolicy,
@@ -39,6 +39,7 @@ from backend.app.services.resident_voice_invocation import (
     default_utterance_segmenter,
     resident_interruption_chunks,
 )
+from backend.app.services.search_service import SearchService
 from backend.app.services.session_service import SessionService
 from backend.app.services.startup_context import ReadinessMap, load_startup_context
 from backend.app.services.utterance_segmenter import (
@@ -80,6 +81,7 @@ class ApiState:
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
     manager = session_manager or state.session_manager
+    settings = load_settings()
     return TurnEngine(
         stt=state.stt,
         tts=state.tts,
@@ -92,7 +94,13 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(state.resident_audio_stream),
         llm_coordinator=state.llm_coordinator,
+        search_service=SearchService.configured(settings),
+        search_secret_values=_search_secrets(settings),
     )
+
+
+def _search_secrets(settings: Settings) -> tuple[str, ...]:
+    return tuple(str(getattr(settings, key.lower(), "")) for key, classification in SETTING_ENV_CLASSIFICATION.items() if classification == "secret")
 
 
 def bind_session(state: ApiState, session_manager: SessionManager) -> TurnEngine:
@@ -144,6 +152,8 @@ def build_startup_state() -> ApiState:
         barge_in_detector=BargeInDetector(vad=EnergyVADRuntime(), min_speech_s=0.2, min_speech_chunks=2),
         interruption_audio_chunks=resident_interruption_chunks(resident_audio_stream),
         llm_coordinator=llm_coordinator,
+        search_service=SearchService.configured(settings),
+        search_secret_values=_search_secrets(settings),
     )
     session_service: SessionService
     memory_curation_service = MemoryCurationService(
@@ -273,6 +283,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         state = getattr(app.state, "jarvis_state", None)
+        session_service = getattr(state, "session_service", None)
+        if session_service is not None and session_service.is_session_active():
+            session_service.end_session(session_service.session_manager.session_id)
         stop_memory_curation(state)
         stop_resident_audio_stream(state)
         if not memory_curation_owns_llm(state):

@@ -14,7 +14,7 @@ const ACTIVE_STATES = new Set([
 export function sessionPollingInterval(status, isVisible = true) {
   if (!isVisible) return HIDDEN_INTERVAL_MS;
   const state = (status?.state || "").toLowerCase();
-  return ACTIVE_STATES.has(state) ? ACTIVE_SESSION_INTERVAL_MS : IDLE_SESSION_INTERVAL_MS;
+  return status?.active_search || ACTIVE_STATES.has(state) ? ACTIVE_SESSION_INTERVAL_MS : IDLE_SESSION_INTERVAL_MS;
 }
 
 export function statusPollingInterval(isVisible = true) {

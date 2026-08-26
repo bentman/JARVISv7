@@ -128,7 +128,7 @@ export function createResidentVoicePresenter(options) {
     if (key === lastRenderedResidentTurnKey) return;
     lastRenderedResidentTurnKey = key;
     if (status.last_transcript) appendMessage("user", status.last_transcript);
-    appendMessage("assistant", status.last_response || status.failure_reason);
+    appendMessage("assistant", status.last_response || status.failure_reason, { search: latestTurn?.search });
   }
 
   function renderResidentVoiceStatus(status) {

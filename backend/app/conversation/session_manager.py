@@ -66,13 +66,19 @@ class SessionManager:
             state=artifact.final_state,
             metadata={"input_modality": artifact.input_modality},
         )
+        if artifact.search:
+            self.record_timeline_event(
+                "search_outcome", turn_id=artifact.turn_id, state=artifact.final_state,
+                metadata={"outcome": artifact.search.get("outcome"), "mode": artifact.search.get("mode"),
+                          "attempts": artifact.search.get("attempts"), "duration_ms": artifact.search.get("duration_ms")},
+            )
         if artifact.response_text:
             self.record_timeline_event(
                 "assistant_response_started",
                 turn_id=artifact.turn_id,
                 state=ConversationState.RESPONDING.value,
             )
-        if artifact.response_text and not artifact.tts_degraded and artifact.input_modality == "voice":
+        if artifact.response_text and not artifact.tts_degraded and artifact.input_modality == "voice" and not (artifact.search and artifact.search.get("outcome") == "cancelled"):
             self.record_timeline_event(
                 "assistant_speech_started",
                 turn_id=artifact.turn_id,

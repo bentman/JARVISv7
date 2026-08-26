@@ -13,6 +13,28 @@ from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.runtimes.llm.ollama_runtime import OllamaLLM
 
 
+@pytest.mark.search
+@pytest.mark.parametrize("kind", ["llama", "ollama"])
+def test_schema_generation_preserves_normal_generation(monkeypatch, kind):
+    schema = {"type": "object", "properties": {"topic": {"type": "string"}}}
+    envelope = PromptEnvelope(segments=(PromptSegment("user", "user_input", False, "topic"),), generation={"max_tokens": 100})
+    calls = []
+    def post(url, **kwargs):
+        calls.append(kwargs["json"])
+        payload = {"choices": [{"message": {"content": '{"topic":"public"}'}}]} if kind == "llama" else {"message": {"content": '{"topic":"public"}'}}
+        return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
+    monkeypatch.setattr(httpx, "post", post)
+    runtime = LlamaCppLLM(base_url="http://test", context_size=4096) if kind == "llama" else OllamaLLM(base_url="http://test", enabled=True, num_ctx=4096)
+    assert runtime.generate_structured(envelope, schema) == '{"topic":"public"}'
+    assert runtime.context_window() == 4096
+    if kind == "llama":
+        assert calls[0]["response_format"] == {"type": "json_object", "schema": schema}
+    else:
+        assert calls[0]["format"] == schema
+    runtime.generate_envelope(envelope)
+    assert "response_format" not in calls[1] and "format" not in calls[1]
+
+
 def test_local_runtime_is_available_returns_false():
     runtime = LlamaCppLLM(managed=False)
 

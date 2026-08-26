@@ -17,3 +17,4 @@ class TextTurnResponse(BaseModel):
     failure_reason: str | None = None
     active_personality_profile_id: str = "unknown"
     profile_epoch: int = 0
+    search: dict[str, object] | None = None

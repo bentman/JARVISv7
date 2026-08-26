@@ -6,6 +6,7 @@ import { collectDegradedConditions, selectedFamilyBlockers } from "../src/compon
 import { createDesktopState } from "../src/components/desktop-state.js";
 import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
+import { createSearchStatus, renderSearchEvidence } from "../src/components/search-evidence.js";
 import {
   createMemoryPanelController,
   createOperatorPanelCoordinator,
@@ -108,6 +109,9 @@ for (const selector of [
   assert.ok(style.includes(selector), `desktop style contract missing: ${selector}`);
 }
 assert.ok(!index.includes(" style="), "desktop markup must not use inline styles");
+const textForm = index.match(/<form id="text-form"[\s\S]*?<\/form>/)?.[0] || "";
+assert.ok(textForm.includes('id="text-input"') && textForm.includes('id="send-button"'));
+assert.ok(!textForm.includes('id="search-status"') && !textForm.includes('id="search-stop"'), "search progress must not occupy composer grid cells");
 assert.ok(style.includes("grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(260px, 340px);"));
 for (const selector of [
   ".status-panel",
@@ -404,6 +408,8 @@ function createElement(tagName) {
     textContent: "",
     children: [],
     parentElement: null,
+    listeners: {},
+    addEventListener(name, callback) { this.listeners[name] = callback; },
     appendChild(child) {
       child.parentElement = this;
       this.children.push(child);
@@ -453,6 +459,36 @@ function findElements(node, predicate, found = []) {
 
 const previousDocument = globalThis.document;
 globalThis.document = { createElement };
+const searchContainer = createElement("div");
+const openedSources = [];
+renderSearchEvidence(searchContainer, { sources: [
+  { id: "S1", title: "<img onerror=evil()>", url: "https://example.com/?v=2", basis: "page_excerpt", retrieved_at: "now" },
+  { id: "S2", title: "bad", url: "javascript:evil()" },
+] }, (url) => openedSources.push(url), assert.fail);
+const sourceLink = searchContainer.children[0].children[0];
+assert.equal(sourceLink.textContent, "[S1] <img onerror=evil()>");
+assert.equal(searchContainer.children[0].children.length, 1);
+let prevented = false;
+sourceLink.listeners.click({ preventDefault() { prevented = true; } });
+assert.ok(prevented);
+assert.deepEqual(openedSources, ["https://example.com/?v=2"]);
+const searchLabel = createElement("span");
+const searchStop = createElement("button");
+const cancelledSearches = [];
+const searchPresenter = createSearchStatus({
+  label: searchLabel, stopButton: searchStop,
+  cancelSearch: async (...args) => cancelledSearches.push(args), onError: assert.fail,
+});
+searchPresenter.render({ session_id: "s", turn_id: "t", stage: "searching", current_provider: "searxng", attempts: [{ provider: "ddgs", status: "timeout" }] });
+assert.match(searchLabel.textContent, /Searching.*searxng.*ddgs: timeout/);
+await searchStop.listeners.click();
+assert.deepEqual(cancelledSearches, [["s", "t"]]);
+assert.ok(searchStop.disabled);
+searchPresenter.render({ session_id: "s", turn_id: "t", stage: "reading" });
+assert.equal(searchLabel.textContent, "Stopping search…");
+searchPresenter.render(null);
+assert.ok(searchStop.hidden);
+assert.equal(sessionPollingInterval({ state: "IDLE", active_search: { stage: "planning" } }), 100);
 const shellEl = createElement("main");
 const systemCard = createElement("div");
 const systemLabel = createElement("span");
@@ -642,8 +678,8 @@ const residentPresenter = createResidentVoicePresenter({
   residentStatusEl: null,
   setState() {},
   showError() {},
-  appendMessage(role, text) {
-    appendedMessages.push({ role, text });
+  appendMessage(role, text, metadata) {
+    appendedMessages.push({ role, text, metadata });
   },
 });
 residentPresenter.renderResidentVoiceStatus({
@@ -670,6 +706,7 @@ residentPresenter.renderResidentVoiceStatus({
   last_response: "The capital of the United States is Washington, D.C.",
   latest_turn: {
     turn_id: "voice-turn-123",
+    search: { sources: [{ id: "S1", url: "https://example.com/" }] },
     input_modality: "voice",
     final_state: "IDLE",
     failure_reason: null,
@@ -680,6 +717,7 @@ assert.deepEqual(
   ["user", "assistant"],
   "resident voice presenter must still append current voice completions",
 );
+assert.equal(appendedMessages[1].metadata.search.sources[0].id, "S1");
 
 function deferred() {
   let resolve;

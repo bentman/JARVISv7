@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from backend.app.core.settings import Settings
-from backend.app.runtimes.internetsearch.base import SearchBase, SearchResult
+from backend.app.runtimes.internetsearch.base import (
+    SearchBase,
+    SearchResponse,
+    map_results,
+    search_failure,
+)
 from ddgs import DDGS
 
 
 class DDGSRuntime(SearchBase):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, timeout_s: int = 5) -> None:
         self._enabled = bool(settings.use_ddgs)
+        self._timeout_s = timeout_s
 
     def runtime_name(self) -> str:
         return "ddgs"
@@ -15,23 +21,14 @@ class DDGSRuntime(SearchBase):
     def is_available(self) -> bool:
         return self._enabled
 
-    def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
-        if not self._enabled or not query.strip():
-            return []
+    def search(self, query: str, *, max_results: int = 5) -> SearchResponse:
+        if not self._enabled:
+            return SearchResponse("disabled")
+        if not query.strip() or max_results <= 0:
+            return SearchResponse("empty")
         try:
-            mapped: list[SearchResult] = []
-            with DDGS() as client:
-                for item in client.text(query, max_results=max(0, max_results)):
-                    if not isinstance(item, dict):
-                        continue
-                    mapped.append(
-                        SearchResult(
-                            title=str(item.get("title", "")),
-                            url=str(item.get("href", "")),
-                            snippet=str(item.get("body", "")),
-                            source="ddgs",
-                        )
-                    )
-            return mapped
-        except Exception:
-            return []
+            with DDGS(timeout=self._timeout_s, verify=True) as client:
+                items = client.text(query, max_results=min(5, max_results))
+            return map_results(items, "ddgs", url_key="href", snippet_key="body", limit=min(5, max_results))
+        except Exception as exc:
+            return search_failure(exc)

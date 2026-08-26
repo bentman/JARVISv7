@@ -11,6 +11,7 @@ import { createMemoryPanel, createOperatorPanelCoordinator } from "./components/
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 import { createDesktopPolling } from "./components/desktop-polling.js";
+import { createSearchStatus, renderSearchEvidence } from "./components/search-evidence.js";
 
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
@@ -45,6 +46,12 @@ const backendDiagnosticsEl = document.querySelector("#backend-diagnostics");
 
 const invoke = window.__TAURI__?.core?.invoke;
 const api = createApiClient(invoke);
+const searchStatus = createSearchStatus({
+  label: document.querySelector("#search-status"),
+  stopButton: document.querySelector("#search-stop"),
+  cancelSearch: (sessionId, turnId) => api.cancelSearch(sessionId, turnId),
+  onError: (error) => showError(String(error)),
+});
 const memoryPanel = createMemoryPanel(
   memoryPanelEl,
   {
@@ -125,6 +132,7 @@ function appendMessage(role, text, metadata = {}) {
   roleEl.textContent = role;
   bodyEl.textContent = text || "(no text returned)";
   entry.append(stampEl, roleEl, bodyEl);
+  renderSearchEvidence(entry, metadata.search, (url) => api.openSearchSource(url), (error) => showError(String(error)));
   logEl.appendChild(entry);
   logEl.scrollTop = logEl.scrollHeight;
 }
@@ -202,6 +210,7 @@ function renderSessionStatus(status) {
   renderConversationDebug(status, voiceDetailEl);
   residentVoice.renderResidentVoiceStatus(status);
   if (desktopState) desktopState.renderTurnStatus(status.state);
+  searchStatus.render(status.active_search);
   return status;
 }
 
@@ -549,6 +558,7 @@ async function submitText(text) {
     appendMessage("assistant", response.response_text || response.failure_reason, {
       profileId: response.active_personality_profile_id,
       profileEpoch: response.profile_epoch,
+      search: response.search,
     });
     await refreshSessionStatus();
   } catch (error) {

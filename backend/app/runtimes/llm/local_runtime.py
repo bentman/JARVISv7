@@ -39,6 +39,7 @@ class LlamaCppLLM(LLMBase):
         model_policy: str | None = None,
         model_role: str | None = None,
         model_selection_reason: str | None = None,
+        context_size: int = 2048,
     ) -> None:
         settings = load_settings()
         self._explicit_base_url = base_url is not None
@@ -57,6 +58,7 @@ class LlamaCppLLM(LLMBase):
         self.model_policy = model_policy
         self.model_role = model_role
         self.model_selection_reason = model_selection_reason
+        self.context_size = context_size
         self.reason = "not probed"
         self.client = httpx.Client()
 
@@ -110,6 +112,12 @@ class LlamaCppLLM(LLMBase):
 
     def runtime_name(self) -> str:
         return "llama.cpp"
+
+    def context_window(self) -> int:
+        return self.context_size
+
+    def generate_structured(self, envelope: PromptEnvelope, schema: dict[str, object]) -> str:
+        return self.generate_envelope(envelope, response_format={"type": "json_object", "schema": schema})
 
     def _sidecar_ready(self) -> bool:
         if self.sidecar_status is not None:

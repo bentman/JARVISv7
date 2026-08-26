@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import httpx
 from backend.app.core.settings import Settings
-from backend.app.runtimes.internetsearch.base import SearchBase, SearchResult
+from backend.app.runtimes.internetsearch.base import (
+    SearchBase,
+    SearchResponse,
+    map_results,
+    search_failure,
+)
 
 
 class TavilyRuntime(SearchBase):
@@ -17,34 +22,27 @@ class TavilyRuntime(SearchBase):
     def is_available(self) -> bool:
         return bool(self._enabled and self._api_key)
 
-    def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
-        if not self.is_available() or not query.strip():
-            return []
+    def search(self, query: str, *, max_results: int = 5) -> SearchResponse:
+        if not self._enabled:
+            return SearchResponse("disabled")
+        if not self._api_key:
+            return SearchResponse("misconfigured", reason="Tavily key missing")
+        if not query.strip() or max_results <= 0:
+            return SearchResponse("empty")
         try:
             response = httpx.post(
                 "https://api.tavily.com/search",
+                headers={"Authorization": f"Bearer {self._api_key}"},
                 json={
-                    "api_key": self._api_key,
-                    "query": query,
-                    "max_results": max(0, max_results),
+                    "query": query, "max_results": min(5, max_results),
+                    "search_depth": "basic", "auto_parameters": False,
+                    "include_answer": False, "include_raw_content": False,
                 },
                 timeout=self._timeout_s,
             )
             response.raise_for_status()
             payload = response.json()
-            results = payload.get("results", []) if isinstance(payload, dict) else []
-            mapped: list[SearchResult] = []
-            for item in results[: max(0, max_results)]:
-                if not isinstance(item, dict):
-                    continue
-                mapped.append(
-                    SearchResult(
-                        title=str(item.get("title", "")),
-                        url=str(item.get("url", "")),
-                        snippet=str(item.get("content", "")),
-                        source="tavily",
-                    )
-                )
-            return mapped
-        except Exception:
-            return []
+            items = payload.get("results") if isinstance(payload, dict) else None
+            return map_results(items, "tavily", url_key="url", snippet_key="content", limit=min(5, max_results))
+        except Exception as exc:
+            return search_failure(exc)

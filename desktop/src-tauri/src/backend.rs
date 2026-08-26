@@ -653,11 +653,11 @@ pub fn get_memory_curation_status(client: &Client, base_url: &str) -> Result<Str
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
     let response = client
         .post(format!("{base_url}/session/close"))
-        .timeout(Duration::from_secs(5))
+        .timeout(Duration::from_secs(12))
         .json(&json!({"session_id": session_id, "final_state": "IDLE"}))
         .send()
         .map_err(|err| format!("POST /session/close failed: {err}"))?;
-    if response.status().is_success() {
+    if response.status().is_success() || response.status().as_u16() == 404 {
         Ok(())
     } else {
         Err(format!(
@@ -702,6 +702,17 @@ pub fn submit_text_turn(
     if !status.is_success() {
         return Err(format!("POST /task/text returned {status}: {body}"));
     }
+    Ok(body)
+}
+
+pub fn cancel_search(client: &Client, base_url: &str, session_id: &str, turn_id: &str) -> Result<String, String> {
+    let response = client.post(format!("{base_url}/session/search/cancel"))
+        .timeout(Duration::from_secs(5))
+        .json(&json!({"session_id": session_id, "turn_id": turn_id}))
+        .send().map_err(|error| format!("search cancellation failed: {error}"))?;
+    let status = response.status();
+    let body = response.text().map_err(|error| error.to_string())?;
+    if !status.is_success() { return Err(format!("search cancellation returned {status}")); }
     Ok(body)
 }
 

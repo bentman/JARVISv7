@@ -1121,3 +1121,8 @@ select:disabled {
     grid-template-columns: 1fr;
   }
 }
+.search-sources { display: grid; gap: 0.4rem; font-size: 0.85em; }
+.search-sources a { color: var(--color-accent); overflow-wrap: anywhere; }
+#search-status { font-size: 0.85em; }
+#search-stop[hidden] { display: none; }
+.search-controls { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); }

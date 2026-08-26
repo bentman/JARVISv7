@@ -64,6 +64,10 @@
             <h2>Conversation</h2>
           </div>
           <div id="conversation-log" class="conversation-log" aria-live="polite"></div>
+          <div class="search-controls">
+            <span id="search-status" role="status" aria-live="polite"></span>
+            <button id="search-stop" type="button" hidden>Stop</button>
+          </div>
           <form id="text-form" class="text-form">
             <input id="text-input" type="text" autocomplete="off" placeholder="Type a message to JARVIS…" />
             <button id="send-button" type="submit">Send</button>

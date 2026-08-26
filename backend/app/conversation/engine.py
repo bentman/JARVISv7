@@ -6,8 +6,8 @@ import threading
 import time
 import wave
 from collections.abc import Callable, Iterable, Iterator
-from contextlib import suppress
-from dataclasses import dataclass, field
+from contextlib import ExitStack, contextmanager, nullcontext, suppress
+from dataclasses import dataclass, field, replace
 from typing import Any
 from uuid import uuid4
 
@@ -15,8 +15,15 @@ import numpy as np
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
+from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
+from backend.app.cognition.search_policy import (
+    SearchIntentResolver,
+    ground_search_prompt,
+    grounded_response,
+    search_speech,
+)
 from backend.app.cognition.style_guard import apply_personality_style_guard
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -27,6 +34,7 @@ from backend.app.memory.semantic import SemanticMemory
 from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
+from backend.app.runtimes.internetsearch.page_reader import SearchCancelledError
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
@@ -36,6 +44,7 @@ from backend.app.services.llm_execution_coordinator import (
     InteractiveTicket,
     LLMExecutionCoordinator,
 )
+from backend.app.services.search_service import SearchService
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +67,7 @@ class TurnResult:
     profile_epoch: int = 0
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
     failure_phase: str | None = None
+    search: dict[str, object] | None = None
 
 
 class TurnEngine:
@@ -78,6 +88,8 @@ class TurnEngine:
         cache_manager: CacheManager | None = None,
         semantic: SemanticMemory | None = None,
         llm_coordinator: LLMExecutionCoordinator | None = None,
+        search_service: SearchService | None = None,
+        search_secret_values: tuple[str, ...] = (),
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -95,8 +107,48 @@ class TurnEngine:
         self.llm_coordinator = llm_coordinator
         self.retrieval = RetrievalManager()
         self.phase_observer: PhaseObserver | None = None
+        self.search_service = search_service
+        self.search_intent = SearchIntentResolver(llm, secret_values=search_secret_values)
+        self._turn_lock = threading.Lock()
+        self._admission_lock = threading.Lock()
+        self._idle = threading.Event()
+        self._idle.set()
+        self._closing = False
+
+    @contextmanager
+    def _admit_turn(self) -> Iterator[None]:
+        with self._admission_lock:
+            if self._closing:
+                raise RuntimeError("session is closing")
+            if not self._turn_lock.acquire(blocking=False):
+                raise RuntimeError("a conversation turn is already active")
+            self._idle.clear()
+        try:
+            yield
+        finally:
+            self._idle.set()
+            self._turn_lock.release()
+
+    def cancel_search(self, session_id: str, turn_id: str) -> bool:
+        cancelled = bool(self.search_service and self.search_service.cancel(session_id, turn_id))
+        if cancelled:
+            self.search_intent.clear()
+        return cancelled
+
+    def prepare_close(self, timeout: float = 10.0) -> None:
+        with self._admission_lock:
+            self._closing = True
+        self.search_intent.clear()
+        if self.search_service:
+            self.search_service.cancel_and_wait(timeout=0)
+        if not self._idle.wait(timeout):
+            raise RuntimeError("active turn is cancelling; retry session close after it stops")
 
     def run_text_turn(self, text: str) -> TurnResult:
+        with self._admit_turn():
+            return self._run_text_turn(text)
+
+    def _run_text_turn(self, text: str) -> TurnResult:
         ticket = self.llm_coordinator.register_interactive() if self.llm_coordinator else None
         try:
             transcript = text.strip()
@@ -114,6 +166,17 @@ class TurnEngine:
                 ticket.release()
 
     def run_voice_turn(
+        self,
+        audio: np.ndarray,
+        sample_rate: int,
+        *,
+        turn_runtime_context: dict[str, object] | None = None,
+        interactive_ticket: InteractiveTicket | None = None,
+    ) -> TurnResult:
+        with self._admit_turn():
+            return self._run_voice_turn(audio, sample_rate, turn_runtime_context=turn_runtime_context, interactive_ticket=interactive_ticket)
+
+    def _run_voice_turn(
         self,
         audio: np.ndarray,
         sample_rate: int,
@@ -193,6 +256,32 @@ class TurnEngine:
         voice_turn_started_at: float | None = None,
         interactive_ticket: InteractiveTicket | None = None,
     ) -> TurnResult:
+        with ExitStack() as stack:
+            if self.search_service and self.search_intent.is_candidate(transcript):
+                context.search_operation = stack.enter_context(self.search_service.operation(context.session_id, context.turn_id))
+            if interactive_ticket is not None:
+                stack.enter_context(interactive_ticket.execution())
+            try:
+                result = self._reasoning_body(
+                    context, transcript, speak_response=speak_response, raw_audio_path=raw_audio_path,
+                    phase_durations_ms=phase_durations_ms, voice_turn_started_at=voice_turn_started_at,
+                )
+            except SearchCancelledError:
+                result = self._cancelled_result(context, transcript, raw_audio_path, phase_durations_ms or {}, voice_turn_started_at)
+            if context.search_operation:
+                result = replace(result, search=context.search_operation.snapshot())
+            return result
+
+    def _reasoning_body(
+        self,
+        context: TurnContext,
+        transcript: str,
+        *,
+        speak_response: bool,
+        raw_audio_path: str | None = None,
+        phase_durations_ms: dict[str, float] | None = None,
+        voice_turn_started_at: float | None = None,
+    ) -> TurnResult:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
         try:
             context.advance(ConversationState.REASONING)
@@ -245,21 +334,16 @@ class TurnEngine:
                 policy=policy,
             )
 
-            prompt = render_flat_prompt(prompt_envelope)
             llm_started_at = time.perf_counter()
             try:
-                if interactive_ticket is None:
-                    response = bound_single_turn_response(
-                        self.llm.generate_envelope(prompt_envelope)
-                    )
-                else:
-                    with interactive_ticket.execution():
-                        response = bound_single_turn_response(
-                            self.llm.generate_envelope(prompt_envelope)
-                        )
+                response, prompt_envelope = self._generate_response(context, transcript, prompt_envelope, continuity_packet)
+                prompt = render_flat_prompt(prompt_envelope)
             finally:
                 if voice_turn_started_at is not None:
-                    phase_durations_ms["llm_ms"] = _elapsed_ms(llm_started_at)
+                    search_ms = context.search_operation.evidence.retrieval_ms if context.search_operation else 0
+                    phase_durations_ms["llm_ms"] = max(0.0, _elapsed_ms(llm_started_at) - search_ms)
+                    if context.search_operation:
+                        phase_durations_ms["search_ms"] = search_ms
             if not response.strip():
                 return self._fail(
                     context,
@@ -276,8 +360,13 @@ class TurnEngine:
                 policy,
                 modality="voice" if speak_response else "text",
             )
+            if context.search_operation and context.search_operation.evidence.outcome in {"confirmation_required", "clarification_required"}:
+                stored_response = response
+            if context.search_operation and context.search_operation.evidence.queries:
+                stored_response = grounded_response(stored_response, context.search_operation.evidence)
+            self._check_search(context)
             if speak_response:
-                voice_text = sanitize_for_tts(stored_response)
+                voice_text = sanitize_for_tts(search_speech(stored_response) if context.search_operation else stored_response)
                 return self._speak_or_degrade(
                     context,
                     transcript=transcript,
@@ -310,6 +399,8 @@ class TurnEngine:
                 retrieved_memory_evidence=retrieved_memory_evidence,
             )
             return result
+        except SearchCancelledError:
+            return self._cancelled_result(context, transcript, raw_audio_path, phase_durations_ms, voice_turn_started_at)
         except Exception as exc:
             return self._fail(
                 context,
@@ -320,6 +411,73 @@ class TurnEngine:
                 phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
                 failure_phase=_failure_phase_for_state(context.state),
             )
+
+    def _cancelled_result(self, context: TurnContext, transcript: str, raw_audio_path: str | None,
+                          phase_durations_ms: dict[str, float], voice_turn_started_at: float | None) -> TurnResult:
+        self.search_intent.clear()
+        if context.search_operation:
+            context.search_operation.evidence.outcome = "cancelled"
+            context.search_operation.evidence.stage = "cancelled"
+        if context.state == ConversationState.FAILED:
+            context.advance(ConversationState.IDLE)
+        elif context.state != ConversationState.IDLE:
+            context.advance(ConversationState.INTERRUPTED)
+            context.advance(ConversationState.RECOVERING)
+            context.advance(ConversationState.IDLE)
+        result = TurnResult(
+            turn_id=context.turn_id, session_id=context.session_id, transcript=transcript,
+            response_text="Search cancelled.", final_state=context.state, raw_audio_path=raw_audio_path,
+            active_personality_profile_id=self.personality.profile_id,
+            profile_epoch=self.session_manager.profile_epoch if self.session_manager else 0,
+            phase_durations_ms=_voice_phase_durations(phase_durations_ms, voice_turn_started_at),
+        )
+        self._record_artifact(context, result, final_prompt_text=None)
+        return result
+
+    def _generate_response(self, context: TurnContext, transcript: str, envelope: PromptEnvelope, continuity: Any) -> tuple[str, PromptEnvelope]:
+        operation = context.search_operation
+        if operation is None:
+            return bound_single_turn_response(self.llm.generate_envelope(envelope)), envelope
+        operation.check()
+        prior_topic = ""
+        if continuity is not None and continuity.policy_decision in {"start_new_session", "ignore_stale_context", "summarize_and_close"}:
+            self.search_intent.clear()
+        if continuity is not None and continuity.recent_turn_ids:
+            prior_topic = continuity.last_user_request or ""
+            if self.session_manager and self.session_manager.turn_artifacts:
+                prior = self.session_manager.turn_artifacts[-1]
+                if prior.search and prior.search.get("topic"):
+                    prior_topic = str(prior.search["topic"])
+        plan = self.search_intent.resolve(transcript, context=prior_topic)
+        operation.check()
+        if plan.action == "clarify":
+            operation.evidence.outcome = "confirmation_required" if self.search_intent.pending else "clarification_required"
+            return plan.message, envelope
+        if plan.action == "none":
+            operation.evidence.outcome = "not_requested"
+            return bound_single_turn_response(self.llm.generate_envelope(envelope)), envelope
+        assert self.search_service is not None
+        context.advance(ConversationState.ACTING)
+        retrieval_started = time.perf_counter()
+        try:
+            evidence = self.search_service.retrieve(operation, mode=plan.action, topic=plan.topic, queries=plan.queries)
+        finally:
+            operation.evidence.retrieval_ms = _elapsed_ms(retrieval_started)
+        context.advance(ConversationState.REASONING)
+        if not evidence.sources:
+            return grounded_response("", evidence), envelope
+        grounded = ground_search_prompt(envelope, evidence, self.llm)
+        operation.check()
+        if grounded is None:
+            return grounded_response("", evidence), envelope
+        response = bound_single_turn_response(self.llm.generate_envelope(grounded))
+        operation.check()
+        return response, grounded
+
+    @staticmethod
+    def _check_search(context: TurnContext) -> None:
+        if context.search_operation:
+            context.search_operation.check()
 
     def _speak_or_degrade(
         self,
@@ -431,6 +589,7 @@ class TurnEngine:
         phase_durations_ms: dict[str, float] | None = None,
         voice_turn_started_at: float | None = None,
     ) -> TurnResult:
+        self._check_search(context)
         context.advance(ConversationState.SPEAKING)
         if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
             interruption_chunks = self._resolve_interruption_audio_chunks()
@@ -506,6 +665,7 @@ class TurnEngine:
         vad_iter: Iterator[np.ndarray] | None = None
 
         try:
+            self._check_search(context)
             if self.barge_in_detector is not None and self.interruption_audio_chunks is not None:
                 vad_iter = self._resolve_interruption_audio_chunks()
             player = self.playback_api.IterablePlayer(sample_rate)
@@ -514,6 +674,7 @@ class TurnEngine:
             def synthesis_worker() -> None:
                 try:
                     for chunk, _rate in self.tts.synthesize_stream(text_to_synthesize):
+                        self._check_search(context)
                         if stop_event.is_set():
                             break
                         player.put(chunk)
@@ -534,6 +695,7 @@ class TurnEngine:
             if self.barge_in_detector is not None and vad_iter is not None:
                 self.barge_in_detector.reset()
                 while player.is_playing() or thread.is_alive():
+                    self._check_search(context)
                     try:
                         if error_container:
                             raise error_container[0]
@@ -555,6 +717,7 @@ class TurnEngine:
                         break
             else:
                 while player.is_playing() or thread.is_alive():
+                    self._check_search(context)
                     if error_container:
                         raise error_container[0]
                     time.sleep(0.01)
@@ -572,6 +735,8 @@ class TurnEngine:
             if player is not None:
                 with suppress(Exception):
                     player.stop()
+            if isinstance(exc, SearchCancelledError):
+                raise
             f_phase = "playback"
             if error_container and exc is error_container[0]:
                 f_phase = "tts"
@@ -777,8 +942,24 @@ class TurnEngine:
         retrieved_memory_refs: list[str] | None = None,
         retrieved_memory_evidence: list[dict[str, object]] | None = None,
     ) -> None:
+        operation = context.search_operation
+        with operation.lock if operation else nullcontext():
+            if operation and operation.evidence.outcome != "cancelled":
+                operation.check()
+                if result.failure_reason:
+                    operation.evidence.outcome = "failed"
+                operation.evidence.stage = "complete"
+            self._persist_artifact(context, result, final_prompt_text=final_prompt_text,
+                retrieved_memory_refs=retrieved_memory_refs, retrieved_memory_evidence=retrieved_memory_evidence)
+
+    def _persist_artifact(
+        self, context: TurnContext, result: TurnResult, *, final_prompt_text: str | None,
+        retrieved_memory_refs: list[str] | None = None,
+        retrieved_memory_evidence: list[dict[str, object]] | None = None,
+    ) -> None:
         if self.session_manager is None:
             return
+        search = context.search_operation.snapshot() if context.search_operation else None
         artifact = TurnArtifact(
             turn_id=result.turn_id,
             session_id=result.session_id,
@@ -803,6 +984,11 @@ class TurnEngine:
             phase_timestamps={state: timestamp.isoformat() for state, timestamp in context.phase_timestamps.items()},
             phase_durations_ms=dict(result.phase_durations_ms),
             failure_phase=result.failure_phase,
+            search=search,
+            tools_invoked=list(dict.fromkeys(
+                attempt.provider for attempt in context.search_operation.evidence.attempts
+                if attempt.status not in {"disabled", "misconfigured"}
+            )) if context.search_operation else [],
         )
         self.session_manager.record_turn_artifact(artifact)
         if self.episodic is not None:
@@ -810,7 +996,7 @@ class TurnEngine:
                 self.episodic.write_entry(artifact, self.write_policy)
             except Exception:
                 logger.warning("episodic memory write failed; continuing without episodic storage")
-        if result.failure_reason is None:
+        if result.failure_reason is None and not (search and search.get("outcome") == "cancelled"):
             self.session_manager.update_working_memory(result.response_text, self.write_policy)
 
     def _runtime_context(self, context: TurnContext, result: TurnResult) -> dict[str, object]:

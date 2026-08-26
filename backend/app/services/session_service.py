@@ -33,6 +33,7 @@ class LatestTurnStatus:
     runtime_context: dict[str, object] | None = None
     phase_durations_ms: dict[str, float] | None = None
     failure_phase: str | None = None
+    search: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +50,7 @@ class SessionStatus:
     latest_turn: LatestTurnStatus | None = None
     voice_capture_diagnostics: dict[str, object] | None = None
     failure_phase: str | None = None
+    active_search: dict[str, object] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,6 +135,8 @@ class SessionService:
         _ = client_id
         if self._llm_coordinator is not None and self._llm_coordinator.shutdown_drain_active:
             raise RuntimeError("shutdown drain is in progress")
+        if self._active:
+            self.end_session(self._session_manager.session_id)
         self._session_manager = SessionManager()
         self._engine = self._engine_factory(self._session_manager)
         self._engine.personality = self._personality
@@ -145,6 +149,7 @@ class SessionService:
 
     def end_session(self, session_id: str, final_state: str = "IDLE") -> SessionCloseResult:
         self.assert_active_session(session_id)
+        self._engine.prepare_close()
         policy_result = (
             self._semantic_memory.read_policy()
             if self._semantic_memory is not None
@@ -215,6 +220,7 @@ class SessionService:
             latest_turn=self._latest_turn_status(),
             voice_capture_diagnostics=self._voice_capture_diagnostics,
             failure_phase=self._failure_phase,
+            active_search=self._engine.search_service.snapshot() if self._active and self._engine.search_service else None,
         )
 
     def _latest_turn_status(self) -> LatestTurnStatus | None:
@@ -241,6 +247,7 @@ class SessionService:
             runtime_context=dict(latest.runtime_context),
             phase_durations_ms=dict(latest.phase_durations_ms),
             failure_phase=latest.failure_phase,
+            search=latest.search,
         )
 
     def is_session_active(self) -> bool:

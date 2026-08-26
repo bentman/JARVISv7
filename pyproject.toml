@@ -203,6 +203,7 @@ markers = [
   "llm: LLM runtime tests",
   "wake: wake-word runtime tests",
   "turn: turn engine tests",
+  "search: internet search, bounded research, and intent tests",
   "desktop: desktop shell tests",
 ]
 

@@ -1,122 +1,76 @@
 from __future__ import annotations
 
+import httpx
+import pytest
 from backend.app.core.settings import Settings
+from backend.app.runtimes.internetsearch.base import map_results, search_failure
 from backend.app.runtimes.internetsearch.ddgs_runtime import DDGSRuntime
 from backend.app.runtimes.internetsearch.searxng_runtime import SearXNGRuntime
 from backend.app.runtimes.internetsearch.tavily_runtime import TavilyRuntime
 
-
-def _settings() -> Settings:
-    return Settings()
+pytestmark = pytest.mark.search
 
 
-def test_searxng_runtime_fail_closed_on_error(monkeypatch) -> None:
-    settings = _settings()
-    runtime = SearXNGRuntime(settings)
-
-    def _boom(*args, **kwargs):
-        raise RuntimeError("network down")
-
-    monkeypatch.setattr("backend.app.runtimes.internetsearch.searxng_runtime.httpx.get", _boom)
-    assert runtime.search("jarvis") == []
+@pytest.mark.parametrize("runtime_type,flag", [(DDGSRuntime, "use_ddgs"), (SearXNGRuntime, "use_searxng"), (TavilyRuntime, "use_tavily")])
+def test_disabled_providers_do_not_call_network(runtime_type, flag):
+    settings = Settings()
+    setattr(settings, flag, False)
+    assert runtime_type(settings).search("public topic").status == "disabled"
 
 
-def test_ddgs_runtime_fail_closed_on_error(monkeypatch) -> None:
-    settings = _settings()
-    runtime = DDGSRuntime(settings)
+@pytest.mark.parametrize("code,status", [(401, "misconfigured"), (403, "misconfigured"), (429, "rate_limited"), (500, "failed")])
+def test_http_failures_are_distinct(code, status):
+    response = httpx.Response(code, request=httpx.Request("GET", "https://example.com"))
+    with pytest.raises(httpx.HTTPStatusError) as caught:
+        response.raise_for_status()
+    assert search_failure(caught.value).status == status
+    assert search_failure(httpx.ReadTimeout("secret-bearing URL")).status == "timeout"
 
-    class _BrokenDDGS:
+
+def test_malformed_results_are_not_success():
+    assert map_results(None, "test", url_key="url", snippet_key="content", limit=5).status == "failed"
+    assert map_results([None, {}, {"url": "u", "content": 3}], "test", url_key="url", snippet_key="content", limit=5).status == "empty"
+
+
+def test_provider_payloads_and_bounds(monkeypatch):
+    settings = Settings()
+    settings.use_ddgs = settings.use_searxng = settings.use_tavily = True
+    settings.tavily_api_key = "test-key"
+    settings.searxng_base_url = "http://127.0.0.1:8888"
+    calls = []
+
+    class DDGSClient:
+        def __init__(self, **kwargs):
+            assert kwargs == {"timeout": 5, "verify": True}
         def __enter__(self):
             return self
+        def __exit__(self, *_):
+            pass
+        def text(self, query, max_results):
+            calls.append(("ddgs", query, max_results))
+            return [{"title": "DDGS", "href": "https://example.com", "body": "excerpt"}]
 
-        def __exit__(self, exc_type, exc, tb):
-            return False
+    def get(url, **kwargs):
+        assert url == settings.searxng_base_url + "/search"
+        assert kwargs["params"] == {"q": "topic", "format": "json"}
+        assert kwargs["timeout"] == 5
+        return httpx.Response(200, json={"results": [{"title": "S", "url": "https://example.com", "content": "snippet"}]}, request=httpx.Request("GET", url))
 
-        def text(self, query, max_results=5):
-            raise RuntimeError("provider down")
+    def post(url, **kwargs):
+        assert kwargs["headers"] == {"Authorization": "Bearer test-key"}
+        assert kwargs["json"] == {"query": "topic", "max_results": 5, "search_depth": "basic", "auto_parameters": False, "include_answer": False, "include_raw_content": False}
+        assert kwargs["timeout"] == 8
+        return httpx.Response(200, json={"results": [{"title": "T", "url": "https://example.com", "content": "snippet"}]}, request=httpx.Request("POST", url))
 
-    monkeypatch.setattr("backend.app.runtimes.internetsearch.ddgs_runtime.DDGS", _BrokenDDGS)
-    assert runtime.search("jarvis") == []
-
-
-def test_tavily_runtime_disabled_without_key() -> None:
-    settings = _settings()
-    settings.use_tavily = True
+    monkeypatch.setattr("backend.app.runtimes.internetsearch.ddgs_runtime.DDGS", DDGSClient)
+    monkeypatch.setattr("backend.app.runtimes.internetsearch.searxng_runtime.httpx.get", get)
+    monkeypatch.setattr("backend.app.runtimes.internetsearch.tavily_runtime.httpx.post", post)
+    for runtime in (DDGSRuntime(settings), SearXNGRuntime(settings), TavilyRuntime(settings)):
+        result = runtime.search("topic", max_results=50)
+        assert result.status == "success"
+        assert result.results[0].source == runtime.runtime_name()
+    assert calls == [("ddgs", "topic", 5)]
     settings.tavily_api_key = ""
-    runtime = TavilyRuntime(settings)
-
-    assert runtime.is_available() is False
-    assert runtime.search("jarvis") == []
-
-
-def test_tavily_runtime_fail_closed_on_error(monkeypatch) -> None:
-    settings = _settings()
-    settings.use_tavily = True
-    settings.tavily_api_key = "redacted"
-    runtime = TavilyRuntime(settings)
-
-    def _boom(*args, **kwargs):
-        raise RuntimeError("external provider failed")
-
-    monkeypatch.setattr("backend.app.runtimes.internetsearch.tavily_runtime.httpx.post", _boom)
-    assert runtime.search("jarvis") == []
-
-
-def test_runtime_result_mapping_shapes(monkeypatch) -> None:
-    settings = _settings()
-    settings.use_searxng = True
-    settings.searxng_base_url = "http://searxng.test:18080"
-    settings.use_ddgs = True
-
-    searx = SearXNGRuntime(settings)
-
-    class _Resp:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"results": [{"title": "a", "url": "u", "content": "c"}]}
-
-    monkeypatch.setattr(
-        "backend.app.runtimes.internetsearch.searxng_runtime.httpx.get",
-        lambda *args, **kwargs: _Resp(),
-    )
-    searx_results = searx.search("jarvis")
-    assert len(searx_results) == 1
-    assert searx_results[0].source == "searxng"
-
-    ddgs = DDGSRuntime(settings)
-
-    class _DDGSClient:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-        def text(self, query, max_results=5):
-            return [{"title": "b", "href": "u2", "body": "c2"}]
-
-    monkeypatch.setattr("backend.app.runtimes.internetsearch.ddgs_runtime.DDGS", _DDGSClient)
-    ddgs_results = ddgs.search("jarvis")
-    assert len(ddgs_results) == 1
-    assert ddgs_results[0].source == "ddgs"
-
-    settings.use_tavily = True
-    settings.tavily_api_key = "redacted"
-    tavily = TavilyRuntime(settings)
-
-    class _TResp:
-        def raise_for_status(self):
-            return None
-
-        def json(self):
-            return {"results": [{"title": "t", "url": "u3", "content": "c3"}]}
-
-    monkeypatch.setattr(
-        "backend.app.runtimes.internetsearch.tavily_runtime.httpx.post",
-        lambda *args, **kwargs: _TResp(),
-    )
-    tavily_results = tavily.search("jarvis")
-    assert len(tavily_results) == 1
-    assert tavily_results[0].source == "tavily"
+    settings.searxng_base_url = ""
+    assert TavilyRuntime(settings).search("topic").status == "misconfigured"
+    assert SearXNGRuntime(settings).search("topic").status == "misconfigured"

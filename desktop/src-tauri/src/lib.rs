@@ -32,6 +32,7 @@ use tauri::{
     tray::TrayIconBuilder,
     Manager, State,
 };
+use tauri_plugin_opener::OpenerExt;
 
 struct DesktopState {
     backend: Arc<Mutex<BackendProcessManager>>,
@@ -103,11 +104,11 @@ fn start_backend(state: State<'_, DesktopState>) -> Result<String, String> {
 fn stop_backend(state: State<'_, DesktopState>) -> Result<(), String> {
     let base_url = backend_base_url(&state)?;
     let session = {
-        let mut active_session = state
+        let active_session = state
             .session_id
             .lock()
             .map_err(|_| "session lock poisoned".to_string())?;
-        active_session.take()
+        active_session.clone()
     };
     run_shutdown_sequence(
         || {
@@ -126,7 +127,9 @@ fn stop_backend(state: State<'_, DesktopState>) -> Result<(), String> {
             manager.kill_backend();
             Ok(())
         },
-    )
+    )?;
+    *state.session_id.lock().map_err(|_| "session lock poisoned".to_string())? = None;
+    Ok(())
 }
 
 fn run_shutdown_sequence<C, D, K>(close: C, drain: D, kill: K) -> Result<(), String>
@@ -135,7 +138,7 @@ where
     D: FnOnce() -> Result<(), String>,
     K: FnOnce() -> Result<(), String>,
 {
-    let _ = close();
+    close()?;
     let _ = drain();
     kill()
 }
@@ -439,8 +442,8 @@ fn get_memory_curation_status(state: State<'_, DesktopState>) -> Result<String, 
 }
 
 #[tauri::command]
-fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<String, String> {
-    let trimmed = text.trim();
+async fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let trimmed = text.trim().to_owned();
     if trimmed.is_empty() {
         return Err("text input is empty".to_string());
     }
@@ -450,12 +453,55 @@ fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<String, S
         .lock()
         .map_err(|_| "session lock poisoned".to_string())?
         .clone();
-    submit_text_turn(
-        &state.http_client,
-        &base_url,
-        trimmed,
-        session_id.as_deref(),
-    )
+    let client = state.http_client.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        submit_text_turn(&client, &base_url, &trimmed, session_id.as_deref())
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+async fn cancel_search(session_id: String, turn_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    let client = state.http_client.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        backend::cancel_search(&client, &base_url, &session_id, &turn_id)
+    }).await.map_err(|error| error.to_string())?
+}
+
+fn public_source_url(value: &str) -> Result<String, String> {
+    if value.len() > 4096 || value.chars().any(|c| c.is_control() || c.is_whitespace() || c == '\\') {
+        return Err("invalid source URL".into());
+    }
+    let url = reqwest::Url::parse(value).map_err(|_| "invalid source URL".to_string())?;
+    if !matches!(url.scheme(), "http" | "https") || !url.username().is_empty() || url.password().is_some()
+        || url.port().is_some() {
+        return Err("public HTTP(S) source required".into());
+    }
+    let host = url.host_str().ok_or("missing source hostname")?.trim_end_matches('.');
+    let ip_host = host.trim_start_matches('[').trim_end_matches(']');
+    let public = match ip_host.parse::<std::net::IpAddr>() {
+        Ok(std::net::IpAddr::V4(ip)) => {
+            let [a, b, c, _] = ip.octets();
+            !ip.is_private() && !ip.is_loopback() && !ip.is_link_local() && !ip.is_documentation()
+                && !ip.is_broadcast() && !ip.is_multicast() && a != 0 && a < 240
+                && !(a == 100 && (64..=127).contains(&b)) && !(a == 192 && b == 0 && c == 0)
+                && !(a == 198 && (b == 18 || b == 19))
+        }
+        Ok(std::net::IpAddr::V6(ip)) => {
+            let s = ip.segments();
+            (s[0] & 0xe000) == 0x2000 && s[0] != 0x2002
+                && !(s[0] == 0x2001 && (s[1] < 0x200 || s[1] == 0xdb8))
+        }
+        Err(_) => host.contains('.') && ![".localhost", ".local", ".internal", ".home", ".lan"].iter().any(|suffix| host.ends_with(suffix)),
+    };
+    if !public { return Err("nonpublic source destination".into()); }
+    Ok(url.to_string())
+}
+
+#[tauri::command]
+fn open_search_source(url: String, app: tauri::AppHandle) -> Result<(), String> {
+    let url = public_source_url(&url)?;
+    app.opener().open_url(url, None::<&str>).map_err(|error| error.to_string())
 }
 
 fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
@@ -491,8 +537,9 @@ fn setup_tray(app: &tauri::App) -> tauri::Result<()> {
             }
             "quit" => {
                 let state = app.state::<DesktopState>();
-                let _ = stop_backend(state);
-                app.exit(0);
+                if stop_backend(state).is_ok() {
+                    app.exit(0);
+                }
             }
             _ => {}
         })
@@ -508,12 +555,15 @@ pub fn run() {
         .build()
         .expect("failed to initialize desktop HTTP client");
     tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
         .manage(DesktopState {
             backend: Arc::new(Mutex::new(backend)),
             http_client,
             session_id: Arc::new(Mutex::new(None)),
         })
         .invoke_handler(tauri::generate_handler![
+            cancel_search,
+            open_search_source,
             start_backend,
             stop_backend,
             health_check,
@@ -566,7 +616,7 @@ mod shutdown_tests {
     use std::cell::RefCell;
 
     #[test]
-    fn stop_order_is_close_then_drain_then_kill_even_on_request_errors() {
+    fn stop_waits_for_session_evidence_before_killing_backend() {
         let events = RefCell::new(Vec::new());
 
         run_shutdown_sequence(
@@ -583,8 +633,30 @@ mod shutdown_tests {
                 Ok(())
             },
         )
-        .expect("kill remains reachable");
+        .expect_err("a pending session close must keep the backend alive");
 
+        assert_eq!(events.into_inner(), vec!["close"]);
+    }
+
+    #[test]
+    fn completed_close_allows_shutdown_after_drain_failure() {
+        let events = RefCell::new(Vec::new());
+        run_shutdown_sequence(
+            || { events.borrow_mut().push("close"); Ok(()) },
+            || { events.borrow_mut().push("drain"); Err("timeout".into()) },
+            || { events.borrow_mut().push("kill"); Ok(()) },
+        ).unwrap();
         assert_eq!(events.into_inner(), vec!["close", "drain", "kill"]);
+    }
+
+    #[test]
+    fn citation_opener_accepts_only_public_web_destinations() {
+        for url in ["file:///tmp/a", "javascript:alert(1)", "https://u:p@example.com", "http://127.1", "http://10.0.0.1",
+                    "http://[::1]", "http://[::ffff:127.0.0.1]", "http://host.local", "https://example.com:8443",
+                    "http://169.254.169.254", "http://100.64.0.1", "http://[2001:db8::1]"] {
+            assert!(super::public_source_url(url).is_err(), "{url}");
+        }
+        assert!(super::public_source_url("https://example.com/search?q=test").is_ok());
+        assert!(super::public_source_url("https://1.1.1.1/").is_ok());
     }
 }
