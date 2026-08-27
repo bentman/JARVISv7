@@ -4,6 +4,16 @@ This guide sets up and launches the repo-run JARVISv7 desktop preview on Windows
 
 Run commands from PowerShell at the repository root. Do not install Python packages globally for this repo.
 
+## Launch after setup
+
+After the one-time setup is complete, launch JARVIS from the repository root:
+
+```powershell
+npm --prefix desktop run dev
+```
+
+The desktop starts and stops its backend process. Do not start the backend separately for normal use.
+
 ## Prerequisites
 
 Backend setup:

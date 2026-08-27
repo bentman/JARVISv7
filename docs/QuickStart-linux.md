@@ -4,6 +4,16 @@
 
 This guide parallels the Windows repo-run desktop preview flow using Bash and Linux-style paths. Run commands from the repository root, and do not install Python packages globally.
 
+## Launch after setup
+
+After the one-time setup is complete, launch JARVIS from the repository root:
+
+```bash
+npm --prefix desktop run dev
+```
+
+The desktop starts and stops its backend process. Do not start the backend separately for normal use.
+
 ## Prerequisites
 
 Backend setup:
