@@ -201,7 +201,8 @@ def _write_requirements_lockfile(path: Path | None = None) -> None:
     ]
     lines.extend(_read_base_requirements())
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    with path.open("w", encoding="utf-8", newline="\n") as handle:
+        handle.write("\n".join(lines) + "\n")
 
 
 def _run_pip_install(command: list[str]) -> int:

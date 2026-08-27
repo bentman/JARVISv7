@@ -18,7 +18,7 @@ from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.semantic import SemanticMemory
 from backend.app.personality.loader import load_default_personality
 from backend.app.personality.schema import PersonalityProfile
-from backend.app.routing.runtime_selector import SelectionTrace, select_llm
+from backend.app.routing.runtime_selector import SelectionTrace
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
@@ -29,8 +29,8 @@ from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
+from backend.app.services.llm_provider_service import prepare_llm_providers
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
-from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.memory_curation_processor import ReviewOnlyMemoryCurationProcessor
 from backend.app.services.memory_curation_service import MemoryCurationService
 from backend.app.services.memory_service import MemoryService
@@ -125,14 +125,20 @@ def build_startup_state() -> ApiState:
     stt.warmup()
     tts = select_tts_runtime(preflight, profile)
     tts.warmup()
-    local_llm = prepare_managed_local_llm(profile, preflight, flags=report.flags)
-    llm, llm_trace = select_llm(local=local_llm.runtime)
+    settings = load_settings()
+    llm_startup = prepare_llm_providers(
+        profile,
+        preflight,
+        flags=report.flags,
+        settings=settings,
+    )
+    llm = llm_startup.runtime
+    llm_trace = llm_startup.trace
     session_manager = SessionManager()
     cache_manager = CacheManager()
     episodic_memory = EpisodicMemory()
     semantic_memory = SemanticMemory()
     llm_coordinator = LLMExecutionCoordinator()
-    settings = load_settings()
     resident_audio_stream = ResidentAudioStream()
     utterance_segmenter = default_utterance_segmenter()
     wake_utterance_segmenter = replace(
@@ -178,8 +184,7 @@ def build_startup_state() -> ApiState:
         runtime_status=lambda: {
             "ready": bool(llm.is_available()),
             "runtime_name": type(llm).__name__,
-            "model_id": getattr(llm, "model", None)
-            or getattr(llm, "model_name", None),
+            "model_id": llm_trace.model_id,
             "serve_profile_id": getattr(llm_trace, "serve_profile_id", None),
             "accelerator": getattr(llm_trace, "accelerator", None),
         },
@@ -237,7 +242,7 @@ def build_startup_state() -> ApiState:
         utterance_segmenter=utterance_segmenter,
         resident_voice=resident_voice,
         llm_trace=llm_trace,
-        local_llm_sidecar=local_llm.sidecar,
+        local_llm_sidecar=llm_startup.sidecar,
         episodic_memory=episodic_memory,
         semantic_memory=semantic_memory,
         llm_coordinator=llm_coordinator,
@@ -297,6 +302,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
         config,
         diagnostics,
         health,
+        llm_config,
         memory,
         memory_curation,
         personality,
@@ -316,6 +322,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.include_router(diagnostics.router)
     app.include_router(status.router)
     app.include_router(config.router)
+    app.include_router(llm_config.router)
     app.include_router(memory.router)
     app.include_router(memory_curation.router)
     return app

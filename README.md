@@ -91,13 +91,39 @@ Current working areas include:
 * resident shared-stream voice with push-to-talk, wake monitoring, bounded follow-up, and interruption handling
 * canonical text and voice turns through the same conversation engine
 * explicit, bounded web search and research with cited sources, provider fallback, safe page reads, and cancellation
-* managed local `llama.cpp` with Ollama fallback
+* named model-provider profiles for managed `llama.cpp`, Ollama, external OpenAI-compatible servers, OpenAI, and Anthropic
 * disk-backed episodic memory, SQLite semantic memory, bounded working context, retrieval, and persisted turn/session artifacts
 * structured personality profiles applied through explicit prompt and response boundaries
 
 That is not victory. It is, however, enough functionality that remaining excuses now have to fill out paperwork.
 
 > Increasingly, things either work, degrade visibly, or have documented reasons why they do not.
+
+* * *
+
+## 🧠 Model Providers
+
+Desktop Settings → Model Providers owns normal model selection. It supports one primary profile, an optional local fallback, and an optional cloud-escalation profile. Managed `llama.cpp` continues to use the catalog and sidecar lifecycle. External OpenAI-compatible profiles use their configured endpoint without acquiring or controlling its models or server process.
+
+OpenAI and Anthropic credentials are encrypted in `data/operator.sqlite`. The master key is generated into `.env` on the first credential save. The desktop and API expose only whether a credential is stored.
+
+Cloud behavior is explicit:
+
+* a cloud primary handles normal turns
+* local-to-cloud escalation requires **Allow cloud escalation**
+* explicit requests such as `use cloud`, `escalate this`, or `ask Claude` require the configured cloud target and that authorization
+* authentication, invalid-request, context-limit, and safety failures do not trigger automatic escalation
+
+Before a profile selection has been saved, existing `.env` settings remain the bootstrap authority. An externally owned llama.cpp or Unsloth server can be selected through compatibility settings:
+
+```dotenv
+LLAMA_CPP_MANAGED=false
+LLAMA_CPP_BASE_URL=http://127.0.0.1:8888/v1
+LLAMA_CPP_MODEL_NAME=unsloth-model
+LLAMA_CPP_CONTEXT_SIZE=32768
+```
+
+The base URL may include `/v1`; JARVIS normalizes either form. After selection is saved in Model Providers, the profile database becomes selection authority and `.env` remains unchanged.
 
 * * *
 

@@ -179,6 +179,31 @@ npm --prefix desktop run build
 
 The WSLg proof emitted two non-fatal GTK scale-factor diagnostics during startup. They did not terminate the shell or prevent the frontend/backend lifecycle. Tray construction completed, but WSLg tray presentation was not separately confirmed.
 
+## Configure model providers
+
+Open desktop **Settings → Model Providers** to manage named profiles for managed llama.cpp, Ollama, external OpenAI-compatible servers, OpenAI, and Anthropic.
+
+1. Create or select a profile and enter its endpoint, model ID, context window, timeout, and credential when applicable.
+2. Use **Test connection** to discover models. Manual model entry remains available.
+3. Select one primary profile and, if needed, a local fallback.
+4. To permit local-to-cloud or explicit cloud escalation, select a cloud profile and enable **Allow cloud escalation**.
+5. Save the selection and restart the backend when prompted.
+
+Selecting a cloud profile as primary permits normal turns to use it. The escalation control permits explicit cloud requests and eligible local-failure escalation. Authentication, malformed-request, context-limit, and safety failures remain local failures and do not escalate automatically.
+
+Provider credentials are encrypted in `data/operator.sqlite`. The first credential save generates `JARVIS_SECRET_STORE_KEY` in `.env`. Leave that value blank before first use and do not replace it while encrypted credentials exist.
+
+Before a Model Providers selection is saved, `.env` remains the compatibility authority. To bootstrap an externally owned llama.cpp or Unsloth OpenAI-compatible server:
+
+```dotenv
+LLAMA_CPP_MANAGED=false
+LLAMA_CPP_BASE_URL=http://127.0.0.1:8888/v1
+LLAMA_CPP_MODEL_NAME=unsloth-model
+LLAMA_CPP_CONTEXT_SIZE=32768
+```
+
+Both `http://127.0.0.1:8888` and `http://127.0.0.1:8888/v1` are accepted. External profiles do not use the managed catalog, model acquisition, binary selection, or sidecar lifecycle. After a selection is saved, the profile database becomes selection authority and the compatibility values remain untouched.
+
 ## Model acquisition
 
 `scripts/ensure_models.py` manages four independent model families: `stt`, `tts`, `wake`, and `llm`. Bootstrap acquires all of them; you only need this section if one family fails or you want to manage it directly.

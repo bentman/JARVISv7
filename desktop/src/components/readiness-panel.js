@@ -25,7 +25,9 @@ function appendFactList(payload, containerEl) {
   for (const [label, value] of [
     ["Arch", payload?.arch],
     ["Profile", payload?.profile_id],
-    ["LLM", payload?.active_llm_runtime],
+    ["LLM", payload?.active_llm_provider || payload?.active_llm_runtime],
+    ["Model profile", payload?.active_llm_profile_id],
+    ["Cloud escalation", payload?.cloud_escalation_enabled ? "enabled" : "disabled"],
   ]) {
     const term = document.createElement("dt");
     term.textContent = label;

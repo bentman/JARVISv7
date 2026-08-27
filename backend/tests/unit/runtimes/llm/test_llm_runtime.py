@@ -56,6 +56,22 @@ def test_local_runtime_is_available_true_when_models_endpoint_reachable(monkeypa
     assert runtime.reason == "llama.cpp /v1/models reachable"
 
 
+def test_local_runtime_does_not_duplicate_v1_base_path(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "backend.app.runtimes.llm.local_runtime.httpx.get",
+        lambda url, **kwargs: calls.append(url)
+        or SimpleNamespace(
+            raise_for_status=lambda: None,
+            json=lambda: {"data": [{"id": "unsloth-model"}]},
+        ),
+    )
+    runtime = LlamaCppLLM(base_url="http://127.0.0.1:8888/v1", model="unsloth-model")
+
+    assert runtime.is_available() is True
+    assert calls == ["http://127.0.0.1:8888/v1/models"]
+
+
 def test_local_runtime_is_available_falls_back_to_health_endpoint(monkeypatch):
     calls = []
 

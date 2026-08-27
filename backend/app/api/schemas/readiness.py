@@ -50,6 +50,10 @@ class ReadinessResponse(BaseModel):
     arch: str
     active_personality_profile_id: str
     active_llm_runtime: str
+    active_llm_profile_id: str | None = None
+    active_llm_provider: str | None = None
+    cloud_escalation_enabled: bool = False
+    cloud_escalation_profile_id: str | None = None
     requires_degraded_mode: bool
     families: dict[str, FamilyReadiness]
     preflight: PreflightSummary

@@ -1006,6 +1006,9 @@ class TurnEngine:
             runtime_context["stt"] = _runtime_device_label(self.stt)
         if "REASONING" in phases:
             runtime_context["llm"] = self.llm.runtime_name()
+            provider_evidence = getattr(self.llm, "evidence", None)
+            if callable(provider_evidence):
+                runtime_context["llm_provider"] = provider_evidence()
         if (
             context.modality == "voice"
             and (

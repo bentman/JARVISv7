@@ -112,12 +112,19 @@ def build_readiness_response(state: ApiState) -> ReadinessResponse:
     llm_readiness, llm_trace = _llm_runtime_trace(state)
     readiness_values = dict(state.readiness)
     readiness_values["llm"] = llm_readiness
+    selection = getattr(state.llm, "selection", None)
+    profiles = getattr(state.llm, "profiles", {})
+    active_profile = profiles.get(getattr(selection, "primary_profile_id", ""))
     return ReadinessResponse(
         status=status,
         profile_id=state.profile.profile_id,
         arch=state.profile.arch,
         active_personality_profile_id=state.personality.profile_id,
         active_llm_runtime=state.llm.runtime_name(),
+        active_llm_profile_id=getattr(selection, "primary_profile_id", None),
+        active_llm_provider=getattr(active_profile, "kind", state.llm.runtime_name()),
+        cloud_escalation_enabled=bool(getattr(selection, "cloud_escalation_enabled", False)),
+        cloud_escalation_profile_id=getattr(selection, "cloud_profile_id", None),
         requires_degraded_mode=state.report.flags.requires_degraded_mode,
         families={
             name: _family_readiness(

@@ -138,7 +138,7 @@ def test_text_only_turns_one_delegates_through_text_service(monkeypatch, capsys)
     assert "final_state=IDLE" in output
 
 
-def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> None:
+def test_build_engine_uses_backend_provider_preparation_helper(monkeypatch) -> None:
     context = run_jarvis.StartupContext(
         report=_fake_report(),
         profile=_fake_report().profile,
@@ -151,10 +151,8 @@ def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> 
             "wake": ("cpu", True, "wake ready"),
         },
     )
-    prepared_runtime = _FakeLLM()
     selected_runtime = _FakeLLM()
     prepare_calls = []
-    selector_calls = []
 
     class CapturedEngine:
         def __init__(self, *, stt, tts, llm, personality):
@@ -170,14 +168,9 @@ def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> 
 
     def fake_prepare(profile, preflight, *, flags):
         prepare_calls.append((profile, preflight, flags))
-        return SimpleNamespace(runtime=prepared_runtime, sidecar="sidecar")
+        return SimpleNamespace(runtime=selected_runtime, sidecar="sidecar", trace="trace")
 
-    def fake_select(*, local=None, ollama=None):
-        selector_calls.append(local)
-        return selected_runtime, "trace"
-
-    monkeypatch.setattr(run_jarvis, "prepare_managed_local_llm", fake_prepare)
-    monkeypatch.setattr(run_jarvis, "select_llm", fake_select)
+    monkeypatch.setattr(run_jarvis, "prepare_llm_providers", fake_prepare)
 
     engine = run_jarvis._build_engine(context)
 
@@ -185,7 +178,6 @@ def test_build_engine_uses_backend_local_llm_preparation_helper(monkeypatch) -> 
     assert context.local_llm_sidecar == "sidecar"
     assert context.llm_trace == "trace"
     assert prepare_calls == [(context.profile, context.preflight, context.report.flags)]
-    assert selector_calls == [prepared_runtime]
     assert not hasattr(run_jarvis, "_start_local_llm_if_configured")
     assert not hasattr(run_jarvis, "_wait_for_llama_cpp_ready")
 

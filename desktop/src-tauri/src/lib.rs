@@ -3,15 +3,19 @@ mod backend;
 use backend::{
     close_session, confirm_memory as backend_confirm_memory,
     correct_memory as backend_correct_memory, create_session,
+    create_llm_profile as backend_create_llm_profile,
+    delete_llm_profile as backend_delete_llm_profile,
     dispute_memory as backend_dispute_memory, drain_memory_curation,
     forget_memory as backend_forget_memory, get_desktop_status as backend_desktop_status, get_json,
     get_memory_curation_status as backend_memory_curation_status,
     get_memory_detail as backend_memory_detail, get_memory_policy as backend_memory_policy,
+    get_llm_config as backend_llm_config,
     get_operator_config as backend_operator_config,
     get_personality_list as backend_personality_list,
     get_resident_voice_status as backend_resident_voice_status,
     get_session_status as backend_session_status, get_wake_status as backend_wake_status,
     invoke_resident_ptt as backend_invoke_resident_ptt, list_memories as backend_list_memories,
+    rotate_secret_store_key as backend_rotate_secret_store_key,
     select_personality as backend_select_personality,
     set_resident_voice_mode as backend_set_resident_voice_mode,
     set_resident_voice_tts_voice as backend_set_resident_voice_tts_voice,
@@ -19,7 +23,10 @@ use backend::{
     start_wake_monitor as backend_start_wake_monitor,
     stop_resident_voice_stream as backend_stop_resident_voice_stream,
     stop_wake_monitor as backend_stop_wake_monitor, submit_text_turn,
+    test_llm_profile as backend_test_llm_profile,
     toggle_wake_monitor as backend_toggle_wake_monitor,
+    update_llm_profile as backend_update_llm_profile,
+    update_llm_selection as backend_update_llm_selection,
     update_memory_policy as backend_update_memory_policy, wait_healthy,
     write_operator_config as backend_write_operator_config, BackendProcessManager,
 };
@@ -270,6 +277,69 @@ fn get_operator_config(state: State<'_, DesktopState>) -> Result<String, String>
 fn write_operator_config(fields: Value, state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_write_operator_config(&state.http_client, &base_url, fields)
+}
+
+fn required_profile_id(profile_id: String) -> Result<String, String> {
+    let trimmed = profile_id.trim();
+    if trimmed.is_empty() {
+        return Err("LLM profile_id is empty".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+#[tauri::command]
+fn get_llm_config(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_llm_config(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn create_llm_profile(profile: Value, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_create_llm_profile(&state.http_client, &base_url, profile)
+}
+
+#[tauri::command]
+fn update_llm_profile(
+    profile_id: String,
+    profile: Value,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let profile_id = required_profile_id(profile_id)?;
+    let base_url = backend_base_url(&state)?;
+    backend_update_llm_profile(&state.http_client, &base_url, &profile_id, profile)
+}
+
+#[tauri::command]
+fn delete_llm_profile(
+    profile_id: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let profile_id = required_profile_id(profile_id)?;
+    let base_url = backend_base_url(&state)?;
+    backend_delete_llm_profile(&state.http_client, &base_url, &profile_id)
+}
+
+#[tauri::command]
+fn test_llm_profile(profile_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let profile_id = required_profile_id(profile_id)?;
+    let base_url = backend_base_url(&state)?;
+    backend_test_llm_profile(&state.http_client, &base_url, &profile_id)
+}
+
+#[tauri::command]
+fn update_llm_selection(
+    selection: Value,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_update_llm_selection(&state.http_client, &base_url, selection)
+}
+
+#[tauri::command]
+fn rotate_secret_store_key(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_rotate_secret_store_key(&state.http_client, &base_url)
 }
 
 fn required_memory_id(fact_id: String) -> Result<String, String> {
@@ -579,6 +649,13 @@ pub fn run() {
             select_personality,
             get_operator_config,
             write_operator_config,
+            get_llm_config,
+            create_llm_profile,
+            update_llm_profile,
+            delete_llm_profile,
+            test_llm_profile,
+            update_llm_selection,
+            rotate_secret_store_key,
             get_memory_policy,
             update_memory_policy,
             list_memories,

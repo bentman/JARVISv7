@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
@@ -15,8 +16,6 @@ _ORIGINAL_POST = httpx.post
 
 
 DEFAULT_LLAMA_CPP_BASE_URL = "http://127.0.0.1:8080"
-_OPENAI_MODELS_PATH = "/v1/models"
-_OPENAI_CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 _HEALTH_PATHS = ("/health", "/healthz")
 SidecarRecovery = Callable[[], LocalLLMSidecarStatus]
 
@@ -44,6 +43,7 @@ class LlamaCppLLM(LLMBase):
         settings = load_settings()
         self._explicit_base_url = base_url is not None
         self.base_url = (base_url or settings.llama_cpp_base_url or DEFAULT_LLAMA_CPP_BASE_URL).rstrip("/")
+        self.api_base_url = _openai_api_base(self.base_url)
         self.model = model or settings.llama_cpp_model_name or "local-llama-cpp"
         self.generation_defaults = generation_defaults or {}
         self.timeout = timeout if timeout is not None else settings.llama_cpp_timeout_seconds
@@ -136,6 +136,7 @@ class LlamaCppLLM(LLMBase):
     def _apply_sidecar_status(self, status: LocalLLMSidecarStatus) -> None:
         if status.base_url:
             self.base_url = status.base_url.rstrip("/")
+            self.api_base_url = _openai_api_base(self.base_url)
         if status.model_id:
             self.model = status.model_id
         if status.route:
@@ -162,7 +163,7 @@ class LlamaCppLLM(LLMBase):
     def _post_chat_completion(self, payload: dict[str, Any]) -> Any:
         post_func = httpx.post if httpx.post is not _ORIGINAL_POST else self.client.post
         response = post_func(
-            f"{self.base_url}{_OPENAI_CHAT_COMPLETIONS_PATH}",
+            f"{self.api_base_url}/chat/completions",
             json=payload,
             timeout=self.timeout,
         )
@@ -172,7 +173,7 @@ class LlamaCppLLM(LLMBase):
     def _probe_models_endpoint(self) -> str | None:
         try:
             get_func = httpx.get if httpx.get is not _ORIGINAL_GET else self.client.get
-            response = get_func(f"{self.base_url}{_OPENAI_MODELS_PATH}", timeout=10.0)
+            response = get_func(f"{self.api_base_url}/models", timeout=10.0)
             response.raise_for_status()
             data = response.json()
         except Exception as exc:
@@ -186,7 +187,7 @@ class LlamaCppLLM(LLMBase):
         get_func = httpx.get if httpx.get is not _ORIGINAL_GET else self.client.get
         for path in _HEALTH_PATHS:
             try:
-                response = get_func(f"{self.base_url}{path}", timeout=10.0)
+                response = get_func(f"{_server_origin(self.base_url)}{path}", timeout=10.0)
                 response.raise_for_status()
             except Exception as exc:
                 last_reason = f"{path} unavailable: {exc}"
@@ -238,3 +239,13 @@ def _chat_completion_text(data: Any) -> str:
     if isinstance(text, str):
         return text
     raise RuntimeError("llama.cpp chat completion returned no text")
+
+
+def _openai_api_base(base_url: str) -> str:
+    normalized = base_url.rstrip("/")
+    return normalized if normalized.endswith("/v1") else f"{normalized}/v1"
+
+
+def _server_origin(base_url: str) -> str:
+    parsed = urlsplit(base_url)
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", "")).rstrip("/")

@@ -20,6 +20,15 @@
 
 ## Change Entries
 
+- Timestamp: 2026-08-27 12:39
+  - Host class(es): Windows AMD64
+  - Summary: Added Operator-managed LLM provider profiles for managed llama.cpp, Ollama, external OpenAI-compatible servers, OpenAI Responses, and Anthropic Messages, with encrypted credentials and governed local fallback/cloud escalation.
+  - Scope: Provider profile and secret storage, LLM runtimes and routing, API/readiness composition, desktop Model Providers settings, provisioning metadata, operator documentation, and focused backend/desktop tests.
+  - Validation: Provision lock/verify and `pip check` PASS; backend CI PASS (Ruff, mypy `141 source files`, unit `994 passed, 3 skipped`, integration `10 passed`, regression `173 passed, 3 skipped, 5 deselected`); focused provider pytest PASS (`96 passed`); desktop Node tests PASS; Rust `cargo check` PASS; parallel QuickStart provider sections and `git diff --check` PASS.
+  - Notes: Live LLM runtime validation was skipped because `JARVISV7_LIVE_TESTS` was not enabled. The available external endpoint at `127.0.0.1:8888` required authentication, no cloud profile credentials were configured, and no live provider capability is claimed. Windows ARM64 and Linux hosts received no live runtime validation.
+
+---
+
 - Timestamp: 2026-08-25 16:55
   - Host class(es): Windows AMD64
   - Summary: Restored enforceable Ruff and mypy gates, resolved application diagnostics without changing runtime policy, and added ordered quality checks to backend CI validation.

@@ -18,12 +18,12 @@ from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.personality.loader import load_default_personality
-from backend.app.routing.runtime_selector import SelectionTrace, select_llm
+from backend.app.routing.runtime_selector import SelectionTrace
 from backend.app.runtimes.stt.stt_runtime import select_stt_runtime
 from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.services import turn_service, voice_service
+from backend.app.services.llm_provider_service import prepare_llm_providers
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
-from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.startup_context import load_startup_context, readiness_summary
 
 TEXT_DIAGNOSTIC_PROMPT = "Briefly confirm JARVIS proving-host text path is operational."
@@ -135,16 +135,15 @@ def _mode_name(args: argparse.Namespace) -> str:
 def _build_engine(context: StartupContext) -> TurnEngine:
     stt = select_stt_runtime(context.preflight, context.profile)
     tts = select_tts_runtime(context.preflight, context.profile)
-    local_llm = prepare_managed_local_llm(
+    llm_startup = prepare_llm_providers(
         context.profile,
         context.preflight,
         flags=context.report.flags,
     )
-    context.local_llm_sidecar = local_llm.sidecar
-    llm, llm_trace = select_llm(local=local_llm.runtime)
-    context.llm_trace = llm_trace
+    context.local_llm_sidecar = llm_startup.sidecar
+    context.llm_trace = llm_startup.trace
     personality = load_default_personality()
-    return TurnEngine(stt=stt, tts=tts, llm=llm, personality=personality)
+    return TurnEngine(stt=stt, tts=tts, llm=llm_startup.runtime, personality=personality)
 
 
 def _stop_local_llm_sidecar(context: StartupContext) -> None:

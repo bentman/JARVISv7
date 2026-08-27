@@ -50,6 +50,35 @@ def test_prepare_managed_local_llm_returns_no_candidate_when_local_model_disable
     assert result.degraded_reason == "local model disabled"
 
 
+def test_prepare_managed_local_llm_returns_external_runtime_without_local_artifacts() -> None:
+    settings = Settings(
+        use_local_model=True,
+        llama_cpp_managed=False,
+        llama_cpp_managed_explicit=True,
+        llama_cpp_base_url="http://127.0.0.1:8888/v1",
+        llama_cpp_base_url_explicit=True,
+        llama_cpp_model_name="unsloth-model",
+        llama_cpp_context_size=65536,
+        llama_cpp_timeout_seconds=45,
+        llama_cpp_model_path=None,
+        llama_cpp_binary_path=None,
+    )
+
+    result = prepare_managed_local_llm(
+        HardwareProfile(os_name="windows", arch="amd64"),
+        _preflight(),
+        settings=settings,
+    )
+
+    assert result.sidecar is None
+    assert result.resolution is None
+    assert result.runtime is not None
+    assert result.runtime.managed is False
+    assert result.runtime.api_base_url == "http://127.0.0.1:8888/v1"
+    assert result.runtime.model == "unsloth-model"
+    assert result.runtime.context_window() == 65536
+
+
 def test_prepare_managed_local_llm_reports_profile_degraded_reason(
     monkeypatch,
     tmp_path: Path,

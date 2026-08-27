@@ -20,6 +20,9 @@ ENV_NAMES = (
     "LLAMA_CPP_MANAGED",
     "LLAMA_CPP_MODEL_NAME",
     "LLAMA_CPP_TIMEOUT_SECONDS",
+    "LLAMA_CPP_CONTEXT_SIZE",
+    "JARVIS_SECRET_STORE_KEY",
+    "JARVIS_SECRET_STORE_PREVIOUS_KEY",
     "USE_OLLAMA",
     "OLLAMA_BASE_URL",
     "JARVISV7_OLLAMA_URL",
@@ -70,6 +73,7 @@ ENV_EXAMPLE_REQUIRED_NAMES: set[str] = {
     "USE_DDGS",
     "USE_TAVILY",
     "TAVILY_API_KEY",
+    "JARVIS_SECRET_STORE_KEY",
     "REDIS_HOST",
     "REDIS_PORT",
 }
@@ -88,6 +92,7 @@ ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "LLAMA_CPP_MANAGED",
     "LLAMA_CPP_MODEL_NAME",
     "LLAMA_CPP_TIMEOUT_SECONDS",
+    "LLAMA_CPP_CONTEXT_SIZE",
     "OLLAMA_BASE_URL",
     "OLLAMA_NUM_CTX",
     "OLLAMA_KEEP_ALIVE",
@@ -402,6 +407,27 @@ def test_backend_defaults_match_llama_cpp_first_starter_posture(monkeypatch, tmp
         assert name not in settings_module.SETTING_ENV_CLASSIFICATION
 
 
+def test_external_llama_cpp_compatibility_settings_are_explicit(monkeypatch, tmp_path):
+    settings_module = _reload_settings(
+        monkeypatch,
+        tmp_path,
+        "LLAMA_CPP_MANAGED=false\n"
+        "LLAMA_CPP_BASE_URL=http://127.0.0.1:8888/v1\n"
+        "LLAMA_CPP_MODEL_NAME=unsloth-model\n"
+        "LLAMA_CPP_CONTEXT_SIZE=65536\n",
+        None,
+    )
+
+    settings = settings_module.load_settings()
+
+    assert settings.llama_cpp_managed_explicit is True
+    assert settings.llama_cpp_managed is False
+    assert settings.llama_cpp_base_url_explicit is True
+    assert settings.llama_cpp_base_url == "http://127.0.0.1:8888/v1"
+    assert settings.llama_cpp_model_name == "unsloth-model"
+    assert settings.llama_cpp_context_size == 65536
+
+
 def test_blank_non_secret_env_values_do_not_mask_defaults(monkeypatch, tmp_path):
     settings_module = _reload_settings(
         monkeypatch,
@@ -491,7 +517,8 @@ def test_env_example_covers_current_settings_env_variables():
     assert values["LLM_MODEL_ID"] == ""
     assert values["OLLAMA_MODEL"] == "phi4-mini"
     assert RETIRED_SETTING_NAMES.isdisjoint(values)
-    assert values["SEARXNG_PORT"] == "8888"
+    assert values["SEARXNG_PORT"] == "8910"
+    assert values["JARVIS_SECRET_STORE_KEY"] == ""
     assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_OLLAMA"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_SEARXNG"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}

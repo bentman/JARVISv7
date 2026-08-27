@@ -86,6 +86,13 @@ const operatorPanels = createOperatorPanelCoordinator({
     openSettings(settingsPanelEl, {
       getOperatorConfig: api.getOperatorConfig,
       writeOperatorConfig: api.writeOperatorConfig,
+      getLlmConfig: api.getLlmConfig,
+      createLlmProfile: api.createLlmProfile,
+      updateLlmProfile: api.updateLlmProfile,
+      deleteLlmProfile: api.deleteLlmProfile,
+      testLlmProfile: api.testLlmProfile,
+      updateLlmSelection: api.updateLlmSelection,
+      rotateSecretStoreKey: api.rotateSecretStoreKey,
       restartBackend: restartBackendForSettings,
       onRestartRequiredChange: updateSettingsRestartRequired,
       returnFocusEl: settingsTriggerEl,

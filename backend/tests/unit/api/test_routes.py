@@ -292,14 +292,13 @@ def _client() -> TestClient:
     return TestClient(create_app(_state()))
 
 
-def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
+def test_build_startup_state_uses_provider_profile_service(monkeypatch) -> None:
     profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-test")
     report = FullCapabilityReport(profile=profile, flags=CapabilityFlags())
     preflight = PreflightResult(tokens=["import:ollama"], dll_discovery_log=[], probe_errors={})
     selected_llm = _FakeLLM()
-    prepared_local = _FakeLocalLLM()
-    prepare_calls: list[tuple[HardwareProfile, PreflightResult, CapabilityFlags]] = []
-    selector_calls: list[object] = []
+    trace = SelectionTrace("fake-llm", "selected")
+    prepare_calls: list[tuple[HardwareProfile, PreflightResult, CapabilityFlags, object]] = []
 
     monkeypatch.setattr(
         app_module,
@@ -321,26 +320,22 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     monkeypatch.setattr(app_module, "select_stt_runtime", lambda preflight, profile: _FakeSTT())
     monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
 
-    def fake_prepare_managed_local_llm(runtime_profile, runtime_preflight, *, flags):
-        prepare_calls.append((runtime_profile, runtime_preflight, flags))
+    def fake_prepare_llm_providers(runtime_profile, runtime_preflight, *, flags, settings):
+        prepare_calls.append((runtime_profile, runtime_preflight, flags, settings))
         return type(
-            "PreparedLocal",
+            "ProviderStartup",
             (),
-            {"runtime": prepared_local, "sidecar": None, "degraded_reason": None},
+            {"runtime": selected_llm, "sidecar": None, "trace": trace},
         )()
 
-    def fake_select_llm(*, local=None, ollama=None):
-        selector_calls.append(local)
-        return selected_llm, object()
-
-    monkeypatch.setattr(app_module, "prepare_managed_local_llm", fake_prepare_managed_local_llm)
-    monkeypatch.setattr(app_module, "select_llm", fake_select_llm)
+    monkeypatch.setattr(app_module, "prepare_llm_providers", fake_prepare_llm_providers)
 
     state = app_module.build_startup_state()
 
     assert state.llm is selected_llm
-    assert prepare_calls == [(profile, preflight, report.flags)]
-    assert selector_calls == [prepared_local]
+    assert len(prepare_calls) == 1
+    assert prepare_calls[0][:3] == (profile, preflight, report.flags)
+    assert state.llm_trace is trace
     assert state.resident_audio_stream is not None
     assert state.utterance_segmenter is not None
     assert state.resident_voice._utterance_segmenter is state.utterance_segmenter
@@ -351,12 +346,11 @@ def test_build_startup_state_uses_runtime_selector_for_llm(monkeypatch) -> None:
     assert state.engine.interruption_audio_chunks is None
 
 
-def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> None:
+def test_build_startup_state_continues_with_provider_service_degradation(monkeypatch) -> None:
     profile = HardwareProfile(os_name="linux", arch="amd64", profile_id="profile-linux-test")
     report = FullCapabilityReport(profile=profile, flags=CapabilityFlags())
     preflight = PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={})
     selected_llm = _FakeLLM()
-    selector_calls: list[object | None] = []
     degraded_reason = "LLM model 'assistant-small-q4' has no CPU serve profile for linux/amd64"
 
     monkeypatch.setattr(
@@ -380,25 +374,24 @@ def test_build_startup_state_continues_without_linux_local_llm(monkeypatch) -> N
     monkeypatch.setattr(app_module, "select_tts_runtime", lambda preflight, profile: _FakeTTS())
     monkeypatch.setattr(
         app_module,
-        "prepare_managed_local_llm",
-        lambda runtime_profile, runtime_preflight, *, flags: type(
-            "PreparedLocal",
+        "prepare_llm_providers",
+        lambda runtime_profile, runtime_preflight, *, flags, settings: type(
+            "ProviderStartup",
             (),
-            {"runtime": None, "sidecar": None, "degraded_reason": degraded_reason},
+            {
+                "runtime": selected_llm,
+                "sidecar": None,
+                "trace": SelectionTrace("fake-llm", degraded_reason),
+            },
         )(),
     )
-
-    def fake_select_llm(*, local=None, ollama=None):
-        selector_calls.append(local)
-        return selected_llm, object()
-
-    monkeypatch.setattr(app_module, "select_llm", fake_select_llm)
 
     state = app_module.build_startup_state()
 
     assert state.llm is selected_llm
     assert state.local_llm_sidecar is None
-    assert selector_calls == [None]
+    assert state.llm_trace is not None
+    assert state.llm_trace.reason == degraded_reason
 
 
 def test_build_engine_injects_resident_interruption_chunks_when_stream_running() -> None:
@@ -487,6 +480,27 @@ def test_readiness_returns_family_readiness() -> None:
     assert payload["families"]["llm"]["runtime"] == "fake-llm"
     assert payload["families"]["wake"]["runtime"] == "openwakeword"
     assert payload["families"]["wake"]["ready"] is True
+
+
+def test_readiness_adds_provider_selection_without_breaking_existing_fields() -> None:
+    state = _state()
+    state.llm.selection = type(
+        "Selection",
+        (),
+        {
+            "primary_profile_id": "profile-primary",
+            "cloud_escalation_enabled": True,
+            "cloud_profile_id": "profile-cloud",
+        },
+    )()
+
+    payload = TestClient(create_app(state)).get("/readiness").json()
+
+    assert payload["active_llm_runtime"] == "fake-llm"
+    assert payload["active_llm_profile_id"] == "profile-primary"
+    assert payload["active_llm_provider"] == "fake-llm"
+    assert payload["cloud_escalation_enabled"] is True
+    assert payload["cloud_escalation_profile_id"] == "profile-cloud"
 
 
 def test_readiness_returns_llm_selection_trace_for_local_runtime() -> None:
@@ -1408,31 +1422,7 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     assert response.status_code == 200
     fields = {field["key"]: field for field in payload["fields"]}
     assert set(fields) == {spec.key for spec in config_route.OPERATOR_FIELD_SPECS}
-    assert fields["USE_OLLAMA"]["value"] == "true"
-    assert fields["USE_OLLAMA"]["editable"] is True
-    assert fields["USE_OLLAMA"]["restart_required"] is True
-    assert fields["USE_OLLAMA"]["description"]
     assert fields["JARVIS_LANGUAGE"]["section"] == "App Defaults"
-    assert fields["USE_LOCAL_MODEL"]["section"] == "Local LLM intent (llama.cpp)"
-    assert fields["USE_LOCAL_MODEL"]["advanced"] is False
-    assert fields["LLM_MODEL_MODE"]["options"] == ["dev", "prod"]
-    assert fields["LLM_MODEL_MODE"]["section"] == "Local LLM intent (llama.cpp)"
-    assert fields["LLM_MODEL_MODE"]["advanced"] is False
-    assert fields["LLM_MODEL_MODE"]["restart_required"] is True
-    assert fields["LOCAL_MODEL_FETCH"]["section"] == "Local LLM intent (llama.cpp)"
-    assert fields["LOCAL_MODEL_FETCH"]["advanced"] is True
-    assert fields["LLM_MODEL_POLICY"]["options"] == ["auto", "portable", "balanced", "quality", "diagnostic"]
-    assert fields["LLM_MODEL_POLICY"]["section"] == "Local LLM intent (llama.cpp)"
-    assert fields["LLM_MODEL_ID"]["advanced"] is True
-    ordered_keys = [field["key"] for field in payload["fields"]]
-    assert ordered_keys.index("USE_LOCAL_MODEL") < ordered_keys.index("LLM_MODEL_MODE")
-    assert ordered_keys.index("LLM_MODEL_MODE") < ordered_keys.index("LLM_MODEL_POLICY")
-    assert fields["USE_OLLAMA"]["section"] == "Use Local Ollama intent"
-    assert fields["OLLAMA_MODEL"]["section"] == "Use Local Ollama intent"
-    assert fields["OLLAMA_BASE_URL"]["section"] == "Use Local Ollama intent"
-    assert fields["OLLAMA_BASE_URL"]["advanced"] is True
-    assert fields["OLLAMA_KEEP_ALIVE"]["section"] == "Use Local Ollama intent"
-    assert fields["OLLAMA_KEEP_ALIVE"]["advanced"] is True
     assert fields["USE_SEARXNG"]["section"] == "Optional Services"
     assert fields["SEARXNG_PORT"]["section"] == "Optional Services"
     assert fields["SEARXNG_PORT"]["advanced"] is False
@@ -1458,6 +1448,18 @@ def test_operator_config_returns_allowlisted_fields_and_masks_secret(tmp_path: P
     }.isdisjoint(fields)
     assert "secret-token" not in str(payload)
     assert "UNRELATED" not in fields
+    assert {
+        "USE_LOCAL_MODEL",
+        "LLM_MODEL_MODE",
+        "LLM_MODEL_POLICY",
+        "LLM_MODEL_ID",
+        "LOCAL_MODEL_FETCH",
+        "USE_OLLAMA",
+        "OLLAMA_MODEL",
+        "OLLAMA_BASE_URL",
+        "OLLAMA_KEEP_ALIVE",
+        "LLAMA_CPP_BASE_URL",
+    }.isdisjoint(fields)
 
 
 def test_operator_config_missing_env_returns_409_without_creating_file(tmp_path: Path, monkeypatch) -> None:
@@ -1485,20 +1487,21 @@ def test_operator_config_write_rejects_non_allowlisted_keys_and_preserves_unknow
 
     response = _client().post(
         "/config/operator",
-        json={"fields": {"USE_OLLAMA": "false", "TAVILY_API_KEY": "new-secret", "CONFIG_PATH": "x"}},
+        json={"fields": {"USE_DDGS": "false", "TAVILY_API_KEY": "new-secret", "CONFIG_PATH": "x"}},
     )
 
     assert response.status_code == 200
     assert response.json() == {
-        "written": ["USE_OLLAMA", "TAVILY_API_KEY"],
+        "written": ["TAVILY_API_KEY", "USE_DDGS"],
         "rejected": [{"key": "CONFIG_PATH", "reason": "not_allowlisted"}],
     }
     assert env_file.read_text(encoding="utf-8") == (
         "# leading comment\n"
-        "USE_OLLAMA=false\n"
+        "USE_OLLAMA=true\n"
         "UNRELATED=value\n"
         "TAVILY_API_KEY=new-secret\n"
         "REDIS_PORT=6379\n"
+        "USE_DDGS=false\n"
     )
 
 
@@ -1524,7 +1527,7 @@ def test_operator_config_write_rejects_values_containing_line_breaks(tmp_path: P
         "/config/operator",
         json={
             "fields": {
-                "USE_OLLAMA": "false\nINJECTED_KEY=oops",
+                "USE_DDGS": "false\nINJECTED_KEY=oops",
                 "REDIS_HOST": "victim\r\nINJECTED=1",
                 "REDIS_PORT": "6380",
             }
@@ -1535,7 +1538,7 @@ def test_operator_config_write_rejects_values_containing_line_breaks(tmp_path: P
     assert response.json() == {
         "written": ["REDIS_PORT"],
         "rejected": [
-            {"key": "USE_OLLAMA", "reason": "value_contains_line_break"},
+            {"key": "USE_DDGS", "reason": "value_contains_line_break"},
             {"key": "REDIS_HOST", "reason": "value_contains_line_break"},
         ],
     }
@@ -1550,15 +1553,15 @@ def test_operator_config_write_treats_masked_secret_as_unchanged(tmp_path: Path,
 
     response = _client().post(
         "/config/operator",
-        json={"fields": {"USE_OLLAMA": "false", "TAVILY_API_KEY": "***"}},
+        json={"fields": {"USE_DDGS": "false", "TAVILY_API_KEY": "***"}},
     )
 
     assert response.status_code == 200
-    assert response.json() == {"written": ["USE_OLLAMA"], "rejected": []}
-    assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=false\nTAVILY_API_KEY=real-secret\n"
+    assert response.json() == {"written": ["USE_DDGS"], "rejected": []}
+    assert env_file.read_text(encoding="utf-8") == "USE_OLLAMA=true\nTAVILY_API_KEY=real-secret\nUSE_DDGS=false\n"
 
 
-def test_operator_config_exposes_llama_cpp_sidecar_controls(tmp_path: Path, monkeypatch) -> None:
+def test_operator_config_omits_llama_cpp_sidecar_controls(tmp_path: Path, monkeypatch) -> None:
     env_file = tmp_path / ".env"
     env_file.write_text(
         "LLAMA_CPP_MODEL_PATH=models/llm/assistant-small-q4/qwen2.5-0.5b-instruct-q4_k_m.gguf\n"
@@ -1587,8 +1590,4 @@ def test_operator_config_exposes_llama_cpp_sidecar_controls(tmp_path: Path, monk
         "LLAMA_CPP_MODEL_NAME",
         "LLAMA_CPP_TIMEOUT_SECONDS",
     ):
-        assert key in fields
-        assert fields[key]["editable"] is True
-        assert fields[key]["restart_required"] is True
-        assert fields[key]["section"] == "Local LLM intent (llama.cpp)"
-        assert fields[key]["advanced"] is True
+        assert key not in fields

@@ -23,6 +23,9 @@ SETTING_ENV_CLASSIFICATION: dict[str, str] = {
     "LLAMA_CPP_BINARY_PATH": "advanced",
     "LLAMA_CPP_MODEL_NAME": "advanced",
     "LLAMA_CPP_TIMEOUT_SECONDS": "advanced",
+    "LLAMA_CPP_CONTEXT_SIZE": "advanced",
+    "JARVIS_SECRET_STORE_KEY": "secret",
+    "JARVIS_SECRET_STORE_PREVIOUS_KEY": "secret",
     "USE_OLLAMA": "primary",
     "OLLAMA_BASE_URL": "advanced",
     "JARVISV7_OLLAMA_URL": "compatibility",
@@ -132,6 +135,7 @@ class Settings:
         default_factory=lambda: _env_str("LLAMA_CPP_BASE_URL")
         or _endpoint_url_from_host_port(_env_str("LLAMA_CPP_HOST", "127.0.0.1") or "127.0.0.1", _env_int("LLAMA_CPP_PORT") or 8080)
     )
+    llama_cpp_base_url_explicit: bool = field(default_factory=lambda: _env_present("LLAMA_CPP_BASE_URL"))
     llama_cpp_host: str = field(default_factory=lambda: _env_str("LLAMA_CPP_HOST", "127.0.0.1") or "127.0.0.1")
     llama_cpp_port: int = field(default_factory=lambda: _env_int("LLAMA_CPP_PORT") or 8080)
     llama_cpp_binary_path: str | None = field(
@@ -142,6 +146,11 @@ class Settings:
     llama_cpp_model_name: str | None = field(default_factory=lambda: _env_str("LLAMA_CPP_MODEL_NAME"))
     llama_cpp_timeout_seconds: float = field(
         default_factory=lambda: _env_float("LLAMA_CPP_TIMEOUT_SECONDS") or 30.0
+    )
+    llama_cpp_context_size: int = field(default_factory=lambda: _env_int("LLAMA_CPP_CONTEXT_SIZE") or 2048)
+    jarvis_secret_store_key: str | None = field(default_factory=lambda: _env_str("JARVIS_SECRET_STORE_KEY"))
+    jarvis_secret_store_previous_key: str | None = field(
+        default_factory=lambda: _env_str("JARVIS_SECRET_STORE_PREVIOUS_KEY")
     )
     use_ollama: bool = field(default_factory=lambda: _env_bool("USE_OLLAMA", False))
     ollama_base_url: str = field(

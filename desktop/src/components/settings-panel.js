@@ -1,4 +1,5 @@
 import { createAppearanceControls } from "./appearance-controls.js";
+import { createLlmProviderSettings } from "./llm-provider-settings.js";
 
 let activeContainer = null;
 let loadedFields = [];
@@ -10,6 +11,8 @@ let restartHandler = null;
 let restartRequiredChangeHandler = null;
 let getConfigHandler = null;
 let writeConfigHandler = null;
+let llmHandlers = null;
+let loadedLlmConfig = null;
 let returnFocusEl = null;
 
 function fieldLabel(field) {
@@ -156,7 +159,13 @@ function renderMissingEnv(containerEl) {
   containerEl.replaceChildren(message);
 }
 
-function renderPanel(containerEl, fields) {
+function markRestartRequired() {
+  restartRequired = true;
+  notifyRestartRequiredChange();
+  if (activeContainer) renderPanel(activeContainer, loadedFields, loadedLlmConfig);
+}
+
+function renderPanel(containerEl, fields, llmConfig = null) {
   loadedFields = fields;
   fieldControls = new Map();
 
@@ -174,6 +183,16 @@ function renderPanel(containerEl, fields) {
   const restartButton = document.createElement("button");
   statusEl = document.createElement("p");
 
+  if (llmConfig && llmHandlers) {
+    const providerSettings = createLlmProviderSettings(llmConfig, llmHandlers, {
+        onRestartRequired: markRestartRequired,
+        reload: () => loadSettings(containerEl),
+      });
+    if (restartRequired) {
+      for (const control of providerSettings.querySelectorAll("input, select, button")) control.disabled = true;
+    }
+    form.appendChild(providerSettings);
+  }
   for (const group of groupedFields(fields)) form.appendChild(renderFieldGroup(group));
 
   saveButton.type = "submit";
@@ -234,7 +253,7 @@ async function saveSettings(event) {
   restartRequired = true;
   notifyRestartRequiredChange();
   setStatus(`Saved: written ${payload.written?.length ?? 0}; rejected ${payload.rejected?.length ?? 0}.`);
-  renderPanel(activeContainer, loadedFields);
+  renderPanel(activeContainer, loadedFields, loadedLlmConfig);
 }
 
 async function loadSettings(containerEl) {
@@ -245,8 +264,12 @@ async function loadSettings(containerEl) {
     return;
   }
   let payload;
+  let llmPayload = null;
   try {
-    payload = await getConfigHandler();
+    [payload, llmPayload] = await Promise.all([
+      getConfigHandler(),
+      llmHandlers?.getLlmConfig ? llmHandlers.getLlmConfig() : Promise.resolve(null),
+    ]);
   } catch (error) {
     const message = document.createElement("p");
     message.textContent = "Settings unavailable.";
@@ -257,7 +280,8 @@ async function loadSettings(containerEl) {
     renderMissingEnv(containerEl);
     return;
   }
-  renderPanel(containerEl, payload.fields || []);
+  loadedLlmConfig = llmPayload;
+  renderPanel(containerEl, payload.fields || [], llmPayload);
 }
 
 export async function openSettings(containerEl, options = {}) {
@@ -266,6 +290,15 @@ export async function openSettings(containerEl, options = {}) {
   restartRequiredChangeHandler = options.onRestartRequiredChange || restartRequiredChangeHandler;
   getConfigHandler = options.getOperatorConfig || getConfigHandler;
   writeConfigHandler = options.writeOperatorConfig || writeConfigHandler;
+  llmHandlers = {
+    getLlmConfig: options.getLlmConfig,
+    createLlmProfile: options.createLlmProfile,
+    updateLlmProfile: options.updateLlmProfile,
+    deleteLlmProfile: options.deleteLlmProfile,
+    testLlmProfile: options.testLlmProfile,
+    updateLlmSelection: options.updateLlmSelection,
+    rotateSecretStoreKey: options.rotateSecretStoreKey,
+  };
   returnFocusEl = options.returnFocusEl || returnFocusEl;
   containerEl.hidden = false;
   containerEl.textContent = "Loading settings…";
@@ -281,6 +314,7 @@ export function closeSettings() {
   activeContainer = null;
   loadedFields = [];
   fieldControls = new Map();
+  loadedLlmConfig = null;
   statusEl = null;
   dirtyEl = null;
   notifyRestartRequiredChange();

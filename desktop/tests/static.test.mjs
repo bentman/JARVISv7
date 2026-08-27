@@ -7,6 +7,11 @@ import { createDesktopState } from "../src/components/desktop-state.js";
 import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
 import { createSearchStatus, renderSearchEvidence } from "../src/components/search-evidence.js";
+import { createApiClient } from "../src/api-client.js";
+import {
+  providerChoiceGroups,
+  providerSelectionPayload,
+} from "../src/components/llm-provider-settings.js";
 import {
   createMemoryPanelController,
   createOperatorPanelCoordinator,
@@ -23,6 +28,7 @@ const backendDiagnostics = readFileSync(new URL("../src/components/backend-diagn
 const desktopPolling = readFileSync(new URL("../src/components/desktop-polling.js", import.meta.url), "utf8");
 const degradedList = readFileSync(new URL("../src/components/degraded-list.js", import.meta.url), "utf8");
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
+const llmProviderSettings = readFileSync(new URL("../src/components/llm-provider-settings.js", import.meta.url), "utf8");
 const memoryPanel = readFileSync(new URL("../src/components/memory-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
@@ -40,6 +46,7 @@ for (const relativePath of [
   "../src/components/appearance-controls.js",
   "../src/components/backend-diagnostics.js",
   "../src/components/settings-panel.js",
+  "../src/components/llm-provider-settings.js",
   "../src/components/memory-panel.js",
   "../src/components/resident-voice.js",
   "../src/components/service-status.js",
@@ -381,6 +388,41 @@ assert.ok(settingsPanel.includes("field.advanced"), "settings panel must use adv
 assert.ok(!settingsPanel.includes("LLM_MODEL_MODE"), "settings panel must not hardcode model mode field");
 assert.ok(!settingsPanel.includes("Local LLM intent (llama.cpp)"), "settings panel must not hardcode backend sections");
 assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
+assert.ok(llmProviderSettings.includes("Model Providers"), "settings must expose Model Providers");
+assert.ok(llmProviderSettings.includes("Allow cloud escalation"), "settings must expose cloud escalation authorization");
+assert.ok(llmProviderSettings.includes("Test connection"), "settings must expose provider readiness testing");
+assert.ok(llmProviderSettings.includes("Remove stored credential"), "settings must expose credential removal");
+assert.ok(!llmProviderSettings.includes("innerHTML"), "provider settings must render through DOM text APIs");
+
+assert.deepEqual(providerSelectionPayload("primary", "", false, "cloud"), {
+  primary_profile_id: "primary",
+  local_fallback_profile_id: null,
+  cloud_escalation_enabled: false,
+  cloud_profile_id: "cloud",
+});
+assert.deepEqual(
+  providerChoiceGroups([
+    { profile_id: "managed", kind: "managed_llama_cpp", cloud_eligible: false },
+    { profile_id: "private-compatible", kind: "openai_compatible", cloud_eligible: false },
+    { profile_id: "public-compatible", kind: "openai_compatible", cloud_eligible: true },
+    { profile_id: "openai", kind: "openai", cloud_eligible: true },
+  ]),
+  { local: ["managed", "private-compatible"], cloud: ["public-compatible", "openai"] },
+);
+
+const providerInvocations = [];
+const providerApi = createApiClient(async (command, args) => {
+  providerInvocations.push({ command, args });
+  return JSON.stringify({ ok: true });
+});
+await providerApi.getLlmConfig();
+await providerApi.updateLlmProfile("profile-1", { name: "Lab" });
+await providerApi.updateLlmSelection({ primary_profile_id: "profile-1" });
+assert.deepEqual(providerInvocations, [
+  { command: "get_llm_config", args: {} },
+  { command: "update_llm_profile", args: { profileId: "profile-1", profile: { name: "Lab" } } },
+  { command: "update_llm_selection", args: { selection: { primary_profile_id: "profile-1" } } },
+]);
 
 assert.ok(index.includes("System State"), "desktop must display System State label");
 assert.ok(index.includes("turn-status-anchor"), "desktop must include turn status anchor container");

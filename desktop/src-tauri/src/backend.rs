@@ -460,6 +460,95 @@ pub fn write_operator_config(
     Ok(body)
 }
 
+pub fn get_llm_config(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /config/llm";
+    let response = client
+        .get(format!("{base_url}/config/llm"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn create_llm_profile(
+    client: &Client,
+    base_url: &str,
+    profile: Value,
+) -> Result<String, String> {
+    let operation = "POST /config/llm/profiles";
+    let response = client
+        .post(format!("{base_url}/config/llm/profiles"))
+        .json(&profile)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn update_llm_profile(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+    profile: Value,
+) -> Result<String, String> {
+    let operation = "PUT /config/llm/profiles";
+    let response = client
+        .put(format!("{base_url}/config/llm/profiles/{profile_id}"))
+        .json(&profile)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn delete_llm_profile(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+) -> Result<String, String> {
+    let operation = "DELETE /config/llm/profiles";
+    let response = client
+        .delete(format!("{base_url}/config/llm/profiles/{profile_id}"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn test_llm_profile(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+) -> Result<String, String> {
+    let operation = "POST /config/llm/profiles/test";
+    let response = client
+        .post(format!("{base_url}/config/llm/profiles/{profile_id}/test"))
+        .json(&json!({}))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn update_llm_selection(
+    client: &Client,
+    base_url: &str,
+    selection: Value,
+) -> Result<String, String> {
+    let operation = "PUT /config/llm/selection";
+    let response = client
+        .put(format!("{base_url}/config/llm/selection"))
+        .json(&selection)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn rotate_secret_store_key(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "POST /config/secrets/rotate";
+    let response = client
+        .post(format!("{base_url}/config/secrets/rotate"))
+        .json(&json!({}))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 fn memory_transport_error(operation: &str, error: reqwest::Error) -> String {
     json!({
         "status": Value::Null,

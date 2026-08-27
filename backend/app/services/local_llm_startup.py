@@ -44,6 +44,26 @@ def prepare_managed_local_llm(
             degraded_reason="local model disabled",
         )
 
+    if (
+        resolved_settings.llama_cpp_managed_explicit
+        and not resolved_settings.llama_cpp_managed
+        and resolved_settings.llama_cpp_base_url_explicit
+        and resolved_settings.llama_cpp_base_url.strip()
+    ):
+        return ManagedLocalLLMStartup(
+            runtime=LlamaCppLLM(
+                base_url=resolved_settings.llama_cpp_base_url,
+                model=resolved_settings.llama_cpp_model_name or "local-llama-cpp",
+                timeout=resolved_settings.llama_cpp_timeout_seconds,
+                managed=False,
+                route=route,
+                serve_profile_id="external",
+                accelerator="external",
+                selected_reason="operator-configured external llama.cpp endpoint",
+                context_size=resolved_settings.llama_cpp_context_size,
+            )
+        )
+
     try:
         model_selection = select_llm_model(route, profile, settings=resolved_settings)
         resolution = resolve_llm_serve_profile(

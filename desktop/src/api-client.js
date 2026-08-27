@@ -80,6 +80,14 @@ export function createApiClient(invoke) {
     selectPersonality: async (profileId) => parseJson(await invoke("select_personality", { profileId })),
     getOperatorConfig: async () => parseJson(await invoke("get_operator_config")),
     writeOperatorConfig: async (fields) => parseJson(await invoke("write_operator_config", { fields })),
+    getLlmConfig: () => invokeMemory(invoke, "get_llm_config"),
+    createLlmProfile: (profile) => invokeMemory(invoke, "create_llm_profile", { profile }),
+    updateLlmProfile: (profileId, profile) =>
+      invokeMemory(invoke, "update_llm_profile", { profileId, profile }),
+    deleteLlmProfile: (profileId) => invokeMemory(invoke, "delete_llm_profile", { profileId }),
+    testLlmProfile: (profileId) => invokeMemory(invoke, "test_llm_profile", { profileId }),
+    updateLlmSelection: (selection) => invokeMemory(invoke, "update_llm_selection", { selection }),
+    rotateSecretStoreKey: () => invokeMemory(invoke, "rotate_secret_store_key"),
     getMemoryPolicy: () => invokeMemory(invoke, "get_memory_policy"),
     updateMemoryPolicy: (automaticCurationEnabled, expectedRevision) =>
       invokeMemory(invoke, "update_memory_policy", { automaticCurationEnabled, expectedRevision }),
