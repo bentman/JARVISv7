@@ -54,28 +54,28 @@ git pull
 
 Three rules prevent the most common self-inflicted setup problems:
 
-- **`pyproject.toml` is the only place Python dependencies are declared.** `backend/requirements.txt` is generated from it by `scripts/provision.py lock` for the base extra only. Never hand-edit it.
-- **`.env` overrides `.env.example` key-by-key.** Never edit `.env.example` for local changes; copy it to `.env` first.
-- **Not all settings are operator settings.** Prefer settings classified as `primary` in `backend/app/core/settings.py` unless a specific task requires another class.
+- **`pyproject.toml` is the only place Python dependencies are declared.** `backend/requirements.txt` is *generated* from it by `scripts/provision.py lock` (base extra only) and is read by tooling, not by you. Never hand-edit it — regenerate it instead if it's ever out of sync.
+- **`.env` overrides `.env.example` key-by-key, not wholesale.** Both files are loaded; `.env` values win only for the keys they actually set. Leaving a key out of `.env` means the `.env.example` (or hardcoded) default still applies. Never edit `.env.example` for local changes — copy it to `.env` first.
+- **Not all settings are meant to be touched.** `backend/app/core/settings.py` classifies every setting as `primary`, `advanced`, `derived`, `services`, `secret`, `compatibility`, or `test-only`. Stick to `primary` settings (see below) unless you have a specific reason to go further:
 
-| Class | Meaning | Examples |
-|---|---|---|
-| `primary` | Safe, expected day-to-day toggles | `USE_LOCAL_MODEL`, `LLM_MODEL_MODE`, `USE_OLLAMA`, `USE_SEARXNG` |
-| `advanced` | Path/tuning overrides, rarely needed | `MODEL_PATH`, `LLAMA_CPP_TIMEOUT_SECONDS` |
-| `derived` | Computed from a primary setting unless explicitly set | `LOCAL_MODEL_FETCH`, `LLAMA_CPP_MANAGED` |
-| `services` | Relevant when the optional service is running | `REDIS_PORT`, `SEARXNG_PORT` |
-| `secret` | Credentials | `TAVILY_API_KEY` |
-| `compatibility` / `test-only` | Legacy or CI-only | `JARVISV7_OLLAMA_URL`, `JARVISV7_LIVE_TESTS` |
+  | Class | Meaning | Examples |
+  |---|---|---|
+  | `primary` | Safe, expected day-to-day toggles | `USE_LOCAL_MODEL`, `LLM_MODEL_MODE`, `USE_OLLAMA`, `USE_SEARXNG` |
+  | `advanced` | Path/tuning overrides, rarely needed | `LLAMA_CPP_MODEL_PATH`, `LLAMA_CPP_TIMEOUT_SECONDS` |
+  | `derived` | Computed from a `primary` setting unless explicitly set | `LOCAL_MODEL_FETCH`, `LLAMA_CPP_MANAGED` |
+  | `services` | Only matters if the optional Docker service is running | `REDIS_PORT`, `SEARXNG_PORT` |
+  | `secret` | Credentials | `TAVILY_API_KEY` |
+  | `compatibility` / `test-only` | Legacy or CI-only | `JARVISV7_OLLAMA_URL`, `JARVISV7_LIVE_TESTS` |
 
 ## Repo-run desktop preview
 
-The intended flow is:
+Use this path for the normal product-preview flow:
 
 ```text
 prepare shell -> create backend venv -> bootstrap -> install desktop deps -> launch desktop
 ```
 
-The desktop shell should start the backend, create or resume a session, load readiness, start resident voice when available, and display backend, service, wake, voice, session, and error state.
+The desktop shell starts the backend, creates or resumes a session, loads readiness, starts the resident voice stream when available, and displays backend, readiness, service, wake, resident voice, and session state.
 
 ### 1. Prepare Bash
 
@@ -111,6 +111,8 @@ backend/.venv/bin/python -m pip install --upgrade pip
 
 ### 3. Use starter settings
 
+For first setup, leave `.env.example` defaults in place and just copy it:
+
 ```bash
 cp .env.example .env
 ```
@@ -127,7 +129,7 @@ USE_SEARXNG=false
 USE_DDGS=true
 ```
 
-Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override.
+Keep `LLM_MODEL_ID` blank unless you intentionally want an explicit model override. A nonblank `LLM_MODEL_ID` wins over dev/prod policy selection.
 
 Normal JARVIS Ollama turns use the structured `/api/chat` path. The direct `/api/generate` adapter remains only for direct-prompt compatibility.
 
@@ -139,17 +141,17 @@ Ollama requests keep the selected model resident for `5m` by default. Set the ad
 backend/.venv/bin/python scripts/bootstrap.py
 ```
 
-Bootstrap is intended to run these checkpoints in order:
+Bootstrap runs five checkpoints in order and stops at the first failure:
 
-| # | Checkpoint | Purpose |
+| # | Checkpoint | What it does |
 |---|---|---|
-| 1 | `profile` | Detect host CPU, GPU, NPU, and architecture |
-| 2 | `provision` | Resolve and install hardware-appropriate extras from `pyproject.toml` |
-| 3 | `ensure_models` | Acquire or verify STT, TTS, wake, and LLM artifacts |
-| 4 | `preflight` | Probe runtime readiness |
-| 5 | `validate_profile` | Run the backend profile validator |
+| 1 | `profile` | Detects host hardware (CPU/GPU/NPU, architecture) |
+| 2 | `provision` | Runs `scripts/provision.py install` to resolve and install hardware-appropriate extras from `pyproject.toml` |
+| 3 | `ensure_models` | Runs `scripts/ensure_models.py` to acquire or verify STT, TTS, wake, and LLM model artifacts |
+| 4 | `preflight` | Probes STT/TTS/LLM/wake readiness and reports probe status |
+| 5 | `validate_profile` | Runs `scripts/validate_backend.py profile` as a final sanity check |
 
-Stop at the first failure and diagnose that checkpoint. Do not work around provisioning with global or ad hoc package installation.
+If it fails, use the reported checkpoint name and reason to run the corresponding repository command for a fuller error.
 
 Wake support remains evidence-dependent. On the current WSL2 proving host, OpenWakeWord imported, reported ready, and its monitor ran over the resident stream. That establishes startup and monitoring only; it does not validate wake detection or a completed voice turn on Linux.
 
@@ -162,7 +164,11 @@ npm --prefix desktop run dev
 # npm --prefix desktop run build
 ```
 
-Do not install Tauri globally. On the current WSL2/WSLg proving host, the shell built and launched, started the backend through `backend/.venv/bin/python scripts/run_backend.py`, created a session, loaded readiness, and polled the consolidated desktop status API. Audio inference and completed resident voice turns remain unvalidated.
+Do not install Tauri globally for this repo. Use repo-local desktop package commands.
+
+The running desktop is the main product-preview surface. Use its readiness, services, resident voice, wake, session, and error panels before dropping to backend scripts.
+
+On the current WSL2/WSLg proving host, the shell built and launched, started the backend through `backend/.venv/bin/python scripts/run_backend.py`, created a session, loaded readiness, and polled the consolidated desktop status API. Audio inference and completed resident voice turns remain unvalidated.
 
 For a compile-only proof before opening a window:
 
@@ -175,7 +181,7 @@ The WSLg proof emitted two non-fatal GTK scale-factor diagnostics during startup
 
 ## Model acquisition
 
-Bootstrap is intended to manage the `stt`, `tts`, `wake`, and `llm` model families. For focused verification:
+`scripts/ensure_models.py` manages four independent model families: `stt`, `tts`, `wake`, and `llm`. Bootstrap acquires all of them; you only need this section if one family fails or you want to manage it directly.
 
 ```bash
 backend/.venv/bin/python scripts/ensure_models.py --family llm --verify-only
@@ -184,7 +190,9 @@ backend/.venv/bin/python scripts/ensure_models.py --family tts --verify-only
 backend/.venv/bin/python scripts/ensure_models.py --family wake --verify-only
 ```
 
-Drop `--verify-only` to request acquisition of a missing or mismatched artifact. Catalog entries marked `pending-pinned-release`, `pending-viability`, or `build-required` require additional work rather than repeated downloads.
+Drop `--verify-only` to acquire a missing or mismatched artifact for that family.
+
+Some catalog entries are not plain downloads — the catalog can mark an entry `pending-pinned-release`, `pending-viability`, or `build-required`. If a family fails to resolve and the error references one of these, that model needs manual build or export steps rather than a retry.
 
 ## Hardware acceleration
 
@@ -201,21 +209,23 @@ backend/.venv/bin/python scripts/provision.py dry-run
 
 ## Use production local LLM mode
 
-Starter mode selects the development model. To preview production selection in the current shell:
+Starter mode uses `dev` and selects the Qwen3 4B portable behavioral model. Production mode uses the host/policy-selected Qwen3 catalog model; the tiny Qwen2.5 model is retained only for explicit plumbing/startup diagnostics.
+
+Preview the selected production model for the current host:
 
 ```bash
 export LLM_MODEL_MODE=prod
 backend/.venv/bin/python scripts/ensure_models.py --family llm --dry-run
 ```
 
-Acquire or verify the selected model and runtime:
+Acquire or verify the selected production model and current-host llama.cpp runtime:
 
 ```bash
 backend/.venv/bin/python scripts/ensure_models.py --family llm
 backend/.venv/bin/python scripts/ensure_models.py --family llm --verify-only
 ```
 
-Return to starter mode:
+Return the current shell to starter mode:
 
 ```bash
 export LLM_MODEL_MODE=dev
@@ -225,30 +235,67 @@ Use `--all-llm` only when intentionally validating the full LLM catalog.
 
 ## Optional local services
 
-Redis and SearXNG are declared in `docker-compose.yml`; the backend should degrade visibly when they are absent.
+Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
+
+Normal text and voice turns can search the public web when the operator explicitly asks with phrasing such as `Search for ...`, `Research this ...`, or `Use research ...`. Search runs one query. Research may run up to three queries and read up to three public pages. The desktop shows progress, renders clickable sources, and exposes Stop while search work is active.
+
+Enabled providers are attempted in this order: DDGS, SearXNG, then Tavily. The first provider that returns usable results completes that query. Configure provider access in `.env`:
+
+```dotenv
+USE_DDGS=true
+USE_SEARXNG=true
+USE_TAVILY=false
+TAVILY_API_KEY=
+```
+
+`config/search/searxng/settings.yml` is the mounted SearXNG configuration authority and enables JSON responses. Private query details require confirmation before external disclosure; credentials and secrets are rejected.
+
+> SearXNG defaults to host port `8080`, but that conflicts with `llama.cpp/llama-server`.
+> SearXNG documents alternate port `8888`, but that conflicts with `unsloth/llama-server`.
+> JARVISv7 sets SearXNG default to port `8910` in `docker-compose.yml` to avoid these conflicts.
+> The SearXNG port is configurable in `.env:SEARXNG_PORT=****` if another port is required.
 
 ```bash
 docker compose up --detach
 docker compose down
 ```
 
-SearXNG defaults to host port `8888`.
-
 ## Backend and proving-host commands
 
-Run the backend directly only for API development or diagnosis:
+The desktop preview starts the backend for normal use. Run the backend directly only for API development or diagnosis:
 
 ```bash
 backend/.venv/bin/python scripts/run_backend.py
 ```
 
-Default URL: `http://127.0.0.1:8765`
+Default URL:
+
+```text
+http://127.0.0.1:8765
+```
+
+Useful options:
 
 ```bash
 backend/.venv/bin/python scripts/run_backend.py --reload
 backend/.venv/bin/python scripts/run_backend.py --host 127.0.0.1 --port 8765
+```
+
+Diagnostic text-only proving-host turn:
+
+```bash
 backend/.venv/bin/python scripts/run_jarvis.py --text-only --turns 1
+```
+
+Profile-only startup check:
+
+```bash
 backend/.venv/bin/python scripts/run_jarvis.py --profile
+```
+
+Voice-only proving-host turn requires working local STT, TTS, and an audio input device.
+
+```bash
 backend/.venv/bin/python scripts/run_jarvis.py --voice-only --turns 1
 ```
 
@@ -266,14 +313,14 @@ The proving host exposed `RDPSource` and `RDPSink`; the resident stream started 
 
 ## Development validation
 
-Quick intended checks:
+Quick checks (use these first):
 
 ```bash
 backend/.venv/bin/python scripts/provision.py verify
 backend/.venv/bin/python scripts/validate_backend.py profile
 ```
 
-Deeper tiers:
+Deeper validation tiers (only needed for development work on the backend itself):
 
 ```bash
 backend/.venv/bin/python scripts/validate_backend.py unit
@@ -283,22 +330,29 @@ backend/.venv/bin/python scripts/validate_backend.py ci
 npm --prefix desktop test
 ```
 
-Live tests remain gated behind hardware and service availability:
+Live tests are gated behind hardware/service availability and are off by default:
 
 ```bash
 export JARVISV7_LIVE_TESTS=1
 ```
 
+Then run the focused live test you need.
+
+```bash
+backend/.venv/bin/python scripts/validate_backend.py runtime --families search
+```
+
 ## Repository rules that matter
 
 - `pyproject.toml` is the Python dependency source of truth.
-- `backend/requirements.txt` is generated; do not edit it manually.
-- Use repository provisioning and model-management scripts rather than ad hoc installs.
-- Keep generated models, runtimes, caches, and reports out of source commits unless explicitly required.
+- `backend/requirements.txt` is generated; do not edit it by hand.
+- Use `scripts/provision.py` for Python dependency installation.
+- Use `scripts/ensure_models.py` for configured model artifacts.
+- Keep generated models, runtimes, caches, and reports out of source commits unless a slice explicitly says otherwise.
 - Record validation claims with exact command evidence.
 - Do not treat this guide as evidence for Linux paths beyond the verified Linux AMD64 NVIDIA CUDA llama.cpp route.
 
-## Common diagnostic starting points
+## Common fixes
 
 Python version rejected:
 
@@ -319,13 +373,13 @@ Models missing:
 backend/.venv/bin/python scripts/ensure_models.py
 ```
 
-Backend reports degraded readiness:
+Backend starts but reports degraded readiness:
 
 ```bash
 backend/.venv/bin/python scripts/validate_backend.py profile
 ```
 
-Desktop fails before launch:
+Desktop shell fails before app launch:
 
 ```bash
 npm --prefix desktop install

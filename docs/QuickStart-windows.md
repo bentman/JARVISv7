@@ -49,7 +49,7 @@ Three rules prevent the most common self-inflicted setup problems:
   | Class | Meaning | Examples |
   |---|---|---|
   | `primary` | Safe, expected day-to-day toggles | `USE_LOCAL_MODEL`, `LLM_MODEL_MODE`, `USE_OLLAMA`, `USE_SEARXNG` |
-  | `advanced` | Path/tuning overrides, rarely needed | `MODEL_PATH`, `LLAMA_CPP_TIMEOUT_SECONDS` |
+  | `advanced` | Path/tuning overrides, rarely needed | `LLAMA_CPP_MODEL_PATH`, `LLAMA_CPP_TIMEOUT_SECONDS` |
   | `derived` | Computed from a `primary` setting unless explicitly set | `LOCAL_MODEL_FETCH`, `LLAMA_CPP_MANAGED` |
   | `services` | Only matters if the optional Docker service is running | `REDIS_PORT`, `SEARXNG_PORT` |
   | `secret` | Credentials | `TAVILY_API_KEY` |
@@ -126,17 +126,17 @@ Ollama requests keep the selected model resident for `5m` by default. Set the ad
 .\backend\.venv\Scripts\python scripts\bootstrap.py
 ```
 
-Bootstrap runs 5 checkpoints in order and stops at the first failure — fix that checkpoint, don't work around it manually:
+Bootstrap runs five checkpoints in order and stops at the first failure:
 
 | # | Checkpoint | What it does |
 |---|---|---|
-| 1 | `profile` | Detects host hardware (CPU/GPU/NPU, arch) |
-| 2 | `provision` | Runs `scripts\provision.py install` — resolves hardware-appropriate extras from `pyproject.toml` and installs them |
-| 3 | `ensure_models` | Runs `scripts\ensure_models.py` — acquires/verifies STT, TTS, wake, and LLM model artifacts (see below) |
-| 4 | `preflight` | Probes STT/TTS/LLM/wake readiness and reports token/probe status |
+| 1 | `profile` | Detects host hardware (CPU/GPU/NPU, architecture) |
+| 2 | `provision` | Runs `scripts\provision.py install` to resolve and install hardware-appropriate extras from `pyproject.toml` |
+| 3 | `ensure_models` | Runs `scripts\ensure_models.py` to acquire or verify STT, TTS, wake, and LLM model artifacts |
+| 4 | `preflight` | Probes STT/TTS/LLM/wake readiness and reports probe status |
 | 5 | `validate_profile` | Runs `scripts\validate_backend.py profile` as a final sanity check |
 
-If it fails, the checkpoint name and reason printed tells you which of the four commands above to run standalone for a fuller error.
+If it fails, use the reported checkpoint name and reason to run the corresponding repository command for a fuller error.
 
 ### 5. Install desktop dependencies and launch
 
@@ -217,6 +217,19 @@ Use `--all-llm` only when intentionally validating the full LLM catalog.
 
 Redis and SearXNG are provided by `docker-compose.yml`. The backend can run without them; dependent subsystems report unavailable or degraded when services are absent.
 
+Normal text and voice turns can search the public web when the operator explicitly asks with phrasing such as `Search for ...`, `Research this ...`, or `Use research ...`. Search runs one query. Research may run up to three queries and read up to three public pages. The desktop shows progress, renders clickable sources, and exposes Stop while search work is active.
+
+Enabled providers are attempted in this order: DDGS, SearXNG, then Tavily. The first provider that returns usable results completes that query. Configure provider access in `.env`:
+
+```dotenv
+USE_DDGS=true
+USE_SEARXNG=true
+USE_TAVILY=false
+TAVILY_API_KEY=
+```
+
+`config\search\searxng\settings.yml` is the mounted SearXNG configuration authority and enables JSON responses. Private query details require confirmation before external disclosure; credentials and secrets are rejected.
+
 > SearXNG defaults to host port `8080`, but that conflicts with `llama.cpp/llama-server`.  
 > SearXNG documents alternate port `8888`, but that conflicts with `unsloth/llama-server`. 
 > JARVISv7 sets SearXNG default to port `8910` in `docker-compose.yml` to avoid these conflicts.  
@@ -292,6 +305,10 @@ $env:JARVISV7_LIVE_TESTS = "1"
 ```
 
 Then run the focused live test you need.
+
+```powershell
+.\backend\.venv\Scripts\python scripts\validate_backend.py runtime --families search
+```
 
 ## Repository rules that matter
 

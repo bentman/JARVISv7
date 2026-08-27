@@ -90,6 +90,7 @@ Current working areas include:
 * local STT, TTS, wake, and LLM runtime paths selected from readiness evidence
 * resident shared-stream voice with push-to-talk, wake monitoring, bounded follow-up, and interruption handling
 * canonical text and voice turns through the same conversation engine
+* explicit, bounded web search and research with cited sources, provider fallback, safe page reads, and cancellation
 * managed local `llama.cpp` with Ollama fallback
 * disk-backed episodic memory, SQLite semantic memory, bounded working context, retrieval, and persisted turn/session artifacts
 * structured personality profiles applied through explicit prompt and response boundaries
@@ -199,7 +200,6 @@ The actual gaps are less theatrical and more useful:
 * improve real-time voice latency, endpointing, interruption, recovery, and conversational smoothness
 * strengthen desktop presence, interaction polish, settings clarity, and user-facing state visibility
 * deepen memory into preference, procedural, correction, retention, and better retrieval behavior
-* connect useful external capability to the normal assistant path instead of leaving provider substrates isolated
 * introduce reusable instructions, prompts, and skills without turning them into hidden policy
 * establish honest tool execution, permissions, confirmations, cancellation, and audit behavior
 * support MCP connections, plugins, and integrations through recognizable reusable shapes
