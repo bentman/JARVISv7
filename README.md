@@ -49,6 +49,7 @@ Useful entry points:
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
 * [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
 * [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup — usable, documented, and still earning its confidence
+* [docs/OperationsGuide.md](docs/OperationsGuide.md) — shared diagnostics, model setup, optional services, and platform appendices
 
 The README is intentionally not the technical manual. Nobody wins when the front page becomes an installation crime scene.
 
