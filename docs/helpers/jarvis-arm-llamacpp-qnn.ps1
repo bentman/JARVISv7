@@ -11,8 +11,9 @@ ARM64 developer environment, and stages only the runtime directory in JARVISv7.
 Run from Visual Studio Developer PowerShell with ARM64 tools already loaded.
 
 Requires Qualcomm AI Engine Direct SDK / QAIRT with Hexagon HTP libraries.
-QNN support in llama.cpp is experimental and may require SDK-version-specific
-build flag adjustments.
+The JARVIS profile is live-proven when the sidecar is built and staged, but
+Windows Hexagon HTP loading requires TESTSIGNING. Upstream llama.cpp Snapdragon
+build options remain version-sensitive and may require SDK-specific adjustment.
 
 .PARAMETER JarvisRoot
 Path to the JARVISv7 repository root.
@@ -505,7 +506,7 @@ function Get-QnnCMakeArguments {
 
     # Current upstream llama.cpp exposes the Windows Snapdragon accelerator as
     # the Hexagon backend, not as a QNN CMake option. Keep the SDK path options
-    # here only as experimental compatibility inputs; the post-configure check
+    # here only as version-compatibility inputs; the post-configure check
     # below rejects CPU-only builds.
     return @(
         "-DGGML_OPENMP=OFF",

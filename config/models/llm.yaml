@@ -476,7 +476,7 @@ models:
           host: 127.0.0.1
           port: 8080
           base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
+          validation_status: validated
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
@@ -497,10 +497,10 @@ models:
           accelerator: npu.qnn
           runtime_artifact:
             source:
-              type: pending-viability
-              reason: S-G1-pending
+              type: build-required
+              reason: windows-test-signing-required
               project_label: npu.qnn
-              runtime_mapping: pending-hexagon-qnn-viability
+              runtime_mapping: hexagon-qnn-live-validated
               candidate_runtime_findings:
                 windows_on_snapdragon: build-package-flow
                 device_examples:
@@ -518,7 +518,8 @@ models:
           host: 127.0.0.1
           port: 8080
           base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
+          validation_status: validated
+          operational_note: requires Windows TESTSIGNING for Hexagon HTP skeleton loading; use Adreno OpenCL when retail security posture must remain unchanged
           close_if_unavailable: Degraded-no-sidecar-binary
           launch:
             ctx_size: 4096
@@ -599,7 +600,7 @@ models:
           host: 127.0.0.1
           port: 8080
           base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
+          validation_status: validated
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
@@ -672,7 +673,7 @@ models:
           host: 127.0.0.1
           port: 8080
           base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
+          validation_status: validated
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096
@@ -745,7 +746,7 @@ models:
           host: 127.0.0.1
           port: 8080
           base_url: http://127.0.0.1:8080
-          validation_status: declared-degraded
+          validation_status: validated
           close_if_unavailable: Degraded-opencl-build-required
           launch:
             ctx_size: 4096

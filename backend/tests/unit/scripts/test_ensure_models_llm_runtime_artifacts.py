@@ -241,10 +241,10 @@ def _entry(tmp_path: Path, *, source_type: str = "pending-pinned-release") -> en
                         "accelerator": "npu.qnn",
                         "runtime_artifact": {
                             "source": {
-                                "type": "pending-viability",
-                                "reason": "test-pending",
+                                "type": "build-required",
+                                "reason": "windows-test-signing-required",
                                 "project_label": "npu.qnn",
-                                "runtime_mapping": "pending-hexagon-qnn-viability",
+                                "runtime_mapping": "hexagon-qnn-live-validated",
                             },
                             "binary_path": str(
                                 tmp_path / "runtimes" / "llama.cpp" / "windows-arm64-qnn" / "llama-server.exe"
@@ -254,6 +254,7 @@ def _entry(tmp_path: Path, *, source_type: str = "pending-pinned-release") -> en
                         "binary_path": str(
                             tmp_path / "runtimes" / "llama.cpp" / "windows-arm64-qnn" / "llama-server.exe"
                         ),
+                        "operational_note": "requires Windows TESTSIGNING",
                         "close_if_unavailable": "Degraded-no-sidecar-binary",
                     },
                 }
@@ -286,7 +287,7 @@ def test_verify_runtime_artifacts_reports_separate_profile_states(tmp_path: Path
     assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["ready"] is False
     assert profiles["windows_arm64_gpu_qualcomm_adreno_opencl"]["degraded_reason"] == "SKIP-build-required"
     assert profiles["windows_arm64_npu_qualcomm_qnn"]["ready"] is False
-    assert profiles["windows_arm64_npu_qualcomm_qnn"]["degraded_reason"] == "SKIP-no-viable-binary"
+    assert profiles["windows_arm64_npu_qualcomm_qnn"]["degraded_reason"] == "SKIP-build-required"
 
 
 def test_verify_runtime_artifacts_reports_current_host_summary(tmp_path: Path) -> None:
@@ -777,6 +778,8 @@ def test_catalog_records_verified_cpu_and_cuda_serve_profiles() -> None:
         "windows_amd64_cpu",
         "windows_arm64_cpu",
         "windows_amd64_gpu_nvidia_cuda",
+        "windows_arm64_gpu_qualcomm_adreno_opencl",
+        "windows_arm64_npu_qualcomm_qnn",
     )
 
     for model_name in model_names:
@@ -826,7 +829,7 @@ def test_catalog_linux_cuda_runtime_profile_requires_server_implementation_and_c
     assert "libllama-common.so.0" in profiles["linux_amd64_gpu_nvidia_cuda"]["runtime_artifact"]["required_files"]
 
 
-def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> None:
+def test_catalog_qualcomm_npu_profiles_record_validated_accelerators_and_deferred_candidate() -> None:
     entry = ensure_models.get_model_entry("llm", "assistant-small-q4")
     profiles = ensure_models._hardware_profiles(entry)
 
@@ -840,6 +843,9 @@ def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> N
     assert base_profile["accelerator"] == "npu.hexagon_candidate"
     assert adreno_profile["accelerator"] == "gpu.opencl.adreno"
     assert qnn_profile["accelerator"] == "npu.qnn"
+    assert base_profile["validation_status"] == "declared-degraded"
+    assert adreno_profile["validation_status"] == "validated"
+    assert qnn_profile["validation_status"] == "validated"
     assert base_source["candidate_runtime_findings"] == {
         "windows_on_snapdragon": "build-package-flow",
         "device_examples": ["cpu", "adreno-opencl", "hexagon-htp"],
@@ -854,9 +860,12 @@ def test_catalog_qualcomm_npu_profiles_record_deferred_viability_findings() -> N
         "optimized_quantization": "Q4_0",
         "current_model_quantization": "Q4_K_M",
     }
+    assert qnn_source["type"] == "build-required"
+    assert qnn_source["reason"] == "windows-test-signing-required"
     assert qnn_source["project_label"] == "npu.qnn"
-    assert qnn_source["runtime_mapping"] == "pending-hexagon-qnn-viability"
+    assert qnn_source["runtime_mapping"] == "hexagon-qnn-live-validated"
     assert qnn_source["candidate_runtime_findings"] == base_source["candidate_runtime_findings"]
+    assert "TESTSIGNING" in qnn_profile["operational_note"]
 
 
 def test_automatic_runtime_fetch_policy_derives_from_local_model_intent(monkeypatch) -> None:

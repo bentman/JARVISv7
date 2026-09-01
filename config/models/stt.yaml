@@ -32,7 +32,7 @@ models:
     supported_hosts:
       - windows_arm64
     devices: [qnn]
-    validation_status: declared-degraded
+    validation_status: validated
     decode:
       language: ""
       task: transcribe
@@ -51,7 +51,7 @@ models:
     supported_hosts:
       - windows_arm64
     devices: [qnn]
-    validation_status: declared-degraded
+    validation_status: validated
     decode:
       language: ""
       task: transcribe

@@ -2,7 +2,7 @@
 
 This document explains how to use `docs\helpers\jarvis-arm-llamacpp-qnn.ps1` to build and stage a local llama.cpp sidecar for Windows ARM64 Snapdragon systems with Qualcomm Hexagon/QNN NPU support.
 
-**WARNING:** This path is experimental. The current repository declares `windows_arm64_npu_qualcomm_qnn` as a degraded/pending-viability profile until a real sidecar binary is built, staged, and validated on the target host. Current upstream llama.cpp Snapdragon support is exposed as the Hexagon backend (`GGML_HEXAGON`), not a stable QNN backend named `GGML_QNN`.
+**WARNING:** This path is validated but operationally opt-in. The repository declares `windows_arm64_npu_qualcomm_qnn` as a live-proven profile when the sidecar is built and staged, but current Windows Snapdragon Hexagon HTP loading requires Windows `TESTSIGNING`. Retail Copilot+ hosts that must keep normal signing posture should use the Adreno OpenCL helper instead. Current upstream llama.cpp Snapdragon support is exposed as the Hexagon backend (`GGML_HEXAGON`), not a stable QNN backend named `GGML_QNN`.
 
 The normal workflow runs directly on the ARM64 Snapdragon host. The helper keeps third-party source/build trees outside the repo and stages only the runtime file JARVIS consumes.
 
@@ -357,10 +357,10 @@ The repository already declares the QNN LLM profile in `config\models\llm.yaml` 
 windows_arm64_npu_qualcomm_qnn
 accelerator: npu.qnn
 binary_path: runtimes/llama.cpp/windows-arm64-qnn/llama-server.exe
-validation_status: declared-degraded
+validation_status: validated
 ```
 
-That declaration is not runtime proof. It becomes a real capability only after the sidecar exists locally and live validation shows the selected profile using QNN/HTP rather than CPU fallback.
+That declaration records the live-proven profile shape. Runtime use still requires the sidecar to exist locally, validation to show QNN/HTP rather than CPU fallback, and Windows test-signing to be acceptable for the target host.
 
 ## Manual recovery path
 
