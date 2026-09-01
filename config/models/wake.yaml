@@ -8,6 +8,7 @@ models:
     model: hey_jarvis_v0.1
     threshold: 0.5
     device: cpu
+    validation_status: validated
     source:
       type: url
       files:

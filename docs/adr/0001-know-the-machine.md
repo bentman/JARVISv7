@@ -50,9 +50,9 @@ Readiness owns selected runtime paths:
 - STT can select QNN, CUDA, DirectML, or CPU based on profile and preflight evidence.
 - TTS can select CUDA, DirectML, QNN, or CPU based on the same shared evidence.
 - Wake is CPU-only and reports unavailable when `openwakeword` is missing.
-- LLM local sidecar readiness is catalog/profile driven and reports unavailable or degraded when the selected local runtime path cannot be proven.
+- LLM local sidecar readiness is catalog/profile driven and reports unavailable or degraded when the selected local runtime path cannot be proven. When an operator-configured provider supersedes the managed local sidecar (external endpoint, alternate local runtime, or cloud provider, owned by [0005-governed-ability-to-act.md](0005-governed-ability-to-act.md)), readiness reports that configuration state instead of deriving from the catalog.
 
-Model catalogs may define host-class profiles before validation hardware is available. Such entries must be explicit about their state, using labels such as `validated`, `declared-not-validated`, or `declared-degraded`. Defined-but-unvalidated wiring is allowed when it captures researched configuration, provisioning shape, readiness behavior, fallback behavior, and deterministic skip/degraded reasons.
+Model catalogs may define host-class profiles before validation hardware is available. Such entries must be explicit about their state, using labels such as `validated`, `declared-not-validated`, or `declared-degraded`. Defined-but-unvalidated wiring is allowed when it captures researched configuration, provisioning shape, readiness behavior, fallback behavior, and deterministic skip/degraded reasons. `config/models/llm.yaml`, `stt.yaml`, `tts.yaml`, and `wake.yaml` all carry `validation_status` on their device/accelerator entries: CPU, CUDA, and DirectML paths on the supported host classes are `validated`; Windows ARM64 NPU/QNN and Adreno OpenCL accelerator paths are `declared-degraded` pending live validation on that hardware.
 
 Validation claims remain narrower than configuration. A host-class path becomes validated only after observable evidence exists from that host class.
 

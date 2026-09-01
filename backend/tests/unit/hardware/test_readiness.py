@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from backend.app.core.capabilities import HardwareProfile
+from backend.app.core.settings import Settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.hardware.readiness import (
     derive_llm_device_readiness,
@@ -8,6 +11,18 @@ from backend.app.hardware.readiness import (
     derive_tts_device_readiness,
     derive_wake_device_readiness,
 )
+
+
+def _llm_settings(**overrides) -> Settings:
+    defaults = dict(
+        use_local_model=True,
+        llama_cpp_managed_explicit=False,
+        llama_cpp_managed=False,
+        llama_cpp_base_url_explicit=False,
+        use_ollama=False,
+    )
+    defaults.update(overrides)
+    return Settings(**defaults)
 
 
 def _profile(**overrides) -> HardwareProfile:
@@ -96,44 +111,109 @@ def test_tts_readiness_selects_directml_for_directml_candidate() -> None:
     assert "ep:DmlExecutionProvider" in reason
 
 
-def test_llm_readiness_reports_plain_unavailable_reason() -> None:
+def test_llm_readiness_reports_disabled_when_local_model_disabled() -> None:
     selected_device, ready, reason = derive_llm_device_readiness(
-        _preflight("import:onnxruntime"),
+        _preflight(),
         _profile(os_name="linux", arch="amd64"),
+        settings=_llm_settings(use_local_model=False),
     )
 
-    assert (selected_device, ready) == ("cpu", False)
-    assert reason == "local runtime unavailable"
+    assert (selected_device, ready) == ("disabled", False)
+    assert "llm.yaml catalog not applicable" in reason
 
 
-def test_llm_readiness_selects_adreno_opencl_when_token_proven() -> None:
+def test_llm_readiness_reports_custom_when_external_llama_cpp_configured() -> None:
     selected_device, ready, reason = derive_llm_device_readiness(
-        _preflight("opencl:adreno"),
-        _profile(
-            os_name="windows",
-            arch="arm64",
-            gpu_available=True,
-            gpu_vendor="qualcomm",
+        _preflight(),
+        _profile(os_name="linux", arch="amd64"),
+        settings=_llm_settings(
+            llama_cpp_managed_explicit=True,
+            llama_cpp_managed=False,
+            llama_cpp_base_url_explicit=True,
+            llama_cpp_base_url="http://localhost:9000",
         ),
     )
 
-    assert (selected_device, ready) == ("gpu.opencl.adreno", True)
-    assert "opencl:adreno" in reason
+    assert selected_device == "custom"
+    assert ready is False
+    assert "external llama.cpp" in reason
 
 
-def test_llm_readiness_reports_opencl_missing_when_staged_artifacts_absent() -> None:
+def test_llm_readiness_reports_custom_when_ollama_configured() -> None:
     selected_device, ready, reason = derive_llm_device_readiness(
-        _preflight("opencl:adreno:MISSING"),
-        _profile(
-            os_name="windows",
-            arch="arm64",
-            gpu_available=True,
-            gpu_vendor="qualcomm",
+        _preflight(),
+        _profile(os_name="linux", arch="amd64"),
+        settings=_llm_settings(use_ollama=True),
+    )
+
+    assert selected_device == "custom"
+    assert ready is False
+    assert "ollama" in reason
+
+
+def test_llm_readiness_delegates_to_catalog_when_nothing_customized(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.models.llm_selection.select_llm_model",
+        lambda route, profile, settings=None: SimpleNamespace(model_id="fake-model"),
+    )
+    monkeypatch.setattr(
+        "backend.app.models.llm_profiles.resolve_llm_serve_profile",
+        lambda *args, **kwargs: SimpleNamespace(
+            accelerator="gpu.cuda",
+            degraded_reason=None,
+            selected_reason="selected current-host gpu.cuda serve profile",
         ),
     )
 
+    selected_device, ready, reason = derive_llm_device_readiness(
+        _preflight(),
+        _profile(os_name="windows", arch="amd64", gpu_vendor="nvidia", gpu_available=True, cuda_available=True),
+        settings=_llm_settings(),
+    )
+
+    assert (selected_device, ready) == ("gpu.cuda", True)
+    assert reason == "selected current-host gpu.cuda serve profile"
+
+
+def test_llm_readiness_reports_catalog_degraded_reason(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "backend.app.models.llm_selection.select_llm_model",
+        lambda route, profile, settings=None: SimpleNamespace(model_id="fake-model"),
+    )
+    monkeypatch.setattr(
+        "backend.app.models.llm_profiles.resolve_llm_serve_profile",
+        lambda *args, **kwargs: SimpleNamespace(
+            accelerator="gpu.opencl.adreno",
+            degraded_reason="Degraded-no-local-model-artifact",
+            selected_reason="selected current-host gpu.opencl.adreno serve profile",
+        ),
+    )
+
+    selected_device, ready, reason = derive_llm_device_readiness(
+        _preflight(),
+        _profile(os_name="windows", arch="arm64", gpu_vendor="qualcomm", gpu_available=True),
+        settings=_llm_settings(),
+    )
+
     assert (selected_device, ready) == ("cpu", False)
-    assert "opencl:adreno:MISSING" in reason
+    assert reason == "Degraded-no-local-model-artifact"
+
+
+def test_llm_readiness_reports_catalog_error(monkeypatch) -> None:
+    from backend.app.models.catalog import ModelCatalogError
+
+    def _raise(*args, **kwargs):
+        raise ModelCatalogError("llm catalog is misconfigured")
+
+    monkeypatch.setattr("backend.app.models.llm_selection.select_llm_model", _raise)
+
+    selected_device, ready, reason = derive_llm_device_readiness(
+        _preflight(),
+        _profile(os_name="linux", arch="amd64"),
+        settings=_llm_settings(),
+    )
+
+    assert (selected_device, ready, reason) == ("cpu", False, "llm catalog is misconfigured")
 
 
 def test_wake_readiness_selects_cpu_when_openwakeword_imported() -> None:
