@@ -27,8 +27,7 @@ Required baseline rules:
 - Do not create parallel mechanisms when the existing architecture can be extended.
 - Keep scope limited to the files and behavior named in this slice.
 - Add or update focused tests with each behavior change.
-- Record validation evidence before governance updates.
-- Do not update `SYSTEM_INVENTORY.md` until the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
+- Record validation evidence before status or completion claims.
 - Keep source, test, and documentation text free of authoring-session, task-history, implementation-phase, diff, and completed-work narration.
 - Default to no source comment; retain comments only for non-obvious invariants, constraints, workarounds, or public contracts.
 - State positive ownership boundaries: identify what owns behavior and evidence rather than describing rejected mechanisms.
@@ -76,7 +75,7 @@ Examples of acceptable observable targets:
 - API behavior: `{endpoint/schema}` includes `{field/state}`.
 - Runtime behavior: `{condition}` selects/runs/reports `{expected result}`.
 - UI behavior: `{surface}` shows/allows/prevents `{expected behavior}`.
-- Governance behavior: `{file}` records `{evidence}` only after `{validation}`.
+- Documentation behavior: `{file}` records `{evidence}` only after `{validation}`.
 
 If the slice has user/operator-facing behavior, include a short sketch:
 
@@ -144,7 +143,7 @@ Rules:
 
 - Each sub-slice must pass its focused validation before the next begins.
 - Changes to broad setup, runtime selection, persistence, or cross-host behavior require regression validation before closeout.
-- Do not perform governance closeout until implementation validation is complete.
+- Do not record closeout claims until implementation validation is complete.
 
 ---
 
@@ -335,7 +334,7 @@ Advanced or diagnostic paths remain available where required.
 
 ---
 
-## Sub-Slice {Group}.5 — Closeout Evidence and Governance
+## Sub-Slice {Group}.5 — Closeout Evidence
 
 ### Goal
 
@@ -345,8 +344,7 @@ Record completion only after validation evidence exists. Do not use this sub-sli
 
 Modify after validation:
 
-- `CHANGE_LOG.md` — append validation-backed entry.
-- `SYSTEM_INVENTORY.md` — append/update only after both Windows AMD64 and Windows ARM64 verification exists, unless explicitly approved otherwise.
+- `docs/adr/{decision}.md` — update only when the slice changes an accepted architecture decision, boundary, implementation path, consequence, or remaining-work item.
 - `{user-facing-doc}` — update only if user-facing behavior changed.
 - `{slice-doc-location}` — move/update only if current repo practice requires it.
 
@@ -364,8 +362,8 @@ Modify after validation:
 ```text
 PASS required validation on implementing host.
 PASS or SKIP-with-reason for optional/live/runtime validation.
-CHANGE_LOG.md records exact command, outcome, host class, and minimal evidence.
-SYSTEM_INVENTORY.md is updated only with required host-class evidence or explicit user approval.
+Closeout records exact command, outcome, host class, and minimal evidence.
+ADRs are updated only when the architecture decision or implementation guidance changed.
 No planned/future capability is recorded as verified.
 ```
 
@@ -396,7 +394,7 @@ Use this table to declare required evidence. Delete rows that do not apply.
 | Regression | `{host}` | `{command}` | Yes / No | PASS |
 | Runtime/live check | `{host}` | `{command or method}` | Yes / No | PASS or SKIP-with-reason |
 | User/operator validation | `{host}` | `{method}` | Yes / No | Accepted / rejected |
-| Inventory eligibility | Windows AMD64 + Windows ARM64 | `{commands/evidence}` | Yes for inventory | PASS on both, unless explicitly approved otherwise |
+| ADR update eligibility | `{host}` | `{commands/evidence}` | Yes when architecture changes | PASS or SKIP-with-reason |
 
 ---
 
@@ -410,22 +408,19 @@ All criteria must be observable and testable.
 4. {Integration surface reports the active state truthfully}.
 5. {No out-of-scope files or behavior changed}.
 6. {Required validation commands pass or skip with explicit acceptable reason}.
-7. `CHANGE_LOG.md` is updated only after validation evidence exists.
-8. `SYSTEM_INVENTORY.md` is updated only after both Windows AMD64 and Windows ARM64 evidence exists, unless explicitly approved otherwise.
+7. ADRs are updated only when accepted architecture decisions, boundaries, implementation paths, consequences, or remaining-work items change.
 
 ---
 
 ## Documentation and Governance Policy
 
-- `CHANGE_LOG.md`: append only after validation. Include exact command, outcome, host class, and minimal evidence excerpt or report path.
-- `SYSTEM_INVENTORY.md`: update only after the capability is verified on both Windows AMD64 and Windows ARM64, unless the user explicitly approves a narrower inventory state.
+- ADRs: update only when accepted architecture decisions, boundaries, implementation paths, consequences, or remaining-work items change.
 - User-facing docs: update only when user-facing setup, operation, or behavior changes.
 - Source and test text: describe active behavior, ownership, invariants, and public contracts without authoring-session, task-history, implementation-phase, diff, or completed-work narration.
 - Comments: omit by default; retain only when they explain a non-obvious invariant, constraint, workaround, or public contract.
 - Scope boundaries: state which mechanism owns behavior and evidence.
 - Cross-references: link between repository documents only in approved hub sections or an ADR's own Consequences section, and only when required for correct operation.
 - Slice docs: update the contract before continuing when required behavior or evidence boundaries change materially.
-- Use append-only corrections for governance files; do not rewrite history.
 
 ---
 

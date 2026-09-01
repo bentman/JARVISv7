@@ -36,6 +36,12 @@ Do not install Python packages globally. Do not hand-edit `backend/requirements.
 backend/.venv/bin/python scripts/provision.py lock
 ```
 
+## Host-Class Support
+
+Host-class support means JARVIS has researched and wired the expected configuration shape for a targeted class: dependency extras, model/runtime profile, readiness behavior, CPU fallback, and deterministic skip or degraded reasons.
+
+Validation is separate. A host-class path is proven only when it has command evidence from matching hardware. Do not skip host-class configuration just because the current machine cannot validate it; label it unvalidated until hardware is available.
+
 ## Configuration
 
 Use `.env` for operator configuration. `.env.example` is the starter template.

@@ -22,7 +22,7 @@ JARVIS is:
 - desktop-first, while remaining compatible with useful CLI surfaces
 - local-first by default
 - hardware-aware from the moment it starts
-- cross-platform by design
+- host-class aware by design
 - deterministic in orchestration
 - explicit in memory, policy, and action
 - interruptible
@@ -48,6 +48,8 @@ Before JARVIS can listen, reason, remember, or act, it must know where it is run
 The assistant begins by understanding the host: its operating system, architecture, compute devices, memory limits, available acceleration, installed runtimes, model artifacts, and service readiness.
 
 That knowledge must not be guessed independently by every subsystem. It becomes shared truth.
+
+Host-class support is a framework promise, not a claim that every machine is always available for live validation. When a host class is defined, its configuration, provisioning path, readiness shape, fallback behavior, and skip/degraded reasons should be researched and wired even when the current operator is not running on that class. Missing validation should block evidence claims, not the existence of the host-class configuration.
 
 From that truth, JARVIS can determine what should be installed, what can be loaded, what can run locally, what must degrade, and what should remain unavailable.
 
@@ -297,11 +299,12 @@ Project vision defines the intended shape and the invariants that should survive
 The repository must keep separate records for separate purposes:
 
 - `ProjectVision.md` defines direction and enduring shape
-- `SYSTEM_INVENTORY.md` records capabilities observable in the current repository
-- `CHANGE_LOG.md` records completed changes supported by evidence
+- `docs/adr/` records accepted architecture decisions, current design boundaries, implementation paths, consequences, remaining work, and evidence
 - `repo_tree.md` guides where repository content belongs
 
-Implementation is complete only when the intended outcome works in the real product path on the hardware classes it claims to support.
+Implementation is complete only when the intended outcome works in the real product path on the hardware classes it claims as validated.
+
+Defined-but-unvalidated host classes may exist as researched configuration, resolver wiring, runtime profiles, and deterministic skip/degraded behavior. They must be labeled that way until validation hardware is available.
 
 Documentation, tests, logs, and reports support that conclusion. They do not substitute for it.
 

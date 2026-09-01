@@ -44,8 +44,7 @@ Fresh-clone setup lives in the platform quick-start guides below. They are the r
 Useful entry points:
 
 * [ProjectVision.md](ProjectVision.md) — where the project is going
-* [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) — what is actually observable now
-* [CHANGE_LOG.md](CHANGE_LOG.md) — completed work with evidence
+* [docs/adr/](docs/adr/) — accepted architecture decisions and forward implementation guidance
 * [AGENTS.md](AGENTS.md) — repository rules for assisted work
 * [docs/QuickStart-windows.md](docs/QuickStart-windows.md) — Windows setup and repo-run desktop launch
 * [docs/QuickStart-linux.md](docs/QuickStart-linux.md) — Linux and WSL setup — usable, documented, and still earning its confidence
@@ -73,7 +72,7 @@ The intended progression is simple, even when the engineering is not:
 That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.  
 
 > [ProjectVision.md](ProjectVision.md) contains the destination.  
-> [SYSTEM_INVENTORY.md](SYSTEM_INVENTORY.md) tracks how much ground has actually been covered.  
+> [docs/adr/](docs/adr/) contains accepted architecture decisions and implementation guidance.
 > The goal is natural interaction without pretending the engineering underneath is simple.  
 
 * * *
@@ -153,11 +152,13 @@ What still needs work is the pleasant part: latency, timing, conversational smoo
 
 JARVISv7 treats hardware differences as architecture, not an embarrassing surprise to be patched later. Startup begins with profiling, provisioning, and readiness checks so runtime selection can be based on evidence instead of optimism.
 
+Host-class support means the framework is expected to define the configuration, provisioning, runtime profile, fallback, and skip/degraded behavior for each targeted class. Validation claims remain narrower: a path is proven only where it has been run on available hardware.
+
 Proven runtime posture:
 
 * Windows AMD64 is the broadest proving target, with CPU fallback and selected CUDA/DirectML paths.
 * Windows ARM64 is a first-class target, including validated Qualcomm QNN voice acceleration where supported.
-* Linux is supported enough to welcome contributors without claiming every path has achieved diplomatic immunity.
+* Linux has defined and validated paths where recorded, with unvalidated paths kept explicit rather than implied.
 * All accelerator claims remain bounded by what has actually been proven.
 
 Other acceleration is available with effort outside repo automation:
@@ -231,8 +232,8 @@ The actual gaps are less theatrical and more useful:
 * establish honest tool execution, permissions, confirmations, cancellation, and audit behavior
 * support MCP connections, plugins, and integrations through recognizable reusable shapes
 * introduce agents only after tools, memory, permissions, and handoffs are proven beneath them
-* improve Windows AMD64 and Windows ARM64 parity, then broaden Linux contributor paths without over-claiming them
-* prove more live runtime paths and reduce the number of places where “works” still requires a footnote
+* improve parity across defined host-class configurations without requiring every class to be on the desk at once
+* keep researched host-class wiring ready for validation, and reduce the number of places where “works” still requires a footnote
 
 That is not a small list. It is also not a reason to restart the project again, which is character development.
 
@@ -242,7 +243,7 @@ That is not a small list. It is also not a reason to restart the project again, 
 
 ## 🧩 Extending JARVIS: Skills, Tools, Integrations, Plugins, and Agents
 
-These are destination capabilities, not a disguised inventory of things that once had filenames.
+These are destination capabilities, not a file-by-file status list.
 
 The intended order matters:
 
@@ -261,7 +262,7 @@ The normal assistant must remain useful without any of them. Extensions should a
 
 ## 🔁 What Changed From v6
 
-v6 showed that the voice-first assistant vision was achievable. It also showed that architecture without strong boundaries can become ambitious in the least helpful ways. v7 keeps the vision and adds discipline: acceptance criteria, inventories, validation harnesses, explicit degraded states, hardware-aware provisioning, traceability, and less tolerance for “probably fine.”
+v6 showed that the voice-first assistant vision was achievable. It also showed that architecture without strong boundaries can become ambitious in the least helpful ways. v7 keeps the vision and adds discipline: acceptance criteria, ADRs, validation harnesses, explicit degraded states, hardware-aware provisioning, traceability, and less tolerance for “probably fine.”
 
 As a result, JARVISv7 places much greater emphasis on:
 
@@ -270,7 +271,7 @@ As a result, JARVISv7 places much greater emphasis on:
 * shared turn/session paths for text and voice
 * desktop as the durable surface
 * explicit personality, policy, memory, and capability boundaries
-* Windows AMD64 first, Windows ARM64 alongside it, and Linux paths expanded with evidence
+* defined host-class wiring first, validation claims recorded only where evidence exists
 * truthful degraded states when a feature is unavailable
 
 > That sounds less exciting, but turns out to be far more useful.
@@ -286,7 +287,7 @@ Contributions are welcome, particularly those that:
 * improve voice interaction
 * improve memory and retrieval systems
 * reduce complexity and improve reliability
-* improve Windows AMD64, Windows ARM64, and Linux platform support
+* improve defined host-class configuration, fallback, and validation coverage
 * shape future agent boundaries without turning them into autonomous gremlins
 * improve architecture parity without pretending one machine represents the species
 * improve hardware and runtime coverage — donations remain suspiciously effective

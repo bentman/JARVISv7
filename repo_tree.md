@@ -2,7 +2,7 @@
 
 `repo_tree.md` answers one question: **where should repository content live?**
 
-It is not an architecture specification, runtime inventory, implementation ledger, or validation record. Those details belong in `ProjectVision.md`, `SYSTEM_INVENTORY.md`, `CHANGE_LOG.md`, code, configuration, and focused documentation.
+It is not an architecture specification or validation record. Architecture decisions belong in `docs/adr/`; implementation evidence belongs in code, tests, configuration, reports, and focused documentation.
 
 ## Placement Rules
 
@@ -33,13 +33,11 @@ JARVISv7/
 ├─ scripts/             # provisioning, validation, bootstrap, packaging, utilities
 ├─ .env.example         # operator environment template
 ├─ AGENTS.md            # repository-wide agent instructions
-├─ CHANGE_LOG.md        # implementation and validation history
 ├─ docker-compose.yml   # local service composition
 ├─ ProjectVision.md     # product and architectural direction
 ├─ pyproject.toml       # Python package, dependency, and tooling configuration
 ├─ README.md            # informal project entry point
-├─ repo_tree.md         # placement guide
-└─ SYSTEM_INVENTORY.md  # observed system and capability inventory
+└─ repo_tree.md         # placement guide
 ```
 
 ## Backend Placement
@@ -113,7 +111,7 @@ Desktop code owns presentation and native-shell integration. Conversation, memor
 ## Documentation Placement
 
 - Root governance files apply repository-wide.
-- `docs/` holds durable architecture notes, operational guides, decisions, and retained concepts.
+- `docs/` holds ADRs, operational guides, durable explanatory material, and retained concepts.
 - Historical material may live under `docs/archives/`.
 - Temporary discovery/action documents may live at the root while active, then be removed or archived when no longer useful.
 

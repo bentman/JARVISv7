@@ -12,11 +12,10 @@ Use this order for repository truth:
 2. Nearest scoped `AGENTS.md`
 3. This root `AGENTS.md`
 4. `ProjectVision.md`
-5. `repo_tree.md`
-6. `SYSTEM_INVENTORY.md`
-7. `CHANGE_LOG.md`
+5. Accepted ADRs in `docs/adr/`
+6. `repo_tree.md`
 
-Do not infer completion from intent docs. `SYSTEM_INVENTORY.md` records observable capability state. `CHANGE_LOG.md` records completed work after validation evidence exists. If files conflict with observed behavior, report the conflict and propose the smallest correction.
+Do not infer completion from intent docs or ADRs. Accepted ADRs are the forward authority for architecture decisions, design boundaries, implementation paths, and durable guidance. If files conflict with observed behavior, report the conflict and propose the smallest correction.
 
 Before touching config or dependencies:
 
@@ -104,7 +103,7 @@ Required report fields for validation claims:
 - host class (`windows-amd64`, `windows-arm64`, etc.)
 - minimal output excerpt or report path
 
-Use `scripts/validate_backend.py` for backend closeout evidence. Raw `pytest` is acceptable for inner-loop development but is not governance closeout evidence unless explicitly requested.
+Use `scripts/validate_backend.py` for backend closeout evidence. Raw `pytest` is acceptable for inner-loop development but is not repository closeout evidence unless explicitly requested.
 
 Key validator commands:
 
@@ -128,7 +127,8 @@ Do not commit generated artifacts unless the task explicitly requires it. Ensure
 ## Documentation and code
 
 - Source code and tests describe the system as it exists. Development
-  narration belongs in chat, commits, pull requests, or durable ADRs.
+  narration belongs in chat, commits, and pull requests. Durable design
+  rationale belongs in ADRs.
 - Default to no comment. A comment survives only when it explains a
   non-obvious invariant, constraint, workaround, or public contract.
 - Source artifacts contain no conversation or session residue. Comments,
@@ -149,11 +149,16 @@ Naming conventions for approved helper artifacts:
 - PowerShell helper: `docs/helpers/<area>-<purpose>.ps1`
 - temporary handoff package: `docs/temp/<name>-YYYYMMDDHHMMSS.zip`
 
-## 7. CHANGE_LOG and SYSTEM_INVENTORY
+## 7. ADRs
 
-`CHANGE_LOG.md` records completed codebase changes after objective completion and validation evidence. Add new entries only at the top directly under `## Change Entries`. Corrections or clarifications go only below `## Change Appendix`. Do not edit, reorder, or delete past entries.
+Accepted ADRs in `docs/adr/` record durable architecture decisions, current design boundaries, implementation paths, consequences, remaining work, and evidence. New or changed architecture belongs in an ADR before it becomes a parallel helper workflow, config convention, runtime path, capability model, memory path, action boundary, extension mechanism, or agent mechanism.
 
-`SYSTEM_INVENTORY.md` is the observable capability ledger. Record only capability or feature groups observed in repository artifacts. Add new entries only at the top directly under `## Inventory Entries`. Corrections or clarifications go only below `## Inventory Appendix`. Do not promote capability state without evidence.
+For ADR changes:
+
+- Keep prose durable, positive, and self-sufficient.
+- State the owning mechanism and component.
+- State dependencies, implementation targets, and verifiable exit evidence.
+- Do not mirror every completed change or observed file path unless the decision requires that trace.
 
 ## 8. Git safety
 
