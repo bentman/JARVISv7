@@ -10,14 +10,6 @@ const FAMILY_LABELS = {
 
 const FAILED_REASON_TOKENS = ["MISSING", "unavailable"];
 
-function isOllamaLocalRuntimeFallback(family, activeLlmRuntime) {
-  return (
-    family?.family === "llm" &&
-    String(activeLlmRuntime || "").toLowerCase() === "ollama" &&
-    String(family?.reason || "").toLowerCase() === "local runtime unavailable"
-  );
-}
-
 function appendFactList(payload, containerEl) {
   const facts = document.createElement("dl");
   facts.className = "facts readiness-summary";
@@ -53,9 +45,6 @@ function classifyFamily(family, readinessPayload) {
   const reason = String(family?.reason || "");
   if (family?.family === "tts" && family?.runtime && String(family?.device || "").toLowerCase() === "cpu") {
     return "ready";
-  }
-  if (!family?.ready && isOllamaLocalRuntimeFallback(family, readinessPayload?.active_llm_runtime)) {
-    return "degraded";
   }
   if (!family?.ready && FAILED_REASON_TOKENS.some((token) => reason.includes(token))) {
     return "failed";

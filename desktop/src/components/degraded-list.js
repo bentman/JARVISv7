@@ -2,15 +2,6 @@ const OPTIONAL_SERVICE_LABELS = {
   redis: "Optional Redis Cache",
   searxng: "Optional SearXNG Search",
 };
-const LOCAL_RUNTIME_FALLBACK_REASON = ["local runtime", "unavailable"].join(" ");
-
-function isOllamaLocalRuntimeFallback(family, readinessPayload) {
-  return (
-    family?.family === "llm" &&
-    String(readinessPayload?.active_llm_runtime || "").toLowerCase() === "ollama" &&
-    String(family?.reason || "").toLowerCase() === LOCAL_RUNTIME_FALLBACK_REASON
-  );
-}
 
 function familyLabel(name) {
   return String(name || "unknown").toUpperCase();
@@ -63,9 +54,7 @@ export function collectDegradedConditions(readinessPayload) {
 
 export function selectedFamilyBlockers(readinessPayload) {
   if (!readinessPayload || typeof readinessPayload !== "object") return [];
-  return Object.values(readinessPayload.families || {}).filter(
-    (family) => !family?.ready && !isOllamaLocalRuntimeFallback(family, readinessPayload),
-  );
+  return Object.values(readinessPayload.families || {}).filter((family) => !family?.ready);
 }
 
 function renderCondition(row) {
