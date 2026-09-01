@@ -71,8 +71,9 @@ The intended progression is simple, even when the engineering is not:
 
 That sounds less glamorous than “AI assistant,” but it is far more useful when something breaks at 11:47 PM and the system has the courtesy to say why.  
 
-> [ProjectVision.md](ProjectVision.md) contains the destination.  
-> [docs/adr/](docs/adr/) contains accepted architecture decisions and implementation guidance.
+- [ProjectVision.md](ProjectVision.md) contains the destination.  
+- [docs/adr/](docs/adr/) contains accepted architecture decisions and implementation guidance.  
+
 > The goal is natural interaction without pretending the engineering underneath is simple.  
 
 * * *
