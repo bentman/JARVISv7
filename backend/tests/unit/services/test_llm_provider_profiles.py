@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import base64
+import os
 import sqlite3
+import stat
 
 import pytest
 from backend.app.core.settings import Settings
@@ -190,6 +192,18 @@ def test_store_resumes_interrupted_rotation(tmp_path, monkeypatch):
     assert "JARVIS_SECRET_STORE_PREVIOUS_KEY" not in recovered.env_path.read_text(encoding="utf-8")
 
 
+def test_store_opens_initialized_database_without_schema_write(tmp_path, monkeypatch):
+    store = _store(tmp_path, monkeypatch)
+    db_path = store.db_path
+    env_path = store.env_path
+    os.chmod(db_path, stat.S_IREAD)
+    try:
+        reopened = LLMProviderProfileStore(db_path, env_path)
+        assert reopened.selection_persisted() is False
+    finally:
+        os.chmod(db_path, stat.S_IREAD | stat.S_IWRITE)
+
+
 def test_store_refuses_rotation_recovery_with_process_key_override(tmp_path, monkeypatch):
     store = _store(tmp_path, monkeypatch)
     _create(store, api_key="secret")
@@ -251,3 +265,29 @@ def test_legacy_external_env_profile_uses_model_name_context_and_persists_select
     )
     assert selection.primary_profile_id == LEGACY_EXTERNAL_PROFILE_ID
     assert store.get_profile(LEGACY_EXTERNAL_PROFILE_ID).model == "unsloth-model"
+
+
+def test_explicit_external_env_selection_overrides_stale_managed_selection(tmp_path, monkeypatch):
+    store = _store(tmp_path, monkeypatch)
+    store.set_selection(
+        primary_profile_id=BUILTIN_MANAGED_PROFILE_ID,
+        local_fallback_profile_id=None,
+        cloud_escalation_enabled=False,
+        cloud_profile_id=None,
+    )
+    settings = Settings(
+        use_local_model=True,
+        llama_cpp_managed_explicit=True,
+        llama_cpp_managed=False,
+        llama_cpp_base_url_explicit=True,
+        llama_cpp_base_url="http://127.0.0.1:8888/v1",
+        llama_cpp_model_name="unsloth-model",
+        llama_cpp_context_size=65536,
+    )
+
+    profiles = {profile.profile_id: profile for profile in store.list_profiles(settings)}
+    selection = store.get_selection(settings)
+
+    assert LEGACY_EXTERNAL_PROFILE_ID in profiles
+    assert selection.primary_profile_id == LEGACY_EXTERNAL_PROFILE_ID
+    assert selection.persisted is True

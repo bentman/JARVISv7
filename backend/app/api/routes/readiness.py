@@ -45,32 +45,39 @@ def _llm_runtime_trace(state: ApiState) -> tuple[tuple[str, bool, str], Selectio
     trace = state.llm_trace
     readiness = state.readiness.get("llm", ("cpu", False, "llm readiness unavailable"))
     runtime_name = state.llm.runtime_name()
-
-    if runtime_name != "llama.cpp":
-        if trace is not None:
-            device = trace.accelerator or readiness[0]
-            return (str(device or "unknown"), trace.runtime_name != "null", trace.reason), trace
-        return readiness, trace
-
     available = state.llm.is_available()
-    accelerator = getattr(state.llm, "accelerator", None)
+    accelerator = getattr(state.llm, "accelerator", None) or (trace.accelerator if trace is not None else None)
     device = accelerator or readiness[0]
-    runtime_reason = getattr(state.llm, "reason", "local llama.cpp availability unknown")
-    reason = "local llama.cpp available" if available else runtime_reason
+    fallback_reason = trace.reason if trace is not None else readiness[2]
+    runtime_reason = getattr(state.llm, "reason", None)
+    if available:
+        reason = runtime_reason if runtime_reason and runtime_reason != "not probed" else fallback_reason
+    else:
+        reason = runtime_reason or (
+            trace.degraded_reason if trace is not None and trace.degraded_reason else readiness[2]
+        )
+    if runtime_name == "llama.cpp":
+        degraded_reason = runtime_reason or reason
+    elif available and trace is not None:
+        degraded_reason = trace.degraded_reason
+    else:
+        degraded_reason = runtime_reason or (trace.degraded_reason if trace is not None else None)
+    if trace is None:
+        return (str(device or "unknown"), available, reason), trace
     refreshed = SelectionTrace(
         runtime_name=runtime_name,
         reason=reason,
-        model_id=getattr(state.llm, "model", None),
-        route=getattr(state.llm, "route", None),
-        serve_profile_id=getattr(state.llm, "serve_profile_id", None),
+        model_id=getattr(state.llm, "model", trace.model_id),
+        route=getattr(state.llm, "route", trace.route),
+        serve_profile_id=getattr(state.llm, "serve_profile_id", trace.serve_profile_id),
         accelerator=accelerator,
-        base_url=getattr(state.llm, "base_url", None),
-        selected_reason=getattr(state.llm, "selected_reason", None),
-        degraded_reason=runtime_reason,
-        model_mode=getattr(state.llm, "model_mode", None),
-        model_policy=getattr(state.llm, "model_policy", None),
-        model_role=getattr(state.llm, "model_role", None),
-        model_selection_reason=getattr(state.llm, "model_selection_reason", None),
+        base_url=getattr(state.llm, "base_url", trace.base_url),
+        selected_reason=getattr(state.llm, "selected_reason", trace.selected_reason),
+        degraded_reason=degraded_reason,
+        model_mode=getattr(state.llm, "model_mode", trace.model_mode),
+        model_policy=getattr(state.llm, "model_policy", trace.model_policy),
+        model_role=getattr(state.llm, "model_role", trace.model_role),
+        model_selection_reason=getattr(state.llm, "model_selection_reason", trace.model_selection_reason),
     )
     return (str(device or "unknown"), available, reason), refreshed
 

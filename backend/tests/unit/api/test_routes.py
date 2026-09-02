@@ -106,6 +106,17 @@ class _FakeOllamaLLM(_FakeLLM):
         return "ollama"
 
 
+class _DeadExternalLLM(_FakeLLM):
+    model = "local-llama-cpp"
+    reason = "provider request failed: transport unavailable"
+
+    def runtime_name(self) -> str:
+        return "openai_compatible"
+
+    def is_available(self) -> bool:
+        return False
+
+
 class _DeadLocalLLM(_FakeLocalLLM):
     reason = "managed llama.cpp sidecar is not running"
 
@@ -605,6 +616,33 @@ def test_readiness_reports_selected_ollama_ready_when_local_readiness_is_unavail
     assert llm["ready"] is True
     assert llm["reason"] == "test ollama available"
     assert llm["degraded_reason"] == "Degraded-no-sidecar-binary"
+
+
+def test_readiness_refreshes_dead_external_llm_instead_of_using_stale_trace() -> None:
+    state = _state()
+    state.llm = _DeadExternalLLM()  # type: ignore[assignment]
+    state.llm_trace = SelectionTrace(
+        runtime_name="openai_compatible",
+        reason="operator provider profile selected",
+        model_id="local-llama-cpp",
+        serve_profile_id="legacy:external-llama-cpp",
+        accelerator="external",
+        base_url="http://127.0.0.1:8080/v1",
+        selected_reason="selected provider profile External llama.cpp (.env)",
+    )
+
+    response = TestClient(create_app(state)).get("/readiness")
+    llm = response.json()["families"]["llm"]
+
+    assert response.status_code == 200
+    assert llm["runtime"] == "openai_compatible"
+    assert llm["ready"] is False
+    assert llm["reason"] == "provider request failed: transport unavailable"
+    assert llm["model"] == "local-llama-cpp"
+    assert llm["serve_profile_id"] == "legacy:external-llama-cpp"
+    assert llm["accelerator"] == "external"
+    assert llm["base_url"] == "http://127.0.0.1:8080/v1"
+    assert llm["degraded_reason"] == "provider request failed: transport unavailable"
 
 
 def test_readiness_returns_additive_service_status(monkeypatch) -> None:
