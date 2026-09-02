@@ -114,3 +114,41 @@ def test_saved_managed_selection_overrides_disabled_env_bootstrap(tmp_path, monk
     assert captured_settings[0].use_local_model is True
     assert captured_settings[0].llama_cpp_managed is True
     assert captured_settings[0].llama_cpp_managed_explicit is True
+
+
+def test_saved_managed_selection_uses_managed_endpoint_over_external_env(tmp_path, monkeypatch):
+    store = _store(tmp_path, monkeypatch)
+    store.set_selection(
+        primary_profile_id=BUILTIN_MANAGED_PROFILE_ID,
+        local_fallback_profile_id=None,
+        cloud_escalation_enabled=False,
+        cloud_profile_id=None,
+    )
+    captured_settings = []
+
+    def prepare(profile, preflight, *, flags, settings):
+        captured_settings.append(settings)
+        return SimpleNamespace(
+            runtime=LlamaCppLLM(managed=True),
+            sidecar=None,
+            resolution=None,
+            degraded_reason=None,
+        )
+
+    monkeypatch.setattr(llm_provider_service, "prepare_managed_local_llm", prepare)
+    prepare_llm_providers(
+        HardwareProfile(os_name="windows", arch="amd64"),
+        PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={}),
+        settings=Settings(
+            use_local_model=True,
+            use_ollama=False,
+            llama_cpp_managed=False,
+            llama_cpp_managed_explicit=True,
+            llama_cpp_base_url="http://127.0.0.1:8888",
+            llama_cpp_base_url_explicit=True,
+        ),
+        store=store,
+    )
+
+    assert captured_settings[0].llama_cpp_base_url == ""
+    assert captured_settings[0].llama_cpp_base_url_explicit is False

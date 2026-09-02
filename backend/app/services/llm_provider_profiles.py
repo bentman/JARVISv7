@@ -207,9 +207,8 @@ class LLMProviderProfileStore:
                 """
             ).fetchall()
         profiles.extend(self._profile_from_row(row) for row in rows)
-        resolved = settings or load_settings()
-        if not self.selection_persisted() or self._legacy_external_profile(resolved):
-            legacy = self._legacy_profiles(resolved)
+        if not self.selection_persisted():
+            legacy = self._legacy_profiles(settings or load_settings())
             saved_ids = {profile.profile_id for profile in profiles}
             profiles.extend(profile for profile in legacy if profile.profile_id not in saved_ids)
         return profiles
@@ -341,19 +340,9 @@ class LLMProviderProfileStore:
             return connection.execute("SELECT 1 FROM llm_provider_selection WHERE singleton = 1").fetchone() is not None
 
     def get_selection(self, settings: Settings | None = None) -> ProviderSelection:
-        resolved = settings or load_settings()
-        external = self._legacy_external_profile(resolved)
         with self._connect() as connection:
             row = connection.execute("SELECT * FROM llm_provider_selection WHERE singleton = 1").fetchone()
         if row:
-            if external is not None and row["primary_profile_id"] == BUILTIN_MANAGED_PROFILE_ID:
-                return ProviderSelection(
-                    external.profile_id,
-                    row["local_fallback_profile_id"],
-                    bool(row["cloud_escalation_enabled"]),
-                    row["cloud_profile_id"],
-                    persisted=True,
-                )
             return ProviderSelection(
                 primary_profile_id=row["primary_profile_id"],
                 local_fallback_profile_id=row["local_fallback_profile_id"],
@@ -361,6 +350,8 @@ class LLMProviderProfileStore:
                 cloud_profile_id=row["cloud_profile_id"],
                 persisted=True,
             )
+        resolved = settings or load_settings()
+        external = self._legacy_external_profile(resolved)
         if external:
             primary = external.profile_id
         elif resolved.use_local_model:

@@ -88,6 +88,8 @@ def prepare_llm_providers(
                     use_local_model=True,
                     llama_cpp_managed=True,
                     llama_cpp_managed_explicit=True,
+                    llama_cpp_base_url="",
+                    llama_cpp_base_url_explicit=False,
                 )
             startup = prepare_managed_local_llm(
                 hardware_profile,

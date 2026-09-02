@@ -267,7 +267,7 @@ def test_legacy_external_env_profile_uses_model_name_context_and_persists_select
     assert store.get_profile(LEGACY_EXTERNAL_PROFILE_ID).model == "unsloth-model"
 
 
-def test_explicit_external_env_selection_overrides_stale_managed_selection(tmp_path, monkeypatch):
+def test_persisted_selection_overrides_legacy_external_env(tmp_path, monkeypatch):
     store = _store(tmp_path, monkeypatch)
     store.set_selection(
         primary_profile_id=BUILTIN_MANAGED_PROFILE_ID,
@@ -288,6 +288,6 @@ def test_explicit_external_env_selection_overrides_stale_managed_selection(tmp_p
     profiles = {profile.profile_id: profile for profile in store.list_profiles(settings)}
     selection = store.get_selection(settings)
 
-    assert LEGACY_EXTERNAL_PROFILE_ID in profiles
-    assert selection.primary_profile_id == LEGACY_EXTERNAL_PROFILE_ID
+    assert LEGACY_EXTERNAL_PROFILE_ID not in profiles
+    assert selection.primary_profile_id == BUILTIN_MANAGED_PROFILE_ID
     assert selection.persisted is True
