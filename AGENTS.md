@@ -29,7 +29,9 @@ Do not infer completion from intent docs. Record completed work only after valid
 
 ## 3. Use repo tools
 
-- Python commands use `backend/.venv/Scripts/python`.
+- Python commands use (infer appropriate pwsh or posix behaviors)
+  - Windows: `.\backend\.venv\Scripts\python`
+  - Linux: `backend/.venv/bin/python`
 - Never install Python packages globally.
 - Use `scripts/bootstrap.py` for new-host setup.
 - Use `scripts/provision.py` for dependency install, verify, lock, and explain.
