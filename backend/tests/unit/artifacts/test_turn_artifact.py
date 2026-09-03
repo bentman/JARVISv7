@@ -98,6 +98,12 @@ def test_turn_schema_fields_are_canonical():
         "retrieved_memory_refs",
         "retrieved_memory_evidence",
         "tools_invoked",
+        "action_proposals",
+        "authorization_decisions",
+        "approval_records",
+        "action_execution_results",
+        "action_cancellations",
+        "delegated_runs",
         "search",
         "reasoning_trace_metadata",
         "response_text",
@@ -139,6 +145,59 @@ def test_turn_artifact_structured_retrieval_provenance_roundtrips() -> None:
     assert TurnArtifact.from_json(artifact.to_json()) == artifact
 
 
+def test_turn_artifact_action_evidence_roundtrips() -> None:
+    artifact = _turn_artifact()
+    artifact.action_proposals = [
+        {
+            "proposal_id": "proposal-1",
+            "capability_id": "search-public-web",
+            "arguments": {"query": "public topic"},
+            "proposed_by": "model",
+        }
+    ]
+    artifact.authorization_decisions = [
+        {
+            "proposal_id": "proposal-1",
+            "capability_id": "search-public-web",
+            "outcome": "allowed",
+            "reason": "authorization rule allows execution",
+        }
+    ]
+    artifact.approval_records = [
+        {
+            "approval_id": "approval-1",
+            "proposal_id": "proposal-2",
+            "capability_id": "local-note-write",
+            "outcome": "denied",
+            "decided_by": "operator",
+        }
+    ]
+    artifact.action_execution_results = [
+        {
+            "proposal_id": "proposal-1",
+            "capability_id": "search-public-web",
+            "status": "success",
+            "result": {"sources": ["S1"]},
+        }
+    ]
+    artifact.action_cancellations = [
+        {
+            "proposal_id": "proposal-3",
+            "capability_id": "search-public-web",
+            "cancelled_by": "operator",
+        }
+    ]
+    artifact.delegated_runs = [
+        {
+            "proposal_id": "proposal-4",
+            "capability_id": "delegate-agent",
+            "run_id": "run-1",
+        }
+    ]
+
+    assert TurnArtifact.from_json(artifact.to_json()) == artifact
+
+
 def test_old_turn_artifact_loads_without_structured_retrieval_provenance() -> None:
     payload = _turn_artifact().to_dict()
     payload.pop("retrieved_memory_evidence")
@@ -148,13 +207,37 @@ def test_old_turn_artifact_loads_without_structured_retrieval_provenance() -> No
     assert loaded.retrieved_memory_evidence == []
 
 
+def test_old_turn_artifact_loads_without_action_evidence() -> None:
+    payload = _turn_artifact().to_dict()
+    for key in (
+        "action_proposals",
+        "authorization_decisions",
+        "approval_records",
+        "action_execution_results",
+        "action_cancellations",
+        "delegated_runs",
+    ):
+        payload.pop(key)
+
+    loaded = TurnArtifact.from_dict(payload)
+
+    assert loaded.action_proposals == []
+    assert loaded.authorization_decisions == []
+    assert loaded.approval_records == []
+    assert loaded.action_execution_results == []
+    assert loaded.action_cancellations == []
+    assert loaded.delegated_runs == []
+
+
 def test_mutable_defaults_are_not_shared():
     first = TurnArtifact(turn_id="one", session_id="session", input_modality="text", final_state="IDLE")
     second = TurnArtifact(turn_id="two", session_id="session", input_modality="text", final_state="IDLE")
 
     first.tools_invoked.append("tool")
+    first.action_proposals.append({"proposal_id": "proposal-1"})
 
     assert second.tools_invoked == []
+    assert second.action_proposals == []
 
 
 def test_session_artifact_roundtrips_via_storage(tmp_path):

@@ -8,7 +8,9 @@ TURN_ARTIFACT_FIELDS: tuple[str, ...] = (
     "turn_id", "session_id", "input_modality", "hardware_profile_id",
     "capability_flags_snapshot", "active_personality_profile_id", "profile_epoch", "raw_audio_path",
     "transcript", "final_prompt_text", "retrieved_memory_refs", "retrieved_memory_evidence",
-    "tools_invoked", "search",
+    "tools_invoked", "action_proposals", "authorization_decisions",
+    "approval_records", "action_execution_results", "action_cancellations",
+    "delegated_runs", "search",
     "reasoning_trace_metadata", "response_text", "audio_output_path",
     "interruption_events", "final_state", "failure_reason", "tts_degraded",
     "tts_degraded_reason", "tts_output_device", "runtime_context", "phase_timestamps",
@@ -32,6 +34,12 @@ class TurnArtifact:
     retrieved_memory_refs: list[str] = field(default_factory=list)
     retrieved_memory_evidence: list[dict[str, Any]] = field(default_factory=list)
     tools_invoked: list[str] = field(default_factory=list)
+    action_proposals: list[dict[str, Any]] = field(default_factory=list)
+    authorization_decisions: list[dict[str, Any]] = field(default_factory=list)
+    approval_records: list[dict[str, Any]] = field(default_factory=list)
+    action_execution_results: list[dict[str, Any]] = field(default_factory=list)
+    action_cancellations: list[dict[str, Any]] = field(default_factory=list)
+    delegated_runs: list[dict[str, Any]] = field(default_factory=list)
     search: dict[str, Any] | None = None
     reasoning_trace_metadata: dict[str, Any] | None = None
     response_text: str | None = None
