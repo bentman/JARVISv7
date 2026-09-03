@@ -477,6 +477,52 @@ def test_health_returns_200() -> None:
     assert response.json() == {"status": "ok", "service": "jarvisv7-backend"}
 
 
+def test_daemon_status_returns_public_identity_without_token(tmp_path: Path) -> None:
+    from backend.app.services.daemon_registry import DaemonRegistry
+
+    client = _client()
+    registry = DaemonRegistry(
+        repo_root=tmp_path,
+        metadata_path=tmp_path / "cache" / "daemon" / "backend.json",
+        lock_path=tmp_path / "cache" / "daemon" / "backend.lock",
+    )
+    registry.acquire("127.0.0.1", 8765, token="secret-token")
+    client.app.state.daemon_registry = registry
+
+    response = client.get("/daemon/status")
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["service"] == "jarvisv7-backend"
+    assert payload["base_url"] == "http://127.0.0.1:8765"
+    assert payload["repo_root"] == str(tmp_path.resolve())
+    assert payload["token_present"] is True
+    assert "token" not in payload
+
+
+def test_daemon_shutdown_requires_local_token(tmp_path: Path) -> None:
+    from backend.app.services.daemon_registry import DaemonRegistry
+
+    client = _client()
+    registry = DaemonRegistry(
+        repo_root=tmp_path,
+        metadata_path=tmp_path / "cache" / "daemon" / "backend.json",
+        lock_path=tmp_path / "cache" / "daemon" / "backend.lock",
+    )
+    registry.acquire("127.0.0.1", 8765, token="secret-token")
+    shutdown_calls: list[str] = []
+    client.app.state.daemon_registry = registry
+    client.app.state.daemon_shutdown = lambda: shutdown_calls.append("shutdown")
+
+    rejected = client.post("/daemon/shutdown", headers={"X-JARVIS-DAEMON-TOKEN": "wrong"})
+    accepted = client.post("/daemon/shutdown", headers={"X-JARVIS-DAEMON-TOKEN": "secret-token"})
+
+    assert rejected.status_code == 401
+    assert accepted.status_code == 200
+    assert accepted.json() == {"accepted": True, "service": "jarvisv7-backend"}
+    assert shutdown_calls == ["shutdown"]
+
+
 def test_readiness_returns_family_readiness() -> None:
     response = _client().get("/readiness")
     payload = response.json()

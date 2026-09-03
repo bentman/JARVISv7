@@ -28,6 +28,7 @@ from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.audio_stream import ResidentAudioStream
+from backend.app.services.daemon_registry import DaemonRegistry
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.llm_provider_service import prepare_llm_providers
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
@@ -300,6 +301,7 @@ async def lifespan(app: FastAPI):
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
     from backend.app.api.routes import (
         config,
+        daemon,
         diagnostics,
         health,
         llm_config,
@@ -314,7 +316,9 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
 
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1", lifespan=lifespan)
     install_state(app, startup_state or build_startup_state())
+    app.state.daemon_registry = DaemonRegistry()
     app.include_router(health.router)
+    app.include_router(daemon.router)
     app.include_router(readiness.router)
     app.include_router(personality.router)
     app.include_router(session.router)

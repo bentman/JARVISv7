@@ -11,6 +11,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from backend.app.core.logging import configure_logging, emit_host_fingerprint
+from backend.app.services.daemon_registry import DaemonOwnershipError, DaemonRegistry
 from backend.app.services.startup_context import load_startup_context, readiness_summary
 
 
@@ -47,15 +48,26 @@ def main(argv: list[str] | None = None, out: TextIO | None = None) -> int:
         print(f"run_backend dry-run host={args.host} port={args.port} reload={args.reload}", file=output)
         return 0
 
+    registry = DaemonRegistry(repo_root=REPO_ROOT)
+    try:
+        metadata = registry.acquire(args.host, args.port)
+    except DaemonOwnershipError as exc:
+        print(f"DAEMON_OWNERSHIP_CONFLICT {exc}", file=output)
+        return 1
+    print(f"daemon metadata={registry.metadata_path} base_url={metadata.base_url} pid={metadata.pid}", file=output)
+
     import uvicorn
 
-    uvicorn.run(
-        "backend.app.api.app:create_app",
-        factory=True,
-        host=args.host,
-        port=args.port,
-        reload=args.reload,
-    )
+    try:
+        uvicorn.run(
+            "backend.app.api.app:create_app",
+            factory=True,
+            host=args.host,
+            port=args.port,
+            reload=args.reload,
+        )
+    finally:
+        registry.release_if_owner()
     return 0
 
 

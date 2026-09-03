@@ -57,6 +57,8 @@ Session state is observable. `/session/status`, `/status/desktop`, `/status/resi
 
 The backend is the natural daemon boundary for this loop. A daemon contract makes the existing FastAPI process the single local authority for runtime selection, sessions, turn execution, artifacts, memory, resident voice, wake state, diagnostics, and future client coordination.
 
+The first daemon-boundary slice is implemented around the existing FastAPI backend. `scripts/run_backend.py` acquires same-repo ownership for the configured loopback endpoint before serving and writes ephemeral discovery metadata to `cache/daemon/backend.json` with an adjacent lock file. `/daemon/status` exposes public daemon identity without exposing the local token, and `/daemon/shutdown` accepts only the token from the local metadata. Desktop startup reads the same cache metadata, connects to a healthy same-repo daemon when present, and otherwise starts `scripts/run_backend.py`.
+
 Artifacts preserve loop evidence and form the shared memory ingestion boundary. `TurnArtifact` records modality, transcript, prompt, retrieved memory, tools, search evidence, response, raw audio path, interruptions, final state, degradation, runtime context, phase timings, and failure phase. `SessionTimeline` records ordered session events.
 
 Memory is fed from the shared turn path. During reasoning, the engine retrieves working, episodic, and semantic context for both text and voice turns. After a successful committed turn, the engine records the artifact, updates bounded working memory, writes eligible episodic memory, and leaves durable semantic extraction to governed curation over persisted session and turn artifacts. Surfaces request memory changes through backend memory services.
@@ -106,7 +108,7 @@ Costs:
 - Make interruption and follow-up behavior more consistent across modes, while keeping explicit operator control.
 - Expand end-to-end validation beyond unit/state coverage into repeatable live desktop, voice, wake, barge-in, and text-loop checks.
 - Define a TUI client that talks to the same backend/session/turn APIs and renders state, output, diagnostics, approvals, and artifacts without forking the loop.
-- Formalize the backend-as-daemon boundary for desktop, CLI/script, and future TUI: loopback API, discovery, single-instance lock, local client token, shared event stream, and clear start/connect behavior.
+- Extend the backend-as-daemon boundary beyond the first desktop/script slice with shared event streaming and future TUI client behavior.
 - Keep tool/action execution visible in the same turn artifact model as later governed-tool work arrives.
 - Preserve a single assistant identity across desktop, API, scripts, and TUI: same session semantics, same personality policy, same memory boundaries, same failure language.
 - Remove or avoid any surface-level shortcut that can create user-visible assistant behavior without producing a normal turn result and memory-eligible artifact.
@@ -182,6 +184,7 @@ Implementation:
 - `backend/app/services/wake_monitor.py`
 - `backend/app/services/audio_stream.py`
 - `backend/app/services/utterance_segmenter.py`
+- `backend/app/services/daemon_registry.py`
 - `backend/app/runtimes/stt/`
 - `backend/app/runtimes/tts/`
 - `backend/app/runtimes/wake/`
@@ -189,8 +192,11 @@ Implementation:
 - `backend/app/api/routes/session.py`
 - `backend/app/api/routes/status.py`
 - `backend/app/api/routes/readiness.py`
+- `backend/app/api/routes/daemon.py`
 - `scripts/run_jarvis.py`
+- `scripts/run_backend.py`
 - `desktop/src/`
+- `desktop/src-tauri/src/backend.rs`
 
 Tests:
 
@@ -201,7 +207,9 @@ Tests:
 - `backend/tests/unit/services/test_resident_voice_invocation.py`
 - `backend/tests/unit/services/test_resident_voice_modes.py`
 - `backend/tests/unit/services/test_wake_monitor.py`
+- `backend/tests/unit/services/test_daemon_registry.py`
 - `backend/tests/unit/api/test_routes.py`
+- `backend/tests/unit/scripts/test_run_backend_script.py`
 - `backend/tests/integration/services/test_two_turn_session.py`
 - `backend/tests/integration/api/test_headless_client.py`
 - `backend/tests/runtime/turn/`

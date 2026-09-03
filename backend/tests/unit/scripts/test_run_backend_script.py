@@ -68,3 +68,27 @@ def test_dry_run_does_not_start_uvicorn(monkeypatch) -> None:
     exit_code = run_backend.main(["--dry-run"])
     assert exit_code == 0
     assert called == []
+
+
+def test_daemon_conflict_prevents_uvicorn_start(monkeypatch, capsys) -> None:
+    _patch_startup(monkeypatch)
+    called = []
+
+    class _Registry:
+        metadata_path = "cache/daemon/backend.json"
+
+        def __init__(self, *, repo_root):
+            self.repo_root = repo_root
+
+        def acquire(self, host, port):
+            raise run_backend.DaemonOwnershipError(f"live same-repo daemon already owns {host}:{port}")
+
+    monkeypatch.setattr(run_backend, "DaemonRegistry", _Registry)
+    monkeypatch.setitem(__import__("sys").modules, "uvicorn", type("U", (), {"run": lambda *a, **k: called.append(True)}))
+
+    exit_code = run_backend.main(["--host", "127.0.0.1", "--port", "8765"])
+    output = capsys.readouterr().out
+
+    assert exit_code == 1
+    assert "DAEMON_OWNERSHIP_CONFLICT live same-repo daemon already owns 127.0.0.1:8765" in output
+    assert called == []

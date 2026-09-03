@@ -36,8 +36,18 @@ pub struct BackendProcessManager {
     repo_root: PathBuf,
     host: String,
     port: u16,
+    local_token: Option<String>,
     stdout_log: PathBuf,
     stderr_log: PathBuf,
+}
+
+#[derive(Debug, Deserialize)]
+struct DaemonMetadata {
+    base_url: String,
+    host: String,
+    port: u16,
+    repo_root: String,
+    token: Option<String>,
 }
 
 impl BackendProcessManager {
@@ -54,6 +64,7 @@ impl BackendProcessManager {
             repo_root,
             host: "127.0.0.1".to_string(),
             port: 8765,
+            local_token: None,
             stdout_log: reports_dir.join("backend_startup.log"),
             stderr_log: reports_dir.join("backend_spawn_stderr.log"),
         })
@@ -86,7 +97,9 @@ impl BackendProcessManager {
     }
 
     pub fn spawn_backend(&mut self) -> Result<BackendDiagnostics, String> {
-        self.kill_backend();
+        if let Some(diagnostics) = self.connect_existing_daemon()? {
+            return Ok(diagnostics);
+        }
         let diagnostics = self.diagnostics();
         let python_path = self.python_path();
         let backend_script_path = self.backend_script_path();
@@ -154,12 +167,31 @@ impl BackendProcessManager {
 
     pub fn kill_backend(&mut self) {
         if let Some(mut child) = self.child.take() {
+            let pid = child.id();
             let _ = child.kill();
             let _ = child.wait();
+            self.remove_daemon_metadata_for_pid(pid);
         }
-        if let Some(pid) = find_pid_by_port(self.port) {
-            kill_process_by_pid(pid);
+    }
+
+    pub fn shutdown_or_kill(&mut self, client: &Client) -> Result<(), String> {
+        if self.child.is_some() {
+            self.kill_backend();
+            return Ok(());
         }
+        let Some(token) = self.local_token.clone() else {
+            return Ok(());
+        };
+        let response = client
+            .post(format!("{}/daemon/shutdown", self.base_url()))
+            .header("X-JARVIS-DAEMON-TOKEN", token)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .map_err(|err| format!("POST /daemon/shutdown failed: {err}"))?;
+        if !response.status().is_success() {
+            return Err(format!("POST /daemon/shutdown returned {}", response.status()));
+        }
+        Ok(())
     }
 
     pub fn exited_status(&mut self) -> Result<Option<String>, String> {
@@ -182,6 +214,93 @@ impl BackendProcessManager {
     fn backend_script_path(&self) -> PathBuf {
         self.repo_root.join("scripts").join("run_backend.py")
     }
+
+    fn daemon_metadata_path(&self) -> PathBuf {
+        self.repo_root
+            .join("cache")
+            .join("daemon")
+            .join("backend.json")
+    }
+
+    fn daemon_lock_path(&self) -> PathBuf {
+        self.repo_root
+            .join("cache")
+            .join("daemon")
+            .join("backend.lock")
+    }
+
+    fn connect_existing_daemon(&mut self) -> Result<Option<BackendDiagnostics>, String> {
+        let Some(metadata) = self.read_daemon_metadata()? else {
+            return Ok(None);
+        };
+        if !same_path(Path::new(&metadata.repo_root), &self.repo_root) {
+            return Ok(None);
+        }
+        if !self.daemon_status_matches(&metadata)? {
+            return Ok(None);
+        }
+        self.host = metadata.host;
+        self.port = metadata.port;
+        self.local_token = metadata.token;
+        self.child = None;
+        Ok(Some(self.diagnostics()))
+    }
+
+    fn read_daemon_metadata(&self) -> Result<Option<DaemonMetadata>, String> {
+        let path = self.daemon_metadata_path();
+        let content = match fs::read_to_string(&path) {
+            Ok(content) => content,
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(format!("failed to read daemon metadata {}: {err}", path.display())),
+        };
+        serde_json::from_str(&content)
+            .map(Some)
+            .map_err(|err| format!("invalid daemon metadata {}: {err}", path.display()))
+    }
+
+    fn daemon_status_matches(&self, metadata: &DaemonMetadata) -> Result<bool, String> {
+        let response = match Client::builder()
+            .timeout(Duration::from_millis(700))
+            .build()
+            .map_err(|err| format!("failed to build daemon probe client: {err}"))?
+            .get(format!("{}/daemon/status", metadata.base_url))
+            .send()
+        {
+            Ok(response) => response,
+            Err(_) => return Ok(false),
+        };
+        if !response.status().is_success() {
+            return Ok(false);
+        }
+        let status: Value = response
+            .json()
+            .map_err(|err| format!("invalid /daemon/status response: {err}"))?;
+        Ok(status
+            .get("repo_root")
+            .and_then(Value::as_str)
+            .is_some_and(|repo| same_path(Path::new(repo), &self.repo_root)))
+    }
+
+    fn remove_daemon_metadata_for_pid(&self, pid: u32) {
+        let Ok(content) = fs::read_to_string(self.daemon_metadata_path()) else {
+            return;
+        };
+        let Ok(metadata) = serde_json::from_str::<Value>(&content) else {
+            return;
+        };
+        let same_repo = metadata
+            .get("repo_root")
+            .and_then(Value::as_str)
+            .is_some_and(|repo| same_path(Path::new(repo), &self.repo_root));
+        let same_pid = metadata
+            .get("pid")
+            .and_then(Value::as_u64)
+            .is_some_and(|metadata_pid| metadata_pid == u64::from(pid));
+        if same_repo && same_pid {
+            let _ = fs::remove_file(self.daemon_metadata_path());
+            let _ = fs::remove_file(self.daemon_lock_path());
+        }
+    }
 }
 
 fn python_path_for_host(repo_root: &Path, is_windows: bool) -> PathBuf {
@@ -191,6 +310,12 @@ fn python_path_for_host(repo_root: &Path, is_windows: bool) -> PathBuf {
     } else {
         venv_root.join("bin").join("python")
     }
+}
+
+fn same_path(left: &Path, right: &Path) -> bool {
+    let left = fs::canonicalize(left).unwrap_or_else(|_| left.to_path_buf());
+    let right = fs::canonicalize(right).unwrap_or_else(|_| right.to_path_buf());
+    left == right
 }
 
 impl Drop for BackendProcessManager {
@@ -831,41 +956,6 @@ fn tail_file(path: &PathBuf) -> String {
     lines.join("\n")
 }
 
-fn find_pid_by_port(port: u16) -> Option<u32> {
-    #[cfg(windows)]
-    {
-        if let Ok(output) = Command::new("cmd")
-            .args(&["/c", &format!("netstat -ano | findstr :{}", port)])
-            .creation_flags(CREATE_NO_WINDOW)
-            .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 5 {
-                    let local_addr = parts[1];
-                    if local_addr.contains(&format!(":{}", port)) {
-                        if let Ok(pid) = parts[parts.len() - 1].parse::<u32>() {
-                            return Some(pid);
-                        }
-                    }
-                }
-            }
-        }
-    }
-    None
-}
-
-fn kill_process_by_pid(pid: u32) {
-    #[cfg(windows)]
-    {
-        let mut command = Command::new("taskkill");
-        command.args(&["/F", "/PID", &pid.to_string()]);
-        command.creation_flags(CREATE_NO_WINDOW);
-        let _ = command.status();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::python_path_for_host;
@@ -896,6 +986,16 @@ mod tests {
         assert!(source.contains(".timeout(Duration::from_secs(10))"));
         assert!(source.contains(".post(format!(\"{base_url}/memory/curation/drain\"))"));
         assert!(!source.contains(".get(format!(\"{base_url}/memory/curation/drain\"))"));
+    }
+
+    #[test]
+    fn backend_manager_does_not_kill_unrelated_port_owner() {
+        let source = include_str!("backend.rs");
+        let windows_kill_command =
+            String::from_utf8(vec![116, 97, 115, 107, 107, 105, 108, 108]).unwrap();
+        let port_scan_command = format!("{}{}", "netstat", " -ano");
+        assert!(!source.contains(&windows_kill_command));
+        assert!(!source.contains(&port_scan_command));
     }
 
     #[cfg(target_os = "linux")]

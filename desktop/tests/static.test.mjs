@@ -72,6 +72,11 @@ for (const label of ["Start Backend", "Stop Backend", "Show Window", "Quit"]) {
 }
 assert.ok(backend.includes("run_backend.py"), "desktop must launch the backend entrypoint");
 assert.ok(!`${backend}\n${lib}`.includes("run_jarvis.py"), "desktop must not launch the proving-host entrypoint");
+assert.ok(backend.includes('join("cache")'), "desktop must read backend daemon metadata under cache/");
+assert.ok(backend.includes("/daemon/status"), "desktop must probe daemon status before spawning");
+assert.ok(backend.includes("/daemon/shutdown"), "desktop daemon stop must use the token-protected backend route");
+assert.ok(!backend.includes("netstat -ano"), "desktop must not discover unrelated port owners with netstat");
+assert.ok(!backend.includes("taskkill"), "desktop must not kill unrelated port owners");
 
 const tokenStart = "/* JARVIS_V7_TOKENS_START */";
 const tokenEnd = "/* JARVIS_V7_TOKENS_END */";

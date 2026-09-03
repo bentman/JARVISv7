@@ -85,14 +85,10 @@ ENV_EXAMPLE_COMPATIBILITY_ALIAS_NAMES: set[str] = {
 ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "LOCAL_MODEL_FETCH",
     "LLAMA_CPP_MODEL_PATH",
-    "LLAMA_CPP_BASE_URL",
     "LLAMA_CPP_HOST",
     "LLAMA_CPP_PORT",
     "LLAMA_CPP_BINARY_PATH",
-    "LLAMA_CPP_MANAGED",
-    "LLAMA_CPP_MODEL_NAME",
     "LLAMA_CPP_TIMEOUT_SECONDS",
-    "LLAMA_CPP_CONTEXT_SIZE",
     "OLLAMA_BASE_URL",
     "OLLAMA_NUM_CTX",
     "OLLAMA_KEEP_ALIVE",
@@ -108,6 +104,17 @@ ENV_EXAMPLE_ADVANCED_NAMES: set[str] = {
     "REDIS_MAX_CONNECTIONS",
     "REDIS_SOCKET_TIMEOUT",
     "SEARXNG_BASE_URL",
+}
+
+ENV_EXAMPLE_EXTERNAL_LLAMA_CPP_NAMES: set[str] = {
+    "LLAMA_CPP_MANAGED",
+    "LLAMA_CPP_BASE_URL",
+    "LLAMA_CPP_MODEL_NAME",
+    "LLAMA_CPP_CONTEXT_SIZE",
+}
+
+ENV_EXAMPLE_UNIMPLEMENTED_NAMES: set[str] = {
+    "APP_NAME",
 }
 
 
@@ -510,13 +517,16 @@ def test_env_example_covers_current_settings_env_variables():
     assert advertised_aliases == []
     advertised_advanced = sorted(ENV_EXAMPLE_ADVANCED_NAMES & set(values))
     assert advertised_advanced == []
+    advertised_external_llama_cpp = sorted(ENV_EXAMPLE_EXTERNAL_LLAMA_CPP_NAMES & set(values))
+    assert advertised_external_llama_cpp == sorted(ENV_EXAMPLE_EXTERNAL_LLAMA_CPP_NAMES)
     assert "LLM_MODELS" not in values
+    assert values["APP_NAME"] == "JARVISv7"
     assert values["JARVIS_LANGUAGE"] == "english"
     assert values["LLM_MODEL_MODE"] == "dev"
     assert values["LLM_MODEL_POLICY"] == "auto"
     assert values["LLM_MODEL_ID"] == ""
     assert values["OLLAMA_MODEL"] == "phi4-mini"
-    assert RETIRED_SETTING_NAMES.isdisjoint(values)
+    assert (RETIRED_SETTING_NAMES - ENV_EXAMPLE_UNIMPLEMENTED_NAMES).isdisjoint(values)
     assert values["SEARXNG_PORT"] == "8910"
     assert values["JARVIS_SECRET_STORE_KEY"] == ""
     assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}

@@ -131,8 +131,7 @@ fn stop_backend(state: State<'_, DesktopState>) -> Result<(), String> {
                 .backend
                 .lock()
                 .map_err(|_| "backend manager lock poisoned".to_string())?;
-            manager.kill_backend();
-            Ok(())
+            manager.shutdown_or_kill(&state.http_client)
         },
     )?;
     *state.session_id.lock().map_err(|_| "session lock poisoned".to_string())? = None;
