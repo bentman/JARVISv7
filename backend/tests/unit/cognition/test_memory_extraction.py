@@ -73,6 +73,11 @@ def test_extractor_uses_trusted_contract_untrusted_bounded_evidence() -> None:
     ]
     session_payload = json.loads(llm.envelope.segments[2].text)
     assert session_payload["turns"][0]["turn_id"] == "turn-12"
+    instruction = llm.envelope.segments[0].text
+    assert "stable first-person preferences" in instruction
+    assert "would remain useful across sessions" in instruction
+    assert "Do not summarize ordinary conversation" in instruction
+    assert "uncertain inferences" in instruction
     contract = llm.envelope.segments[1].text
     assert "text (1..96 chars), evidence_refs" in contract
     assert "kind" not in contract

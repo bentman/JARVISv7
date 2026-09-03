@@ -93,6 +93,34 @@ def test_policy_is_opt_in_persisted_and_stale_conflict_is_actionable(tmp_path: P
     }
 
 
+def test_layer_catalog_defines_memory_ownership_and_next_layers(tmp_path: Path) -> None:
+    service, _memory = _service(tmp_path)
+
+    catalog = service.read_layer_catalog()
+    layers = {item.layer: item for item in catalog.layers}
+
+    assert "Source turn and session artifacts" in catalog.source_artifact_erasure_scope
+    assert layers["semantic_memory"].storage_owner == "backend/app/memory/semantic.py"
+    assert layers["semantic_memory"].lifecycle_path == "/memory confirm, correct, dispute, and forget"
+    assert layers["semantic_memory"].prompt_visible is True
+    assert layers["procedural_memory"].implementation_state == "defined_next"
+    assert layers["profile_configuration_memory"].authority == "application-owned profile policy"
+    assert layers["cross_device_shared_memory"].implementation_state == "decision_required"
+
+
+def test_artifact_retention_policy_separates_forgetting_from_erasure(tmp_path: Path) -> None:
+    service, _memory = _service(tmp_path)
+
+    policy = service.read_artifact_retention_policy()
+
+    assert "semantic memory record as forgotten" in policy.semantic_forgetting_scope
+    assert "not performed by semantic memory lifecycle actions" in policy.source_artifact_erasure_scope
+    assert policy.source_artifact_owner == "backend/app/artifacts"
+    assert policy.physical_erasure_available is False
+    assert policy.decision_required is True
+    assert policy.retained_artifact_roots == ("data/", "reports/")
+
+
 def test_default_list_is_stable_bounded_attention_only_and_side_effect_free(
     tmp_path: Path,
 ) -> None:

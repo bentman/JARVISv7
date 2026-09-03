@@ -89,6 +89,8 @@ export function createApiClient(invoke) {
     updateLlmSelection: (selection) => invokeMemory(invoke, "update_llm_selection", { selection }),
     rotateSecretStoreKey: () => invokeMemory(invoke, "rotate_secret_store_key"),
     getMemoryPolicy: () => invokeMemory(invoke, "get_memory_policy"),
+    getMemoryLayers: () => invokeMemory(invoke, "get_memory_layers"),
+    getArtifactRetentionPolicy: () => invokeMemory(invoke, "get_artifact_retention_policy"),
     updateMemoryPolicy: (automaticCurationEnabled, expectedRevision) =>
       invokeMemory(invoke, "update_memory_policy", { automaticCurationEnabled, expectedRevision }),
     listMemories: ({ lifecycleState = null, kind = null, query = null, offset = 0, limit = 20 } = {}) =>

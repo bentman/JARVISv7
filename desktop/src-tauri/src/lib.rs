@@ -6,9 +6,12 @@ use backend::{
     create_llm_profile as backend_create_llm_profile,
     delete_llm_profile as backend_delete_llm_profile,
     dispute_memory as backend_dispute_memory, drain_memory_curation,
-    forget_memory as backend_forget_memory, get_desktop_status as backend_desktop_status, get_json,
+    forget_memory as backend_forget_memory,
+    get_artifact_retention_policy as backend_artifact_retention_policy,
+    get_desktop_status as backend_desktop_status, get_json,
     get_memory_curation_status as backend_memory_curation_status,
-    get_memory_detail as backend_memory_detail, get_memory_policy as backend_memory_policy,
+    get_memory_detail as backend_memory_detail, get_memory_layers as backend_memory_layers,
+    get_memory_policy as backend_memory_policy,
     get_llm_config as backend_llm_config,
     get_operator_config as backend_operator_config,
     get_personality_list as backend_personality_list,
@@ -378,6 +381,18 @@ fn get_memory_policy(state: State<'_, DesktopState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn get_memory_layers(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_memory_layers(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_artifact_retention_policy(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_artifact_retention_policy(&state.http_client, &base_url)
+}
+
+#[tauri::command]
 fn update_memory_policy(
     automatic_curation_enabled: bool,
     expected_revision: u64,
@@ -656,6 +671,8 @@ pub fn run() {
             update_llm_selection,
             rotate_secret_store_key,
             get_memory_policy,
+            get_memory_layers,
+            get_artifact_retention_policy,
             update_memory_policy,
             list_memories,
             get_memory_detail,

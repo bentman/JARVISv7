@@ -877,6 +877,35 @@ await policyController.updatePolicy(true);
 assert.equal(policyController.snapshot().policy.revision, 2, "policy 409 must reload current backend policy");
 assert.ok(policyController.snapshot().conflict.includes("reloaded"), "policy 409 must display visible reload conflict");
 
+const contractsController = createMemoryPanelController({
+  getMemoryLayers: () =>
+    Promise.resolve({
+      layers: [
+        { layer: "semantic_memory", implementation_state: "implemented" },
+        { layer: "procedural_memory", implementation_state: "defined_next" },
+        { layer: "cross_device_shared_memory", implementation_state: "decision_required" },
+      ],
+      source_artifact_erasure_scope: "Source turn and session artifacts are separate.",
+    }),
+  getArtifactRetentionPolicy: () =>
+    Promise.resolve({
+      source_artifact_owner: "backend/app/artifacts",
+      physical_erasure_available: false,
+      source_artifact_erasure_scope: "Physical erasure is a separate action.",
+    }),
+});
+await contractsController.refreshContracts();
+assert.equal(
+  contractsController.snapshot().layers.layers[1].implementation_state,
+  "defined_next",
+  "memory contract refresh must retain backend layer states",
+);
+assert.equal(
+  contractsController.snapshot().retentionPolicy.source_artifact_owner,
+  "backend/app/artifacts",
+  "memory contract refresh must retain retention owner",
+);
+
 let forgetCalls = 0;
 const forgetResponse = deferred();
 const forgetController = createMemoryPanelController({

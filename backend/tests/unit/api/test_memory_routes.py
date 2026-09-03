@@ -92,6 +92,33 @@ def test_memory_routes_are_typed_bounded_and_omit_internal_fields(tmp_path: Path
     assert memory.read_content_revision().value == revision_before
 
 
+def test_memory_layer_and_retention_policy_routes_are_static_contracts(
+    tmp_path: Path,
+) -> None:
+    memory = SemanticMemory(tmp_path / "memory.sqlite")
+    client = _client(MemoryService(semantic_memory=memory, curation_service=None))
+    revision_before = memory.read_content_revision().value
+
+    layers = client.get("/memory/layers")
+    retention = client.get("/memory/retention/policy")
+
+    assert layers.status_code == 200
+    layer_payload = layers.json()
+    by_layer = {item["layer"]: item for item in layer_payload["layers"]}
+    assert by_layer["semantic_memory"]["storage_owner"] == "backend/app/memory/semantic.py"
+    assert by_layer["procedural_memory"]["implementation_state"] == "defined_next"
+    assert by_layer["profile_configuration_memory"]["prompt_visible"] is False
+    assert by_layer["cross_device_shared_memory"]["implementation_state"] == "decision_required"
+    assert "Physical erasure" in layer_payload["source_artifact_erasure_scope"]
+    assert retention.status_code == 200
+    retention_payload = retention.json()
+    assert retention_payload["source_artifact_owner"] == "backend/app/artifacts"
+    assert retention_payload["physical_erasure_available"] is False
+    assert retention_payload["decision_required"] is True
+    assert retention_payload["retained_artifact_roots"] == ["data/", "reports/"]
+    assert memory.read_content_revision().value == revision_before
+
+
 def test_policy_and_record_conflicts_share_actionable_shape(tmp_path: Path) -> None:
     memory = SemanticMemory(tmp_path / "memory.sqlite")
     fact = _fact(memory)

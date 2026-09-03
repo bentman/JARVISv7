@@ -29,6 +29,8 @@ The defined next layers are:
 1. procedural memory: reusable ways to work, preferably as skills or other bounded extension artifacts
 2. profile/configuration state: explicit preferences, permissions, voice choices, defaults, and personality settings
 3. richer audit records for tools, agents, approvals, and delegated work
+4. cross-device or decentralized memory sync
+5. physical erasure policy for source artifacts beyond semantic forgetting
 
 Only the application promotes memory. Models may propose semantic candidates from persisted evidence. They do not own durable identity, lifecycle state, correction, deletion, permission, or retention.
 

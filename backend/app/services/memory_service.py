@@ -40,6 +40,10 @@ FORGETTING_SCOPE = (
     "Forgetting marks this semantic memory record as forgotten. Source turn and "
     "session artifacts are separate evidence and are not erased by this operation."
 )
+SOURCE_ARTIFACT_ERASURE_SCOPE = (
+    "Source turn and session artifacts are durable evidence stores. Physical erasure is "
+    "a separate retention-policy action and is not performed by semantic memory lifecycle actions."
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,6 +70,34 @@ class MemoryPolicyView:
     automatic_curation_enabled: bool
     revision: int
     updated_at: str
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryLayerView:
+    layer: str
+    purpose: str
+    storage_owner: str
+    authority: str
+    retrieval_path: str
+    lifecycle_path: str
+    prompt_visible: bool
+    implementation_state: str
+
+
+@dataclass(frozen=True, slots=True)
+class MemoryLayerCatalogView:
+    layers: tuple[MemoryLayerView, ...]
+    source_artifact_erasure_scope: str
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactRetentionPolicyView:
+    semantic_forgetting_scope: str
+    source_artifact_erasure_scope: str
+    source_artifact_owner: str
+    physical_erasure_available: bool
+    decision_required: bool
+    retained_artifact_roots: tuple[str, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +249,22 @@ class MemoryService:
     def read_policy(self) -> MemoryPolicyView:
         policy = self._value(self._memory.read_policy(), operation="read policy")
         return self._policy_view(policy)
+
+    def read_layer_catalog(self) -> MemoryLayerCatalogView:
+        return MemoryLayerCatalogView(
+            layers=MEMORY_LAYER_CATALOG,
+            source_artifact_erasure_scope=SOURCE_ARTIFACT_ERASURE_SCOPE,
+        )
+
+    def read_artifact_retention_policy(self) -> ArtifactRetentionPolicyView:
+        return ArtifactRetentionPolicyView(
+            semantic_forgetting_scope=FORGETTING_SCOPE,
+            source_artifact_erasure_scope=SOURCE_ARTIFACT_ERASURE_SCOPE,
+            source_artifact_owner="backend/app/artifacts",
+            physical_erasure_available=False,
+            decision_required=True,
+            retained_artifact_roots=("data/", "reports/"),
+        )
 
     def update_policy(
         self,
@@ -590,6 +638,7 @@ class MemoryService:
         except (TypeError, ValueError):
             return False
 
+
     @staticmethod
     def _user_action(reason: str | None, default_reason: str) -> tuple[EvidenceInput, str]:
         selected_reason = reason or default_reason
@@ -669,6 +718,90 @@ class MemoryService:
             retry_condition=retry_condition,
             result=MemoryService._curation_result_view(job),
         )
+
+
+MEMORY_LAYER_CATALOG = (
+    MemoryLayerView(
+        layer="present_turn_context",
+        purpose="complete the current request with prompt envelope, runtime state, tool/search evidence, and intermediate results",
+        storage_owner="backend/app/cognition",
+        authority="application",
+        retrieval_path="prompt assembly only",
+        lifecycle_path="discarded after turn finalization",
+        prompt_visible=True,
+        implementation_state="implemented",
+    ),
+    MemoryLayerView(
+        layer="active_session_working_memory",
+        purpose="bounded recent response context for session continuity",
+        storage_owner="backend/app/memory/working.py",
+        authority="SessionManager and WritePolicy",
+        retrieval_path="SessionManager working context",
+        lifecycle_path="bounded in-process retention and profile-switch suppression",
+        prompt_visible=True,
+        implementation_state="implemented",
+    ),
+    MemoryLayerView(
+        layer="episodic_memory",
+        purpose="selected successful turn events across sessions with source provenance",
+        storage_owner="backend/app/memory/episodic.py",
+        authority="application from committed turn/session artifacts",
+        retrieval_path="RetrievalManager episodic lookup",
+        lifecycle_path="bounded session retention",
+        prompt_visible=True,
+        implementation_state="implemented",
+    ),
+    MemoryLayerView(
+        layer="semantic_memory",
+        purpose="governed durable facts with evidence, lifecycle state, revision, and review controls",
+        storage_owner="backend/app/memory/semantic.py",
+        authority="MemoryService and SemanticMemory",
+        retrieval_path="RetrievalManager active governed facts",
+        lifecycle_path="/memory confirm, correct, dispute, and forget",
+        prompt_visible=True,
+        implementation_state="implemented",
+    ),
+    MemoryLayerView(
+        layer="artifact_audit_evidence",
+        purpose="durable proof of turns, sessions, search, runtime, action, approval, and delegated-work evidence",
+        storage_owner="backend/app/artifacts",
+        authority="TurnEngine and SessionManager artifact writers",
+        retrieval_path="deliberate artifact inspection and curation evidence loading",
+        lifecycle_path="artifact retention policy",
+        prompt_visible=False,
+        implementation_state="implemented_foundation",
+    ),
+    MemoryLayerView(
+        layer="procedural_memory",
+        purpose="reusable ways to work as skills or equivalent bounded extension artifacts",
+        storage_owner="future extension or skill registry",
+        authority="application-owned extension policy",
+        retrieval_path="future backend extension APIs",
+        lifecycle_path="future enable, update, disable, correct, and forget controls",
+        prompt_visible=False,
+        implementation_state="defined_next",
+    ),
+    MemoryLayerView(
+        layer="profile_configuration_memory",
+        purpose="explicit preferences, defaults, voice/personality choices, permissions, and stable interaction settings",
+        storage_owner="future profile/configuration service",
+        authority="application-owned profile policy",
+        retrieval_path="future backend profile/configuration APIs",
+        lifecycle_path="future revisioned profile/configuration actions",
+        prompt_visible=False,
+        implementation_state="defined_next",
+    ),
+    MemoryLayerView(
+        layer="cross_device_shared_memory",
+        purpose="optional shared-memory or cross-device synchronization for personal-project scope",
+        storage_owner="undecided",
+        authority="undecided application policy",
+        retrieval_path="none until accepted",
+        lifecycle_path="requires separate decision before implementation",
+        prompt_visible=False,
+        implementation_state="decision_required",
+    ),
+)
 
 
 __all__ = [

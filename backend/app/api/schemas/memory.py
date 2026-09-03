@@ -13,6 +13,31 @@ class MemoryPolicyResponse(StrictMemoryModel):
     updated_at: str
 
 
+class MemoryLayerResponse(StrictMemoryModel):
+    layer: str
+    purpose: str
+    storage_owner: str
+    authority: str
+    retrieval_path: str
+    lifecycle_path: str
+    prompt_visible: bool
+    implementation_state: str
+
+
+class MemoryLayerCatalogResponse(StrictMemoryModel):
+    layers: list[MemoryLayerResponse]
+    source_artifact_erasure_scope: str
+
+
+class ArtifactRetentionPolicyResponse(StrictMemoryModel):
+    semantic_forgetting_scope: str
+    source_artifact_erasure_scope: str
+    source_artifact_owner: str
+    physical_erasure_available: bool
+    decision_required: bool
+    retained_artifact_roots: list[str]
+
+
 class MemoryPolicyUpdateRequest(StrictMemoryModel):
     automatic_curation_enabled: bool
     expected_revision: int = Field(ge=1)

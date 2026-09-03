@@ -709,6 +709,24 @@ pub fn get_memory_policy(client: &Client, base_url: &str) -> Result<String, Stri
     memory_response(operation, response)
 }
 
+pub fn get_memory_layers(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /memory/layers";
+    let response = client
+        .get(format!("{base_url}/memory/layers"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_artifact_retention_policy(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /memory/retention/policy";
+    let response = client
+        .get(format!("{base_url}/memory/retention/policy"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn update_memory_policy(
     client: &Client,
     base_url: &str,

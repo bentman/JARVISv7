@@ -45,6 +45,8 @@ function copyState(state) {
   return {
     ...state,
     filters: { ...state.filters },
+    layers: state.layers ? { ...state.layers, layers: [...(state.layers.layers || [])] } : null,
+    retentionPolicy: state.retentionPolicy ? { ...state.retentionPolicy } : null,
     list: state.list ? { ...state.list, records: [...(state.list.records || [])] } : null,
   };
 }
@@ -53,6 +55,8 @@ export function createMemoryPanelController(handlers, render = () => undefined) 
   const state = {
     filters: { lifecycleState: null, kind: null, query: null, offset: 0, limit: 20 },
     policy: null,
+    layers: null,
+    retentionPolicy: null,
     curation: null,
     list: null,
     detail: null,
@@ -64,6 +68,7 @@ export function createMemoryPanelController(handlers, render = () => undefined) 
     listError: "",
     detailError: "",
     policyError: "",
+    contractError: "",
     curationError: "",
     conflict: "",
     notice: "",
@@ -95,6 +100,23 @@ export function createMemoryPanelController(handlers, render = () => undefined) 
     }
     emit();
     return state.curation;
+  }
+
+  async function refreshContracts() {
+    if (!handlers.getMemoryLayers || !handlers.getArtifactRetentionPolicy) return null;
+    try {
+      const [layers, retentionPolicy] = await Promise.all([
+        handlers.getMemoryLayers(),
+        handlers.getArtifactRetentionPolicy(),
+      ]);
+      state.layers = layers;
+      state.retentionPolicy = retentionPolicy;
+      state.contractError = "";
+    } catch (error) {
+      state.contractError = errorMessage(error, "Memory contracts are unavailable.");
+    }
+    emit();
+    return { layers: state.layers, retentionPolicy: state.retentionPolicy };
   }
 
   async function refreshList(filters = {}) {
@@ -236,7 +258,7 @@ export function createMemoryPanelController(handlers, render = () => undefined) 
   async function load() {
     state.conflict = "";
     state.notice = "";
-    await Promise.all([refreshPolicy(), refreshCuration(), refreshList()]);
+    await Promise.all([refreshPolicy(), refreshContracts(), refreshCuration(), refreshList()]);
   }
 
   function cancelPendingReads() {
@@ -250,6 +272,7 @@ export function createMemoryPanelController(handlers, render = () => undefined) 
   return {
     load,
     refreshPolicy,
+    refreshContracts,
     refreshCuration,
     refreshList,
     selectMemory,
@@ -359,6 +382,36 @@ function renderCuration(state) {
     }
   } else if (!state.curationError) {
     appendText(section, "Loading curation status…", "p", "memory-help");
+  }
+  return section;
+}
+
+function renderContracts(state) {
+  const section = document.createElement("section");
+  section.className = "memory-section";
+  appendText(section, "Layers & retention", "h3");
+  if (state.contractError) {
+    appendText(section, state.contractError, "p", "memory-error");
+    return section;
+  }
+  const layerRows = state.layers?.layers || [];
+  if (!layerRows.length && !state.retentionPolicy) {
+    appendText(section, "Loading memory contracts…", "p", "memory-help");
+    return section;
+  }
+  const facts = document.createElement("dl");
+  facts.className = "memory-facts";
+  const implemented = layerRows.filter((item) => item.implementation_state === "implemented").length;
+  const defined = layerRows.filter((item) => item.implementation_state === "defined_next").length;
+  const decisions = layerRows.filter((item) => item.implementation_state === "decision_required").length;
+  labeledValue(facts, "Implemented layers", implemented);
+  labeledValue(facts, "Defined next", defined);
+  labeledValue(facts, "Decisions required", decisions);
+  labeledValue(facts, "Artifact owner", state.retentionPolicy?.source_artifact_owner);
+  labeledValue(facts, "Physical erasure", state.retentionPolicy?.physical_erasure_available);
+  section.appendChild(facts);
+  if (state.retentionPolicy?.source_artifact_erasure_scope) {
+    appendText(section, state.retentionPolicy.source_artifact_erasure_scope, "p", "memory-help");
   }
   return section;
 }
@@ -600,12 +653,13 @@ function renderPanel(container, state, actions) {
 
   const messages = document.createElement("div");
   messages.setAttribute("aria-live", "polite");
-  for (const message of [state.conflict, state.policyError, state.curationError, state.notice]) {
+  for (const message of [state.conflict, state.policyError, state.contractError, state.curationError, state.notice]) {
     if (message) appendText(messages, message, "p", message === state.notice ? "memory-notice" : "memory-error");
   }
   container.replaceChildren(
     header,
     messages,
+    renderContracts(view),
     renderCuration(view),
     renderList(view),
     renderDetail(view),

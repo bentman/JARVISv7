@@ -56,6 +56,8 @@ const memoryPanel = createMemoryPanel(
   memoryPanelEl,
   {
     getMemoryPolicy: (...args) => api.getMemoryPolicy(...args),
+    getMemoryLayers: (...args) => api.getMemoryLayers(...args),
+    getArtifactRetentionPolicy: (...args) => api.getArtifactRetentionPolicy(...args),
     updateMemoryPolicy: (...args) => api.updateMemoryPolicy(...args),
     listMemories: (...args) => api.listMemories(...args),
     getMemoryDetail: (...args) => api.getMemoryDetail(...args),

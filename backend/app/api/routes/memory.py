@@ -6,10 +6,12 @@ from typing import TypeVar
 
 from backend.app.api.dependencies import get_memory_service
 from backend.app.api.schemas.memory import (
+    ArtifactRetentionPolicyResponse,
     MemoryCorrectionRequest,
     MemoryCorrectionResponse,
     MemoryCurationStatusResponse,
     MemoryDetailResponse,
+    MemoryLayerCatalogResponse,
     MemoryLifecycleRequest,
     MemoryPolicyResponse,
     MemoryPolicyUpdateRequest,
@@ -52,6 +54,22 @@ def read_memory_policy(
     service: MemoryService = Depends(get_memory_service),
 ) -> MemoryPolicyResponse:
     return MemoryPolicyResponse.model_validate(asdict(_execute(service.read_policy)))
+
+
+@router.get("/layers", response_model=MemoryLayerCatalogResponse)
+def read_memory_layers(
+    service: MemoryService = Depends(get_memory_service),
+) -> MemoryLayerCatalogResponse:
+    return MemoryLayerCatalogResponse.model_validate(asdict(_execute(service.read_layer_catalog)))
+
+
+@router.get("/retention/policy", response_model=ArtifactRetentionPolicyResponse)
+def read_artifact_retention_policy(
+    service: MemoryService = Depends(get_memory_service),
+) -> ArtifactRetentionPolicyResponse:
+    return ArtifactRetentionPolicyResponse.model_validate(
+        asdict(_execute(service.read_artifact_retention_policy))
+    )
 
 
 @router.put("/policy", response_model=MemoryPolicyResponse)
