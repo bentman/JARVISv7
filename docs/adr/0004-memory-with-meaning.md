@@ -1,50 +1,61 @@
 # 0004 - Memory with Meaning
 
-## Status
+Date: 2026-09-01
+Status: Implemented
+Related: 0002, 0003, 0005, 0006, 0007
 
-Accepted, living.
+## Context and Problem Statement
 
-## Context
+JARVISv7 needs memory, but not every retained item has the same purpose or authority. Current-turn context, bounded session continuity, event records, durable facts, caches, and audit artifacts need separate ownership and lifecycle rules.
 
-JARVISv7 remembers through separate layers with separate owners. Some context exists to finish the current turn. Some state keeps a session coherent. Some records preserve what happened. Some facts become useful across sessions after evidence and review.
+Without layered memory, transcripts, search results, retrieval caches, model-generated summaries, and durable facts can collapse into one ambiguous store that is hard to inspect, correct, forget, or govern.
 
-The fourth project promise is memory with meaning: every retained item needs a clear purpose, authority, storage owner, retrieval path, and correction or forgetting path.
+## Decision Drivers
 
-Current assistant and agent systems follow the same broad split. OpenAI Agents sessions preserve conversation items behind a session interface. LangGraph separates short-term thread state from long-term namespaced stores. Letta/MemGPT-style systems structure durable context into bounded memory blocks and background updates. JARVISv7 uses the same layering and bounded-context discipline while keeping durable memory local, evidence-backed, review-first, and application-owned.
+- Prompt-visible memory must be bounded and labeled as context, not instruction authority.
+- Session continuity should preserve useful short-term context without becoming transcript replay.
+- Cross-session events need provenance back to committed turn/session artifacts.
+- Durable facts need evidence, lifecycle state, revision checks, review, correction, dispute, and forgetting.
+- Model-assisted memory extraction must remain proposal-only.
+- Caches should accelerate retrieval without becoming memory authority.
+- Desktop and API surfaces need to use backend-owned memory services.
 
-## Decision
+## Considered Options
 
-JARVISv7 uses layered memory with explicit promotion between layers.
+- Replay recent transcripts as the primary memory mechanism.
+- Let the model maintain or rewrite durable memory directly.
+- Use layered, application-owned memory with explicit promotion and artifact evidence.
 
-The implemented memory layers are:
+## Decision Outcome
 
-1. present-turn context: request, prompt envelope, runtime state, tool/search/retrieval evidence, and intermediate results
-2. active-session working memory: bounded recent response context for continuity
-3. episodic memory: selected turn events across sessions with source turn/session provenance
-4. semantic memory: governed durable facts with evidence, lifecycle state, revision, and review controls
-5. artifacts and audit evidence: durable proof of what happened, retrievable deliberately but not automatically promoted
+Chosen option: `Use layered, application-owned memory with explicit promotion and artifact evidence`.
 
-The defined next layers are:
+JARVISv7 implements separate memory layers for present-turn context, active-session working memory, persisted turn/session artifacts, episodic memory, semantic memory, semantic curation jobs, lifecycle controls, and retrieval cache acceleration. Models may propose semantic candidates from persisted evidence, but the application owns durable identity, lifecycle state, correction, deletion, permission, and retention.
 
-1. procedural memory: reusable ways to work, preferably as skills or other bounded extension artifacts
-2. profile/configuration state: explicit preferences, permissions, voice choices, defaults, and personality settings
-3. richer audit records for tools, agents, approvals, and delegated work
-4. cross-device or decentralized memory sync
-5. physical erasure policy for source artifacts beyond semantic forgetting
+## Consequences
 
-Only the application promotes memory. Models may propose semantic candidates from persisted evidence. They do not own durable identity, lifecycle state, correction, deletion, permission, or retention.
+Positive:
+- The assistant can use memory without treating every transcript, cache entry, or retrieved result as durable truth.
+- Durable facts are source-backed, reviewable, correctable, disputable, and forgettable.
+- Working, episodic, semantic, artifact, and cache behavior can evolve independently because each layer has a different purpose.
+- Desktop and API surfaces share backend-owned memory lifecycle behavior.
+- Future tools, skills, MCP, plugins, and agents have one memory ingestion boundary: committed turn/session artifacts.
+- Cache and retrieval failures degrade behavior without corrupting memory authority.
 
-All implemented interaction surfaces feed memory through the same committed turn/session artifact path. Future daemon and TUI clients must use that same path.
+Negative:
+- Meaningful memory requires more application code than raw transcript replay.
+- Review-first semantic memory is slower to become useful than automatic self-editing memory.
+- Source artifacts and semantic facts have separate retention and erasure concerns.
+- Retrieval ranking, extraction quality, and review ergonomics remain ongoing quality surfaces.
+- Future procedural/profile/cross-device memory needs separate architecture rather than being hidden inside semantic facts.
 
-Search results, retrieved context, Redis, and other caches provide recall acceleration and prompt context. Governed memory stores remain the authority for durable memory.
-
-## Current Design
+## Implementation
 
 Present-turn context is assembled by the cognition layer. `PromptEnvelope` separates application instructions, personality, continuity, working memory, retrieved memory, search evidence, user input, and output contracts. Retrieved memory is prompt context, not instruction authority.
 
 Working memory is in-process and bounded. `WorkingMemory` keeps recent entries, and `WritePolicy` controls whether responses are added and how many entries are retained. `SessionManager` exposes working context and suppresses it for profile switches or immediate repeats when continuity policy requires it.
 
-Turn and session artifacts are the evidence boundary. `TurnEngine` records transcript, response, prompt, retrieved memory references, search evidence, runtime context, phase timings, failure state, interruptions, raw audio path, and degradation. `SessionManager` records ordered timeline events and writes turn/session artifacts.
+Turn and session artifacts are the evidence boundary. `TurnEngine` records transcript, response, prompt, retrieved memory references, search evidence, runtime context, phase timings, failure state, interruptions, raw audio path, and degradation. `TurnArtifact` also defines fields for future action proposals, authorization decisions, approvals, execution results, cancellations, and delegated runs. `SessionArtifact` and `SessionTimeline` preserve session-level evidence.
 
 Episodic memory is local JSON under `data/memory/episodic/`. It writes eligible successful turn artifacts, retains a bounded number of sessions, retrieves recent or keyword-matched entries, and tolerates storage failures without breaking the turn.
 
@@ -54,108 +65,13 @@ Semantic curation is opt-in and review-first. Closed sessions can enqueue durabl
 
 Memory lifecycle is service-owned. `/memory` exposes policy, bounded list/detail, confirm, correct, dispute, forget, and curation status with revision checks. Forgetting stops use of the governed semantic record; source turn and session artifacts are separate evidence stores.
 
-Desktop memory controls call backend/Tauri memory APIs. The desktop surface inspects memory and requests lifecycle actions through backend policy.
+Desktop memory controls call backend/Tauri memory APIs. `desktop/src/components/memory-panel.js` inspects memory and requests lifecycle actions through backend policy. `desktop/src/api-client.js` centralizes the frontend memory API calls, and `desktop/src-tauri/src/backend.rs` bridges those calls to backend routes.
 
 Redis-backed retrieval caching is acceleration only. Cache keys include backend availability and content revision where needed, and cache failure falls back to direct retrieval or no retrieved context.
 
-## Memory Layers
+## Confirmation
 
-Implemented now:
-
-- present-turn context
-- active-session working memory
-- persisted turn/session artifacts
-- episodic memory
-- governed semantic memory
-- semantic curation jobs
-- backend and desktop semantic lifecycle controls
-- retrieval cache acceleration
-
-Defined next:
-
-- procedural memory as skills or equivalent extension artifacts
-- explicit user/assistant profile memory separate from ordinary semantic facts
-- richer audit records for tools, agents, approvals, and delegated work
-- cross-device or decentralized memory sync
-- physical erasure policy for source artifacts beyond semantic forgetting
-
-## Consequences
-
-Benefits:
-
-- The assistant can use memory without treating every transcript, cache entry, or retrieved result as durable truth.
-- Durable facts are source-backed, reviewable, correctable, disputable, and forgettable.
-- Working, episodic, and semantic recall can evolve independently because each layer has a different purpose.
-- Future daemon, TUI, tool, skill, and agent work has one memory ingestion boundary: committed turn/session artifacts.
-- Cache and retrieval failures degrade behavior without corrupting memory authority.
-
-Costs:
-
-- Meaningful memory takes more application code than raw transcript replay.
-- Review-first semantic memory is slower to become useful than automatic self-editing memory.
-- Source artifacts and semantic facts require separate retention and erasure policies.
-- Retrieval ranking, extraction quality, and user review ergonomics need continued tuning.
-- Profile and procedural memory still need explicit design before they can be treated as implemented layers.
-
-## Remaining Work
-
-- Define procedural memory through skills or another bounded extension contract.
-- Define explicit user and assistant profile state for preferences, defaults, voice/personality choices, permissions, and stable interaction settings.
-- Improve live-model extraction quality, rejection reporting, and review ergonomics without giving the model lifecycle authority.
-- Tighten retrieval ranking, freshness, source attribution, and prompt formatting for mixed episodic and semantic context.
-- Define retention and physical-erasure policy for turn/session artifacts separately from semantic forgetting.
-- Make future daemon and TUI clients use the same memory APIs and artifact path as desktop.
-- Extend artifacts to capture tool, approval, skill, MCP, plugin, and agent memory evidence when those promises are implemented.
-- Decide whether any durable shared-memory or cross-device sync layer belongs in this personal-project scope.
-
-## Implementation Path
-
-Make memory changes inside the existing memory and artifact ownership model:
-
-1. Add or adjust prompt-visible context through `backend/app/cognition/prompt_assembler.py` and retrieval helpers.
-2. Keep working, episodic, semantic, retrieval, curation, and lifecycle behavior in `backend/app/memory/`.
-3. Expose operator actions through `backend/app/services/memory_service.py` and `backend/app/api/routes/memory.py`.
-4. Preserve turn/session evidence in `backend/app/artifacts/` before promoting durable semantic facts.
-5. Update desktop memory inspection through `desktop/src/components/memory-panel.js` and backend/Tauri APIs only after backend contracts exist.
-6. Add focused tests under `backend/tests/unit/memory/`, `backend/tests/unit/services/`, `backend/tests/unit/api/`, and existing runtime cache tests when Redis behavior changes.
-
-Dependencies: memory changes depend on prompt assembly, turn/session artifacts, memory storage modules, curation services, lifecycle APIs, and desktop inspection contracts.
-
-Targets: `backend/app/memory/`, memory services and routes, artifact schemas, prompt assembly, retrieval cache tests, and desktop memory components.
-
-Exit evidence: unit tests for changed memory layer behavior, service/API tests for lifecycle changes, artifact assertions for promotion evidence, and live Redis/runtime tests only when cache behavior changes.
-
-## Guidance
-
-When adding memory behavior:
-
-1. Name the memory layer and purpose before choosing storage.
-2. Define the authority that may create, promote, retrieve, update, and forget it.
-3. Keep prompt-visible memory bounded and labeled as context.
-4. Use persisted turn/session artifacts as the normal evidence boundary.
-5. Require exact evidence, revision checks, and lifecycle events for durable semantic facts.
-6. Treat caches as rebuildable acceleration.
-7. Route desktop, CLI/script, future daemon, and future TUI memory actions through backend services.
-
-When adding model-assisted memory:
-
-1. Ask the model only for bounded proposals.
-2. Parse with a strict schema and reject excess fields, excess length, duplicates, and unsupported evidence.
-3. Verify candidate evidence against persisted artifacts.
-4. Keep identity, lifecycle state, confidence, importance, correction, dispute, and forgetting application-owned.
-5. Persist uncertain durable memory as review-required records.
-
-When adding tools, skills, MCP, plugins, or agents:
-
-1. Record the action and result in the same turn/session artifact model.
-2. Promote durable memory only through the governed memory service.
-3. Scope memory visibility by role, authorization, session, and evidence policy.
-4. Keep profile and procedural state explicit in their owning extension or configuration layer.
-
-## Evidence
-
-Implementation:
-
+Implementation files:
 - `backend/app/cognition/prompt_envelope.py`
 - `backend/app/cognition/prompt_assembler.py`
 - `backend/app/cognition/memory_extraction.py`
@@ -183,8 +99,7 @@ Implementation:
 - `desktop/src/api-client.js`
 - `desktop/src-tauri/src/backend.rs`
 
-Tests:
-
+Test coverage:
 - `backend/tests/unit/memory/test_working_memory.py`
 - `backend/tests/unit/memory/test_episodic.py`
 - `backend/tests/unit/memory/test_retrieval.py`
@@ -207,8 +122,14 @@ Tests:
 - `backend/tests/runtime/services/test_redis_retrieval_cache_live.py`
 - `backend/tests/runtime/turn/test_continuity_retrieval_live.py`
 
-External practice reviewed:
+Validation commands:
+- `backend/.venv/Scripts/python scripts/validate_backend.py unit`
+- `backend/.venv/Scripts/python scripts/validate_backend.py integration` when curation or lifecycle integration changes
+- `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families services,turn --devices ...` for live Redis or turn-continuity validation claims
+- `npm --prefix desktop test` for desktop memory contract changes
 
-- OpenAI Agents SDK: [Sessions](https://openai.github.io/openai-agents-js/guides/sessions/) and custom session storage.
-- LangGraph: [short-term and long-term memory concepts](https://github.com/langchain-ai/langgraphjs/blob/main/docs/docs/concepts/memory.md).
-- Letta/MemGPT lineage: [memory blocks and context management](https://www.letta.com/blog/memory-blocks/).
+## Follow-up
+
+None for this ADR.
+
+Future procedural memory, explicit profile memory, cross-device memory, physical artifact erasure, or tool/agent memory evidence should update this ADR when they preserve this layered memory architecture, or create/supersede an ADR when they change it.
