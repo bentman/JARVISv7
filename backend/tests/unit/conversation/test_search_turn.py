@@ -201,3 +201,130 @@ def test_tts_failure_preserves_search_evidence(tmp_path):
     assert turn.failure_reason == "TTS unavailable"
     assert turn.search["outcome"] == "failed"
     assert manager.turn_artifacts[0].search["sources"]
+
+
+def governed_engine_at(tmp_path, model=None, providers=None):
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.services.capability_service import CapabilityService
+
+    engine, manager = engine_at(tmp_path, model, providers)
+    engine.capability_service = CapabilityService(
+        observe=lambda: CapabilityObservation(
+            search_providers=(("ddgs", True), ("searxng", True), ("tavily", False))
+        )
+    )
+    return engine, manager
+
+
+def test_governed_search_records_proposal_decision_and_execution(tmp_path):
+    engine, manager = governed_engine_at(tmp_path)
+
+    turn = engine.run_text_turn("Please search for a public topic")
+    artifact = manager.turn_artifacts[0]
+
+    assert turn.failure_reason is None
+    assert "[S1]" in turn.response_text
+    assert [record["capability_id"] for record in artifact.action_proposals] == ["search-public-web"]
+    assert artifact.action_proposals[0]["arguments"]["queries"] == ["public topic"]
+    assert [record["outcome"] for record in artifact.authorization_decisions] == ["allowed"]
+    assert [record["status"] for record in artifact.action_execution_results] == ["success"]
+    assert artifact.action_execution_results[0]["result"]["source_count"] == 1
+    assert artifact.approval_records == []
+    assert artifact.delegated_runs == []
+
+
+def test_ungoverned_search_turn_records_no_action_evidence(tmp_path):
+    engine, manager = engine_at(tmp_path)
+
+    engine.run_text_turn("Please search for a public topic")
+    artifact = manager.turn_artifacts[0]
+
+    assert artifact.action_proposals == []
+    assert artifact.authorization_decisions == []
+    assert artifact.action_execution_results == []
+
+
+def test_private_confirmation_parks_as_approval_required_without_searching(tmp_path):
+    queries = [("private topic " * 16 + str(index)) for index in range(3)]
+    engine, manager = governed_engine_at(
+        tmp_path, Model(action="research", queries=queries, private=True)
+    )
+
+    turn = engine.run_text_turn("Research my personal details")
+    artifact = manager.turn_artifacts[0]
+
+    assert turn.search["outcome"] == "confirmation_required"
+    assert all(query in turn.response_text for query in queries)
+    assert not turn.search["attempts"]
+    assert [record["capability_id"] for record in artifact.action_proposals] == ["search-private-web"]
+    assert [record["outcome"] for record in artifact.authorization_decisions] == ["approval_required"]
+    assert artifact.authorization_decisions[0]["approval_required"] is True
+    assert artifact.action_execution_results == []
+
+
+def test_confirming_a_private_search_records_the_approval_and_executes(tmp_path):
+    queries = ["private topic one"]
+    engine, manager = governed_engine_at(
+        tmp_path, Model(action="research", queries=queries, private=True)
+    )
+    engine.run_text_turn("Research my personal details")
+
+    turn = engine.run_text_turn("yes")
+    artifact = manager.turn_artifacts[1]
+
+    assert turn.search["outcome"] != "confirmation_required"
+    assert [record["outcome"] for record in artifact.approval_records] == ["approved"]
+    assert artifact.approval_records[0]["decided_by"] == "user"
+    assert [record["outcome"] for record in artifact.authorization_decisions] == ["allowed"]
+    assert [record["status"] for record in artifact.action_execution_results] == ["success"]
+
+    parked = manager.turn_artifacts[0]
+    approval = artifact.approval_records[0]
+    assert approval["proposal_id"] == parked.action_proposals[0]["proposal_id"]
+    assert approval["approval_id"] == parked.authorization_decisions[0]["approval_id"]
+
+
+def test_declining_a_private_search_records_a_denied_approval(tmp_path):
+    engine, manager = governed_engine_at(
+        tmp_path, Model(action="research", queries=["private topic one"], private=True)
+    )
+    engine.run_text_turn("Research my personal details")
+
+    turn = engine.run_text_turn("no")
+    artifact = manager.turn_artifacts[1]
+
+    assert turn.response_text == "Search cancelled."
+    assert [record["outcome"] for record in artifact.approval_records] == ["denied"]
+    assert artifact.action_execution_results == []
+
+
+def test_an_unconfirmed_private_search_lapses_into_a_cancellation(tmp_path):
+    engine, manager = governed_engine_at(
+        tmp_path, Model(action="research", queries=["private topic one"], private=True)
+    )
+    engine.run_text_turn("Research my personal details")
+
+    engine.run_text_turn("Hello there")
+    artifact = manager.turn_artifacts[1]
+
+    assert [record["cancelled_by"] for record in artifact.action_cancellations] == ["turn_boundary"]
+    assert artifact.approval_records == []
+
+
+def test_a_disabled_search_provider_denies_the_action_and_explains_why(tmp_path):
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.services.capability_service import CapabilityService
+
+    engine, manager = engine_at(tmp_path)
+    engine.capability_service = CapabilityService(
+        observe=lambda: CapabilityObservation(search_providers=(("ddgs", False),))
+    )
+
+    turn = engine.run_text_turn("Please search for a public topic")
+    artifact = manager.turn_artifacts[0]
+
+    assert turn.search["outcome"] == "unavailable"
+    assert "Enable DDGS, SearXNG, or Tavily" in turn.response_text
+    assert not turn.search["attempts"]
+    assert [record["outcome"] for record in artifact.authorization_decisions] == ["denied"]
+    assert artifact.action_execution_results == []

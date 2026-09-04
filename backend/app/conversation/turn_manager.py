@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
+from backend.app.actions.contracts import ActionEvidence
 from backend.app.conversation.states import ConversationState, validate_transition
 
 if TYPE_CHECKING:
@@ -30,6 +31,7 @@ class TurnContext:
     runtime_context: dict[str, object] = field(default_factory=dict)
     phase_observer: PhaseObserver | None = None
     search_operation: SearchOperation | None = None
+    action_evidence: ActionEvidence = field(default_factory=ActionEvidence)
 
     def __post_init__(self) -> None:
         self.phase_timestamps.setdefault(self.state.value, self.started_at)

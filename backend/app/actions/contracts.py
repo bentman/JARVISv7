@@ -4,6 +4,8 @@ from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from backend.app.actions.boundaries import require_boundaries
+
 EffectClass = Literal[
     "local_read",
     "local_write",
@@ -19,6 +21,7 @@ AuthorizationRule = Literal["allow", "requires_approval", "deny"]
 AuthorizationOutcome = Literal["allowed", "approval_required", "denied"]
 ApprovalOutcome = Literal["approved", "denied"]
 ExecutionStatus = Literal["success", "failure", "cancelled"]
+ApprovalMode = Literal["turn_boundary", "same_turn"]
 
 EFFECT_CLASSES = {
     "local_read",
@@ -35,6 +38,7 @@ AUTHORIZATION_RULES = {"allow", "requires_approval", "deny"}
 AUTHORIZATION_OUTCOMES = {"allowed", "approval_required", "denied"}
 APPROVAL_OUTCOMES = {"approved", "denied"}
 EXECUTION_STATUSES = {"success", "failure", "cancelled"}
+APPROVAL_MODES = {"turn_boundary", "same_turn"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +76,8 @@ class CapabilityDescriptor:
     artifact_evidence: dict[str, Any]
     unavailable_explanation: str
     metadata_claims: dict[str, Any] = field(default_factory=dict)
+    approval_mode: ApprovalMode = "same_turn"
+    boundaries: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         for name in (
@@ -92,6 +98,7 @@ class CapabilityDescriptor:
             "result_schema",
             "artifact_evidence",
             "metadata_claims",
+            "boundaries",
         ):
             _require_mapping(name, getattr(self, name))
         if self.availability != "available":
@@ -100,6 +107,7 @@ class CapabilityDescriptor:
         _require_one_of("readiness", self.readiness, READINESS_STATES)
         _require_one_of("availability", self.availability, AVAILABILITY_STATES)
         _require_one_of("authorization_rule", self.authorization_rule, AUTHORIZATION_RULES)
+        _require_one_of("approval_mode", self.approval_mode, APPROVAL_MODES)
         if "type" not in self.input_schema:
             raise ValueError("input_schema must declare a type")
         if "type" not in self.result_schema:
@@ -198,11 +206,53 @@ class ExecutionResultRecord:
         return _deep_asdict(self)
 
 
+@dataclass(frozen=True, slots=True)
+class ActionCancellationRecord:
+    proposal_id: str
+    capability_id: str
+    cancelled_by: str
+    cancelled_at: str
+    reason: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("proposal_id", "capability_id", "cancelled_by", "cancelled_at"):
+            _require_non_empty(name, getattr(self, name))
+
+    def to_dict(self) -> dict[str, Any]:
+        return _deep_asdict(self)
+
+
+@dataclass(slots=True)
+class ActionEvidence:
+    proposals: list[dict[str, Any]] = field(default_factory=list)
+    authorization_decisions: list[dict[str, Any]] = field(default_factory=list)
+    approvals: list[dict[str, Any]] = field(default_factory=list)
+    executions: list[dict[str, Any]] = field(default_factory=list)
+    cancellations: list[dict[str, Any]] = field(default_factory=list)
+
+    def record(
+        self,
+        record: ModelActionProposal
+        | AuthorizationDecision
+        | ApprovalAuditRecord
+        | ExecutionResultRecord
+        | ActionCancellationRecord,
+    ) -> None:
+        _EVIDENCE_SINKS[type(record)](self).append(record.to_dict())
+
+
 class CapabilityRegistry:
     def __init__(self) -> None:
         self._descriptors: dict[str, CapabilityDescriptor] = {}
 
     def register(self, descriptor: CapabilityDescriptor) -> CapabilityDescriptor:
+        require_boundaries(
+            descriptor.effect_class,
+            descriptor.boundaries,
+            descriptor.timeout_policy,
+            descriptor.cancellation_policy,
+        )
+        validate_schema(descriptor.input_schema)
         if descriptor.capability_id in self._descriptors:
             raise ValueError(f"capability already registered: {descriptor.capability_id}")
         self._descriptors[descriptor.capability_id] = descriptor
@@ -226,6 +276,21 @@ class CapabilityRegistry:
                 capability_id=proposal.capability_id,
                 outcome="denied",
                 reason="capability is not registered",
+            )
+        violations = validate_arguments(descriptor.input_schema, proposal.arguments)
+        if violations:
+            return AuthorizationDecision(
+                proposal_id=proposal.proposal_id,
+                capability_id=proposal.capability_id,
+                outcome="denied",
+                reason=f"invalid arguments: {violations[0]}",
+            )
+        if descriptor.readiness == "unavailable":
+            return AuthorizationDecision(
+                proposal_id=proposal.proposal_id,
+                capability_id=proposal.capability_id,
+                outcome="denied",
+                reason=descriptor.unavailable_explanation or "capability is unavailable",
             )
         if descriptor.availability != "available":
             return AuthorizationDecision(
@@ -258,6 +323,112 @@ class CapabilityRegistry:
         )
 
 
+SCHEMA_KEYWORDS = {
+    "type", "properties", "required", "additionalProperties", "propertyNames",
+    "enum", "items", "minLength", "maxLength", "minItems", "maxItems",
+    "minimum", "maximum", "description",
+}
+SCHEMA_TYPES: dict[str, type | tuple[type, ...]] = {
+    "object": dict,
+    "array": (list, tuple),
+    "string": str,
+    "integer": int,
+    "number": (int, float),
+    "boolean": bool,
+}
+
+
+def validate_schema(schema: dict[str, Any]) -> None:
+    if not isinstance(schema, dict):
+        raise ValueError("input_schema must be a mapping")
+    unsupported = sorted(set(schema) - SCHEMA_KEYWORDS)
+    if unsupported:
+        raise ValueError(f"input_schema uses unsupported keywords: {', '.join(unsupported)}")
+    declared = schema.get("type")
+    if declared is not None and declared not in SCHEMA_TYPES:
+        raise ValueError(f"input_schema declares an unsupported type: {declared}")
+    for subschema in schema.get("properties", {}).values():
+        validate_schema(subschema)
+    if "items" in schema:
+        validate_schema(schema["items"])
+    if "propertyNames" in schema:
+        validate_schema(schema["propertyNames"])
+
+
+def validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> tuple[str, ...]:
+    return tuple(_schema_violations(schema, arguments, "arguments"))
+
+
+def _schema_violations(schema: dict[str, Any], value: Any, path: str) -> list[str]:
+    declared = schema.get("type")
+    if declared is not None:
+        expected = SCHEMA_TYPES[declared]
+        if declared in {"integer", "number"} and isinstance(value, bool):
+            return [f"{path} must be {declared}"]
+        if not isinstance(value, expected):
+            return [f"{path} must be {declared}"]
+    if "enum" in schema and value not in schema["enum"]:
+        return [f"{path} must be one of: {', '.join(str(item) for item in schema['enum'])}"]
+
+    violations: list[str] = []
+    if isinstance(value, str):
+        violations += _bounds(path, len(value), schema.get("minLength"), schema.get("maxLength"), "characters")
+    elif isinstance(value, (list, tuple)):
+        violations += _bounds(path, len(value), schema.get("minItems"), schema.get("maxItems"), "items")
+        item_schema = schema.get("items")
+        if item_schema is not None:
+            for index, item in enumerate(value):
+                violations += _schema_violations(item_schema, item, f"{path}[{index}]")
+    elif isinstance(value, (int, float)) and not isinstance(value, bool):
+        minimum, maximum = schema.get("minimum"), schema.get("maximum")
+        if minimum is not None and value < minimum:
+            violations.append(f"{path} must be at least {minimum}")
+        if maximum is not None and value > maximum:
+            violations.append(f"{path} must be at most {maximum}")
+    elif isinstance(value, dict):
+        violations += _object_violations(schema, value, path)
+    return violations
+
+
+def _object_violations(schema: dict[str, Any], value: dict[str, Any], path: str) -> list[str]:
+    violations: list[str] = []
+    properties = schema.get("properties", {})
+    for name in schema.get("required", []):
+        if name not in value:
+            violations.append(f"{path} is missing required field {name}")
+    if schema.get("additionalProperties") is False:
+        for name in value:
+            if name not in properties:
+                violations.append(f"{path} does not accept field {name}")
+    allowed_names = schema.get("propertyNames", {}).get("enum")
+    if allowed_names is not None:
+        for name in value:
+            if name not in allowed_names:
+                violations.append(f"{path} does not accept key {name}")
+    for name, subschema in properties.items():
+        if name in value:
+            violations += _schema_violations(subschema, value[name], f"{path}.{name}")
+    return violations
+
+
+def _bounds(path: str, size: int, minimum: Any, maximum: Any, unit: str) -> list[str]:
+    violations: list[str] = []
+    if minimum is not None and size < minimum:
+        violations.append(f"{path} must have at least {minimum} {unit}")
+    if maximum is not None and size > maximum:
+        violations.append(f"{path} must have at most {maximum} {unit}")
+    return violations
+
+
+_EVIDENCE_SINKS: dict[type, Any] = {
+    ModelActionProposal: lambda evidence: evidence.proposals,
+    AuthorizationDecision: lambda evidence: evidence.authorization_decisions,
+    ApprovalAuditRecord: lambda evidence: evidence.approvals,
+    ExecutionResultRecord: lambda evidence: evidence.executions,
+    ActionCancellationRecord: lambda evidence: evidence.cancellations,
+}
+
+
 def _require_non_empty(name: str, value: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{name} must be a non-empty string")
@@ -282,5 +453,5 @@ def _validate_untrusted_claims(claims: dict[str, Any]) -> None:
             raise ValueError("metadata claims must remain untrusted")
 
 
-def _deep_asdict(value: object) -> dict[str, Any]:
+def _deep_asdict(value: Any) -> dict[str, Any]:
     return deepcopy(asdict(value))

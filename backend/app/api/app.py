@@ -28,13 +28,20 @@ from backend.app.runtimes.tts.tts_runtime import select_tts_runtime
 from backend.app.runtimes.vad import EnergyVADRuntime
 from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.audio_stream import ResidentAudioStream
+from backend.app.services.capability_service import (
+    CapabilityService,
+    build_capability_handlers,
+    observe_capabilities,
+)
 from backend.app.services.daemon_registry import DaemonRegistry
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
+from backend.app.services.llm_provider_profiles import LLMProviderProfileStore
 from backend.app.services.llm_provider_service import prepare_llm_providers
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService
 from backend.app.services.memory_curation_processor import ReviewOnlyMemoryCurationProcessor
 from backend.app.services.memory_curation_service import MemoryCurationService
 from backend.app.services.memory_service import MemoryService
+from backend.app.services.operator_config_service import ENV_FILE, OperatorConfigService
 from backend.app.services.resident_voice_invocation import (
     ResidentVoiceInvocationService,
     default_utterance_segmenter,
@@ -78,6 +85,7 @@ class ApiState:
     llm_coordinator: LLMExecutionCoordinator | None = None
     memory_curation_service: MemoryCurationService | None = None
     memory_service: MemoryService | None = None
+    capability_service: CapabilityService | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -97,6 +105,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         llm_coordinator=state.llm_coordinator,
         search_service=SearchService.configured(settings),
         search_secret_values=_search_secrets(settings),
+        capability_service=getattr(state, "capability_service", None),
     )
 
 
@@ -147,6 +156,24 @@ def build_startup_state() -> ApiState:
         silence_end_s=WAKE_COMMAND_SILENCE_END_S,
         trailing_pad_s=WAKE_COMMAND_TRAILING_PAD_S,
     )
+    memory_service: MemoryService | None = None
+    operator_config = OperatorConfigService()
+    capability_service = CapabilityService(
+        observe=lambda: observe_capabilities(
+            settings_provider=load_settings,
+            memory_service_provider=lambda: memory_service,
+            provider_store_factory=LLMProviderProfileStore,
+            operator_config_keys=operator_config.keys,
+            env_file=ENV_FILE,
+        ),
+        handlers=build_capability_handlers(
+            memory_service_provider=lambda: memory_service,
+            operator_config=operator_config,
+            provider_store_factory=LLMProviderProfileStore,
+            env_file=ENV_FILE,
+        ),
+        on_event=lambda name, payload: _record_action_event(session_service, name, payload),
+    )
     engine = TurnEngine(
         stt=stt,
         tts=tts,
@@ -161,6 +188,7 @@ def build_startup_state() -> ApiState:
         llm_coordinator=llm_coordinator,
         search_service=SearchService.configured(settings),
         search_secret_values=_search_secrets(settings),
+        capability_service=capability_service,
     )
     session_service: SessionService
     memory_curation_service = MemoryCurationService(
@@ -249,8 +277,15 @@ def build_startup_state() -> ApiState:
         llm_coordinator=llm_coordinator,
         memory_curation_service=memory_curation_service,
         memory_service=memory_service,
+        capability_service=capability_service,
     )
     return state
+
+
+def _record_action_event(session_service: SessionService, name: str, payload: dict) -> None:
+    if not session_service.is_session_active():
+        return
+    session_service.session_manager.record_timeline_event(name, metadata=payload)
 
 
 def install_state(app: FastAPI, state: ApiState) -> None:
@@ -300,6 +335,7 @@ async def lifespan(app: FastAPI):
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
     from backend.app.api.routes import (
+        actions,
         config,
         daemon,
         diagnostics,
@@ -318,6 +354,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     install_state(app, startup_state or build_startup_state())
     app.state.daemon_registry = DaemonRegistry()
     app.include_router(health.router)
+    app.include_router(actions.router)
     app.include_router(daemon.router)
     app.include_router(readiness.router)
     app.include_router(personality.router)

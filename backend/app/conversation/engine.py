@@ -12,6 +12,16 @@ from typing import Any
 from uuid import uuid4
 
 import numpy as np
+from backend.app.actions.catalog import SEARCH_PRIVATE_WEB, SEARCH_PUBLIC_WEB
+from backend.app.actions.contracts import (
+    ActionCancellationRecord,
+    ApprovalAuditRecord,
+    AuthorizationContext,
+    AuthorizationDecision,
+    ExecutionResultRecord,
+    ExecutionStatus,
+    ModelActionProposal,
+)
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
@@ -20,6 +30,7 @@ from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.search_policy import (
     SearchIntentResolver,
+    SearchPlan,
     ground_search_prompt,
     grounded_response,
     search_speech,
@@ -40,6 +51,7 @@ from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts import playback
 from backend.app.runtimes.tts.base import TTSBase
+from backend.app.services.capability_service import CapabilityService, utc_now_iso
 from backend.app.services.llm_execution_coordinator import (
     InteractiveTicket,
     LLMExecutionCoordinator,
@@ -90,6 +102,7 @@ class TurnEngine:
         llm_coordinator: LLMExecutionCoordinator | None = None,
         search_service: SearchService | None = None,
         search_secret_values: tuple[str, ...] = (),
+        capability_service: CapabilityService | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -108,6 +121,7 @@ class TurnEngine:
         self.retrieval = RetrievalManager()
         self.phase_observer: PhaseObserver | None = None
         self.search_service = search_service
+        self.capability_service = capability_service
         self.search_intent = SearchIntentResolver(llm, secret_values=search_secret_values)
         self._turn_lock = threading.Lock()
         self._admission_lock = threading.Lock()
@@ -412,8 +426,23 @@ class TurnEngine:
                 failure_phase=_failure_phase_for_state(context.state),
             )
 
+    def _record_search_cancellation(self, context: TurnContext) -> None:
+        if self.capability_service is None or not context.action_evidence.proposals:
+            return
+        latest = context.action_evidence.proposals[-1]
+        context.action_evidence.record(
+            ActionCancellationRecord(
+                proposal_id=str(latest["proposal_id"]),
+                capability_id=str(latest["capability_id"]),
+                cancelled_by="operator",
+                cancelled_at=utc_now_iso(),
+                reason="the operator cancelled the search",
+            )
+        )
+
     def _cancelled_result(self, context: TurnContext, transcript: str, raw_audio_path: str | None,
                           phase_durations_ms: dict[str, float], voice_turn_started_at: float | None) -> TurnResult:
+        self._record_search_cancellation(context)
         self.search_intent.clear()
         if context.search_operation:
             context.search_operation.evidence.outcome = "cancelled"
@@ -450,19 +479,35 @@ class TurnEngine:
                     prior_topic = str(prior.search["topic"])
         plan = self.search_intent.resolve(transcript, context=prior_topic)
         operation.check()
+        self._record_search_approval(context)
         if plan.action == "clarify":
-            operation.evidence.outcome = "confirmation_required" if self.search_intent.pending else "clarification_required"
+            if self.search_intent.pending is not None:
+                decision = self._propose_search(context, self.search_intent.pending)
+                self.search_intent.pending_action_ref = (
+                    (decision.proposal_id, decision.approval_id or "")
+                    if decision and decision.approval_id
+                    else None
+                )
+                operation.evidence.outcome = "confirmation_required"
+            else:
+                operation.evidence.outcome = "clarification_required"
             return plan.message, envelope
         if plan.action == "none":
             operation.evidence.outcome = "not_requested"
             return bound_single_turn_response(self.llm.generate_envelope(envelope)), envelope
         assert self.search_service is not None
+        decision = self._propose_search(context, plan)
+        if decision is not None and decision.outcome != "allowed":
+            operation.evidence.outcome = "unavailable"
+            return decision.reason, envelope
         context.advance(ConversationState.ACTING)
         retrieval_started = time.perf_counter()
+        started_at = utc_now_iso()
         try:
             evidence = self.search_service.retrieve(operation, mode=plan.action, topic=plan.topic, queries=plan.queries)
         finally:
             operation.evidence.retrieval_ms = _elapsed_ms(retrieval_started)
+            self._record_search_execution(context, operation.evidence, started_at)
         context.advance(ConversationState.REASONING)
         if not evidence.sources:
             return grounded_response("", evidence), envelope
@@ -473,6 +518,103 @@ class TurnEngine:
         response = bound_single_turn_response(self.llm.generate_envelope(grounded))
         operation.check()
         return response, grounded
+
+    def _propose_search(self, context: TurnContext, plan: SearchPlan) -> AuthorizationDecision | None:
+        if self.capability_service is None:
+            return None
+        capability_id = SEARCH_PRIVATE_WEB if plan.private else SEARCH_PUBLIC_WEB
+        proposal = ModelActionProposal(
+            proposal_id=uuid4().hex,
+            capability_id=capability_id,
+            arguments={"mode": plan.action, "topic": plan.topic, "queries": list(plan.queries)},
+            proposed_by="model",
+            reason=plan.message or "the user requested a web search",
+        )
+        approved = self.search_intent.resolved_approval is not None and (
+            self.search_intent.resolved_approval[1] == "approved"
+        )
+        decision = self.capability_service.authorize_turn(
+            proposal,
+            AuthorizationContext(
+                session_id=context.session_id,
+                turn_id=context.turn_id,
+                caller="conversation-turn",
+                operator_approved=approved,
+            ),
+        )
+        if decision.outcome == "approval_required" and not decision.approval_id:
+            # The approval record minted on the resuming turn must carry this same id.
+            decision = AuthorizationDecision(
+                proposal_id=decision.proposal_id,
+                capability_id=decision.capability_id,
+                outcome=decision.outcome,
+                reason=decision.reason,
+                approval_required=True,
+                approval_id=uuid4().hex,
+            )
+        context.action_evidence.record(proposal)
+        context.action_evidence.record(decision)
+        return decision
+
+    def _record_search_approval(self, context: TurnContext) -> None:
+        resolved = self.search_intent.resolved_approval
+        if self.capability_service is None or resolved is None:
+            return
+        (proposal_id, approval_id), outcome = resolved
+        # Only search-private-web carries requires_approval, so a resolved approval is always its own.
+        capability_id = SEARCH_PRIVATE_WEB
+        if outcome == "expired":
+            context.action_evidence.record(
+                ActionCancellationRecord(
+                    proposal_id=proposal_id,
+                    capability_id=capability_id,
+                    cancelled_by="turn_boundary",
+                    cancelled_at=utc_now_iso(),
+                    reason="approval was not confirmed on the next turn",
+                )
+            )
+            return
+        context.action_evidence.record(
+            ApprovalAuditRecord(
+                approval_id=approval_id,
+                proposal_id=proposal_id,
+                capability_id=capability_id,
+                outcome=outcome,
+                decided_by="user",
+                decided_at=utc_now_iso(),
+                reason="the user answered the outbound search confirmation",
+            )
+        )
+
+    def _record_search_execution(self, context: TurnContext, evidence: Any, started_at: str) -> None:
+        if self.capability_service is None:
+            return
+        proposals = context.action_evidence.proposals
+        if not proposals:
+            return
+        latest = proposals[-1]
+        cancelled = evidence.outcome == "cancelled" or evidence.cancel_requested
+        status: ExecutionStatus = (
+            "cancelled" if cancelled else "success" if evidence.sources else "failure"
+        )
+        context.action_evidence.record(
+            ExecutionResultRecord(
+                proposal_id=str(latest["proposal_id"]),
+                capability_id=str(latest["capability_id"]),
+                status=status,
+                result={
+                    "outcome": evidence.outcome,
+                    "mode": evidence.mode,
+                    "source_count": len(evidence.sources),
+                    "attempt_count": len(evidence.attempts),
+                    "limitations": list(evidence.limitations),
+                },
+                started_at=started_at,
+                completed_at=utc_now_iso(),
+                error=None if status != "failure" else "the search returned no usable sources",
+                artifacts={"retrieval_ms": evidence.retrieval_ms},
+            )
+        )
 
     @staticmethod
     def _check_search(context: TurnContext) -> None:
@@ -989,6 +1131,11 @@ class TurnEngine:
                 attempt.provider for attempt in context.search_operation.evidence.attempts
                 if attempt.status not in {"disabled", "misconfigured"}
             )) if context.search_operation else [],
+            action_proposals=list(context.action_evidence.proposals),
+            authorization_decisions=list(context.action_evidence.authorization_decisions),
+            approval_records=list(context.action_evidence.approvals),
+            action_execution_results=list(context.action_evidence.executions),
+            action_cancellations=list(context.action_evidence.cancellations),
         )
         self.session_manager.record_turn_artifact(artifact)
         if self.episodic is not None:

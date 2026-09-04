@@ -6,6 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+from backend.app.actions.catalog import CapabilityObservation
 from backend.app.api import app as app_module
 from backend.app.api import service_status
 from backend.app.api.app import ApiState, create_app
@@ -25,6 +26,7 @@ from backend.app.personality.schema import (
     PersonalityTraits,
 )
 from backend.app.routing.runtime_selector import SelectionTrace
+from backend.app.services.capability_service import CapabilityService
 from backend.app.services.resident_voice_invocation import ResidentVoiceInvocationService
 from backend.app.services.session_service import SessionService
 from backend.app.services.startup_context import StartupContext
@@ -295,6 +297,16 @@ def _state() -> ApiState:
         wake_monitor=wake_monitor,
         cache_manager=cache_manager,
         resident_voice=resident_voice,
+        capability_service=CapabilityService(
+            observe=lambda: CapabilityObservation(
+                search_providers=(("ddgs", True), ("searxng", True)),
+                memory_service_present=True,
+                memory_curation_present=True,
+                provider_store_present=True,
+                operator_config_present=True,
+                operator_config_keys=("USE_DDGS",),
+            )
+        ),
     )
     return state
 
@@ -1025,6 +1037,44 @@ def test_agent_routes_are_absent_from_openapi() -> None:
     paths = _client().app.openapi()["paths"]
 
     assert not any(path.startswith("/agents") for path in paths)
+
+
+def test_action_routes_are_present_and_expose_no_executable_privileged_capability() -> None:
+    client = _client()
+    paths = client.app.openapi()["paths"]
+
+    assert "/actions/capabilities" in paths
+    assert "/actions/propose" in paths
+
+    response = client.get("/actions/capabilities")
+
+    assert response.status_code == 200
+    capabilities = response.json()["capabilities"]
+    assert capabilities
+    assert not any(item["effect_class"] == "privileged_execution" for item in capabilities)
+    assert not any(item["executable"] for item in capabilities)
+
+
+def test_a_destructive_action_parks_for_approval_through_the_real_app() -> None:
+    client = _client()
+
+    parked = client.post(
+        "/actions/propose",
+        json={
+            "capability_id": "memory-record-forget",
+            "arguments": {"fact_id": "fact-1", "expected_revision": 1},
+            "reason": "the model proposed forgetting a fact",
+            "proposed_by": "model",
+        },
+    )
+
+    assert parked.status_code == 200
+    body = parked.json()
+    assert (body["outcome"], body["status"]) == ("approval_required", "awaiting_approval")
+    assert body["execution"] is None
+    assert [item["proposal_id"] for item in client.get("/actions/pending").json()["pending"]] == [
+        body["proposal_id"]
+    ]
 
 
 def test_wake_status_uses_readiness_without_starting_monitor() -> None:

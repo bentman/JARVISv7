@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from backend.app.api.app import ApiState
+from backend.app.services.capability_service import CapabilityService
 from backend.app.services.memory_service import MemoryService
 from backend.app.services.session_service import SessionService
 from fastapi import HTTPException, Request
@@ -25,3 +26,22 @@ def get_memory_service(request: Request) -> MemoryService:
             },
         )
     return service
+
+
+def get_capability_service(request: Request) -> CapabilityService:
+    service = get_optional_capability_service(request)
+    if service is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "unavailable",
+                "message": "capability service is unavailable",
+            },
+        )
+    return service
+
+
+def get_optional_capability_service(request: Request) -> CapabilityService | None:
+    # Route tests mount a single router on a bare app, so app state may be absent.
+    state = getattr(request.app.state, "jarvis_state", None)
+    return getattr(state, "capability_service", None)

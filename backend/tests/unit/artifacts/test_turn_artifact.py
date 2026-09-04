@@ -3,6 +3,13 @@ from __future__ import annotations
 import json
 from contextlib import suppress
 
+from backend.app.actions import (
+    ActionCancellationRecord,
+    ApprovalAuditRecord,
+    AuthorizationDecision,
+    ExecutionResultRecord,
+    ModelActionProposal,
+)
 from backend.app.artifacts import storage
 from backend.app.artifacts.session_artifact import SESSION_ARTIFACT_FIELDS, SessionArtifact
 from backend.app.artifacts.turn_artifact import TURN_ARTIFACT_FIELDS, TurnArtifact
@@ -148,51 +155,53 @@ def test_turn_artifact_structured_retrieval_provenance_roundtrips() -> None:
 def test_turn_artifact_action_evidence_roundtrips() -> None:
     artifact = _turn_artifact()
     artifact.action_proposals = [
-        {
-            "proposal_id": "proposal-1",
-            "capability_id": "search-public-web",
-            "arguments": {"query": "public topic"},
-            "proposed_by": "model",
-        }
+        ModelActionProposal(
+            proposal_id="proposal-1",
+            capability_id="search-public-web",
+            arguments={"query": "public topic"},
+            proposed_by="model",
+            reason="the user requested a web search",
+        ).to_dict()
     ]
     artifact.authorization_decisions = [
-        {
-            "proposal_id": "proposal-1",
-            "capability_id": "search-public-web",
-            "outcome": "allowed",
-            "reason": "authorization rule allows execution",
-        }
+        AuthorizationDecision(
+            proposal_id="proposal-1",
+            capability_id="search-public-web",
+            outcome="allowed",
+            reason="authorization rule allows execution",
+        ).to_dict()
     ]
     artifact.approval_records = [
-        {
-            "approval_id": "approval-1",
-            "proposal_id": "proposal-2",
-            "capability_id": "local-note-write",
-            "outcome": "denied",
-            "decided_by": "operator",
-        }
+        ApprovalAuditRecord(
+            approval_id="approval-1",
+            proposal_id="proposal-2",
+            capability_id="local-note-write",
+            outcome="denied",
+            decided_by="operator",
+            decided_at="2026-09-04T00:00:00+00:00",
+        ).to_dict()
     ]
     artifact.action_execution_results = [
-        {
-            "proposal_id": "proposal-1",
-            "capability_id": "search-public-web",
-            "status": "success",
-            "result": {"sources": ["S1"]},
-        }
+        ExecutionResultRecord(
+            proposal_id="proposal-1",
+            capability_id="search-public-web",
+            status="success",
+            result={"source_count": 1},
+            started_at="2026-09-04T00:00:00+00:00",
+            completed_at="2026-09-04T00:00:01+00:00",
+        ).to_dict()
     ]
     artifact.action_cancellations = [
-        {
-            "proposal_id": "proposal-3",
-            "capability_id": "search-public-web",
-            "cancelled_by": "operator",
-        }
+        ActionCancellationRecord(
+            proposal_id="proposal-3",
+            capability_id="search-public-web",
+            cancelled_by="operator",
+            cancelled_at="2026-09-04T00:00:02+00:00",
+        ).to_dict()
     ]
+    # delegated_runs has no record type yet; ADR 0005 keeps that follow-up open.
     artifact.delegated_runs = [
-        {
-            "proposal_id": "proposal-4",
-            "capability_id": "delegate-agent",
-            "run_id": "run-1",
-        }
+        {"proposal_id": "proposal-4", "capability_id": "delegate-agent", "run_id": "run-1"}
     ]
 
     assert TurnArtifact.from_json(artifact.to_json()) == artifact

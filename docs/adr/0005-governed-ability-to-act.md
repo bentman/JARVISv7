@@ -71,14 +71,33 @@ Settings and provider configuration are explicit backend actions. Operator confi
 
 Prompt and artifact boundaries reserve action evidence. `PromptEnvelope` has `tool` authority and `tool_result` content type. Renderers mark tool results as untrusted context. `TurnArtifact` records `tools_invoked`, `action_proposals`, `authorization_decisions`, `approval_records`, `action_execution_results`, `action_cancellations`, `delegated_runs`, search evidence, runtime context, retrieved memory evidence, failure state, and phase timings.
 
-Action contract scaffolding exists in `backend/app/actions/contracts.py`. It defines `CapabilityDescriptor`, `ModelActionProposal`, `AuthorizationContext`, `AuthorizationDecision`, `ApprovalAuditRecord`, `ExecutionResultRecord`, and `CapabilityRegistry`. The registry validates effect classes, readiness states, availability states, authorization rules, timeout/cancellation/result schema metadata, unavailable explanations, sorted snapshots, duplicate capability IDs, and untrusted metadata claims.
+The shared action contract is wired. `backend/app/actions/contracts.py` defines `CapabilityDescriptor`, `ModelActionProposal`, `AuthorizationContext`, `AuthorizationDecision`, `ApprovalAuditRecord`, `ExecutionResultRecord`, `ActionCancellationRecord`, `ActionEvidence`, and `CapabilityRegistry`. Descriptors declare an approval mode of `turn_boundary` or `same_turn`. The registry validates effect classes, readiness states, availability states, authorization rules, timeout/cancellation/result schema metadata, unavailable explanations, sorted snapshots, duplicate capability IDs, untrusted metadata claims, execution boundaries, and the input-schema keywords it can actually enforce. Authorization denies unregistered capabilities, arguments the input schema rejects, unavailable readiness, unavailable capabilities, denied rules, and unapproved capabilities that require approval.
 
-The shared action loop is not fully wired yet. Existing governed paths do not all register as capability descriptors; model-callable tools do not yet execute through the registry; approval does not yet pause/resume turns through a backend/API/desktop approval surface; and root/process boundaries for file, shell, MCP, plugin, skill-script, or agent execution are not yet implemented.
+`backend/app/actions/catalog.py` builds thirteen descriptors for search, memory lifecycle, provider configuration, and operator configuration from a `CapabilityObservation` of live state: enabled search providers, memory-service and curation presence, provider secret-store lock state and per-profile `readiness_state`, and `.env` presence. `CapabilityService` re-observes on every catalog read and proposal, so readiness and availability are observations rather than static claims.
+
+`backend/app/actions/boundaries.py` declares the execution boundary rules: allowed storage roots limited to the existing `data/`, `cache/`, `reports/`, `models/`, and `runtimes/` roots, a wall-clock timeout ceiling, a cancellation contract, and a result-size bound. `run_bounded` enforces the deadline, the cancellation signal, and the result bound, and `ExecutionBoundary.resolve_path` refuses paths that escape the declared roots. The registry refuses to register a `privileged_execution` capability that does not declare these boundaries.
+
+`backend/app/services/capability_service.py` owns proposal, authorization, approval, execution, cancellation, and audit. `same_turn` capabilities execute inside the HTTP request through `/actions`; approval-required proposals park in a bounded in-memory store, and approval re-runs the authorization ladder against freshly observed state before executing. A decided proposal is retained so a repeated decision is refused rather than reported as missing. Secret-bearing arguments are masked at record time.
+
+`TurnEngine` expresses the search confirmation handshake in this vocabulary. A search plan becomes a `ModelActionProposal` against `search-public-web` or `search-private-web`; a private plan produces an `approval_required` decision carrying an approval ID, and the user's confirmation, refusal, or silence on the next turn becomes an approval record, a denial, or a cancellation. `TurnContext.action_evidence` carries the records, and `_persist_artifact` writes proposals, authorization decisions, approval records, execution results, and cancellations into the turn artifact. Conversational behavior, prompts, and outcome strings are unchanged.
+
+The existing `/memory`, `/config/llm`, and `/config/operator` mutation routes record direct operator authority through `CapabilityService.operator_action`, so an operator request is represented as an approved proposal with an execution result. Their status codes and response bodies are unchanged.
+
+What remains: `delegated_runs` has no producer and stays empty; file, workspace, shell, MCP, plugin, skill-script, and agent capabilities are not registered and are not executable, and process isolation for them is not implemented; the three mutation route groups record through the authorization ladder but still execute outside the capability executor; API-initiated action evidence lives in a bounded in-memory audit rather than a durable artifact; and no desktop surface exists for capability discovery, approval, execution status, cancellation, or audit.
 
 ## Confirmation
 
 Implementation files:
 - `backend/app/actions/contracts.py`
+- `backend/app/actions/boundaries.py`
+- `backend/app/actions/catalog.py`
+- `backend/app/services/capability_service.py`
+- `backend/app/services/operator_config_service.py`
+- `backend/app/api/routes/actions.py`
+- `backend/app/api/schemas/actions.py`
+- `backend/app/api/dependencies.py`
+- `backend/app/api/app.py`
+- `backend/app/conversation/turn_manager.py`
 - `backend/app/cognition/search_policy.py`
 - `backend/app/services/search_service.py`
 - `backend/app/runtimes/internetsearch/base.py`
@@ -106,6 +125,9 @@ Implementation files:
 
 Test coverage:
 - `backend/tests/unit/actions/test_action_contracts.py`
+- `backend/tests/unit/actions/test_action_boundaries.py`
+- `backend/tests/unit/services/test_capability_service.py`
+- `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/cognition/test_search_policy.py`
 - `backend/tests/unit/services/test_search_service.py`
 - `backend/tests/unit/conversation/test_search_turn.py`
@@ -131,10 +153,8 @@ Validation commands:
 
 Required to complete this ADR:
 
-- Register existing governed actions, including search, provider-profile, memory-lifecycle, and operator-config actions, through the capability registry.
-- Wire capability authorization into action execution so registered capabilities use one authorization path.
-- Add an approval flow that records proposed action arguments, accepts approve/reject, and resumes the same turn or run.
-- Populate turn/session artifacts with action proposals, authorization decisions, approval records, execution results, cancellations, and delegated runs.
-- Add root, storage, process, timeout, cancellation, and output-boundary rules before file, workspace, shell, MCP, plugin, skill-script, or agent capabilities become executable.
-- Expose backend API and desktop surfaces for capability discovery, approval, execution status, cancellation, and audit.
-- Add focused tests for registered capability execution, approval decisions, artifact recording, unavailable/degraded capability state, and no execution leakage when capabilities are disabled.
+- Expose desktop surfaces for capability discovery, approval, execution status, cancellation, and audit.
+- Add process and root isolation for file, workspace, shell, MCP, plugin, skill-script, and agent execution before registering those capabilities. Declared storage-root, timeout, cancellation, and result-size boundaries exist, and the registry already refuses `privileged_execution` capabilities that do not declare them.
+- Converge the `/memory`, `/config/llm`, and `/config/operator` mutation routes onto the capability executor so one path both authorizes and executes.
+- Record API-initiated action evidence in a durable session artifact rather than a bounded in-memory audit.
+- Populate `delegated_runs` when delegated agent execution exists; it has no producer today.

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.actions import (
+    ActionCancellationRecord,
+    ActionEvidence,
+    ApprovalAuditRecord,
     AuthorizationContext,
+    AuthorizationDecision,
     CapabilityDescriptor,
     CapabilityRegistry,
+    ExecutionResultRecord,
     ModelActionProposal,
 )
 
@@ -20,14 +24,20 @@ def descriptor(
     availability: str = "available",
     unavailable_explanation: str = "",
     metadata_claims: dict | None = None,
+    readiness: str = "ready",
+    effect_class: str = "external_read",
+    approval_mode: str = "turn_boundary",
+    boundaries: dict | None = None,
+    input_schema: dict | None = None,
 ) -> CapabilityDescriptor:
     return CapabilityDescriptor(
         capability_id=capability_id,
         source="builtin",
         provenance="backend.app.services.search_service",
-        input_schema={"type": "object", "properties": {"query": {"type": "string"}}},
-        effect_class="external_read",
-        readiness="ready",
+        input_schema=input_schema
+        or {"type": "object", "properties": {"query": {"type": "string"}}},
+        effect_class=effect_class,
+        readiness=readiness,
         availability=availability,
         authorization_rule=authorization_rule,
         execution_owner="backend.app.services.search_service.SearchService",
@@ -37,6 +47,8 @@ def descriptor(
         artifact_evidence={"records": ["action_proposals", "authorization_decisions", "action_execution_results"]},
         unavailable_explanation=unavailable_explanation,
         metadata_claims=metadata_claims or {},
+        approval_mode=approval_mode,
+        boundaries=boundaries if boundaries is not None else {},
     )
 
 
@@ -197,3 +209,170 @@ def test_authorization_denies_unknown_or_unavailable_capability() -> None:
     assert unknown.outcome == "denied"
     assert unavailable.outcome == "denied"
     assert unavailable.reason == "search provider disabled"
+
+
+def bounded(**overrides) -> dict:
+    values = {"storage_roots": [], "timeout_ms": 10000, "cancellable": True, "max_result_bytes": 16000}
+    values.update(overrides)
+    return values
+
+
+def test_approval_mode_must_be_a_declared_mode() -> None:
+    assert descriptor(approval_mode="same_turn").approval_mode == "same_turn"
+
+    with pytest.raises(ValueError, match="approval_mode must be one of"):
+        descriptor(approval_mode="whenever")
+
+
+def test_registry_refuses_privileged_execution_without_declared_boundaries() -> None:
+    registry = CapabilityRegistry()
+
+    with pytest.raises(ValueError, match="privileged_execution capabilities must declare boundaries"):
+        registry.register(descriptor(effect_class="privileged_execution"))
+
+    assert registry.get(SEARCH_PUBLIC_WEB_CAPABILITY_ID) is None
+
+
+def test_registry_refuses_storage_roots_outside_the_approved_roots() -> None:
+    registry = CapabilityRegistry()
+
+    with pytest.raises(ValueError, match="storage_roots must be within"):
+        registry.register(descriptor(boundaries=bounded(storage_roots=["/etc"])))
+
+
+def test_registry_refuses_boundaries_that_contradict_the_declared_policies() -> None:
+    registry = CapabilityRegistry()
+
+    with pytest.raises(ValueError, match="timeout_ms must match timeout_policy"):
+        registry.register(descriptor(boundaries=bounded(timeout_ms=999)))
+
+
+def test_registry_refuses_input_schema_keywords_it_cannot_enforce() -> None:
+    registry = CapabilityRegistry()
+
+    with pytest.raises(ValueError, match="unsupported keywords: pattern"):
+        registry.register(descriptor(input_schema={"type": "object", "pattern": "^x$"}))
+
+
+def test_authorization_denies_arguments_the_input_schema_rejects() -> None:
+    registry = CapabilityRegistry()
+    registry.register(
+        descriptor(
+            input_schema={
+                "type": "object",
+                "properties": {"query": {"type": "string", "maxLength": 8}},
+                "required": ["query"],
+                "additionalProperties": False,
+            }
+        )
+    )
+
+    decision = registry.authorize(proposal(), auth_context())
+
+    assert decision.outcome == "denied"
+    assert "arguments.query must have at most 8 characters" in decision.reason
+
+
+def test_authorization_denies_capabilities_whose_readiness_is_unavailable() -> None:
+    registry = CapabilityRegistry()
+    registry.register(
+        descriptor(readiness="unavailable", unavailable_explanation="No search provider is enabled.")
+    )
+
+    decision = registry.authorize(proposal(), auth_context())
+
+    assert decision.outcome == "denied"
+    assert decision.reason == "No search provider is enabled."
+
+
+def test_execution_result_requires_an_error_when_it_failed() -> None:
+    with pytest.raises(ValueError, match="failure results must include error"):
+        ExecutionResultRecord(
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            status="failure",
+            result={},
+            started_at="2026-09-04T00:00:00+00:00",
+            completed_at="2026-09-04T00:00:01+00:00",
+        )
+
+
+def test_approval_and_cancellation_records_require_attributable_identity() -> None:
+    approval = ApprovalAuditRecord(
+        approval_id="approval-1",
+        proposal_id="proposal-1",
+        capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+        outcome="approved",
+        decided_by="user",
+        decided_at="2026-09-04T00:00:00+00:00",
+    )
+    assert approval.to_dict()["outcome"] == "approved"
+
+    with pytest.raises(ValueError, match="outcome must be one of"):
+        ApprovalAuditRecord(
+            approval_id="approval-1",
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            outcome="expired",
+            decided_by="user",
+            decided_at="2026-09-04T00:00:00+00:00",
+        )
+
+    with pytest.raises(ValueError, match="cancelled_by must be a non-empty string"):
+        ActionCancellationRecord(
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            cancelled_by="",
+            cancelled_at="2026-09-04T00:00:00+00:00",
+        )
+
+
+def test_action_evidence_routes_each_record_to_its_artifact_field() -> None:
+    evidence = ActionEvidence()
+    evidence.record(proposal())
+    evidence.record(
+        AuthorizationDecision(
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            outcome="approval_required",
+            reason="operator approval is required",
+            approval_required=True,
+        )
+    )
+    evidence.record(
+        ApprovalAuditRecord(
+            approval_id="approval-1",
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            outcome="approved",
+            decided_by="user",
+            decided_at="2026-09-04T00:00:00+00:00",
+        )
+    )
+    evidence.record(
+        ExecutionResultRecord(
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            status="success",
+            result={"source_count": 2},
+            started_at="2026-09-04T00:00:00+00:00",
+            completed_at="2026-09-04T00:00:01+00:00",
+        )
+    )
+    evidence.record(
+        ActionCancellationRecord(
+            proposal_id="proposal-1",
+            capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
+            cancelled_by="turn_boundary",
+            cancelled_at="2026-09-04T00:00:02+00:00",
+        )
+    )
+
+    assert [len(bucket) for bucket in (
+        evidence.proposals,
+        evidence.authorization_decisions,
+        evidence.approvals,
+        evidence.executions,
+        evidence.cancellations,
+    )] == [1, 1, 1, 1, 1]
+    assert evidence.proposals[0]["capability_id"] == SEARCH_PUBLIC_WEB_CAPABILITY_ID

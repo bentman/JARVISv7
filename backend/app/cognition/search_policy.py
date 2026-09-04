@@ -47,10 +47,16 @@ class SearchIntentResolver:
         self.secret_values = tuple(value for value in secret_values if len(value) >= 4)
         self.pending: SearchPlan | None = None
         self.clarification_mode: Literal["search", "research"] | None = None
+        self.pending_action_ref: tuple[str, str] | None = None
+        self.resolved_approval: (
+            tuple[tuple[str, str], Literal["approved", "denied", "expired"]] | None
+        ) = None
 
     def clear(self) -> None:
         self.pending = None
         self.clarification_mode = None
+        self.pending_action_ref = None
+        self.resolved_approval = None
 
     def is_candidate(self, text: str) -> bool:
         return bool(_CANDIDATE.search(text) or self.pending is not None or self.clarification_mode)
@@ -58,13 +64,26 @@ class SearchIntentResolver:
     def has_secret(self, text: str) -> bool:
         return bool(_SECRET.search(text) or any(value in text for value in self.secret_values))
 
+    def _resolve_approval(
+        self,
+        pending: SearchPlan | None,
+        action_ref: tuple[str, str] | None,
+        outcome: Literal["approved", "denied", "expired"],
+    ) -> None:
+        if pending is not None and action_ref:
+            self.resolved_approval = (action_ref, outcome)
+
     def resolve(self, text: str, *, context: str = "") -> SearchPlan:
         pending, clarification = self.pending, self.clarification_mode
+        action_ref = self.pending_action_ref
         self.clear()
         if _CANCEL.fullmatch(text.strip()):
+            self._resolve_approval(pending, action_ref, "denied")
             return _clarify("Search cancelled.")
         if pending is not None and _CONFIRM.fullmatch(text.strip()):
+            self._resolve_approval(pending, action_ref, "approved")
             return pending
+        self._resolve_approval(pending, action_ref, "expired")
         if self.has_secret(text):
             return _clarify("Remove credentials or secrets before requesting an external search.")
         if clarification and not _CANDIDATE.search(text):
