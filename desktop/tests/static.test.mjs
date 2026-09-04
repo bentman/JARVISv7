@@ -19,6 +19,14 @@ import {
   formatCurationResult,
   memoryActionsEnabled,
 } from "../src/components/memory-panel.js";
+import {
+  actionApprovalEnabled,
+  capabilityActivityState,
+  createActionsPanelController,
+  executionActivityState,
+  formatCapabilityApproval,
+  formatCapabilityRisk,
+} from "../src/components/actions-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -30,6 +38,7 @@ const degradedList = readFileSync(new URL("../src/components/degraded-list.js", 
 const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js", import.meta.url), "utf8");
 const llmProviderSettings = readFileSync(new URL("../src/components/llm-provider-settings.js", import.meta.url), "utf8");
 const memoryPanel = readFileSync(new URL("../src/components/memory-panel.js", import.meta.url), "utf8");
+const actionsPanel = readFileSync(new URL("../src/components/actions-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
@@ -48,6 +57,7 @@ for (const relativePath of [
   "../src/components/settings-panel.js",
   "../src/components/llm-provider-settings.js",
   "../src/components/memory-panel.js",
+  "../src/components/actions-panel.js",
   "../src/components/resident-voice.js",
   "../src/components/service-status.js",
   "../src/components/desktop-polling.js",
@@ -1068,6 +1078,7 @@ assert.equal(
 const panelEvents = [];
 let memoryOpen = false;
 let settingsOpen = true;
+let actionsOpen = false;
 const coordinator = createOperatorPanelCoordinator({
   isMemoryOpen: () => memoryOpen,
   openMemory: async () => {
@@ -1089,6 +1100,16 @@ const coordinator = createOperatorPanelCoordinator({
     settingsOpen = false;
   },
   focusSettingsTrigger: () => panelEvents.push("focus-settings"),
+  isActionsOpen: () => actionsOpen,
+  openActions: async () => {
+    panelEvents.push("open-actions");
+    actionsOpen = true;
+  },
+  closeActions: () => {
+    panelEvents.push("close-actions");
+    actionsOpen = false;
+  },
+  focusActionsTrigger: () => panelEvents.push("focus-actions"),
 });
 await coordinator.toggleMemory();
 assert.deepEqual(panelEvents, ["close-settings", "open-memory"], "memory open must deterministically close settings first");
@@ -1133,4 +1154,205 @@ assert.ok(!memoryPanel.includes(".has(record.lifecycle_state)"), "action availab
 assert.ok(index.includes('id="memory-trigger"'), "operator area must expose one Memory control");
 assert.ok(index.includes('id="memory-panel"'), "operator area must include one hidden Memory panel");
 
-console.log("desktop static and memory behavior checks passed");
+for (const command of [
+  "get_action_capabilities",
+  "get_pending_actions",
+  "get_action_audit",
+  "propose_action",
+  "get_action_status",
+  "decide_action",
+  "cancel_action",
+]) {
+  assert.ok(
+    apiClient.includes(`invokeMemory(invoke, "${command}"`),
+    `API client must use Tauri command ${command}`,
+  );
+  assert.ok(lib.includes(command), `Tauri handler must register ${command}`);
+}
+
+for (const route of [
+  "/actions/capabilities",
+  "/actions/pending",
+  "/actions/audit",
+  "/actions/propose",
+  "/actions/{proposal_id}",
+  "/actions/{proposal_id}/decision",
+  "/actions/{proposal_id}/cancel",
+]) {
+  assert.ok(backend.includes(route), `backend bridge must include ${route}`);
+}
+
+for (const field of [
+  "capability_id",
+  "effect_class",
+  "approval_mode",
+  "authorization_rule",
+  "unavailable_explanation",
+  "executable",
+  "proposal_id",
+  "approval_id",
+  "expires_at",
+  "outcome",
+  "execution",
+  "cancelled",
+]) {
+  assert.ok(
+    actionsPanel.includes(field) || apiClient.includes(field),
+    `actions surface must include ${field}`,
+  );
+}
+
+assert.ok(!actionsPanel.includes("innerHTML"), "actions panel must render backend text without innerHTML");
+assert.ok(!actionsPanel.includes("fetch("), "actions panel must not call backend HTTP directly");
+assert.ok(!actionsPanel.includes("localStorage"), "actions state must not be persisted in renderer storage");
+assert.ok(
+  !actionsPanel.includes("APPROVABLE_STATES"),
+  "renderer must not duplicate backend approval policy",
+);
+assert.ok(
+  !actionsPanel.includes(".has(pending.status)"),
+  "approval availability must not be inferred from a status string",
+);
+
+assert.ok(index.includes('id="actions-trigger"'), "operator area must expose one Actions control");
+assert.ok(index.includes('id="actions-panel"'), "operator area must include one hidden Actions panel");
+
+{
+  const pendingPage = (ids) => ({ pending: ids.map((id) => ({ proposal_id: id, capability_id: "memory-record-forget", approval_id: "a1", arguments: {}, reason: "r", expires_at: "later" })) });
+  const slow = deferred();
+  const fast = deferred();
+  let call = 0;
+  const controller = createActionsPanelController({
+    getPendingActions: () => (call++ === 0 ? slow.promise : fast.promise),
+  });
+  const first = controller.refreshPending();
+  const second = controller.refreshPending();
+  fast.resolve(pendingPage(["new"]));
+  await second;
+  slow.resolve(pendingPage(["old"]));
+  await first;
+  assert.equal(
+    controller.snapshot().pending[0].proposal_id,
+    "new",
+    "a slow pending response must not overwrite a newer one",
+  );
+}
+
+{
+  const controller = createActionsPanelController({
+    getPendingActions: async () => ({ pending: [] }),
+    getActionAudit: async () => ({ records: [] }),
+    getActionStatus: async () => ({ proposal_id: "p1", status: "success" }),
+    decideAction: async () => ({ proposal_id: "p1", status: "success", outcome: "allowed" }),
+  });
+  await controller.decide("p1", "approved");
+  const snapshot = controller.snapshot();
+  assert.equal(snapshot.mutationPending, false, "the mutation lock must release after a decision");
+  assert.equal(snapshot.notice, "Action approved.", "an approval must report its outcome");
+}
+
+{
+  const conflict = Object.assign(new Error("already decided"), {
+    status: 409,
+    detail: { error: "already_decided", message: "this action has already been decided" },
+  });
+  let reloaded = 0;
+  const controller = createActionsPanelController({
+    getPendingActions: async () => {
+      reloaded += 1;
+      return { pending: [] };
+    },
+    getActionAudit: async () => ({ records: [] }),
+    getActionStatus: async () => ({ proposal_id: "p1", status: "success" }),
+    decideAction: async () => {
+      throw conflict;
+    },
+  });
+  await controller.decide("p1", "approved");
+  const snapshot = controller.snapshot();
+  assert.ok(
+    snapshot.conflict.includes("already been decided"),
+    "a rejected decision must surface the backend reason",
+  );
+  assert.ok(snapshot.conflict.includes("reloaded"), "a conflict must state that truth was reloaded");
+  assert.ok(reloaded > 0, "a conflict must reload backend state instead of guessing");
+}
+
+{
+  let cancels = 0;
+  const handlers = {
+    getPendingActions: async () => ({ pending: [] }),
+    getActionAudit: async () => ({ records: [] }),
+    getActionStatus: async () => ({ proposal_id: "p1", status: "cancelled" }),
+    cancelAction: async () => {
+      cancels += 1;
+      return { proposal_id: "p1", cancelled: true };
+    },
+  };
+  const declined = createActionsPanelController(handlers);
+  await declined.cancel("p1", () => Promise.resolve(false));
+  assert.equal(cancels, 0, "a declined cancellation must not reach the backend");
+
+  const confirmed = createActionsPanelController(handlers);
+  await confirmed.cancel("p1", () => Promise.resolve(true));
+  assert.equal(cancels, 1, "a confirmed cancellation must reach the backend exactly once");
+}
+
+{
+  const controller = createActionsPanelController({
+    getActionCapabilities: async () => ({
+      capabilities: [
+        {
+          capability_id: "search-public-web",
+          availability: "disabled",
+          readiness: "unavailable",
+          unavailable_explanation: "No web search provider is enabled.",
+          effect_class: "external_read",
+          authorization_rule: "allow",
+        },
+      ],
+    }),
+  });
+  await controller.refreshCapabilities();
+  const capability = controller.snapshot().capabilities.capabilities[0];
+  assert.equal(
+    capability.unavailable_explanation,
+    "No web search provider is enabled.",
+    "the panel must retain the backend explanation verbatim",
+  );
+}
+
+assert.equal(actionApprovalEnabled({ proposal_id: "p1" }, false), true);
+assert.equal(actionApprovalEnabled({ proposal_id: "p1" }, true), false, "an in-flight mutation must disable approval");
+assert.equal(actionApprovalEnabled(null, false), false);
+
+for (const [execution, expected] of [
+  [null, "idle"],
+  [{ status: "success" }, "succeeded"],
+  [{ status: "failure" }, "failed"],
+  [{ status: "cancelled" }, "cancelled"],
+]) {
+  assert.equal(executionActivityState(execution), expected);
+}
+
+for (const [capability, expected] of [
+  [{ availability: "available", readiness: "ready" }, "ready"],
+  [{ availability: "available", readiness: "degraded" }, "degraded"],
+  [{ availability: "disabled", readiness: "unavailable" }, "blocked"],
+]) {
+  assert.equal(capabilityActivityState(capability), expected);
+}
+
+assert.equal(
+  formatCapabilityRisk({ effect_class: "destructive_action", authorization_rule: "requires_approval" }),
+  "destructive_action · approval required",
+);
+
+assert.equal(
+  formatCapabilityApproval({ approval_mode: "turn_boundary" }),
+  "approved in conversation",
+  "a turn-boundary capability must not look operator-drivable",
+);
+assert.equal(formatCapabilityApproval({ approval_mode: "same_turn" }), "approved here");
+
+console.log("desktop static, memory, and action behavior checks passed");

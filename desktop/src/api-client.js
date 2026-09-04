@@ -111,6 +111,20 @@ export function createApiClient(invoke) {
     forgetMemory: (factId, expectedRevision, reason = null) =>
       invokeMemory(invoke, "forget_memory", { factId, expectedRevision, reason }),
     getMemoryCurationStatus: () => invokeMemory(invoke, "get_memory_curation_status"),
+    getActionCapabilities: () => invokeMemory(invoke, "get_action_capabilities"),
+    getPendingActions: () => invokeMemory(invoke, "get_pending_actions"),
+    getActionAudit: (limit = 20) => invokeMemory(invoke, "get_action_audit", { limit }),
+    proposeAction: ({ capabilityId, actionArguments = {}, reason, proposedBy = "operator" } = {}) =>
+      invokeMemory(invoke, "propose_action", {
+        capabilityId,
+        arguments: actionArguments,
+        reason,
+        proposedBy,
+      }),
+    getActionStatus: (proposalId) => invokeMemory(invoke, "get_action_status", { proposalId }),
+    decideAction: (proposalId, outcome, reason = null) =>
+      invokeMemory(invoke, "decide_action", { proposalId, outcome, reason }),
+    cancelAction: (proposalId) => invokeMemory(invoke, "cancel_action", { proposalId }),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
     cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
     openSearchSource: (url) => invoke("open_search_source", { url }),

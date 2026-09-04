@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -16,6 +16,8 @@ ALLOWED_STORAGE_ROOTS: tuple[str, ...] = ("data", "cache", "reports", "models", 
 BOUNDED_EFFECT_CLASSES = frozenset({"privileged_execution"})
 CANCELLABLE_EFFECT_CLASSES = frozenset({"privileged_execution", "destructive_action"})
 BOUNDARY_KEYS = ("storage_roots", "timeout_ms", "cancellable", "max_result_bytes")
+PROCESS_BOUNDARY_KEYS = ("subprocess", "argv_allowlist", "env_passthrough", "working_root")
+ENV_WILDCARDS = ("*", "**")
 
 
 class ActionCancelledError(Exception):
@@ -65,6 +67,91 @@ class ExecutionBoundary:
             if resolved == allowed or allowed in resolved.parents:
                 return resolved
         raise BoundaryViolationError("path escapes the declared storage roots")
+
+
+@dataclass(frozen=True, slots=True)
+class ProcessBoundary:
+    subprocess: bool
+    argv_allowlist: tuple[str, ...]
+    env_passthrough: tuple[str, ...]
+    working_root: str
+
+    @classmethod
+    def from_mapping(cls, process: dict[str, Any]) -> ProcessBoundary:
+        violations = process_violations(process)
+        if violations:
+            raise BoundaryViolationError(violations[0])
+        return cls(
+            subprocess=bool(process["subprocess"]),
+            argv_allowlist=tuple(process["argv_allowlist"]),
+            env_passthrough=tuple(process["env_passthrough"]),
+            working_root=str(process["working_root"]),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "subprocess": self.subprocess,
+            "argv_allowlist": list(self.argv_allowlist),
+            "env_passthrough": list(self.env_passthrough),
+            "working_root": self.working_root,
+        }
+
+    def resolve_working_directory(self) -> Path:
+        if self.working_root not in ALLOWED_STORAGE_ROOTS:
+            raise BoundaryViolationError("working_root is not an approved storage root")
+        return (REPO_ROOT / self.working_root).resolve()
+
+    def resolve_path(self, candidate: str | Path) -> Path:
+        working = self.resolve_working_directory()
+        resolved = Path(candidate).expanduser()
+        if not resolved.is_absolute():
+            resolved = working / resolved
+        resolved = resolved.resolve()
+        if resolved != working and working not in resolved.parents:
+            raise BoundaryViolationError("path escapes the process working root")
+        return resolved
+
+    def scrub_environment(self, env: Mapping[str, str]) -> dict[str, str]:
+        # Allowlist only: a secret in the parent environment must not reach a child by default.
+        return {name: env[name] for name in self.env_passthrough if name in env}
+
+    def validate_argv(self, argv: Sequence[str]) -> None:
+        if not argv:
+            raise BoundaryViolationError("argv must not be empty")
+        if argv[0] not in self.argv_allowlist:
+            raise BoundaryViolationError(f"argv[0] is not allowlisted: {argv[0]}")
+
+
+def process_violations(process: dict[str, Any]) -> tuple[str, ...]:
+    if not isinstance(process, dict):
+        return ("process must be a mapping",)
+    missing = [key for key in PROCESS_BOUNDARY_KEYS if key not in process]
+    if missing:
+        return tuple(f"process must declare {key}" for key in missing)
+
+    violations: list[str] = []
+    if not isinstance(process["subprocess"], bool):
+        violations.append("subprocess must be a boolean")
+
+    argv = process["argv_allowlist"]
+    if not isinstance(argv, (list, tuple)) or any(not isinstance(item, str) for item in argv):
+        violations.append("argv_allowlist must be a sequence of strings")
+    elif not argv:
+        violations.append("argv_allowlist must not be empty")
+
+    env = process["env_passthrough"]
+    if not isinstance(env, (list, tuple)) or any(not isinstance(item, str) for item in env):
+        violations.append("env_passthrough must be a sequence of strings")
+    elif any(item in ENV_WILDCARDS for item in env):
+        violations.append("env_passthrough must be an explicit allowlist, not a wildcard")
+
+    working_root = process["working_root"]
+    if not isinstance(working_root, str) or working_root not in ALLOWED_STORAGE_ROOTS:
+        violations.append(
+            f"working_root must be one of: {', '.join(ALLOWED_STORAGE_ROOTS)}"
+        )
+
+    return tuple(violations)
 
 
 def boundary_violations(boundaries: dict[str, Any]) -> tuple[str, ...]:
@@ -127,6 +214,25 @@ def require_boundaries(
         raise BoundaryViolationError(f"{effect_class} capabilities must be cancellable")
     if effect_class in BOUNDED_EFFECT_CLASSES and not boundaries["storage_roots"]:
         raise BoundaryViolationError(f"{effect_class} capabilities must declare storage roots")
+
+    process = boundaries.get("process")
+    if effect_class in BOUNDED_EFFECT_CLASSES and not process:
+        raise BoundaryViolationError(
+            f"{effect_class} capabilities must declare process boundaries: "
+            f"{', '.join(PROCESS_BOUNDARY_KEYS)}"
+        )
+    if process is None:
+        return
+    process_issues = process_violations(process)
+    if process_issues:
+        raise BoundaryViolationError(process_issues[0])
+    if effect_class in BOUNDED_EFFECT_CLASSES and not process["subprocess"]:
+        raise BoundaryViolationError(f"{effect_class} capabilities must declare subprocess")
+    if process["working_root"] not in boundaries["storage_roots"]:
+        raise BoundaryViolationError("working_root must be one of the declared storage_roots")
+    # A process that cannot be stopped is not governable.
+    if not boundaries["cancellable"]:
+        raise BoundaryViolationError("capabilities declaring process boundaries must be cancellable")
 
 
 class ActionOperation:

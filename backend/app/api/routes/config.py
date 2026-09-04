@@ -9,7 +9,7 @@ from backend.app.api.schemas.config import (
     OperatorConfigWriteRequest,
     OperatorConfigWriteResponse,
 )
-from backend.app.services.capability_service import CapabilityService, record_operator_action
+from backend.app.services.capability_service import CapabilityService, execute_operator_action
 from backend.app.services.operator_config_service import (
     ENV_FILE,
     OPERATOR_FIELD_SPECS,
@@ -44,6 +44,12 @@ def write_operator_config(
     request: OperatorConfigWriteRequest,
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> OperatorConfigWriteResponse:
-    with record_operator_action(actions, catalog.OPERATOR_CONFIG_WRITE, {"fields": request.fields}):
-        view = _execute(lambda: _service.write(request.fields, env_file=ENV_FILE))
+    view = _execute(
+        lambda: execute_operator_action(
+            actions,
+            catalog.OPERATOR_CONFIG_WRITE,
+            {"fields": request.fields},
+            lambda: _service.write(request.fields, env_file=ENV_FILE),
+        )
+    )
     return OperatorConfigWriteResponse.model_validate(asdict(view))

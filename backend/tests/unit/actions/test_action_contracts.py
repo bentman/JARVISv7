@@ -29,6 +29,7 @@ def descriptor(
     approval_mode: str = "turn_boundary",
     boundaries: dict | None = None,
     input_schema: dict | None = None,
+    cancellable: bool = True,
 ) -> CapabilityDescriptor:
     return CapabilityDescriptor(
         capability_id=capability_id,
@@ -42,7 +43,7 @@ def descriptor(
         authorization_rule=authorization_rule,
         execution_owner="backend.app.services.search_service.SearchService",
         timeout_policy={"timeout_ms": 10000},
-        cancellation_policy={"cancellable": True, "owner": "SearchOperation"},
+        cancellation_policy={"cancellable": cancellable, "owner": "SearchOperation"},
         result_schema={"type": "object", "properties": {"sources": {"type": "array"}}},
         artifact_evidence={"records": ["action_proposals", "authorization_decisions", "action_execution_results"]},
         unavailable_explanation=unavailable_explanation,
@@ -376,3 +377,63 @@ def test_action_evidence_routes_each_record_to_its_artifact_field() -> None:
         evidence.cancellations,
     )] == [1, 1, 1, 1, 1]
     assert evidence.proposals[0]["capability_id"] == SEARCH_PUBLIC_WEB_CAPABILITY_ID
+
+
+def privileged(**overrides) -> dict:
+    values = {
+        "storage_roots": ["data"],
+        "timeout_ms": 10000,
+        "cancellable": True,
+        "max_result_bytes": 16000,
+        "process": {
+            "subprocess": True,
+            "argv_allowlist": ["git"],
+            "env_passthrough": [],
+            "working_root": "data",
+        },
+    }
+    values.update(overrides)
+    return values
+
+
+def test_registry_refuses_privileged_execution_without_process_boundaries() -> None:
+    registry = CapabilityRegistry()
+    boundaries = privileged()
+    del boundaries["process"]
+
+    with pytest.raises(ValueError, match="must declare process boundaries"):
+        registry.register(descriptor(effect_class="privileged_execution", boundaries=boundaries))
+
+
+def test_registry_refuses_a_process_working_root_outside_the_declared_storage_roots() -> None:
+    registry = CapabilityRegistry()
+    boundaries = privileged(storage_roots=["reports"])
+
+    with pytest.raises(ValueError, match="working_root must be one of the declared storage_roots"):
+        registry.register(descriptor(effect_class="privileged_execution", boundaries=boundaries))
+
+
+def test_registry_refuses_a_process_capability_that_cannot_be_cancelled() -> None:
+    registry = CapabilityRegistry()
+
+    with pytest.raises(ValueError, match="must be cancellable"):
+        registry.register(
+            descriptor(
+                effect_class="local_write",
+                boundaries=privileged(cancellable=False),
+                cancellable=False,
+            )
+        )
+
+
+def test_a_fully_declared_privileged_capability_registers_but_none_is_shipped() -> None:
+    registry = CapabilityRegistry()
+
+    registry.register(descriptor(effect_class="privileged_execution", boundaries=privileged()))
+
+    assert registry.get(SEARCH_PUBLIC_WEB_CAPABILITY_ID) is not None
+    # The rule exists ahead of any shipped privileged capability; the catalog registers none.
+    from backend.app.actions.catalog import CapabilityObservation, build_descriptors
+
+    shipped = build_descriptors(CapabilityObservation())
+    assert not [item for item in shipped if item.effect_class == "privileged_execution"]

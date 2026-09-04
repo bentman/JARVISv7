@@ -705,24 +705,31 @@ export function createMemoryPanel(container, handlers, options = {}) {
 }
 
 export function createOperatorPanelCoordinator(options) {
+  // Each panel closes only the others that are currently open, so adding a panel never
+  // changes the close sequence a caller already observes.
+  const panels = [
+    { name: "memory", isOpen: options.isMemoryOpen, open: options.openMemory, close: options.closeMemory, focus: options.focusMemoryTrigger },
+    { name: "settings", isOpen: options.isSettingsOpen, open: options.openSettings, close: options.closeSettings, focus: options.focusSettingsTrigger },
+    { name: "actions", isOpen: options.isActionsOpen, open: options.openActions, close: options.closeActions, focus: options.focusActionsTrigger },
+  ].filter((panel) => panel.isOpen && panel.open && panel.close);
+
+  async function toggle(name) {
+    const target = panels.find((panel) => panel.name === name);
+    if (!target) return;
+    if (target.isOpen()) {
+      target.close();
+      target.focus?.();
+      return;
+    }
+    for (const panel of panels) {
+      if (panel !== target && panel.isOpen()) panel.close();
+    }
+    await target.open();
+  }
+
   return {
-    async toggleMemory() {
-      if (options.isMemoryOpen()) {
-        options.closeMemory();
-        options.focusMemoryTrigger();
-        return;
-      }
-      options.closeSettings();
-      await options.openMemory();
-    },
-    async toggleSettings() {
-      if (options.isSettingsOpen()) {
-        options.closeSettings();
-        options.focusSettingsTrigger();
-        return;
-      }
-      options.closeMemory();
-      await options.openSettings();
-    },
+    toggleMemory: () => toggle("memory"),
+    toggleSettings: () => toggle("settings"),
+    toggleActions: () => toggle("actions"),
   };
 }

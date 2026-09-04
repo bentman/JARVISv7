@@ -348,16 +348,16 @@ def _operator(observation: CapabilityObservation) -> CapabilityDescriptor:
         "requires_approval",
         source="builtin",
         provenance="backend.app.services.operator_config_service",
+        # The allowlist is surfaced for discovery, not enforced here: the service rejects
+        # unknown keys per-field and reports them, which is richer than a schema refusal.
         input_schema={
             "type": "object",
-            "properties": {
-                "fields": {
-                    "type": "object",
-                    "propertyNames": {"enum": list(observation.operator_config_keys)},
-                }
-            },
+            "properties": {"fields": {"type": "object"}},
             "required": ["fields"],
             "additionalProperties": False,
+        },
+        metadata_claims={
+            "operator_fields": {"keys": list(observation.operator_config_keys), "trusted": False}
         },
         readiness="ready" if present else "unavailable",
         availability="available" if present else "misconfigured",

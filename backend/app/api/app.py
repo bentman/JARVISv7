@@ -8,6 +8,7 @@ from backend.app.cognition.memory_extraction import MemoryCandidateExtractor
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
+from backend.app.core.paths import DATA_DIR
 from backend.app.core.settings import SETTING_ENV_CLASSIFICATION, Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.memory.curation_reconciliation import (
@@ -172,7 +173,7 @@ def build_startup_state() -> ApiState:
             provider_store_factory=LLMProviderProfileStore,
             env_file=ENV_FILE,
         ),
-        on_event=lambda name, payload: _record_action_event(session_service, name, payload),
+        evidence_dir=DATA_DIR / "actions",
     )
     engine = TurnEngine(
         stt=stt,
@@ -280,12 +281,6 @@ def build_startup_state() -> ApiState:
         capability_service=capability_service,
     )
     return state
-
-
-def _record_action_event(session_service: SessionService, name: str, payload: dict) -> None:
-    if not session_service.is_session_active():
-        return
-    session_service.session_manager.record_timeline_event(name, metadata=payload)
 
 
 def install_state(app: FastAPI, state: ApiState) -> None:

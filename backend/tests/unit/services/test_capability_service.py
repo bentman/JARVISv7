@@ -17,6 +17,7 @@ from backend.app.actions.catalog import (
 from backend.app.services.capability_service import (
     CapabilityService,
     CapabilityServiceError,
+    execute_operator_action,
     mask_arguments,
 )
 
@@ -335,31 +336,73 @@ def test_the_pending_store_is_bounded() -> None:
     assert len(instance.pending()) == 8
 
 
-def test_operator_action_records_direct_authority_without_changing_the_call() -> None:
+def test_operator_action_authorizes_executes_and_records_on_one_path() -> None:
     instance = service()
 
-    with instance.operator_action(MEMORY_RECORD_FORGET, confirm_arguments()):
-        pass
+    result = instance.execute_operator_action(
+        MEMORY_RECORD_FORGET, confirm_arguments(), lambda: {"forgotten": True}
+    )
 
-    kinds = [record["kind"] for record in instance.audit().records]
+    assert result == {"forgotten": True}
+    kinds = [record["kind"] for record in instance.audit(limit=100).records]
+    assert kinds.count("action_proposal") == 1
+    assert kinds.count("authorization_decision") == 1
     assert kinds.count("approval_record") == 1
     assert kinds.count("execution_result") == 1
     approval = next(r for r in instance.audit().records if r["kind"] == "approval_record")
     assert approval["record"]["decided_by"] == "operator_api"
+    execution = next(r for r in instance.audit().records if r["kind"] == "execution_result")
+    assert execution["record"]["result"] == {"forgotten": True}
 
 
-def test_operator_action_records_a_failure_and_reraises() -> None:
+def test_operator_action_records_a_failure_then_reraises_the_owning_error() -> None:
     instance = service()
 
-    with (
-        pytest.raises(ValueError, match="stale fact revision"),
-        instance.operator_action(MEMORY_RECORD_FORGET, confirm_arguments()),
-    ):
+    def explode() -> dict:
         raise ValueError("stale fact revision")
+
+    with pytest.raises(ValueError, match="stale fact revision"):
+        instance.execute_operator_action(MEMORY_RECORD_FORGET, confirm_arguments(), explode)
 
     execution = next(r for r in instance.audit().records if r["kind"] == "execution_result")
     assert execution["record"]["status"] == "failure"
     assert execution["record"]["error"] == "stale fact revision"
+
+
+def test_operator_action_is_a_pass_through_when_no_capability_service_exists() -> None:
+    calls: list[str] = []
+
+    result = execute_operator_action(
+        None, MEMORY_RECORD_FORGET, confirm_arguments(), lambda: calls.append("ran") or {"ok": True}
+    )
+
+    assert result == {"ok": True}
+    assert calls == ["ran"]
+
+
+def test_operator_action_does_not_gate_on_availability() -> None:
+    # The owning service reports an unavailable dependency with more fidelity than a
+    # descriptor explanation, so availability is recorded but never blocks.
+    instance = service(CapabilityObservation(memory_service_present=False))
+
+    result = instance.execute_operator_action(
+        MEMORY_RECORD_FORGET, confirm_arguments(), lambda: {"forgotten": True}
+    )
+
+    assert result == {"forgotten": True}
+    decision = next(
+        r for r in instance.audit().records if r["kind"] == "authorization_decision"
+    )
+    assert decision["record"]["outcome"] == "denied"
+
+
+def test_operator_action_still_refuses_an_unregistered_capability() -> None:
+    instance = service()
+
+    with pytest.raises(CapabilityServiceError) as excinfo:
+        instance.execute_operator_action("no-such-capability", {}, lambda: {"ok": True})
+
+    assert excinfo.value.status_code == 403
 
 
 def test_concurrent_proposals_do_not_corrupt_the_audit() -> None:
@@ -381,3 +424,22 @@ def test_concurrent_proposals_do_not_corrupt_the_audit() -> None:
 
     executions = [r for r in instance.audit(limit=100).records if r["kind"] == "execution_result"]
     assert len(executions) == 8
+
+
+def test_operator_config_keys_are_surfaced_for_discovery_but_never_gate_a_write() -> None:
+    # The route reports unknown keys per-field in `rejected`; a schema refusal would
+    # replace that richer contract with a blanket denial.
+    instance = service(
+        CapabilityObservation(operator_config_present=True, operator_config_keys=("USE_DDGS",))
+    )
+
+    entry = capability(instance.catalog(), OPERATOR_CONFIG_WRITE)
+    assert "propertyNames" not in str(entry.input_schema)
+
+    result = instance.execute_operator_action(
+        OPERATOR_CONFIG_WRITE,
+        {"fields": {"REDIS_HOST": "localhost"}},
+        lambda: {"written": [], "rejected": [{"key": "REDIS_HOST", "reason": "not_allowlisted"}]},
+    )
+
+    assert result["rejected"][0]["reason"] == "not_allowlisted"

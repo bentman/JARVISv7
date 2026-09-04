@@ -312,12 +312,14 @@ h3 {
 
 .settings-panel,
 .memory-panel,
+.actions-panel,
 .appearance-panel {
   color: var(--color-text-secondary);
 }
 
 .settings-panel:not([hidden]),
 .memory-panel:not([hidden]),
+.actions-panel:not([hidden]),
 .appearance-panel {
   display: grid;
   gap: var(--space-3);
@@ -458,6 +460,111 @@ h3 {
 
 .memory-action-buttons {
   flex-wrap: wrap;
+}
+
+.actions-panel {
+  min-width: 0;
+}
+
+.actions-panel-header,
+.actions-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.actions-panel-header {
+  justify-content: space-between;
+}
+
+.actions-panel-header h2,
+.actions-section h3 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.actions-section,
+.actions-pending,
+.actions-filters {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.actions-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.actions-status[data-state="running"],
+.actions-notice {
+  color: var(--color-accent);
+}
+
+.actions-status[data-state="degraded"] {
+  color: var(--color-degraded);
+}
+
+.actions-status[data-state="blocked"],
+.actions-status[data-state="failed"],
+.actions-status[data-state="cancelled"],
+.actions-error {
+  color: var(--color-failed);
+}
+
+.actions-status[data-state="ready"],
+.actions-status[data-state="succeeded"] {
+  color: var(--color-ready);
+}
+
+.actions-facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.actions-field {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.actions-field dt,
+.actions-field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.actions-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.actions-list li {
+  display: grid;
+  gap: var(--space-1);
+}
+
+.actions-row-meta,
+.actions-help {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.actions-buttons {
+  flex-wrap: wrap;
+}
+
+.actions-section details p {
+  overflow-wrap: anywhere;
 }
 
 .memory-detail details p,

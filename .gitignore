@@ -120,12 +120,17 @@ Thumbs.db
 
 # re-include tree roots documented in repo_tree.md
 # (directories must be re-included before their contents)
+!/data/actions/
 !/data/agents/
 !/data/memory/
 !/data/sessions/
 !/data/temp/
 !/data/tool_sandbox/
 !/data/turns/
+
+# data/actions (governed action evidence log; ADR 0005)
+/data/actions/*
+!/data/actions/.gitkeep
 
 # data/agents (agent ledger; I.2)
 /data/agents/*

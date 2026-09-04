@@ -882,6 +882,104 @@ pub fn get_memory_curation_status(client: &Client, base_url: &str) -> Result<Str
     memory_response(operation, response)
 }
 
+pub fn get_action_capabilities(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /actions/capabilities";
+    let response = client
+        .get(format!("{base_url}/actions/capabilities"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_pending_actions(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /actions/pending";
+    let response = client
+        .get(format!("{base_url}/actions/pending"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_action_audit(client: &Client, base_url: &str, limit: u32) -> Result<String, String> {
+    let operation = "GET /actions/audit";
+    let params = vec![("limit", limit.to_string())];
+    let response = client
+        .get(format!("{base_url}/actions/audit"))
+        .query(&params)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn propose_action(
+    client: &Client,
+    base_url: &str,
+    capability_id: &str,
+    arguments: Value,
+    reason: &str,
+    proposed_by: &str,
+) -> Result<String, String> {
+    let operation = "POST /actions/propose";
+    let response = client
+        .post(format!("{base_url}/actions/propose"))
+        .json(&json!({
+            "capability_id": capability_id,
+            "arguments": arguments,
+            "reason": reason,
+            "proposed_by": proposed_by,
+        }))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_action_status(
+    client: &Client,
+    base_url: &str,
+    proposal_id: &str,
+) -> Result<String, String> {
+    let operation = "GET /actions/{proposal_id}";
+    let response = client
+        .get(format!("{base_url}/actions/{proposal_id}"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn decide_action(
+    client: &Client,
+    base_url: &str,
+    proposal_id: &str,
+    outcome: &str,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    let operation = "POST /actions/{proposal_id}/decision";
+    let mut body = json!({ "outcome": outcome });
+    if let Some(value) = reason {
+        body["reason"] = Value::String(value.to_string());
+    }
+    let response = client
+        .post(format!("{base_url}/actions/{proposal_id}/decision"))
+        .json(&body)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn cancel_action(
+    client: &Client,
+    base_url: &str,
+    proposal_id: &str,
+) -> Result<String, String> {
+    let operation = "POST /actions/{proposal_id}/cancel";
+    let response = client
+        .post(format!("{base_url}/actions/{proposal_id}/cancel"))
+        .json(&json!({}))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
     let response = client
         .post(format!("{base_url}/session/close"))

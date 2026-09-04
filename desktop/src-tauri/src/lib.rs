@@ -1,13 +1,20 @@
 mod backend;
 
 use backend::{
-    close_session, confirm_memory as backend_confirm_memory,
+    cancel_action as backend_cancel_action, close_session,
+    confirm_memory as backend_confirm_memory,
     correct_memory as backend_correct_memory, create_session,
+    decide_action as backend_decide_action,
     create_llm_profile as backend_create_llm_profile,
     delete_llm_profile as backend_delete_llm_profile,
     dispute_memory as backend_dispute_memory, drain_memory_curation,
     forget_memory as backend_forget_memory,
+    get_action_audit as backend_action_audit,
+    get_action_capabilities as backend_action_capabilities,
+    get_action_status as backend_action_status,
     get_artifact_retention_policy as backend_artifact_retention_policy,
+    get_pending_actions as backend_pending_actions,
+    propose_action as backend_propose_action,
     get_desktop_status as backend_desktop_status, get_json,
     get_memory_curation_status as backend_memory_curation_status,
     get_memory_detail as backend_memory_detail, get_memory_layers as backend_memory_layers,
@@ -367,6 +374,30 @@ fn expected_memory_revision(expected_revision: u64) -> Result<u64, String> {
     Ok(expected_revision)
 }
 
+fn required_proposal_id(proposal_id: String) -> Result<String, String> {
+    let trimmed = proposal_id.trim();
+    if trimmed.is_empty() {
+        return Err("action proposal_id is empty".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn required_action_outcome(outcome: String) -> Result<String, String> {
+    match outcome.trim() {
+        "approved" => Ok("approved".to_string()),
+        "denied" => Ok("denied".to_string()),
+        _ => Err("action outcome must be approved or denied".to_string()),
+    }
+}
+
+fn required_action_reason(reason: String) -> Result<String, String> {
+    let trimmed = reason.trim();
+    if trimmed.is_empty() {
+        return Err("action reason is empty".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
 fn optional_trimmed(value: Option<String>) -> Option<String> {
     value.and_then(|item| {
         let trimmed = item.trim();
@@ -526,6 +557,89 @@ fn get_memory_curation_status(state: State<'_, DesktopState>) -> Result<String, 
 }
 
 #[tauri::command]
+fn get_action_capabilities(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_action_capabilities(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_pending_actions(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_pending_actions(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_action_audit(limit: Option<u32>, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_action_audit(&state.http_client, &base_url, limit.unwrap_or(20))
+}
+
+#[tauri::command]
+fn propose_action(
+    capability_id: String,
+    arguments: Option<Value>,
+    reason: String,
+    proposed_by: Option<String>,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    let capability_id = required_proposal_id(capability_id)?;
+    let reason = required_action_reason(reason)?;
+    let proposed_by = optional_trimmed(proposed_by).unwrap_or_else(|| "operator".to_string());
+    backend_propose_action(
+        &state.http_client,
+        &base_url,
+        &capability_id,
+        arguments.unwrap_or_else(|| json!({})),
+        &reason,
+        &proposed_by,
+    )
+}
+
+#[tauri::command]
+fn get_action_status(
+    proposal_id: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_action_status(
+        &state.http_client,
+        &base_url,
+        &required_proposal_id(proposal_id)?,
+    )
+}
+
+#[tauri::command]
+fn decide_action(
+    proposal_id: String,
+    outcome: String,
+    reason: Option<String>,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    let proposal_id = required_proposal_id(proposal_id)?;
+    let outcome = required_action_outcome(outcome)?;
+    let reason = optional_trimmed(reason);
+    backend_decide_action(
+        &state.http_client,
+        &base_url,
+        &proposal_id,
+        &outcome,
+        reason.as_deref(),
+    )
+}
+
+#[tauri::command]
+fn cancel_action(proposal_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_cancel_action(
+        &state.http_client,
+        &base_url,
+        &required_proposal_id(proposal_id)?,
+    )
+}
+
+#[tauri::command]
 async fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let trimmed = text.trim().to_owned();
     if trimmed.is_empty() {
@@ -681,6 +795,13 @@ pub fn run() {
             dispute_memory,
             forget_memory,
             get_memory_curation_status,
+            get_action_capabilities,
+            get_pending_actions,
+            get_action_audit,
+            propose_action,
+            get_action_status,
+            decide_action,
+            cancel_action,
             get_resident_voice_status,
             start_resident_voice_stream,
             stop_resident_voice_stream,

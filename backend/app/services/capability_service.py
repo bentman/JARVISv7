@@ -3,17 +3,19 @@ from __future__ import annotations
 import json
 import threading
 from collections import deque
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager, suppress
-from dataclasses import asdict, dataclass, field
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, TypeVar
 from uuid import uuid4
 
 from backend.app.actions.boundaries import (
     ActionCancelledError,
     ActionOperation,
     ExecutionBoundary,
+    bound_result,
     run_bounded,
 )
 from backend.app.actions.catalog import CapabilityObservation, build_descriptors
@@ -29,8 +31,10 @@ from backend.app.actions.contracts import (
     ExecutionStatus,
     ModelActionProposal,
 )
+from backend.app.artifacts.storage import append_action_event
 
 CapabilityHandler = Callable[[dict[str, Any], ActionOperation], dict[str, Any]]
+T = TypeVar("T")
 
 MAX_PENDING = 8
 PENDING_TTL_S = 300.0
@@ -127,10 +131,12 @@ class CapabilityService:
         observe: Callable[[], CapabilityObservation],
         handlers: dict[str, CapabilityHandler] | None = None,
         on_event: Callable[[str, dict[str, object]], None] | None = None,
+        evidence_dir: Path | None = None,
     ) -> None:
         self._observe = observe
         self._handlers = dict(handlers or {})
         self._on_event = on_event
+        self._evidence_dir = evidence_dir
         self._lock = threading.RLock()
         self._registry = CapabilityRegistry()
         self._pending: dict[str, _PendingProposal] = {}
@@ -346,8 +352,18 @@ class CapabilityService:
             records = list(self._audit)[-limit:]
         return ActionAuditView(records=list(reversed(records)))
 
-    @contextmanager
-    def operator_action(self, capability_id: str, arguments: dict[str, Any]) -> Iterator[None]:
+    def execute_operator_action(
+        self,
+        capability_id: str,
+        arguments: dict[str, Any],
+        operation: Callable[[], T],
+    ) -> T:
+        """Authorize, execute, and record one direct operator request.
+
+        The owning service's typed error is recorded and then re-raised, so route status
+        codes and conflict payloads stay exactly what they were before convergence.
+        """
+        self.refresh()
         proposal_id = uuid4().hex
         started_at = utc_now_iso()
         proposal = ModelActionProposal(
@@ -357,19 +373,50 @@ class CapabilityService:
             proposed_by="operator",
             reason="direct operator request",
         )
-        approval = ApprovalAuditRecord(
-            approval_id=uuid4().hex,
-            proposal_id=proposal_id,
-            capability_id=capability_id,
-            outcome="approved",
-            decided_by="operator_api",
-            decided_at=started_at,
-            reason="direct operator request",
+        approval_id = uuid4().hex
+        context = AuthorizationContext(
+            session_id="api",
+            turn_id=f"api:{proposal_id}",
+            caller="operator_api",
+            operator_approved=True,
+            approval_id=approval_id,
         )
+        with self._lock:
+            descriptor = self._registry.get(capability_id)
+            decision = self._registry.authorize(proposal, context)
         self._record("action_proposal", proposal, capability_id)
-        self._record("approval_record", approval, capability_id)
+        self._record("authorization_decision", decision, capability_id)
+        self._record(
+            "approval_record",
+            ApprovalAuditRecord(
+                approval_id=approval_id,
+                proposal_id=proposal_id,
+                capability_id=capability_id,
+                outcome="approved",
+                decided_by="operator_api",
+                decided_at=started_at,
+                reason="direct operator request",
+            ),
+            capability_id,
+        )
+        # An operator request carries its own authority, so availability and readiness are
+        # recorded but do not gate: the owning service reports those conditions with more
+        # fidelity than a descriptor explanation can.
+        if _blocks_operator_action(descriptor, decision):
+            raise CapabilityServiceError(403, "not_authorized", decision.reason)
+
+        boundary = (
+            ExecutionBoundary.from_mapping(descriptor.boundaries)
+            if descriptor is not None and descriptor.boundaries
+            else DEFAULT_BOUNDARY
+        )
+        action = ActionOperation(
+            "api", f"api:{proposal_id}", proposal_id, capability_id, boundary
+        )
+        with self._lock:
+            self._active[proposal_id] = action
         try:
-            yield
+            value = operation()
         except Exception as exc:
             self._record(
                 "execution_result",
@@ -385,18 +432,27 @@ class CapabilityService:
                 capability_id,
             )
             raise
+        finally:
+            with self._lock:
+                self._active.pop(proposal_id, None)
+
+        artifacts: dict[str, Any] = {"duration_ms": round(action.elapsed_ms(), 3)}
+        if action.expired():
+            artifacts["timeout_exceeded"] = True
         self._record(
             "execution_result",
             ExecutionResultRecord(
                 proposal_id=proposal_id,
                 capability_id=capability_id,
                 status="success",
-                result={},
+                result=bound_result(_recordable(value), boundary.max_result_bytes, artifacts),
                 started_at=started_at,
                 completed_at=utc_now_iso(),
+                artifacts=artifacts,
             ),
             capability_id,
         )
+        return value
 
     def _execute(
         self,
@@ -562,10 +618,34 @@ class CapabilityService:
         }
         with self._lock:
             self._audit.append(entry)
+        if self._evidence_dir is not None:
+            # Durable evidence must not depend on an active session or survive only in memory.
+            with suppress(Exception):
+                append_action_event(entry, self._evidence_dir)
         if self._on_event is not None:
             # A timeline sink must never be able to fail an action that already ran.
             with suppress(Exception):
                 self._on_event(f"action.{kind}", dict(entry))
+
+
+def _blocks_operator_action(
+    descriptor: CapabilityDescriptor | None, decision: AuthorizationDecision
+) -> bool:
+    if descriptor is None:
+        return True
+    if decision.outcome == "allowed":
+        return False
+    return descriptor.authorization_rule == "deny" or decision.reason.startswith(
+        "invalid arguments:"
+    )
+
+
+def _recordable(value: Any) -> dict[str, Any]:
+    if is_dataclass(value) and not isinstance(value, type):
+        return asdict(value)
+    if isinstance(value, dict):
+        return value
+    return {"value": str(value)[:256]}
 
 
 def _argument_bytes(arguments: dict[str, Any]) -> int:
@@ -598,15 +678,15 @@ def handler_error(exc: Exception) -> str:
     return "capability execution failed"
 
 
-@contextmanager
-def record_operator_action(
-    service: CapabilityService | None, capability_id: str, arguments: dict[str, Any]
-) -> Iterator[None]:
+def execute_operator_action(
+    service: CapabilityService | None,
+    capability_id: str,
+    arguments: dict[str, Any],
+    operation: Callable[[], T],
+) -> T:
     if service is None:
-        yield
-        return
-    with service.operator_action(capability_id, arguments):
-        yield
+        return operation()
+    return service.execute_operator_action(capability_id, arguments, operation)
 
 
 def build_capability_handlers(
@@ -753,7 +833,7 @@ __all__ = [
     "CapabilityView",
     "PendingApprovalView",
     "build_capability_handlers",
+    "execute_operator_action",
     "mask_arguments",
     "observe_capabilities",
-    "record_operator_action",
 ]

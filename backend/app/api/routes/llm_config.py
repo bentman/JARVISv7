@@ -12,7 +12,7 @@ from backend.app.api.schemas.llm_config import (
     LLMProviderTestResponse,
     SecretRotationResponse,
 )
-from backend.app.services.capability_service import CapabilityService, record_operator_action
+from backend.app.services.capability_service import CapabilityService, execute_operator_action
 from backend.app.services.llm_provider_profiles import (
     LLMProviderProfileStore,
     ProviderConfigError,
@@ -78,8 +78,11 @@ def create_llm_profile(
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> LLMProviderProfileResponse:
     try:
-        with record_operator_action(actions, catalog.PROVIDER_PROFILE_WRITE, {"name": request.name, "kind": request.kind}):
-            profile = _store().create_profile(
+        profile = execute_operator_action(
+            actions,
+            catalog.PROVIDER_PROFILE_WRITE,
+            {"name": request.name, "kind": request.kind},
+            lambda: _store().create_profile(
                 name=request.name,
                 kind=request.kind,
                 endpoint=request.endpoint,
@@ -87,7 +90,8 @@ def create_llm_profile(
                 context_window=request.context_window,
                 timeout_seconds=request.timeout_seconds,
                 api_key=request.api_key,
-            )
+            ),
+        )
         return _profile_response(profile)
     except (ProviderConfigError, SecretStoreLockedError) as exc:
         raise _bad_request(exc) from exc
@@ -100,8 +104,11 @@ def update_llm_profile(
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> LLMProviderProfileResponse:
     try:
-        with record_operator_action(actions, catalog.PROVIDER_PROFILE_WRITE, {"profile_id": profile_id, "name": request.name}):
-            profile = _store().update_profile(
+        profile = execute_operator_action(
+            actions,
+            catalog.PROVIDER_PROFILE_WRITE,
+            {"profile_id": profile_id, "name": request.name},
+            lambda: _store().update_profile(
                 profile_id,
                 name=request.name,
                 kind=request.kind,
@@ -111,7 +118,8 @@ def update_llm_profile(
                 timeout_seconds=request.timeout_seconds,
                 api_key=request.api_key,
                 clear_api_key=request.clear_api_key,
-            )
+            ),
+        )
         return _profile_response(profile)
     except (ProviderConfigError, SecretStoreLockedError) as exc:
         raise _bad_request(exc) from exc
@@ -123,8 +131,12 @@ def delete_llm_profile(
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> dict[str, bool]:
     try:
-        with record_operator_action(actions, catalog.PROVIDER_PROFILE_DELETE, {"profile_id": profile_id}):
-            _store().delete_profile(profile_id)
+        execute_operator_action(
+            actions,
+            catalog.PROVIDER_PROFILE_DELETE,
+            {"profile_id": profile_id},
+            lambda: _store().delete_profile(profile_id),
+        )
         return {"deleted": True}
     except ProviderConfigError as exc:
         raise _bad_request(exc) from exc
@@ -159,13 +171,17 @@ def update_llm_selection(
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> LLMProviderSelectionResponse:
     try:
-        with record_operator_action(actions, catalog.PROVIDER_SELECTION_UPDATE, {"primary_profile_id": request.primary_profile_id}):
-            selection = _store().set_selection(
+        selection = execute_operator_action(
+            actions,
+            catalog.PROVIDER_SELECTION_UPDATE,
+            {"primary_profile_id": request.primary_profile_id},
+            lambda: _store().set_selection(
                 primary_profile_id=request.primary_profile_id,
                 local_fallback_profile_id=request.local_fallback_profile_id,
                 cloud_escalation_enabled=request.cloud_escalation_enabled,
                 cloud_profile_id=request.cloud_profile_id,
-            )
+            ),
+        )
         return _selection_response(selection)
     except ProviderConfigError as exc:
         raise _bad_request(exc) from exc
@@ -176,8 +192,12 @@ def rotate_secret_store_key(
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> SecretRotationResponse:
     try:
-        with record_operator_action(actions, catalog.PROVIDER_SECRET_ROTATE, {}):
-            _store().rotate_key()
+        execute_operator_action(
+            actions,
+            catalog.PROVIDER_SECRET_ROTATE,
+            {},
+            lambda: _store().rotate_key(),
+        )
         return SecretRotationResponse(rotated=True)
     except (ProviderConfigError, SecretStoreLockedError) as exc:
         raise _bad_request(exc) from exc

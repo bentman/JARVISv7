@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
 import os
+import threading
 from pathlib import Path
+from typing import Any
 
 from backend.app.artifacts.session_artifact import SessionArtifact
 from backend.app.artifacts.session_timeline import SessionTimeline
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.core.paths import DATA_DIR
+
+ACTION_LOG_NAME = "action-log.jsonl"
+_action_log_lock = threading.Lock()
 
 
 def write_text_atomic(path: Path, content: str) -> None:
@@ -62,3 +68,30 @@ def read_session_timeline(session_id: str, base_dir: Path = DATA_DIR / "sessions
     if not artifact_path.exists():
         return None
     return SessionTimeline.from_json(artifact_path.read_text(encoding="utf-8"))
+
+
+def append_action_event(entry: dict[str, Any], base_dir: Path = DATA_DIR / "actions") -> Path:
+    """Append one action-evidence record durably.
+
+    Action evidence must survive a crash and must not depend on an active session, so
+    this appends and fsyncs rather than rewriting a whole file like the artifact writers.
+    """
+    base_dir.mkdir(parents=True, exist_ok=True)
+    log_path = base_dir / ACTION_LOG_NAME
+    line = json.dumps(entry, default=str, sort_keys=True) + "\n"
+    with _action_log_lock, open(log_path, "a", encoding="utf-8") as handle:
+        handle.write(line)
+        handle.flush()
+        os.fsync(handle.fileno())
+    return log_path
+
+
+def read_action_events(base_dir: Path = DATA_DIR / "actions") -> list[dict[str, Any]]:
+    log_path = base_dir / ACTION_LOG_NAME
+    if not log_path.is_file():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            events.append(json.loads(line))
+    return events

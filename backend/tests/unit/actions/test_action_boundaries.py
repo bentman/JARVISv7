@@ -9,6 +9,7 @@ from backend.app.actions.boundaries import (
     ActionOperation,
     BoundaryViolationError,
     ExecutionBoundary,
+    ProcessBoundary,
     run_bounded,
 )
 from backend.app.core.paths import REPO_ROOT
@@ -112,3 +113,77 @@ def test_resolve_path_accepts_a_path_inside_a_declared_root() -> None:
 def test_a_capability_with_no_declared_roots_cannot_resolve_any_path() -> None:
     with pytest.raises(BoundaryViolationError, match="declares no storage roots"):
         boundary(storage_roots=()).resolve_path("data/sessions/turn.json")
+
+
+def process(**overrides) -> dict:
+    values = {
+        "subprocess": True,
+        "argv_allowlist": ["git"],
+        "env_passthrough": ["PATH"],
+        "working_root": "data",
+    }
+    values.update(overrides)
+    return values
+
+
+def test_a_process_boundary_scrubs_every_environment_key_it_did_not_allowlist() -> None:
+    boundary = ProcessBoundary.from_mapping(process(env_passthrough=["PATH"]))
+
+    scrubbed = boundary.scrub_environment(
+        {
+            "PATH": "/usr/bin",
+            "JARVIS_SECRET_STORE_KEY": "must-not-leak",
+            "TAVILY_API_KEY": "must-not-leak",
+        }
+    )
+
+    assert scrubbed == {"PATH": "/usr/bin"}
+    assert "must-not-leak" not in str(scrubbed)
+
+
+def test_an_empty_environment_allowlist_scrubs_everything() -> None:
+    boundary = ProcessBoundary.from_mapping(process(env_passthrough=[]))
+
+    assert boundary.scrub_environment({"PATH": "/usr/bin"}) == {}
+
+
+def test_a_wildcard_environment_allowlist_is_refused() -> None:
+    with pytest.raises(BoundaryViolationError, match="explicit allowlist, not a wildcard"):
+        ProcessBoundary.from_mapping(process(env_passthrough=["*"]))
+
+
+def test_an_empty_argv_allowlist_is_refused() -> None:
+    with pytest.raises(BoundaryViolationError, match="argv_allowlist must not be empty"):
+        ProcessBoundary.from_mapping(process(argv_allowlist=[]))
+
+
+def test_argv_must_name_an_allowlisted_executable() -> None:
+    boundary = ProcessBoundary.from_mapping(process(argv_allowlist=["git"]))
+
+    boundary.validate_argv(["git", "status"])
+
+    with pytest.raises(BoundaryViolationError, match="argv\\[0\\] is not allowlisted: bash"):
+        boundary.validate_argv(["bash", "-c", "echo pwned"])
+    with pytest.raises(BoundaryViolationError, match="argv must not be empty"):
+        boundary.validate_argv([])
+
+
+def test_a_working_root_outside_the_approved_roots_is_refused() -> None:
+    with pytest.raises(BoundaryViolationError, match="working_root must be one of"):
+        ProcessBoundary.from_mapping(process(working_root="/etc"))
+
+
+@pytest.mark.parametrize("candidate", ["../etc/passwd", "/etc/passwd", "data/../../etc"])
+def test_a_process_path_cannot_escape_its_working_root(candidate: str) -> None:
+    boundary = ProcessBoundary.from_mapping(process())
+
+    with pytest.raises(BoundaryViolationError, match="escapes the process working root"):
+        boundary.resolve_path(candidate)
+
+
+def test_a_process_path_inside_the_working_root_resolves() -> None:
+    boundary = ProcessBoundary.from_mapping(process())
+
+    assert boundary.resolve_path("sessions/turn.json") == (
+        REPO_ROOT / "data" / "sessions" / "turn.json"
+    ).resolve()

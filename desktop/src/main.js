@@ -8,6 +8,7 @@ import { createResidentVoicePresenter } from "./components/resident-voice.js";
 import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
 import { createMemoryPanel, createOperatorPanelCoordinator } from "./components/memory-panel.js";
+import { createActionsPanel } from "./components/actions-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 import { createDesktopPolling } from "./components/desktop-polling.js";
@@ -30,6 +31,8 @@ const settingsRestartRequiredEl = document.querySelector("#settings-restart-requ
 const settingsPanelEl = document.querySelector("#settings-panel");
 const memoryTriggerEl = document.querySelector("#memory-trigger");
 const memoryPanelEl = document.querySelector("#memory-panel");
+const actionsTriggerEl = document.querySelector("#actions-trigger");
+const actionsPanelEl = document.querySelector("#actions-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
@@ -69,6 +72,20 @@ const memoryPanel = createMemoryPanel(
   },
   { onClose: () => memoryTriggerEl.focus() },
 );
+
+const actionsPanel = createActionsPanel(
+  actionsPanelEl,
+  {
+    getActionCapabilities: (...args) => api.getActionCapabilities(...args),
+    getPendingActions: (...args) => api.getPendingActions(...args),
+    getActionAudit: (...args) => api.getActionAudit(...args),
+    getActionStatus: (...args) => api.getActionStatus(...args),
+    proposeAction: (...args) => api.proposeAction(...args),
+    decideAction: (...args) => api.decideAction(...args),
+    cancelAction: (...args) => api.cancelAction(...args),
+  },
+  { onClose: () => actionsTriggerEl.focus() },
+);
 let activePersonalityId = "default";
 let desktopState = null;
 let personalitySelectionPending = false;
@@ -101,6 +118,10 @@ const operatorPanels = createOperatorPanelCoordinator({
     }),
   closeSettings: () => closeSettings(),
   focusSettingsTrigger: () => settingsTriggerEl.focus(),
+  isActionsOpen: () => actionsPanel.isOpen(),
+  openActions: () => actionsPanel.open(),
+  closeActions: () => actionsPanel.close(),
+  focusActionsTrigger: () => actionsTriggerEl.focus(),
 });
 
 const presenceByProfile = {
@@ -617,6 +638,10 @@ if (residentTtsVoiceEl) {
 
 memoryTriggerEl.addEventListener("click", () => {
   operatorPanels.toggleMemory().catch((error) => showError(String(error)));
+});
+
+actionsTriggerEl.addEventListener("click", () => {
+  operatorPanels.toggleActions().catch((error) => showError(String(error)));
 });
 
 settingsTriggerEl.addEventListener("click", () => {

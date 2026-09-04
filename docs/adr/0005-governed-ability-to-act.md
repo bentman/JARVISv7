@@ -83,7 +83,15 @@ The shared action contract is wired. `backend/app/actions/contracts.py` defines 
 
 The existing `/memory`, `/config/llm`, and `/config/operator` mutation routes record direct operator authority through `CapabilityService.operator_action`, so an operator request is represented as an approved proposal with an execution result. Their status codes and response bodies are unchanged.
 
-What remains: `delegated_runs` has no producer and stays empty; file, workspace, shell, MCP, plugin, skill-script, and agent capabilities are not registered and are not executable, and process isolation for them is not implemented; the three mutation route groups record through the authorization ladder but still execute outside the capability executor; API-initiated action evidence lives in a bounded in-memory audit rather than a durable artifact; and no desktop surface exists for capability discovery, approval, execution status, cancellation, or audit.
+`backend/app/actions/boundaries.py` also declares the process and root isolation rules that file, workspace, shell, MCP, plugin, skill-script, and agent capabilities must satisfy before they can be registered. `ProcessBoundary` requires an explicit argv allowlist, an explicit environment allowlist rather than a wildcard, and a working root drawn from the declared storage roots, and it scrubs every environment key it did not allowlist so a parent-process secret cannot reach a child. The registry refuses a `privileged_execution` descriptor that omits these, and refuses any process-bearing capability that is not cancellable. No such capability is registered, so these rules are reachable today only through registration refusal.
+
+The `/memory`, `/config/llm`, and `/config/operator` mutation routes now authorize and execute on one path. `CapabilityService.execute_operator_action` mints the proposal, authorizes it with `caller="operator_api"`, records the approval and execution result, and re-raises the owning service's typed error so route status codes and conflict payloads are unchanged. An operator request carries its own authority, so availability and readiness are recorded but do not gate: the owning service reports those conditions with more fidelity than a descriptor explanation can. Operator-configuration keys are surfaced for discovery rather than enforced in the input schema, because the service rejects unknown keys per field and reports them.
+
+Action evidence is durable. `backend/app/artifacts/storage.py` appends each record to `data/actions/action-log.jsonl` and fsyncs it, independent of any conversation session; the bounded in-memory audit remains only as the read path for `GET /actions/audit`. This deviates from the follow-up's wording of a "session artifact": API-initiated actions routinely arrive with no active session, and a session-scoped artifact would drop exactly those records, along with everything held in memory when a process dies before the session closes.
+
+The desktop exposes the governed action loop. `desktop/src/components/actions-panel.js` renders capability discovery with live availability and its unavailable explanation, pending approvals with approve, deny, and cancel controls, execution status, and the audit list. It proxies through `desktop/src-tauri/src/backend.rs` and `lib.rs` commands, builds DOM without `innerHTML`, never calls the backend directly, and never infers whether a proposal can be approved from its status string — it submits and renders the backend's answer.
+
+What remains: `delegated_runs` has no producer and stays empty.
 
 ## Confirmation
 
@@ -98,6 +106,13 @@ Implementation files:
 - `backend/app/api/dependencies.py`
 - `backend/app/api/app.py`
 - `backend/app/conversation/turn_manager.py`
+- `backend/app/artifacts/storage.py`
+- `desktop/src/components/actions-panel.js`
+- `desktop/src/components/memory-panel.js`
+- `desktop/src/api-client.js`
+- `desktop/src/main.js`
+- `desktop/src-tauri/src/backend.rs`
+- `desktop/src-tauri/src/lib.rs`
 - `backend/app/cognition/search_policy.py`
 - `backend/app/services/search_service.py`
 - `backend/app/runtimes/internetsearch/base.py`
@@ -128,6 +143,8 @@ Test coverage:
 - `backend/tests/unit/actions/test_action_boundaries.py`
 - `backend/tests/unit/services/test_capability_service.py`
 - `backend/tests/unit/api/test_action_routes.py`
+- `backend/tests/unit/services/test_action_evidence_log.py`
+- `desktop/tests/static.test.mjs`
 - `backend/tests/unit/cognition/test_search_policy.py`
 - `backend/tests/unit/services/test_search_service.py`
 - `backend/tests/unit/conversation/test_search_turn.py`
@@ -148,13 +165,10 @@ Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_backend.py integration` when action behavior crosses service/API boundaries
 - `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families services --devices ...` for live external-provider validation claims
 - `npm --prefix desktop test` for desktop action/config/memory/search contract changes
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml` for Tauri bridge changes; the static desktop suite matches command and route names as strings and never compiles them
 
 ## Follow-up
 
 Required to complete this ADR:
 
-- Expose desktop surfaces for capability discovery, approval, execution status, cancellation, and audit.
-- Add process and root isolation for file, workspace, shell, MCP, plugin, skill-script, and agent execution before registering those capabilities. Declared storage-root, timeout, cancellation, and result-size boundaries exist, and the registry already refuses `privileged_execution` capabilities that do not declare them.
-- Converge the `/memory`, `/config/llm`, and `/config/operator` mutation routes onto the capability executor so one path both authorizes and executes.
-- Record API-initiated action evidence in a durable session artifact rather than a bounded in-memory audit.
-- Populate `delegated_runs` when delegated agent execution exists; it has no producer today.
+- Populate `delegated_runs` when delegated agent execution exists; it has no producer today, so this cannot close until ADR 0007 introduces delegated agents.

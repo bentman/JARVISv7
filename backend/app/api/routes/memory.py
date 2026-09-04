@@ -24,7 +24,7 @@ from backend.app.api.schemas.memory import (
 )
 from backend.app.memory.curation import LifecycleState
 from backend.app.memory.curation_contract import GovernedMemoryKind
-from backend.app.services.capability_service import CapabilityService, record_operator_action
+from backend.app.services.capability_service import CapabilityService, execute_operator_action
 from backend.app.services.memory_service import (
     DEFAULT_DETAIL_ITEMS,
     MAX_DETAIL_ITEMS,
@@ -83,13 +83,20 @@ def update_memory_policy(
     service: MemoryService = Depends(get_memory_service),
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> MemoryPolicyResponse:
-    with record_operator_action(actions, catalog.MEMORY_POLICY_UPDATE, {"automatic_curation_enabled": request.automatic_curation_enabled, "expected_revision": request.expected_revision}):
-        result = _execute(
+    result = _execute(
+        lambda: execute_operator_action(
+            actions,
+            catalog.MEMORY_POLICY_UPDATE,
+            {
+                "automatic_curation_enabled": request.automatic_curation_enabled,
+                "expected_revision": request.expected_revision,
+            },
             lambda: service.update_policy(
                 automatic_curation_enabled=request.automatic_curation_enabled,
                 expected_revision=request.expected_revision,
-            )
+            ),
         )
+    )
     return MemoryPolicyResponse.model_validate(asdict(result))
 
 
@@ -153,14 +160,18 @@ def confirm_memory(
     service: MemoryService = Depends(get_memory_service),
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> MemoryRecordResponse:
-    with record_operator_action(actions, catalog.MEMORY_RECORD_CONFIRM, {"fact_id": fact_id, "expected_revision": request.expected_revision}):
-        result = _execute(
+    result = _execute(
+        lambda: execute_operator_action(
+            actions,
+            catalog.MEMORY_RECORD_CONFIRM,
+            {"fact_id": fact_id, "expected_revision": request.expected_revision},
             lambda: service.confirm(
                 fact_id,
                 expected_revision=request.expected_revision,
                 reason=request.reason,
-            )
+            ),
         )
+    )
     return MemoryRecordResponse.model_validate(asdict(result))
 
 
@@ -171,16 +182,20 @@ def correct_memory(
     service: MemoryService = Depends(get_memory_service),
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> MemoryCorrectionResponse:
-    with record_operator_action(actions, catalog.MEMORY_RECORD_CORRECT, {"fact_id": fact_id, "expected_revision": request.expected_revision}):
-        result = _execute(
+    result = _execute(
+        lambda: execute_operator_action(
+            actions,
+            catalog.MEMORY_RECORD_CORRECT,
+            {"fact_id": fact_id, "expected_revision": request.expected_revision},
             lambda: service.correct(
                 fact_id,
                 expected_revision=request.expected_revision,
                 replacement_text=request.replacement_text,
                 replacement_value=request.replacement_value,
                 reason=request.reason,
-            )
+            ),
         )
+    )
     return MemoryCorrectionResponse.model_validate(asdict(result))
 
 
@@ -191,14 +206,18 @@ def dispute_memory(
     service: MemoryService = Depends(get_memory_service),
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> MemoryRecordResponse:
-    with record_operator_action(actions, catalog.MEMORY_RECORD_DISPUTE, {"fact_id": fact_id, "expected_revision": request.expected_revision}):
-        result = _execute(
+    result = _execute(
+        lambda: execute_operator_action(
+            actions,
+            catalog.MEMORY_RECORD_DISPUTE,
+            {"fact_id": fact_id, "expected_revision": request.expected_revision},
             lambda: service.dispute(
                 fact_id,
                 expected_revision=request.expected_revision,
                 reason=request.reason,
-            )
+            ),
         )
+    )
     return MemoryRecordResponse.model_validate(asdict(result))
 
 
@@ -210,12 +229,16 @@ def forget_memory(
     service: MemoryService = Depends(get_memory_service),
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> MemoryDetailResponse:
-    with record_operator_action(actions, catalog.MEMORY_RECORD_FORGET, {"fact_id": fact_id, "expected_revision": expected_revision}):
-        result = _execute(
+    result = _execute(
+        lambda: execute_operator_action(
+            actions,
+            catalog.MEMORY_RECORD_FORGET,
+            {"fact_id": fact_id, "expected_revision": expected_revision},
             lambda: service.forget(
                 fact_id,
                 expected_revision=expected_revision,
                 reason=reason,
-            )
+            ),
         )
+    )
     return MemoryDetailResponse.model_validate(asdict(result))
