@@ -58,19 +58,10 @@ def test_kokoro_runtime_accepts_device_parameter():
     assert runtime.device == "cpu"
 
 
-def test_tts_device_slot_accepts_cuda_string():
-    runtime = KokoroOnnxRuntime(device="cuda", model_path=Path("unused"))
-    assert runtime.device == "cuda"
-
-
-def test_tts_device_slot_accepts_directml_string():
-    runtime = KokoroOnnxRuntime(device="directml", model_path=Path("unused"))
-    assert runtime.device == "directml"
-
-
-def test_tts_device_slot_accepts_qnn_string():
-    runtime = KokoroOnnxRuntime(device="qnn", model_path=Path("unused"))
-    assert runtime.device == "qnn"
+@pytest.mark.parametrize("device", ["cuda", "directml", "qnn"])
+def test_tts_device_slot_accepts_accelerator_string(device):
+    runtime = KokoroOnnxRuntime(device=device, model_path=Path("unused"))
+    assert runtime.device == device
 
 
 def test_kokoro_runtime_uses_custom_session_for_accelerated_device(monkeypatch, tmp_path):

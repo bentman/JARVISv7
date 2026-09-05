@@ -57,7 +57,7 @@ Negative:
 - Capability metadata can become stale unless readiness and health checks are real observations.
 - More artifact detail is needed as actions become more capable.
 
-## Current Design
+## Implementation
 
 This ADR is partially implemented.
 
@@ -167,9 +167,7 @@ Validation commands:
 - `npm --prefix desktop test` for desktop action/config/memory/search contract changes
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` for Tauri bridge changes; the static desktop suite matches command and route names as strings and never compiles them
 
-## Evidence
-
-Validated on linux-amd64:
+Validation results (linux-amd64):
 - `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
 - `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
 - `npm --prefix desktop test`: PASS.
@@ -180,7 +178,7 @@ subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual compone
 with fixture data; a live native desktop, remote deployment, and other host classes
 remain unverified. The declared process controls are not an OS sandbox.
 
-## Follow Up
+## Follow-up
 
 Required to complete this ADR:
 

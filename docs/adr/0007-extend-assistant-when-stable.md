@@ -73,7 +73,7 @@ Negative:
 - Agent profile design must stay small enough for a personal project while still preventing hidden authority.
 - Delegation requires more evidence per turn/run.
 
-## Current Design
+## Implementation
 
 This ADR is partially implemented.
 
@@ -163,7 +163,18 @@ Known absence checks:
 - OS sandboxing and agent-visible MCP delegation filtering remain outside the explicit ACP client implementation.
 - `backend/tests/unit/api/test_routes.py` includes a route-surface guard that agent routes are absent from OpenAPI.
 
-## Follow Up
+Validation results (linux-amd64):
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `npm --prefix desktop test`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+
+Protocol tests required execution outside the restricted runner because its asyncio
+subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
+with fixture data; a live native desktop, remote deployment, and other host classes
+remain unverified. The declared process controls are not an OS sandbox.
+
+## Follow-up
 
 Gaps required to complete this ADR:
 - Complete ADR 0005's governed capability execution path.
@@ -177,16 +188,3 @@ Gaps required to complete this ADR:
 - Extend existing ACP delegated-run artifacts with profile and capability-scope evidence when broader agent profiles are introduced.
 - Add backend API, desktop, CLI/script, daemon, and future client status/approval surfaces before enabling long-running delegated work.
 - Add focused tests for read-only agents before privileged agents; add live validation only when the required model/provider/process is actually available.
-
-## Evidence
-
-Validated on linux-amd64:
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
-- `npm --prefix desktop test`: PASS.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
-
-Protocol tests required execution outside the restricted runner because its asyncio
-subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
-with fixture data; a live native desktop, remote deployment, and other host classes
-remain unverified. The declared process controls are not an OS sandbox.

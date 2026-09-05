@@ -133,62 +133,54 @@ def _reload_settings(monkeypatch, tmp_path, env_text: str | None, example_text: 
     return settings_module
 
 
-def test_settings_prefer_shell_env_over_env_file_when_env_file_exists(monkeypatch, tmp_path):
-    settings_module = _reload_settings(
-        monkeypatch,
-        tmp_path,
-        "JARVIS_LANGUAGE=fr\nOLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=2048\nOLLAMA_KEEP_ALIVE=10m\nJARVISV7_LIVE_TESTS=false\n",
-        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=false\n",
-    )
-    monkeypatch.setenv("OLLAMA_BASE_URL", "http://shell:11434")
-    monkeypatch.setenv("JARVIS_LANGUAGE", "pl")
-    monkeypatch.setenv("OLLAMA_MODEL", "shell-model")
-    monkeypatch.setenv("OLLAMA_NUM_CTX", "8192")
-    monkeypatch.setenv("OLLAMA_KEEP_ALIVE", "30m")
-    monkeypatch.setenv("JARVISV7_LIVE_TESTS", "true")
+_ENV_FILE_CONTENT = "OLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=4096\nOLLAMA_KEEP_ALIVE=15m\nJARVISV7_LIVE_TESTS=yes\n"
+_EXAMPLE_FILE_CONTENT = "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=on\n"
+
+
+@pytest.mark.parametrize(
+    ("shell_env", "env_content", "expected"),
+    [
+        pytest.param(
+            {
+                "OLLAMA_BASE_URL": "http://shell:11434",
+                "JARVIS_LANGUAGE": "pl",
+                "OLLAMA_MODEL": "shell-model",
+                "OLLAMA_NUM_CTX": "8192",
+                "OLLAMA_KEEP_ALIVE": "30m",
+                "JARVISV7_LIVE_TESTS": "true",
+            },
+            "JARVIS_LANGUAGE=fr\nOLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=2048\nOLLAMA_KEEP_ALIVE=10m\nJARVISV7_LIVE_TESTS=false\n",
+            {"ollama_base_url": "http://shell:11434", "ollama_model": "shell-model", "ollama_num_ctx": 8192, "ollama_keep_alive": "30m", "live_tests": True},
+            id="shell-env-over-env-file",
+        ),
+        pytest.param(
+            None,
+            _ENV_FILE_CONTENT,
+            {"ollama_base_url": "http://env-file:11434", "ollama_model": "env-file-model", "ollama_num_ctx": 4096, "ollama_keep_alive": "15m", "live_tests": True},
+            id="env-file-over-env-example-when-shell-absent",
+        ),
+        pytest.param(
+            None,
+            None,
+            {"ollama_base_url": "http://example-file:11434", "ollama_model": "example-model", "ollama_num_ctx": 1024, "ollama_keep_alive": "2m", "live_tests": True},
+            id="env-example-when-env-absent",
+        ),
+    ],
+)
+def test_settings_precedence_across_shell_env_and_dotenv_files(monkeypatch, tmp_path, shell_env, env_content, expected):
+    settings_module = _reload_settings(monkeypatch, tmp_path, env_content, _EXAMPLE_FILE_CONTENT)
+    for name, value in (shell_env or {}).items():
+        monkeypatch.setenv(name, value)
 
     settings = settings_module.load_settings()
 
-    assert settings.jarvis_language == "pl"
-    assert settings.ollama_base_url == "http://shell:11434"
-    assert settings.ollama_model == "shell-model"
-    assert settings.ollama_num_ctx == 8192
-    assert settings.ollama_keep_alive == "30m"
-    assert settings.live_tests is True
-
-
-def test_settings_load_env_over_env_example_when_shell_env_absent(monkeypatch, tmp_path):
-    settings_module = _reload_settings(
-        monkeypatch,
-        tmp_path,
-        "OLLAMA_BASE_URL=http://env-file:11434\nOLLAMA_MODEL=env-file-model\nOLLAMA_NUM_CTX=4096\nOLLAMA_KEEP_ALIVE=15m\nJARVISV7_LIVE_TESTS=yes\n",
-        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=false\n",
-    )
-
-    settings = settings_module.load_settings()
-
-    assert settings.ollama_base_url == "http://env-file:11434"
-    assert settings.ollama_model == "env-file-model"
-    assert settings.ollama_num_ctx == 4096
-    assert settings.ollama_keep_alive == "15m"
-    assert settings.live_tests is True
-
-
-def test_settings_load_env_example_when_env_absent(monkeypatch, tmp_path):
-    settings_module = _reload_settings(
-        monkeypatch,
-        tmp_path,
-        None,
-        "OLLAMA_BASE_URL=http://example-file:11434\nOLLAMA_MODEL=example-model\nOLLAMA_NUM_CTX=1024\nOLLAMA_KEEP_ALIVE=2m\nJARVISV7_LIVE_TESTS=on\n",
-    )
-
-    settings = settings_module.load_settings()
-
-    assert settings.ollama_base_url == "http://example-file:11434"
-    assert settings.ollama_model == "example-model"
-    assert settings.ollama_num_ctx == 1024
-    assert settings.ollama_keep_alive == "2m"
-    assert settings.live_tests is True
+    assert settings.ollama_base_url == expected["ollama_base_url"]
+    assert settings.ollama_model == expected["ollama_model"]
+    assert settings.ollama_num_ctx == expected["ollama_num_ctx"]
+    assert settings.ollama_keep_alive == expected["ollama_keep_alive"]
+    assert settings.live_tests == expected["live_tests"]
+    if shell_env and "JARVIS_LANGUAGE" in shell_env:
+        assert settings.jarvis_language == shell_env["JARVIS_LANGUAGE"]
 
 
 def test_settings_prefer_ollama_base_url_over_legacy_alias(monkeypatch, tmp_path):

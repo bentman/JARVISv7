@@ -277,59 +277,27 @@ def test_operator_transitions_require_exact_revision_and_action_evidence(
     assert _counts(memory) == (1, 2, 2, 2)
 
 
-def test_allowed_dispute_confirm_expire_and_forget_transitions(
+def test_transition_into_a_terminal_state_rejects_further_transitions(
     tmp_path: Path,
 ) -> None:
+    # Reaching EXPIRED (terminal) is exercised by the parametrized matrix below;
+    # this test's unique contract is that a terminal state then refuses further
+    # direct transitions rather than silently accepting them.
     memory = SemanticMemory(tmp_path / "memory.sqlite")
     fact_id = _created(memory, _fact())
 
-    disputed = memory.dispute_fact(
-        fact_id,
-        expected_revision=1,
-        evidence=_action_evidence(1, "dispute"),
-    )
-    confirmed = memory.confirm_fact(
-        fact_id,
-        expected_revision=2,
-        evidence=_action_evidence(2, "confirm"),
-    )
-    expired = memory.expire_fact(
-        fact_id,
-        expected_revision=3,
-        evidence=_action_evidence(3, "expire"),
-    )
+    memory.dispute_fact(fact_id, expected_revision=1, evidence=_action_evidence(1, "dispute"))
+    memory.confirm_fact(fact_id, expected_revision=2, evidence=_action_evidence(2, "confirm"))
+    expired = memory.expire_fact(fact_id, expected_revision=3, evidence=_action_evidence(3, "expire"))
+    assert expired.value is not None
+    assert expired.value.state == LifecycleState.EXPIRED.value
+
     terminal = memory.confirm_fact(
         fact_id,
         expected_revision=4,
         evidence=_action_evidence(4, "confirm"),
     )
-
-    assert disputed.value is not None
-    assert disputed.value.state == LifecycleState.DISPUTED.value
-    assert confirmed.value is not None
-    assert confirmed.value.state == LifecycleState.ACTIVE.value
-    assert expired.value is not None
-    assert expired.value.state == LifecycleState.EXPIRED.value
     assert terminal.status is OperationStatus.CONFLICT
-
-    pending_id = _created(
-        memory,
-        _fact(
-            text="A pending preference.",
-            key="claim.pending_preference",
-            value="pending",
-            state=LifecycleState.PENDING_REVIEW,
-            evidence=(_turn_evidence(9),),
-            kind=GovernedMemoryKind.USER_PREFERENCE,
-        ),
-    )
-    forgotten = memory.forget_fact(
-        pending_id,
-        expected_revision=1,
-        evidence=_action_evidence(9, "forget"),
-    )
-    assert forgotten.value is not None
-    assert forgotten.value.state == LifecycleState.FORGOTTEN.value
 
 
 @pytest.mark.parametrize(

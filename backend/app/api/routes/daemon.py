@@ -10,6 +10,10 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, Request
 router = APIRouter(prefix="/daemon")
 
 
+def _default_shutdown() -> None:
+    os.kill(os.getpid(), signal.SIGINT)
+
+
 def _registry(request: Request) -> DaemonRegistry:
     registry = getattr(request.app.state, "daemon_registry", None)
     if registry is None:
@@ -38,6 +42,6 @@ def daemon_shutdown(request: Request, background_tasks: BackgroundTasks) -> Daem
 
     shutdown = getattr(request.app.state, "daemon_shutdown", None)
     if shutdown is None:
-        shutdown = lambda: os.kill(os.getpid(), signal.SIGINT)
+        shutdown = _default_shutdown
     background_tasks.add_task(shutdown)
     return DaemonShutdownResponse(accepted=True, service=DAEMON_SERVICE)

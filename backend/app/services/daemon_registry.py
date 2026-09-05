@@ -1,16 +1,16 @@
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import secrets
 import socket
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from backend.app.core.paths import REPO_ROOT
-
 
 DAEMON_SERVICE = "jarvisv7-backend"
 DAEMON_CACHE_DIR = REPO_ROOT / "cache" / "daemon"
@@ -106,6 +106,7 @@ class DaemonRegistry:
         self.metadata_path.parent.mkdir(parents=True, exist_ok=True)
         existing = self.read_metadata()
         if self._is_live_same_repo_owner(existing, host, port, pid):
+            assert existing is not None
             raise DaemonOwnershipError(
                 f"live same-repo daemon already owns {host}:{port} "
                 f"pid={existing.get('pid')} metadata={self.metadata_path}"
@@ -118,6 +119,7 @@ class DaemonRegistry:
         except FileExistsError as exc:
             existing = self.read_metadata()
             if self._is_live_same_repo_owner(existing, host, port, pid):
+                assert existing is not None
                 raise DaemonOwnershipError(
                     f"live same-repo daemon already owns {host}:{port} "
                     f"pid={existing.get('pid')} metadata={self.metadata_path}"
@@ -126,7 +128,7 @@ class DaemonRegistry:
             lock_fd = os.open(self.lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
 
         try:
-            os.write(lock_fd, f"{pid}\n".encode("utf-8"))
+            os.write(lock_fd, f"{pid}\n".encode())
         finally:
             os.close(lock_fd)
 
@@ -136,7 +138,7 @@ class DaemonRegistry:
             port=port,
             pid=pid,
             repo_root=str(self.repo_root),
-            started_at=datetime.now(timezone.utc).isoformat(),
+            started_at=datetime.now(UTC).isoformat(),
             token=token or secrets.token_urlsafe(32),
             owner={"state": "owned", "lock_file": str(self.lock_path), "hostname": socket.gethostname()},
             health={"status": "ok", "service": DAEMON_SERVICE},
@@ -173,15 +175,14 @@ class DaemonRegistry:
     def _is_live_same_repo_owner(self, metadata: dict[str, Any] | None, host: str, port: int, current_pid: int) -> bool:
         if not self._same_repo_endpoint(metadata, host, port):
             return False
+        assert metadata is not None
         owner_pid = metadata.get("pid")
         return isinstance(owner_pid, int) and owner_pid != current_pid and _process_is_alive(owner_pid)
 
     def _remove_stale_files(self) -> None:
         for path in (self.metadata_path, self.lock_path):
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 path.unlink()
-            except FileNotFoundError:
-                pass
 
 
 def _process_is_alive(pid: int) -> bool:

@@ -25,6 +25,15 @@ def test_working_memory_drops_oldest_on_overflow():
     assert memory.as_list() == ["new"]
 
 
+def test_working_memory_ignores_blank_or_whitespace_only_entries():
+    memory = WorkingMemory()
+
+    memory.add("   ")
+    memory.add("")
+
+    assert memory.as_list() == []
+
+
 def test_working_memory_clear_empties_list():
     memory = WorkingMemory()
     memory.add("entry")

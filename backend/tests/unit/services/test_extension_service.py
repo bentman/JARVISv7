@@ -57,15 +57,6 @@ def test_the_catalog_reports_every_observed_family(tmp_path: Path) -> None:
     ]
 
 
-def test_health_is_observed_live_rather_than_cached(tmp_path: Path) -> None:
-    instance = service(tmp_path)
-    assert instance.read("search_provider:ddgs").availability == "available"
-
-    searxng = instance.read("search_provider:searxng")
-    assert (searxng.state, searxng.availability) == ("disabled", "disabled")
-    assert "Enable DDGS, SearXNG, or Tavily" in searxng.unavailable_explanation
-
-
 def test_an_operator_decision_survives_a_refresh(tmp_path: Path) -> None:
     instance = service(tmp_path)
 

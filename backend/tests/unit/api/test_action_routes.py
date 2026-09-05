@@ -53,7 +53,8 @@ def test_capability_catalog_reports_live_availability_and_never_privileged_execu
 
     assert response.status_code == 200
     capabilities = response.json()["capabilities"]
-    assert len(capabilities) == 14
+    assert capabilities
+    assert not any(item["effect_class"] == "privileged_execution" for item in capabilities)
     assert {item["effect_class"] for item in capabilities} == {
         "external_read",
         "local_write",

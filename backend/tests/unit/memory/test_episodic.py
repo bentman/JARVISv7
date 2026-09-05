@@ -58,6 +58,28 @@ def test_retrieve_recent_returns_sorted_by_written_at_desc(tmp_path: Path) -> No
     assert [e.turn_id for e in out][:2] == ["b", "a"]
 
 
+def _session_dir(base_dir: Path, session_id: str, written_at: str) -> Path:
+    root = base_dir / session_id
+    root.mkdir(parents=True)
+    (root / "turn.json").write_text(json.dumps({
+        "turn_id": "turn", "session_id": session_id, "session_started_at": written_at,
+        "transcript": "t", "response_text": "r", "tools_invoked": [], "written_at": written_at,
+    }))
+    return root
+
+
+def test_prune_sessions_removes_only_the_oldest_sessions_beyond_retention(tmp_path: Path) -> None:
+    base_dir = tmp_path / "episodic"
+    for index in range(4):
+        _session_dir(base_dir, f"session-{index}", f"2026-01-0{index + 1}T00:00:00+00:00")
+
+    mem = EpisodicMemory(base_dir=base_dir)
+    mem._prune_sessions(WritePolicy(episodic_retention_sessions=2))
+
+    remaining = {p.name for p in base_dir.iterdir() if p.is_dir()}
+    assert remaining == {"session-2", "session-3"}
+
+
 def test_retrieve_recent_returns_empty_list_on_io_error(tmp_path: Path) -> None:
     assert EpisodicMemory(base_dir=tmp_path / "missing").retrieve_recent() == []
 

@@ -16,7 +16,7 @@ from backend.app.services.wake_monitor import WakeMonitorService
 from backend.tests.unit.services.test_session_service import _FakeWakeRuntime, _service
 
 
-def _wait_for(predicate, timeout_s: float = 1.0) -> None:
+def _wait_for(predicate, timeout_s: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if predicate():

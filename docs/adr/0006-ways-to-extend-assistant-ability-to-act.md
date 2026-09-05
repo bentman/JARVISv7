@@ -1,7 +1,7 @@
 # 0006 - Ways to Extend Assistant Ability to Act
 
 Date: 2026-09-01
-Status: Accepted
+Status: Implemented
 Related: 0002, 0003, 0004, 0005, 0007
 
 ## Context and Problem Statement
@@ -61,7 +61,7 @@ Negative:
 - ACP integration adds process and session state that must stay aligned with the single interaction loop.
 - Hook behavior can become surprising unless event names, effects, and failure paths stay small and visible.
 
-## Current Design
+## Implementation
 
 This ADR is implemented for the current extension catalog and governed runtime
 surfaces. Live external-server deployment evidence remains environment-dependent.
@@ -98,19 +98,6 @@ the governed process/action boundary; this does not complete agent runtime
 integration described by ADR 0007.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
-
-## Evidence
-
-Validated on linux-amd64:
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
-- `npm --prefix desktop test`: PASS.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
-
-Protocol tests required execution outside the restricted runner because its asyncio
-subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
-with fixture data; a live native desktop, remote deployment, and other host classes
-remain unverified. The declared process controls are not an OS sandbox.
 
 ## Confirmation
 
@@ -197,7 +184,18 @@ Validation evidence:
 - `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/routing/test_provider_router.py`
 
-## Follow Up
+Validation results (linux-amd64):
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `npm --prefix desktop test`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+
+Protocol tests required execution outside the restricted runner because its asyncio
+subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
+with fixture data; a live native desktop, remote deployment, and other host classes
+remain unverified. The declared process controls are not an OS sandbox.
+
+## Follow-up
 
 The MCP, explicit ACP client, hook, plugin-installation, and skill-script follow-ups
 have implementation and focused test evidence. Deployment acceptance still requires

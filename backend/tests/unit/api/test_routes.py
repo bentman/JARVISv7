@@ -1039,42 +1039,13 @@ def test_agent_routes_are_absent_from_openapi() -> None:
     assert not any(path.startswith("/agents") for path in paths)
 
 
-def test_action_routes_are_present_and_expose_no_executable_privileged_capability() -> None:
-    client = _client()
-    paths = client.app.openapi()["paths"]
+def test_action_routes_are_wired_into_the_real_app() -> None:
+    # Full behavioral coverage (approval flow, privileged-capability refusal, etc.)
+    # lives in test_action_routes.py; this only proves the router is mounted here.
+    paths = _client().app.openapi()["paths"]
 
     assert "/actions/capabilities" in paths
     assert "/actions/propose" in paths
-
-    response = client.get("/actions/capabilities")
-
-    assert response.status_code == 200
-    capabilities = response.json()["capabilities"]
-    assert capabilities
-    assert not any(item["effect_class"] == "privileged_execution" for item in capabilities)
-    assert not any(item["executable"] for item in capabilities)
-
-
-def test_a_destructive_action_parks_for_approval_through_the_real_app() -> None:
-    client = _client()
-
-    parked = client.post(
-        "/actions/propose",
-        json={
-            "capability_id": "memory-record-forget",
-            "arguments": {"fact_id": "fact-1", "expected_revision": 1},
-            "reason": "the model proposed forgetting a fact",
-            "proposed_by": "model",
-        },
-    )
-
-    assert parked.status_code == 200
-    body = parked.json()
-    assert (body["outcome"], body["status"]) == ("approval_required", "awaiting_approval")
-    assert body["execution"] is None
-    assert [item["proposal_id"] for item in client.get("/actions/pending").json()["pending"]] == [
-        body["proposal_id"]
-    ]
 
 
 def test_wake_status_uses_readiness_without_starting_monitor() -> None:

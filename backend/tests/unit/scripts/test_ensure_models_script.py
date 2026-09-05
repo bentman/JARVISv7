@@ -1,20 +1,11 @@
 from __future__ import annotations
 
-import io
-import zipfile
 from pathlib import Path
 
 import pytest
 from backend.app.core.capabilities import HardwareProfile
+from backend.tests.unit.scripts.conftest import _zip_bytes
 from scripts import ensure_models
-
-
-def _zip_bytes(entries: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, mode="w") as archive:
-        for name, payload in entries.items():
-            archive.writestr(name, payload)
-    return buffer.getvalue()
 
 
 class _FakeResponse:

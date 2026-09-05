@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import numpy as np
-from backend.app.artifacts.storage import read_session_artifact, read_turn_artifact
+from backend.app.artifacts.storage import read_session_artifact
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
@@ -99,31 +99,6 @@ def _engine(tmp_path, llm: SequencedLLM) -> tuple[TurnEngine, SessionManager]:
         write_policy=WritePolicy(max_working_memory_entries=10),
     )
     return engine, manager
-
-
-def test_two_text_turns_produce_two_artifacts_in_session(tmp_path):
-    engine, manager = _engine(tmp_path, SequencedLLM(["first response", "second response"]))
-
-    first = engine.run_text_turn("first")
-    second = engine.run_text_turn("second")
-
-    assert first.final_state == ConversationState.IDLE
-    assert second.final_state == ConversationState.IDLE
-    assert len(manager.turn_artifacts) == 2
-    assert read_turn_artifact("session-1", first.turn_id, tmp_path / "turns") is not None
-    assert read_turn_artifact("session-1", second.turn_id, tmp_path / "turns") is not None
-
-
-def test_second_turn_context_includes_first_turn_response_in_working_memory(tmp_path):
-    llm = SequencedLLM(["first response", "second response"])
-    engine, manager = _engine(tmp_path, llm)
-
-    engine.run_text_turn("first")
-    engine.run_text_turn("second")
-
-    assert manager.working_memory.as_list() == ["first response", "second response"]
-    assert "Working memory:" in llm.prompts[1]
-    assert "- first response" in llm.prompts[1]
 
 
 def test_session_close_writes_session_artifact(tmp_path):

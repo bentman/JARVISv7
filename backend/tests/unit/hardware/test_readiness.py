@@ -101,6 +101,46 @@ def test_tts_readiness_selects_cuda_for_cuda_candidate() -> None:
     assert "ep:CUDAExecutionProvider" in reason
 
 
+def test_stt_readiness_selects_qnn_when_qnn_ep_proven() -> None:
+    selected_device, ready, reason = derive_stt_device_readiness(
+        _preflight("import:onnxruntime-qnn", "ep:QNNExecutionProvider", "dll:QnnHtp"),
+        _profile(
+            os_name="windows",
+            arch="arm64",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+    )
+
+    assert (selected_device, ready) == ("qnn", True)
+    assert "qnn prerequisites proven" in reason
+
+
+def test_stt_readiness_falls_back_to_cpu_when_qnn_ep_missing_on_npu() -> None:
+    selected_device, ready, reason = derive_stt_device_readiness(
+        _preflight("import:onnxruntime"),
+        _profile(
+            os_name="windows",
+            arch="arm64",
+            npu_available=True,
+            npu_vendor="qualcomm",
+        ),
+    )
+
+    assert (selected_device, ready) == ("cpu", True)
+    assert "selecting cpu" in reason
+
+
+def test_tts_readiness_reports_not_ready_when_kokoro_onnx_missing() -> None:
+    selected_device, ready, reason = derive_tts_device_readiness(
+        _preflight(),
+        _profile(os_name="linux", arch="amd64"),
+    )
+
+    assert (selected_device, ready) == ("cpu", False)
+    assert "import:kokoro_onnx:MISSING" in reason
+
+
 def test_tts_readiness_selects_directml_for_directml_candidate() -> None:
     selected_device, ready, reason = derive_tts_device_readiness(
         _preflight("import:kokoro_onnx", "ep:DmlExecutionProvider"),

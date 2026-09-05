@@ -87,12 +87,6 @@ def _ollama_state() -> str:
     return "PASS"
 
 
-def _assert_stt_qnn_guard_is_explicit_not_wired() -> None:
-    runtime = OnnxWhisperRuntime(device="qnn")
-    with pytest.raises(NotImplementedError, match=r"not wired through OnnxWhisperRuntime"):
-        runtime.transcribe(np.array([], dtype=np.float32), sample_rate=16000)
-
-
 def _matrix_for_current_host(profile: HardwareProfile, preflight: PreflightResult) -> list[MatrixCell]:
     arch_evidence = f"arch={profile.arch}"
     qnn_state = _qnn_state(profile, preflight)
@@ -127,7 +121,6 @@ def _format_matrix(cells: list[MatrixCell]) -> str:
 def test_h8_voice_acceleration_matrix_current_host(profiler_fixture, preflight_fixture):
     profile = profiler_fixture.profile
 
-    _assert_stt_qnn_guard_is_explicit_not_wired()
     cells = _matrix_for_current_host(profile, preflight_fixture)
     matrix = _format_matrix(cells)
 

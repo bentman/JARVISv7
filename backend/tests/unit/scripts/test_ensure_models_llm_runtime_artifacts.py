@@ -5,21 +5,13 @@ import hashlib
 import io
 import os
 import tarfile
-import zipfile
 from pathlib import Path
 
 import pytest
 from backend.app.core.capabilities import HardwareProfile
 from backend.app.core.settings import Settings
+from backend.tests.unit.scripts.conftest import _zip_bytes
 from scripts import ensure_models
-
-
-def _zip_bytes(entries: dict[str, bytes]) -> bytes:
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, mode="w") as archive:
-        for name, payload in entries.items():
-            archive.writestr(name, payload)
-    return buffer.getvalue()
 
 
 def _tar_gz_bytes(entries: dict[str, tuple[bytes, int]]) -> bytes:

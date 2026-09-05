@@ -67,7 +67,7 @@ CURATION_JOB_STATUSES = (
     "failed",
     "cancelled",
 )
-_WRITE_BUSY_RETRIES = 3
+_WRITE_BUSY_RETRIES = 8
 _WRITE_BUSY_TIMEOUT_MS = 250
 _WRITE_BUSY_BACKOFF_SECONDS = 0.02
 CURATION_RETRY_DELAYS_SECONDS = (60, 300)
@@ -1159,7 +1159,7 @@ class SemanticMemory:
                     SELECT *
                     FROM semantic_event
                     WHERE fact_id = ?
-                    ORDER BY occurred_at ASC, event_id ASC
+                    ORDER BY occurred_at ASC, rowid ASC
                     """,
                     (fact_id,),
                 ).fetchall()

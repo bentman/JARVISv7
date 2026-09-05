@@ -4,7 +4,6 @@ import os
 from pathlib import Path
 
 import pytest
-
 from backend.app.services.daemon_registry import DaemonOwnershipError, DaemonRegistry
 
 

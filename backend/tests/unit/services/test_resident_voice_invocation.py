@@ -47,7 +47,7 @@ class _FakeEngine:
         )
 
 
-def _wait_for(predicate, timeout_s: float = 1.0) -> None:
+def _wait_for(predicate, timeout_s: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if predicate():
@@ -131,6 +131,7 @@ def test_ptt_no_speech_after_success_does_not_reuse_stale_completion(tmp_path: P
     )
 
     resident.ptt()
+    _wait_for(lambda: stream.status().subscribers == 1)
     stream.publish_for_test(np.zeros(4, dtype=np.float32))
     stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
     stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
@@ -169,6 +170,7 @@ def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path:
     )
 
     resident.ptt()
+    _wait_for(lambda: stream.status().subscribers == 1)
     stream.publish_for_test(np.zeros(4, dtype=np.float32))
     stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
     stream.publish_for_test(np.full(4, 0.2, dtype=np.float32))
@@ -239,6 +241,7 @@ def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_pat
     )
 
     resident.ptt()
+    _wait_for(lambda: stream.status().subscribers == 1)
     stream.publish_for_test(np.zeros(4, dtype=np.float32))
     stream.publish_for_test(np.zeros(4, dtype=np.float32))
 

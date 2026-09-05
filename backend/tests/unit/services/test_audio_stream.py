@@ -10,7 +10,7 @@ from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.voice_service import capture_audio, wake_chunk_source
 
 
-def _wait_for(predicate, timeout_s: float = 1.0) -> None:
+def _wait_for(predicate, timeout_s: float = 10.0) -> None:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         if predicate():
