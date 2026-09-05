@@ -26,6 +26,7 @@ def _summary(profile: PersonalityProfile) -> PersonalitySummary:
         description=profile.description,
         locale=profile.locale,
         max_words_default=profile.style.max_words_default,
+        enabled=profile.enabled,
     )
 
 
@@ -51,6 +52,11 @@ def personality_select(
         profile = load_personality_profile(request.profile_id)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    if not profile.enabled:
+        raise HTTPException(
+            status_code=409,
+            detail=f"personality profile '{profile.profile_id}' declares enabled: false",
+        )
     state.personality = profile
     state.engine.personality = profile
     state.session_service.select_personality(profile)

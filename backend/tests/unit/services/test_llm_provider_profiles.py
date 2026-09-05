@@ -4,12 +4,14 @@ import base64
 import os
 import sqlite3
 import stat
+from pathlib import Path
 
 import pytest
 from backend.app.core.settings import Settings
 from backend.app.services.llm_provider_profiles import (
     BUILTIN_MANAGED_PROFILE_ID,
     LEGACY_EXTERNAL_PROFILE_ID,
+    SCHEMA_VERSION,
     LLMProviderProfileStore,
     ProviderConfigError,
     SecretStoreLockedError,
@@ -291,3 +293,88 @@ def test_persisted_selection_overrides_legacy_external_env(tmp_path, monkeypatch
     assert LEGACY_EXTERNAL_PROFILE_ID not in profiles
     assert selection.primary_profile_id == BUILTIN_MANAGED_PROFILE_ID
     assert selection.persisted is True
+
+
+def _v1_database(db_path: Path) -> None:
+    connection = sqlite3.connect(db_path)
+    connection.executescript(
+        """
+        CREATE TABLE operator_schema (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1), version INTEGER NOT NULL);
+        INSERT INTO operator_schema(singleton, version) VALUES (1, 1);
+        CREATE TABLE llm_provider_profile (
+            profile_id TEXT PRIMARY KEY, name TEXT NOT NULL COLLATE NOCASE UNIQUE, kind TEXT NOT NULL,
+            endpoint TEXT, model TEXT, context_window INTEGER NOT NULL, timeout_seconds REAL NOT NULL,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE operator_secret (
+            owner_id TEXT NOT NULL, secret_name TEXT NOT NULL, nonce BLOB NOT NULL,
+            ciphertext BLOB NOT NULL, key_version INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL,
+            PRIMARY KEY(owner_id, secret_name),
+            FOREIGN KEY(owner_id) REFERENCES llm_provider_profile(profile_id) ON DELETE CASCADE);
+        CREATE TABLE llm_provider_selection (
+            singleton INTEGER PRIMARY KEY CHECK (singleton = 1), primary_profile_id TEXT NOT NULL,
+            local_fallback_profile_id TEXT, cloud_escalation_enabled INTEGER NOT NULL,
+            cloud_profile_id TEXT, updated_at TEXT NOT NULL);
+        """
+    )
+    connection.execute(
+        "INSERT INTO llm_provider_profile VALUES "
+        "('p1','Existing Cloud','openai','https://api.openai.com/v1','gpt-4',8192,30.0,'t','t')"
+    )
+    connection.execute("INSERT INTO operator_secret VALUES ('p1','api_key',X'00',X'11',1,'t')")
+    connection.execute("INSERT INTO llm_provider_selection VALUES (1,'p1',NULL,0,NULL,'t')")
+    connection.commit()
+    connection.close()
+
+
+def test_opening_a_version_one_database_migrates_without_losing_operator_data(tmp_path: Path) -> None:
+    db_path = tmp_path / "operator.sqlite"
+    _v1_database(db_path)
+
+    LLMProviderProfileStore(db_path=db_path, env_path=tmp_path / ".env")
+
+    connection = sqlite3.connect(db_path)
+    assert connection.execute("SELECT version FROM operator_schema WHERE singleton = 1").fetchone()[0] == SCHEMA_VERSION
+    assert connection.execute("SELECT name FROM llm_provider_profile").fetchall() == [("Existing Cloud",)]
+    assert connection.execute("SELECT owner_id FROM operator_secret").fetchall() == [("p1",)]
+    assert connection.execute("SELECT primary_profile_id FROM llm_provider_selection").fetchall() == [("p1",)]
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert {"extension_overlay", "extension_event"} <= tables
+    connection.close()
+
+
+def test_migration_is_idempotent_across_reopens(tmp_path: Path) -> None:
+    db_path = tmp_path / "operator.sqlite"
+    _v1_database(db_path)
+
+    for _ in range(3):
+        LLMProviderProfileStore(db_path=db_path, env_path=tmp_path / ".env")
+
+    connection = sqlite3.connect(db_path)
+    assert connection.execute("SELECT version FROM operator_schema WHERE singleton = 1").fetchone()[0] == SCHEMA_VERSION
+    assert connection.execute("SELECT count(*) FROM llm_provider_profile").fetchone()[0] == 1
+    connection.close()
+
+
+def test_a_newer_database_schema_is_refused_rather_than_downgraded(tmp_path: Path) -> None:
+    db_path = tmp_path / "operator.sqlite"
+    LLMProviderProfileStore(db_path=db_path, env_path=tmp_path / ".env")
+    connection = sqlite3.connect(db_path)
+    connection.execute("UPDATE operator_schema SET version = 99 WHERE singleton = 1")
+    connection.commit()
+    connection.close()
+
+    with pytest.raises(ProviderConfigError, match="unsupported operator database schema version 99"):
+        LLMProviderProfileStore(db_path=db_path, env_path=tmp_path / ".env")
+
+
+def test_a_fresh_database_is_created_at_the_current_schema_version(tmp_path: Path) -> None:
+    db_path = tmp_path / "operator.sqlite"
+
+    LLMProviderProfileStore(db_path=db_path, env_path=tmp_path / ".env")
+
+    connection = sqlite3.connect(db_path)
+    assert connection.execute("SELECT version FROM operator_schema WHERE singleton = 1").fetchone()[0] == SCHEMA_VERSION
+    tables = {row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    assert {"extension_overlay", "extension_event"} <= tables
+    connection.close()

@@ -9,6 +9,7 @@ import { renderServiceStatus } from "./components/service-status.js";
 import { closeSettings, openSettings } from "./components/settings-panel.js";
 import { createMemoryPanel, createOperatorPanelCoordinator } from "./components/memory-panel.js";
 import { createActionsPanel } from "./components/actions-panel.js";
+import { createExtensionsPanel } from "./components/extensions-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 import { createDesktopPolling } from "./components/desktop-polling.js";
@@ -33,6 +34,8 @@ const memoryTriggerEl = document.querySelector("#memory-trigger");
 const memoryPanelEl = document.querySelector("#memory-panel");
 const actionsTriggerEl = document.querySelector("#actions-trigger");
 const actionsPanelEl = document.querySelector("#actions-panel");
+const extensionsTriggerEl = document.querySelector("#extensions-trigger");
+const extensionsPanelEl = document.querySelector("#extensions-panel");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
@@ -86,6 +89,18 @@ const actionsPanel = createActionsPanel(
   },
   { onClose: () => actionsTriggerEl.focus() },
 );
+
+const extensionsPanel = createExtensionsPanel(
+  extensionsPanelEl,
+  {
+    getExtensions: (...args) => api.getExtensions(...args),
+    getExtensionErrors: (...args) => api.getExtensionErrors(...args),
+    getExtensionDetail: (...args) => api.getExtensionDetail(...args),
+    getExtensionBody: (...args) => api.getExtensionBody(...args),
+    setExtensionState: (...args) => api.setExtensionState(...args),
+  },
+  { onClose: () => extensionsTriggerEl.focus() },
+);
 let activePersonalityId = "default";
 let desktopState = null;
 let personalitySelectionPending = false;
@@ -122,6 +137,10 @@ const operatorPanels = createOperatorPanelCoordinator({
   openActions: () => actionsPanel.open(),
   closeActions: () => actionsPanel.close(),
   focusActionsTrigger: () => actionsTriggerEl.focus(),
+  isExtensionsOpen: () => extensionsPanel.isOpen(),
+  openExtensions: () => extensionsPanel.open(),
+  closeExtensions: () => extensionsPanel.close(),
+  focusExtensionsTrigger: () => extensionsTriggerEl.focus(),
 });
 
 const presenceByProfile = {
@@ -642,6 +661,10 @@ memoryTriggerEl.addEventListener("click", () => {
 
 actionsTriggerEl.addEventListener("click", () => {
   operatorPanels.toggleActions().catch((error) => showError(String(error)));
+});
+
+extensionsTriggerEl.addEventListener("click", () => {
+  operatorPanels.toggleExtensions().catch((error) => showError(String(error)));
 });
 
 settingsTriggerEl.addEventListener("click", () => {

@@ -77,17 +77,22 @@ Implemented foundations:
 - Desktop surfaces call backend APIs for settings, provider profiles, search evidence, personality selection, and governed action discovery, approval, execution status, cancellation, and audit through `desktop/src/api-client.js`, `desktop/src/components/settings-panel.js`, `desktop/src/components/llm-provider-settings.js`, `desktop/src/components/search-evidence.js`, `desktop/src/components/actions-panel.js`, `desktop/src/main.js`, and `desktop/src-tauri/src/backend.rs`.
 - The shared governed execution path this ADR depends on is built. ADR 0005 supplies one authorization ladder, an approval flow with declared modes, durable action evidence, and boundary rules the registry enforces before a capability can be registered. Every remaining extension shape attaches to that path rather than defining its own.
 
+- One backend-owned extension catalog exists in `backend/app/extensions/`. `ExtensionDescriptor` carries a stable `<family>:<local_id>` identifier, version, source, provenance, trust status, state, readiness, availability, dependencies, collisions, and untrusted metadata claims. Seven families register: settings, personality profiles, provider profiles, search providers, prompt templates, skills, and governed action descriptors.
+- The catalog observes each family live and persists only what an operator decided and the catalog cannot re-derive. `extension_overlay` and `extension_event` in `data/operator.sqlite` hold enabled state, trust, and the retirement audit trail behind a schema migration; health, dependencies, version, provenance, and collisions are derived per read so a stale row cannot claim to be healthy.
+- Enabling, disabling, or retiring an extension is a governed action. It routes through the ADR 0005 capability executor as `extension-state-update`, so it produces the same proposal, approval, and execution evidence as every other operator mutation.
+- Prompt templates are discoverable through `backend/app/extensions/prompts.py` and `config/prompts/`. A template may only declare `user` or `session` authority, so a reusable prompt cannot become hidden policy.
+- Skills load from `data/extensions/skills/<skill_id>/SKILL.md` through `backend/app/extensions/skills.py` with progressive disclosure: discovery reads frontmatter only, and the body is read solely on explicit request. Skills live outside version control, which is what makes their `external` trust meaningful.
+- A skill's `requested_tools` is recorded as an untrusted metadata claim, never a grant, and a skill declaring any authority-bearing field is rejected. A skill that declares scripts registers unavailable, because script execution needs a `privileged_execution` capability and none is registered.
+- Hook and plugin lifecycles are defined in `backend/app/extensions/lifecycle.py` without runners: closed hook event names, effect classes reused from ADR 0005, the rule that any hook beyond `local_read` must invoke a governed capability, and the plugin state machine in which packaging grants its contents nothing.
+- Backend API and desktop surfaces exist through `backend/app/api/routes/extensions.py` and `desktop/src/components/extensions-panel.js`, covering catalog discovery, load errors, detail, progressive body disclosure, and state changes.
+
 Not implemented yet:
-- A general extension catalog or registry covering prompts, skills, MCP connections, hooks, plugins, providers, connectors, tools, and agents.
-- Prompt/template discovery as reusable user-invoked starts.
-- Skill import/loading from `SKILL.md`, progressive disclosure, provenance, compatibility metadata, optional scripts, references, and assets.
 - MCP connection management, discovery, health, schema preservation, resource exposure, elicitation, credential handling, cancellation, filtering, and per-call approval mapping.
 - ACP bridge behavior for agent subprocess/session integration, permission requests, progress updates, terminal/tool chunks, cancellation, and stop reasons.
-- Hook lifecycle events, effect classes, runner behavior, timeouts, visibility, and failure handling.
-- Plugin install, enable, disable, update, uninstall, bundled extension registration, and trust/version lifecycle.
-- Backend API and desktop surfaces for a unified extension catalog.
+- Hook and plugin *runners*. Both lifecycles are defined and enforced at registration; neither executes anything.
+- Skill execution. Skills are catalogued and read, never run.
 
-Three existing modules are not this extension catalog, despite adjacent names. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
+Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
 ## Confirmation
 
@@ -118,6 +123,16 @@ Implementation evidence:
 - `backend/app/artifacts/turn_artifact.py`
 - `backend/app/actions/contracts.py`
 - `backend/app/actions/boundaries.py`
+- `backend/app/extensions/contracts.py`
+- `backend/app/extensions/catalog.py`
+- `backend/app/extensions/lifecycle.py`
+- `backend/app/extensions/prompts.py`
+- `backend/app/extensions/skills.py`
+- `backend/app/extensions/store.py`
+- `backend/app/services/extension_service.py`
+- `backend/app/api/routes/extensions.py`
+- `backend/app/api/schemas/extensions.py`
+- `config/prompts/`
 - `backend/app/actions/catalog.py`
 - `backend/app/services/capability_service.py`
 - `backend/app/services/operator_config_service.py`
@@ -130,6 +145,7 @@ Implementation evidence:
 - `desktop/src/components/llm-provider-settings.js`
 - `desktop/src/components/search-evidence.js`
 - `desktop/src/components/actions-panel.js`
+- `desktop/src/components/extensions-panel.js`
 - `desktop/src/main.js`
 - `desktop/src-tauri/src/backend.rs`
 
@@ -151,32 +167,30 @@ Validation evidence:
 - `backend/tests/unit/artifacts/test_turn_artifact.py`
 - `backend/tests/unit/actions/test_action_contracts.py`
 - `backend/tests/unit/actions/test_action_boundaries.py`
+- `backend/tests/unit/extensions/test_extension_contracts.py`
+- `backend/tests/unit/extensions/test_extension_catalog.py`
+- `backend/tests/unit/extensions/test_prompt_templates.py`
+- `backend/tests/unit/extensions/test_skill_loading.py`
+- `backend/tests/unit/services/test_extension_service.py`
+- `backend/tests/unit/api/test_extension_routes.py`
+- `backend/tests/unit/conversation/test_extensions_disabled.py`
 - `backend/tests/unit/services/test_capability_service.py`
 - `backend/tests/unit/services/test_action_evidence_log.py`
 - `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/routing/test_provider_router.py`
 
 Known absence checks:
-- No source directory or file currently implements a unified extension registry/catalog.
 - No source directory or file currently implements MCP connection management.
 - No source directory or file currently implements ACP bridge behavior.
-- No source directory or file currently implements skill loading, and no `SKILL.md` exists anywhere in the repository.
-- No source directory or file currently implements hook lifecycle execution.
+- No source directory or file currently executes a skill; loading and script declaration are catalogued only.
+- No source directory or file currently implements a hook runner or plugin installer; both lifecycles are definitions enforced at registration.
 - No source directory or file currently implements plugin lifecycle management beyond Tauri's desktop dependency plugin mechanism.
 - `backend/tests/unit/api/test_routes.py` includes a route-surface guard that agent routes are absent from OpenAPI.
 
 ## Follow-up
 
 Gaps required to complete this ADR:
-- Define and implement one backend-owned extension catalog with stable IDs, versions, source/provenance, trust status, enabled state, health state, dependency state, collision behavior, and retirement behavior.
-- Register existing extension-like families in that catalog where useful: settings, personality profiles, provider profiles, search providers, prompt templates, and governed action descriptors.
-- ADR 0005's governed capability execution path is complete except for `delegated_runs`, which is itself blocked on ADR 0007 delegated agents. It no longer gates extension work; new extension shapes must route their executable effects through it.
-- Add prompt/template discovery before skill execution.
-- Add skill loading from `SKILL.md` with progressive disclosure and provenance before allowing scripts or model-callable skill use.
-- Treat skill metadata such as requested tools as requested capability use, not as application permission.
 - Add MCP connection management for explicit server configuration, tool/resource/prompt discovery, schema preservation, health, credentials, cancellation, filtering, resource exposure, elicitation, and approval mapping.
 - Add ACP bridge behavior only through the JARVIS session, approval, artifact, and memory model.
-- Define hook lifecycle events and effect classes before adding a hook runner.
-- Define plugin lifecycle as packaging around separately registered contained extensions.
-- Add backend API, desktop surfaces, and focused tests for catalog loading, provenance, collision handling, disabled/unavailable state, health, schema handling, and no execution leakage.
-- Keep normal interaction functional when skills, MCP connections, plugins, hooks, or delegated agents are disabled.
+- Add a hook runner and a plugin installer once a shape needs them; both lifecycles are defined and enforced, and neither executes anything today.
+- Allow skill execution only behind a `privileged_execution` capability that satisfies the ADR 0005 process and root boundaries.

@@ -27,6 +27,13 @@ import {
   formatCapabilityApproval,
   formatCapabilityRisk,
 } from "../src/components/actions-panel.js";
+import {
+  createExtensionsPanelController,
+  extensionActivityState,
+  extensionStateEnabled,
+  formatExtensionOrigin,
+  requestedCapabilities,
+} from "../src/components/extensions-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -39,6 +46,7 @@ const settingsPanel = readFileSync(new URL("../src/components/settings-panel.js"
 const llmProviderSettings = readFileSync(new URL("../src/components/llm-provider-settings.js", import.meta.url), "utf8");
 const memoryPanel = readFileSync(new URL("../src/components/memory-panel.js", import.meta.url), "utf8");
 const actionsPanel = readFileSync(new URL("../src/components/actions-panel.js", import.meta.url), "utf8");
+const extensionsPanel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
@@ -58,6 +66,7 @@ for (const relativePath of [
   "../src/components/llm-provider-settings.js",
   "../src/components/memory-panel.js",
   "../src/components/actions-panel.js",
+  "../src/components/extensions-panel.js",
   "../src/components/resident-voice.js",
   "../src/components/service-status.js",
   "../src/components/desktop-polling.js",
@@ -1079,6 +1088,7 @@ const panelEvents = [];
 let memoryOpen = false;
 let settingsOpen = true;
 let actionsOpen = false;
+let extensionsOpen = false;
 const coordinator = createOperatorPanelCoordinator({
   isMemoryOpen: () => memoryOpen,
   openMemory: async () => {
@@ -1110,6 +1120,16 @@ const coordinator = createOperatorPanelCoordinator({
     actionsOpen = false;
   },
   focusActionsTrigger: () => panelEvents.push("focus-actions"),
+  isExtensionsOpen: () => extensionsOpen,
+  openExtensions: async () => {
+    panelEvents.push("open-extensions");
+    extensionsOpen = true;
+  },
+  closeExtensions: () => {
+    panelEvents.push("close-extensions");
+    extensionsOpen = false;
+  },
+  focusExtensionsTrigger: () => panelEvents.push("focus-extensions"),
 });
 await coordinator.toggleMemory();
 assert.deepEqual(panelEvents, ["close-settings", "open-memory"], "memory open must deterministically close settings first");
@@ -1355,4 +1375,197 @@ assert.equal(
 );
 assert.equal(formatCapabilityApproval({ approval_mode: "same_turn" }), "approved here");
 
-console.log("desktop static, memory, and action behavior checks passed");
+for (const command of [
+  "get_extensions",
+  "get_extension_errors",
+  "get_extension_detail",
+  "get_extension_body",
+  "set_extension_state",
+]) {
+  assert.ok(
+    apiClient.includes(`invokeMemory(invoke, "${command}"`),
+    `API client must use Tauri command ${command}`,
+  );
+  assert.ok(lib.includes(command), `Tauri handler must register ${command}`);
+}
+
+for (const route of [
+  "/extensions",
+  "/extensions/errors",
+  "/extensions/{extension_id}",
+  "/extensions/{extension_id}/body",
+  "/extensions/{extension_id}/state",
+]) {
+  assert.ok(backend.includes(route), `backend bridge must include ${route}`);
+}
+
+for (const field of [
+  "extension_id",
+  "family",
+  "version",
+  "provenance",
+  "trust",
+  "readiness",
+  "availability",
+  "unavailable_explanation",
+  "collisions",
+  "metadata_claims",
+  "requested_capabilities",
+  "body_available",
+]) {
+  assert.ok(
+    extensionsPanel.includes(field) || apiClient.includes(field),
+    `extension surface must include ${field}`,
+  );
+}
+
+assert.ok(!extensionsPanel.includes("innerHTML"), "extensions panel must render backend text without innerHTML");
+assert.ok(!extensionsPanel.includes("fetch("), "extensions panel must not call backend HTTP directly");
+assert.ok(!extensionsPanel.includes("localStorage"), "extension state must not be persisted in renderer storage");
+assert.ok(
+  !extensionsPanel.includes("TRUST_TIERS"),
+  "renderer must not duplicate backend trust policy",
+);
+assert.ok(
+  !extensionsPanel.includes(".has(extension.family)"),
+  "extension availability must not be inferred from its family",
+);
+
+assert.ok(index.includes('id="extensions-trigger"'), "operator area must expose one Extensions control");
+assert.ok(index.includes('id="extensions-panel"'), "operator area must include one hidden Extensions panel");
+
+{
+  const page = (ids) => ({
+    extensions: ids.map((id) => ({
+      extension_id: id, family: "skill", local_id: id, version: "1", display_name: id,
+      source: "s", provenance: "p", trust: "external", state: "enabled",
+      readiness: "ready", availability: "available", unavailable_explanation: "",
+      dependencies: [], collisions: [], metadata_claims: {},
+    })),
+    families: { skill: ids.length },
+  });
+  const slow = deferred();
+  const fast = deferred();
+  let call = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: () => (call++ === 0 ? slow.promise : fast.promise),
+  });
+  const first = controller.refreshCatalog();
+  const second = controller.refreshCatalog();
+  fast.resolve(page(["skill:new"]));
+  await second;
+  slow.resolve(page(["skill:old"]));
+  await first;
+  assert.equal(
+    controller.snapshot().catalog.extensions[0].extension_id,
+    "skill:new",
+    "a slow catalog response must not overwrite a newer one",
+  );
+}
+
+{
+  let calls = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({ extension_id: "skill:notes", state: "disabled", revision: 2 }),
+    setExtensionState: async (id, next, revision) => {
+      calls += 1;
+      assert.equal(revision, null, "the first change submits the revision it was shown");
+      return { extension_id: id, state: next, revision: 1 };
+    },
+  });
+  await controller.setState("skill:notes", "disabled");
+  const snapshot = controller.snapshot();
+  assert.equal(calls, 1, "a state change must reach the backend exactly once");
+  assert.equal(snapshot.mutationPending, false, "the mutation lock must release");
+  assert.equal(snapshot.notice, "Extension disabled.");
+}
+
+{
+  const conflict = Object.assign(new Error("stale"), {
+    status: 409,
+    detail: { error: "conflict", message: "stale extension overlay revision", current_revision: 3 },
+  });
+  let reloaded = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => {
+      reloaded += 1;
+      return { extensions: [], families: {} };
+    },
+    getExtensionDetail: async () => ({ extension_id: "skill:notes", state: "enabled", revision: 3 }),
+    setExtensionState: async () => {
+      throw conflict;
+    },
+  });
+  await controller.setState("skill:notes", "disabled");
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.conflict.includes("stale extension overlay revision"));
+  assert.ok(snapshot.conflict.includes("reloaded"), "a conflict must state that truth was reloaded");
+  assert.ok(reloaded > 0, "a conflict must reload backend state instead of guessing");
+}
+
+{
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({
+      extensions: [
+        {
+          extension_id: "search_provider:searxng", family: "search_provider", local_id: "searxng",
+          version: "0", display_name: "searxng", source: "s", provenance: "p",
+          trust: "application", state: "disabled", readiness: "unavailable",
+          availability: "disabled",
+          unavailable_explanation: "No web search provider is enabled.",
+          dependencies: [], collisions: [], metadata_claims: {},
+        },
+      ],
+      families: { search_provider: 1 },
+    }),
+  });
+  await controller.refreshCatalog();
+  assert.equal(
+    controller.snapshot().catalog.extensions[0].unavailable_explanation,
+    "No web search provider is enabled.",
+    "the panel must retain the backend explanation verbatim",
+  );
+}
+
+{
+  const controller = createExtensionsPanelController({
+    getExtensionDetail: async () => ({ extension_id: "skill:notes", body_available: true }),
+    getExtensionBody: async () => ({ extension_id: "skill:notes", body: "the body" }),
+  });
+  await controller.selectExtension("skill:notes");
+  assert.equal(controller.snapshot().body, "", "a body must not load during selection");
+  await controller.loadBody("skill:notes");
+  assert.equal(controller.snapshot().body, "the body", "a body loads only when asked for");
+}
+
+assert.equal(extensionStateEnabled({ extension_id: "skill:notes", state: "enabled" }, false), true);
+assert.equal(extensionStateEnabled({ extension_id: "skill:notes", state: "enabled" }, true), false);
+assert.equal(
+  extensionStateEnabled({ extension_id: "skill:notes", state: "retired" }, false),
+  false,
+  "a retired extension must not offer state controls",
+);
+
+for (const [extension, expected] of [
+  [null, "idle"],
+  [{ state: "enabled", availability: "available", readiness: "ready" }, "ready"],
+  [{ state: "enabled", availability: "available", readiness: "degraded" }, "degraded"],
+  [{ state: "disabled", availability: "disabled", readiness: "unavailable" }, "blocked"],
+  [{ state: "retired", availability: "available", readiness: "ready" }, "retired"],
+]) {
+  assert.equal(extensionActivityState(extension), expected);
+}
+
+assert.equal(
+  formatExtensionOrigin({ family: "skill", trust: "external", version: "2" }),
+  "skill · external · v2",
+);
+
+assert.deepEqual(
+  requestedCapabilities({ metadata_claims: { requested_capabilities: { ids: ["search-public-web"], trusted: false } } }),
+  ["search-public-web"],
+);
+assert.deepEqual(requestedCapabilities({ metadata_claims: {} }), []);
+
+console.log("desktop static, memory, action, and extension behavior checks passed");

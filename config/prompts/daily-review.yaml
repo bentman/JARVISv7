@@ -1,0 +1,14 @@
+prompt_id: daily-review
+version: "1"
+title: Daily review
+description: Start a structured review of what happened today and what is still open.
+authority: user
+variables:
+  - focus
+body: |
+  Help me review today.
+
+  Focus area: {{ focus }}
+
+  Cover what was completed, what is still open, and anything that needs a decision
+  before tomorrow. Ask me for anything you need rather than guessing.

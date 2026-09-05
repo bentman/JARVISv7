@@ -10,11 +10,16 @@ use backend::{
     dispute_memory as backend_dispute_memory, drain_memory_curation,
     forget_memory as backend_forget_memory,
     get_action_audit as backend_action_audit,
+    get_extension_body as backend_extension_body,
+    get_extension_detail as backend_extension_detail,
+    get_extension_errors as backend_extension_errors,
+    get_extensions as backend_extensions,
     get_action_capabilities as backend_action_capabilities,
     get_action_status as backend_action_status,
     get_artifact_retention_policy as backend_artifact_retention_policy,
     get_pending_actions as backend_pending_actions,
     propose_action as backend_propose_action,
+    set_extension_state as backend_set_extension_state,
     get_desktop_status as backend_desktop_status, get_json,
     get_memory_curation_status as backend_memory_curation_status,
     get_memory_detail as backend_memory_detail, get_memory_layers as backend_memory_layers,
@@ -374,6 +379,23 @@ fn expected_memory_revision(expected_revision: u64) -> Result<u64, String> {
     Ok(expected_revision)
 }
 
+fn required_extension_id(extension_id: String) -> Result<String, String> {
+    let trimmed = extension_id.trim();
+    if trimmed.is_empty() {
+        return Err("extension_id is empty".to_string());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn required_extension_state(state: String) -> Result<String, String> {
+    match state.trim() {
+        "enabled" => Ok("enabled".to_string()),
+        "disabled" => Ok("disabled".to_string()),
+        "retired" => Ok("retired".to_string()),
+        _ => Err("extension state must be enabled, disabled, or retired".to_string()),
+    }
+}
+
 fn required_proposal_id(proposal_id: String) -> Result<String, String> {
     let trimmed = proposal_id.trim();
     if trimmed.is_empty() {
@@ -630,6 +652,66 @@ fn decide_action(
 }
 
 #[tauri::command]
+fn get_extensions(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_extensions(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_extension_errors(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_extension_errors(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_extension_detail(
+    extension_id: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_extension_detail(
+        &state.http_client,
+        &base_url,
+        &required_extension_id(extension_id)?,
+    )
+}
+
+#[tauri::command]
+fn get_extension_body(
+    extension_id: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_extension_body(
+        &state.http_client,
+        &base_url,
+        &required_extension_id(extension_id)?,
+    )
+}
+
+#[tauri::command]
+fn set_extension_state(
+    extension_id: String,
+    extension_state: String,
+    expected_revision: Option<u64>,
+    reason: Option<String>,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    let extension_id = required_extension_id(extension_id)?;
+    let target = required_extension_state(extension_state)?;
+    let reason = optional_trimmed(reason);
+    backend_set_extension_state(
+        &state.http_client,
+        &base_url,
+        &extension_id,
+        &target,
+        expected_revision,
+        reason.as_deref(),
+    )
+}
+
+#[tauri::command]
 fn cancel_action(proposal_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_cancel_action(
@@ -802,6 +884,11 @@ pub fn run() {
             get_action_status,
             decide_action,
             cancel_action,
+            get_extensions,
+            get_extension_errors,
+            get_extension_detail,
+            get_extension_body,
+            set_extension_state,
             get_resident_voice_status,
             start_resident_voice_stream,
             stop_resident_voice_stream,

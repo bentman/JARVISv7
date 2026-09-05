@@ -9,6 +9,7 @@ class PersonalitySummary(BaseModel):
     description: str
     locale: str
     max_words_default: int
+    enabled: bool = True
 
 
 class PersonalityProfileError(BaseModel):

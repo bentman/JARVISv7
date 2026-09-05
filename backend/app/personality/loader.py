@@ -99,7 +99,12 @@ def list_personality_profiles_with_errors() -> PersonalityProfileList:
     errors: list[PersonalityProfileError] = []
     for path in sorted(directory.glob("*.yaml")):
         try:
-            profiles.append(load_personality(path))
+            profile = load_personality(path)
+            if profile.profile_id != path.stem:
+                raise ValueError(
+                    f"personality profile id '{profile.profile_id}' does not match filename '{path.stem}'"
+                )
+            profiles.append(profile)
         except Exception as exc:
             errors.append(PersonalityProfileError(profile_path=path.name, reason=str(exc)))
     return PersonalityProfileList(

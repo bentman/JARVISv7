@@ -980,6 +980,74 @@ pub fn cancel_action(
     memory_response(operation, response)
 }
 
+pub fn get_extensions(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /extensions";
+    let response = client
+        .get(format!("{base_url}/extensions"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_extension_errors(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /extensions/errors";
+    let response = client
+        .get(format!("{base_url}/extensions/errors"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_extension_detail(
+    client: &Client,
+    base_url: &str,
+    extension_id: &str,
+) -> Result<String, String> {
+    let operation = "GET /extensions/{extension_id}";
+    let response = client
+        .get(format!("{base_url}/extensions/{extension_id}"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_extension_body(
+    client: &Client,
+    base_url: &str,
+    extension_id: &str,
+) -> Result<String, String> {
+    let operation = "GET /extensions/{extension_id}/body";
+    let response = client
+        .get(format!("{base_url}/extensions/{extension_id}/body"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn set_extension_state(
+    client: &Client,
+    base_url: &str,
+    extension_id: &str,
+    state: &str,
+    expected_revision: Option<u64>,
+    reason: Option<&str>,
+) -> Result<String, String> {
+    let operation = "POST /extensions/{extension_id}/state";
+    let mut body = json!({ "state": state });
+    if let Some(value) = expected_revision {
+        body["expected_revision"] = Value::from(value);
+    }
+    if let Some(value) = reason {
+        body["reason"] = Value::String(value.to_string());
+    }
+    let response = client
+        .post(format!("{base_url}/extensions/{extension_id}/state"))
+        .json(&body)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
     let response = client
         .post(format!("{base_url}/session/close"))

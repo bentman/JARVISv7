@@ -32,7 +32,7 @@ OPENAI_ENDPOINT = "https://api.openai.com/v1"
 ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
 SECRET_KEY_NAME = "JARVIS_SECRET_STORE_KEY"
 PREVIOUS_SECRET_KEY_NAME = "JARVIS_SECRET_STORE_PREVIOUS_KEY"
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 class ProviderConfigError(ValueError):
@@ -124,6 +124,67 @@ def _private_hostname(hostname: str) -> bool:
     return bool(address.is_loopback or address.is_private or address.is_link_local)
 
 
+_BASE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS operator_schema (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    version INTEGER NOT NULL
+);
+INSERT OR IGNORE INTO operator_schema(singleton, version) VALUES (1, 1);
+CREATE TABLE IF NOT EXISTS llm_provider_profile (
+    profile_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
+    kind TEXT NOT NULL,
+    endpoint TEXT,
+    model TEXT,
+    context_window INTEGER NOT NULL,
+    timeout_seconds REAL NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS operator_secret (
+    owner_id TEXT NOT NULL,
+    secret_name TEXT NOT NULL,
+    nonce BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
+    key_version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(owner_id, secret_name),
+    FOREIGN KEY(owner_id) REFERENCES llm_provider_profile(profile_id) ON DELETE CASCADE
+);
+CREATE TABLE IF NOT EXISTS llm_provider_selection (
+    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+    primary_profile_id TEXT NOT NULL,
+    local_fallback_profile_id TEXT,
+    cloud_escalation_enabled INTEGER NOT NULL,
+    cloud_profile_id TEXT,
+    updated_at TEXT NOT NULL
+);
+"""
+
+_EXTENSION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS extension_overlay (
+    extension_id TEXT PRIMARY KEY,
+    state TEXT NOT NULL CHECK (state IN ('enabled', 'disabled', 'retired')),
+    trust TEXT,
+    reason TEXT,
+    revision INTEGER NOT NULL DEFAULT 1 CHECK (revision >= 1),
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS extension_event (
+    event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+    extension_id TEXT NOT NULL,
+    prior_state TEXT,
+    resulting_state TEXT NOT NULL,
+    reason TEXT,
+    occurred_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS extension_event_by_extension
+    ON extension_event(extension_id, occurred_at);
+"""
+
+_MIGRATIONS: dict[int, str] = {1: _EXTENSION_SCHEMA}
+
+
 class LLMProviderProfileStore:
     def __init__(self, db_path: Path | None = None, env_path: Path | None = None) -> None:
         self.db_path = db_path or DATA_DIR / "operator.sqlite"
@@ -146,50 +207,34 @@ class LLMProviderProfileStore:
             if existing is not None:
                 version = connection.execute("SELECT version FROM operator_schema WHERE singleton = 1").fetchone()
                 if version is not None:
-                    if version[0] != SCHEMA_VERSION:
-                        raise ProviderConfigError(f"unsupported operator database schema version {version[0]}")
+                    self._migrate(connection, int(version[0]))
                     return
-            connection.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS operator_schema (
-                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-                    version INTEGER NOT NULL
-                );
-                INSERT OR IGNORE INTO operator_schema(singleton, version) VALUES (1, 1);
-                CREATE TABLE IF NOT EXISTS llm_provider_profile (
-                    profile_id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL COLLATE NOCASE UNIQUE,
-                    kind TEXT NOT NULL,
-                    endpoint TEXT,
-                    model TEXT,
-                    context_window INTEGER NOT NULL,
-                    timeout_seconds REAL NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS operator_secret (
-                    owner_id TEXT NOT NULL,
-                    secret_name TEXT NOT NULL,
-                    nonce BLOB NOT NULL,
-                    ciphertext BLOB NOT NULL,
-                    key_version INTEGER NOT NULL DEFAULT 1,
-                    updated_at TEXT NOT NULL,
-                    PRIMARY KEY(owner_id, secret_name),
-                    FOREIGN KEY(owner_id) REFERENCES llm_provider_profile(profile_id) ON DELETE CASCADE
-                );
-                CREATE TABLE IF NOT EXISTS llm_provider_selection (
-                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-                    primary_profile_id TEXT NOT NULL,
-                    local_fallback_profile_id TEXT,
-                    cloud_escalation_enabled INTEGER NOT NULL,
-                    cloud_profile_id TEXT,
-                    updated_at TEXT NOT NULL
-                );
-                """
+            connection.executescript(_BASE_SCHEMA + _EXTENSION_SCHEMA)
+            connection.execute(
+                "UPDATE operator_schema SET version = ? WHERE singleton = 1", (SCHEMA_VERSION,)
             )
             version = connection.execute("SELECT version FROM operator_schema WHERE singleton = 1").fetchone()[0]
             if version != SCHEMA_VERSION:
                 raise ProviderConfigError(f"unsupported operator database schema version {version}")
+
+    def _migrate(self, connection: sqlite3.Connection, version: int) -> None:
+        if version == SCHEMA_VERSION:
+            return
+        if version > SCHEMA_VERSION:
+            raise ProviderConfigError(f"unsupported operator database schema version {version}")
+        # Every step is idempotent DDL, so a crash between the script and the version bump
+        # simply re-runs the step on the next open rather than leaving a half-migrated file.
+        while version < SCHEMA_VERSION:
+            script = _MIGRATIONS.get(version)
+            if script is None:
+                raise ProviderConfigError(
+                    f"no migration path from operator database schema version {version}"
+                )
+            connection.executescript(script)
+            version += 1
+            connection.execute(
+                "UPDATE operator_schema SET version = ? WHERE singleton = 1", (version,)
+            )
 
     def list_profiles(self, settings: Settings | None = None) -> list[ProviderProfile]:
         profiles = [self.managed_profile()]

@@ -313,6 +313,7 @@ h3 {
 .settings-panel,
 .memory-panel,
 .actions-panel,
+.extensions-panel,
 .appearance-panel {
   color: var(--color-text-secondary);
 }
@@ -320,6 +321,7 @@ h3 {
 .settings-panel:not([hidden]),
 .memory-panel:not([hidden]),
 .actions-panel:not([hidden]),
+.extensions-panel:not([hidden]),
 .appearance-panel {
   display: grid;
   gap: var(--space-3);
@@ -561,6 +563,118 @@ h3 {
 
 .actions-buttons {
   flex-wrap: wrap;
+}
+
+.extensions-panel {
+  min-width: 0;
+}
+
+.extensions-panel-header,
+.extensions-buttons {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.extensions-panel-header {
+  justify-content: space-between;
+}
+
+.extensions-panel-header h2,
+.extensions-section h3,
+.extensions-requested h4 {
+  margin: 0;
+  font-size: var(--text-md);
+}
+
+.extensions-section,
+.extensions-requested {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.extensions-status {
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.extensions-status[data-state="ready"] {
+  color: var(--color-ready);
+}
+
+.extensions-status[data-state="degraded"] {
+  color: var(--color-degraded);
+}
+
+.extensions-status[data-state="blocked"],
+.extensions-status[data-state="retired"],
+.extensions-error {
+  color: var(--color-failed);
+}
+
+.extensions-notice {
+  color: var(--color-accent);
+}
+
+.extensions-facts {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+}
+
+.extensions-field {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: space-between;
+}
+
+.extensions-field dt,
+.extensions-field dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.extensions-list {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.extensions-row {
+  display: grid;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-2);
+  text-align: left;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-primary);
+}
+
+.extensions-row[aria-pressed="true"] {
+  border-color: var(--color-accent);
+}
+
+.extensions-row-meta,
+.extensions-help {
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+}
+
+.extensions-buttons {
+  flex-wrap: wrap;
+}
+
+.extensions-section details pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .actions-section details p {

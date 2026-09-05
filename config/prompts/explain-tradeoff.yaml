@@ -1,0 +1,13 @@
+prompt_id: explain-tradeoff
+version: "1"
+title: Explain a tradeoff
+description: Compare two options and state a recommendation with its cost.
+authority: user
+variables:
+  - option_a
+  - option_b
+body: |
+  Compare {{ option_a }} against {{ option_b }}.
+
+  Give me the cost of each, say which you recommend, and name the specific condition
+  that would change your recommendation.

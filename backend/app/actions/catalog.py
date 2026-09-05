@@ -22,6 +22,7 @@ PROVIDER_SELECTION_UPDATE = "provider-selection-update"
 PROVIDER_SECRET_ROTATE = "provider-secret-rotate"
 PROVIDER_CONNECTIVITY_TEST = "provider-connectivity-test"
 OPERATOR_CONFIG_WRITE = "operator-config-write"
+EXTENSION_STATE_UPDATE = "extension-state-update"
 
 SEARCH_UNAVAILABLE = (
     "No web search provider is enabled. Enable DDGS, SearXNG, or Tavily in operator configuration."
@@ -30,6 +31,7 @@ MEMORY_UNAVAILABLE = "Memory service is unavailable, so memory lifecycle actions
 PROVIDER_LOCKED = "The provider secret store is locked; complete or roll back the key rotation."
 PROVIDER_STORE_UNAVAILABLE = "Provider profile storage is unavailable."
 PROVIDER_TEST_UNAVAILABLE = "No cloud-eligible provider profile is configured to test."
+EXTENSION_CATALOG_UNAVAILABLE = "The extension catalog is unavailable."
 OPERATOR_CONFIG_UNAVAILABLE = (
     "The .env file is missing; copy .env.example to .env before changing operator configuration."
 )
@@ -65,6 +67,7 @@ class CapabilityObservation:
     providers: tuple[ProviderObservation, ...] = ()
     operator_config_present: bool = False
     operator_config_keys: tuple[str, ...] = ()
+    extension_catalog_present: bool = False
 
     @property
     def enabled_search_providers(self) -> tuple[str, ...]:
@@ -81,6 +84,7 @@ def build_descriptors(observation: CapabilityObservation) -> tuple[CapabilityDes
         *_memory(observation),
         *_provider(observation),
         _operator(observation),
+        _extension(observation),
     )
 
 
@@ -366,6 +370,34 @@ def _operator(observation: CapabilityObservation) -> CapabilityDescriptor:
         cancellation_policy={"cancellable": False, "owner": "OperatorConfigService"},
         result_schema={"type": "object"},
         unavailable_explanation="" if present else OPERATOR_CONFIG_UNAVAILABLE,
+        approval_mode="same_turn",
+    )
+
+
+def _extension(observation: CapabilityObservation) -> CapabilityDescriptor:
+    present = observation.extension_catalog_present
+    return _capability(
+        EXTENSION_STATE_UPDATE,
+        "local_write",
+        "requires_approval",
+        source="builtin",
+        provenance="backend.app.services.extension_service",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "extension_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                "state": {"type": "string", "enum": ["enabled", "disabled", "retired"]},
+            },
+            "required": ["extension_id", "state"],
+            "additionalProperties": False,
+        },
+        readiness="ready" if present else "unavailable",
+        availability="available" if present else "disabled",
+        execution_owner="backend.app.services.extension_service.ExtensionService",
+        timeout_policy={"timeout_ms": CONFIG_TIMEOUT_MS},
+        cancellation_policy={"cancellable": False, "owner": "ExtensionService"},
+        result_schema={"type": "object"},
+        unavailable_explanation="" if present else EXTENSION_CATALOG_UNAVAILABLE,
         approval_mode="same_turn",
     )
 

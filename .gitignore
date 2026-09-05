@@ -122,6 +122,7 @@ Thumbs.db
 # (directories must be re-included before their contents)
 !/data/actions/
 !/data/agents/
+!/data/extensions/
 !/data/memory/
 !/data/sessions/
 !/data/temp/
@@ -131,6 +132,12 @@ Thumbs.db
 # data/actions (governed action evidence log; ADR 0005)
 /data/actions/*
 !/data/actions/.gitkeep
+
+# data/extensions (operator- and third-party-authored extensions; ADR 0006)
+/data/extensions/*
+!/data/extensions/skills/
+/data/extensions/skills/*
+!/data/extensions/skills/.gitkeep
 
 # data/agents (agent ledger; I.2)
 /data/agents/*

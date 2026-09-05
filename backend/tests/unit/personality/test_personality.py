@@ -232,3 +232,31 @@ def test_compile_personality_policy_rejects_role_overlay():
         assert "role overlays are not supported" in str(exc)
     else:
         raise AssertionError("role overlay accepted")
+
+
+def test_a_profile_declaring_itself_disabled_is_visible_but_marked(tmp_path, monkeypatch) -> None:
+    directory = tmp_path / "personality"
+    directory.mkdir()
+    (directory / "retired.yaml").write_text(
+        _valid_yaml("retired").replace("enabled: true", "enabled: false"), encoding="utf-8"
+    )
+    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+
+    result = list_personality_profiles_with_errors()
+
+    assert [profile.profile_id for profile in result.profiles] == ["retired"]
+    assert result.profiles[0].enabled is False
+    assert result.profile_errors == []
+
+
+def test_a_filename_that_disagrees_with_its_profile_id_is_reported(tmp_path, monkeypatch) -> None:
+    directory = tmp_path / "personality"
+    directory.mkdir()
+    (directory / "alpha.yaml").write_text(_valid_yaml("beta"), encoding="utf-8")
+    monkeypatch.setattr("backend.app.personality.loader.CONFIG_DIR", tmp_path)
+
+    result = list_personality_profiles_with_errors()
+
+    assert result.profiles == []
+    assert result.profile_errors[0].profile_path == "alpha.yaml"
+    assert "does not match filename" in result.profile_errors[0].reason

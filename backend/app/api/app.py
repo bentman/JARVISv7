@@ -17,7 +17,10 @@ from backend.app.memory.curation_reconciliation import (
 )
 from backend.app.memory.episodic import EpisodicMemory
 from backend.app.memory.semantic import SemanticMemory
-from backend.app.personality.loader import load_default_personality
+from backend.app.personality.loader import (
+    list_personality_profiles_with_errors,
+    load_default_personality,
+)
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.routing.runtime_selector import SelectionTrace
 from backend.app.runtimes.llm.base import LLMBase
@@ -35,6 +38,7 @@ from backend.app.services.capability_service import (
     observe_capabilities,
 )
 from backend.app.services.daemon_registry import DaemonRegistry
+from backend.app.services.extension_service import ExtensionService, observe_extensions
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.llm_provider_profiles import LLMProviderProfileStore
 from backend.app.services.llm_provider_service import prepare_llm_providers
@@ -87,6 +91,7 @@ class ApiState:
     memory_curation_service: MemoryCurationService | None = None
     memory_service: MemoryService | None = None
     capability_service: CapabilityService | None = None
+    extension_service: ExtensionService | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -166,6 +171,7 @@ def build_startup_state() -> ApiState:
             provider_store_factory=LLMProviderProfileStore,
             operator_config_keys=operator_config.keys,
             env_file=ENV_FILE,
+            extension_catalog_present=True,
         ),
         handlers=build_capability_handlers(
             memory_service_provider=lambda: memory_service,
@@ -174,6 +180,15 @@ def build_startup_state() -> ApiState:
             env_file=ENV_FILE,
         ),
         evidence_dir=DATA_DIR / "actions",
+    )
+    extension_service = ExtensionService(
+        observe=lambda: observe_extensions(
+            settings_provider=load_settings,
+            personality_provider=list_personality_profiles_with_errors,
+            provider_store_factory=LLMProviderProfileStore,
+            capability_service_provider=lambda: capability_service,
+            operator_config_keys=operator_config.keys,
+        ),
     )
     engine = TurnEngine(
         stt=stt,
@@ -279,6 +294,7 @@ def build_startup_state() -> ApiState:
         memory_curation_service=memory_curation_service,
         memory_service=memory_service,
         capability_service=capability_service,
+        extension_service=extension_service,
     )
     return state
 
@@ -334,6 +350,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
         config,
         daemon,
         diagnostics,
+        extensions,
         health,
         llm_config,
         memory,
@@ -350,6 +367,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.state.daemon_registry = DaemonRegistry()
     app.include_router(health.router)
     app.include_router(actions.router)
+    app.include_router(extensions.router)
     app.include_router(daemon.router)
     app.include_router(readiness.router)
     app.include_router(personality.router)

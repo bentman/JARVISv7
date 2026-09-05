@@ -711,6 +711,7 @@ export function createOperatorPanelCoordinator(options) {
     { name: "memory", isOpen: options.isMemoryOpen, open: options.openMemory, close: options.closeMemory, focus: options.focusMemoryTrigger },
     { name: "settings", isOpen: options.isSettingsOpen, open: options.openSettings, close: options.closeSettings, focus: options.focusSettingsTrigger },
     { name: "actions", isOpen: options.isActionsOpen, open: options.openActions, close: options.closeActions, focus: options.focusActionsTrigger },
+    { name: "extensions", isOpen: options.isExtensionsOpen, open: options.openExtensions, close: options.closeExtensions, focus: options.focusExtensionsTrigger },
   ].filter((panel) => panel.isOpen && panel.open && panel.close);
 
   async function toggle(name) {
@@ -731,5 +732,6 @@ export function createOperatorPanelCoordinator(options) {
     toggleMemory: () => toggle("memory"),
     toggleSettings: () => toggle("settings"),
     toggleActions: () => toggle("actions"),
+    toggleExtensions: () => toggle("extensions"),
   };
 }
