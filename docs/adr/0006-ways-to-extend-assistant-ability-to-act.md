@@ -66,15 +66,16 @@ Negative:
 This ADR is partially implemented.
 
 Implemented foundations:
-- Operator settings are scoped and classified through `backend/app/core/settings.py`, `backend/app/api/routes/config.py`, and `backend/app/api/schemas/config.py`. Operator writes are allowlisted, and secrets are masked.
+- Operator settings are scoped and classified through `backend/app/core/settings.py`. `backend/app/services/operator_config_service.py` owns the operator field allowlist and secret masking; `backend/app/api/routes/config.py` and `backend/app/api/schemas/config.py` are the route surface over it. Operator writes are allowlisted, and secrets are masked.
 - Personality profiles are structured YAML under `config/personality/`. `backend/app/personality/schema.py`, `backend/app/personality/loader.py`, and `backend/app/personality/policy.py` reject authority-bearing fields such as tool policy, routing policy, memory policy, hidden instructions, and safety overrides.
 - Personality selection is exposed through backend routes and schemas in `backend/app/api/routes/personality.py` and `backend/app/api/schemas/personality.py`.
 - Prompt boundaries exist through `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/prompt_renderer.py`, and `backend/app/cognition/prompt_chat_renderer.py`. Prompt segments carry authority labels, content type, and trust state.
 - Provider profiles are implemented through `backend/app/services/llm_provider_profiles.py`, `backend/app/services/llm_provider_service.py`, `backend/app/api/routes/llm_config.py`, and `backend/app/api/schemas/llm_config.py`.
 - Search providers are implemented as governed external-read behavior through `backend/app/cognition/search_policy.py`, `backend/app/services/search_service.py`, and `backend/app/runtimes/internetsearch/`.
-- Action governance records exist in `backend/app/actions/contracts.py`: capability descriptors, availability/readiness/effect classes, model proposals, authorization decisions, approval records, execution results, metadata claims, and collision checks.
-- Turn artifacts in `backend/app/artifacts/turn_artifact.py` reserve evidence fields for tools invoked, action proposals, authorization decisions, approval records, action execution results, cancellations, delegated runs, search evidence, memory evidence, runtime context, and failure state.
-- Desktop surfaces call backend APIs for settings, provider profiles, search evidence, and personality selection through `desktop/src/api-client.js`, `desktop/src/components/settings-panel.js`, `desktop/src/components/llm-provider-settings.js`, `desktop/src/components/search-evidence.js`, `desktop/src/main.js`, and `desktop/src-tauri/src/backend.rs`.
+- Action governance records exist in `backend/app/actions/contracts.py`: capability descriptors, availability/readiness/effect classes, approval modes, model proposals, authorization decisions, approval records, execution results, action cancellation records, the action evidence accumulator, metadata claims, and collision checks. `CapabilityRegistry` enforces execution boundaries and the input-schema keywords it can validate at registration, and refuses any descriptor that fails them.
+- Turn artifacts in `backend/app/artifacts/turn_artifact.py` carry evidence for tools invoked, action proposals, authorization decisions, approval records, action execution results, cancellations, search evidence, memory evidence, runtime context, and failure state. `TurnEngine._persist_artifact` writes the action evidence. Only `delegated_runs` stays empty, because no producer exists until delegated agents arrive.
+- Desktop surfaces call backend APIs for settings, provider profiles, search evidence, personality selection, and governed action discovery, approval, execution status, cancellation, and audit through `desktop/src/api-client.js`, `desktop/src/components/settings-panel.js`, `desktop/src/components/llm-provider-settings.js`, `desktop/src/components/search-evidence.js`, `desktop/src/components/actions-panel.js`, `desktop/src/main.js`, and `desktop/src-tauri/src/backend.rs`.
+- The shared governed execution path this ADR depends on is built. ADR 0005 supplies one authorization ladder, an approval flow with declared modes, durable action evidence, and boundary rules the registry enforces before a capability can be registered. Every remaining extension shape attaches to that path rather than defining its own.
 
 Not implemented yet:
 - A general extension catalog or registry covering prompts, skills, MCP connections, hooks, plugins, providers, connectors, tools, and agents.
@@ -86,7 +87,7 @@ Not implemented yet:
 - Plugin install, enable, disable, update, uninstall, bundled extension registration, and trust/version lifecycle.
 - Backend API and desktop surfaces for a unified extension catalog.
 
-`backend/app/core/capabilities.py` is not this extension registry. It only describes hardware/runtime capability flags.
+Three existing modules are not this extension catalog, despite adjacent names. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
 ## Confirmation
 
@@ -116,11 +117,19 @@ Implementation evidence:
 - `backend/app/conversation/engine.py`
 - `backend/app/artifacts/turn_artifact.py`
 - `backend/app/actions/contracts.py`
+- `backend/app/actions/boundaries.py`
+- `backend/app/actions/catalog.py`
+- `backend/app/services/capability_service.py`
+- `backend/app/services/operator_config_service.py`
+- `backend/app/api/routes/actions.py`
+- `backend/app/api/schemas/actions.py`
 - `backend/app/core/capabilities.py`
+- `backend/app/models/catalog.py`
 - `desktop/src/api-client.js`
 - `desktop/src/components/settings-panel.js`
 - `desktop/src/components/llm-provider-settings.js`
 - `desktop/src/components/search-evidence.js`
+- `desktop/src/components/actions-panel.js`
 - `desktop/src/main.js`
 - `desktop/src-tauri/src/backend.rs`
 
@@ -141,13 +150,17 @@ Validation evidence:
 - `backend/tests/unit/conversation/test_engine.py`
 - `backend/tests/unit/artifacts/test_turn_artifact.py`
 - `backend/tests/unit/actions/test_action_contracts.py`
+- `backend/tests/unit/actions/test_action_boundaries.py`
+- `backend/tests/unit/services/test_capability_service.py`
+- `backend/tests/unit/services/test_action_evidence_log.py`
+- `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/routing/test_provider_router.py`
 
 Known absence checks:
 - No source directory or file currently implements a unified extension registry/catalog.
 - No source directory or file currently implements MCP connection management.
 - No source directory or file currently implements ACP bridge behavior.
-- No source directory or file currently implements skill loading.
+- No source directory or file currently implements skill loading, and no `SKILL.md` exists anywhere in the repository.
 - No source directory or file currently implements hook lifecycle execution.
 - No source directory or file currently implements plugin lifecycle management beyond Tauri's desktop dependency plugin mechanism.
 - `backend/tests/unit/api/test_routes.py` includes a route-surface guard that agent routes are absent from OpenAPI.
@@ -157,7 +170,7 @@ Known absence checks:
 Gaps required to complete this ADR:
 - Define and implement one backend-owned extension catalog with stable IDs, versions, source/provenance, trust status, enabled state, health state, dependency state, collision behavior, and retirement behavior.
 - Register existing extension-like families in that catalog where useful: settings, personality profiles, provider profiles, search providers, prompt templates, and governed action descriptors.
-- Complete ADR 0005's governed capability execution path before exposing broad model-callable extensions.
+- ADR 0005's governed capability execution path is complete except for `delegated_runs`, which is itself blocked on ADR 0007 delegated agents. It no longer gates extension work; new extension shapes must route their executable effects through it.
 - Add prompt/template discovery before skill execution.
 - Add skill loading from `SKILL.md` with progressive disclosure and provenance before allowing scripts or model-callable skill use.
 - Treat skill metadata such as requested tools as requested capability use, not as application permission.
