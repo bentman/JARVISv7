@@ -98,6 +98,13 @@ const extensionsPanel = createExtensionsPanel(
     getExtensionDetail: (...args) => api.getExtensionDetail(...args),
     getExtensionBody: (...args) => api.getExtensionBody(...args),
     setExtensionState: (...args) => api.setExtensionState(...args),
+    getExtensionRuntime: (...args) => api.getExtensionRuntime(...args),
+    getExtensionRuns: (...args) => api.getExtensionRuns(...args),
+    invokeExtension: (...args) => api.invokeExtension(...args),
+    answerExtensionInput: (...args) => api.answerExtensionInput(...args),
+    writeExtensionCredential: (...args) => api.writeExtensionCredential(...args),
+    decideAction: (...args) => api.decideAction(...args),
+    cancelAction: (...args) => api.cancelAction(...args),
   },
   { onClose: () => extensionsTriggerEl.focus() },
 );

@@ -1,0 +1,7 @@
+id: record-event
+name: Record lifecycle events
+version: 1.0.0
+enabled: false
+definition:
+  event: session_start
+  handler: record_event

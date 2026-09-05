@@ -38,6 +38,7 @@ from backend.app.services.capability_service import (
     observe_capabilities,
 )
 from backend.app.services.daemon_registry import DaemonRegistry
+from backend.app.services.extension_runtime_service import ExtensionRuntimeService
 from backend.app.services.extension_service import ExtensionService, observe_extensions
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 from backend.app.services.llm_provider_profiles import LLMProviderProfileStore
@@ -92,6 +93,7 @@ class ApiState:
     memory_service: MemoryService | None = None
     capability_service: CapabilityService | None = None
     extension_service: ExtensionService | None = None
+    extension_runtime: ExtensionRuntimeService | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -112,6 +114,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         search_service=SearchService.configured(settings),
         search_secret_values=_search_secrets(settings),
         capability_service=getattr(state, "capability_service", None),
+        extension_runtime=getattr(state, "extension_runtime", None),
     )
 
 
@@ -181,12 +184,14 @@ def build_startup_state() -> ApiState:
         ),
         evidence_dir=DATA_DIR / "actions",
     )
+    extension_runtime = ExtensionRuntimeService(capability_service)
     extension_service = ExtensionService(
         observe=lambda: observe_extensions(
             settings_provider=load_settings,
             personality_provider=list_personality_profiles_with_errors,
             provider_store_factory=LLMProviderProfileStore,
             capability_service_provider=lambda: capability_service,
+            runtime_provider=lambda: extension_runtime,
             operator_config_keys=operator_config.keys,
         ),
     )
@@ -205,6 +210,7 @@ def build_startup_state() -> ApiState:
         search_service=SearchService.configured(settings),
         search_secret_values=_search_secrets(settings),
         capability_service=capability_service,
+        extension_runtime=extension_runtime,
     )
     session_service: SessionService
     memory_curation_service = MemoryCurationService(
@@ -295,12 +301,19 @@ def build_startup_state() -> ApiState:
         memory_service=memory_service,
         capability_service=capability_service,
         extension_service=extension_service,
+        extension_runtime=extension_runtime,
     )
     return state
 
 
 def install_state(app: FastAPI, state: ApiState) -> None:
     app.state.jarvis_state = state
+    runtime = getattr(state, "extension_runtime", None)
+    if runtime is not None:
+        def execute_extension(work, arguments, operation):
+            state.session_service.assert_active_session()
+            return state.session_service.engine().run_extension(work, arguments, operation)
+        runtime.session_executor = execute_extension
 
 
 def stop_managed_local_llm(state: ApiState | None) -> None:
@@ -335,6 +348,9 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         state = getattr(app.state, "jarvis_state", None)
+        extension_runtime = getattr(state, "extension_runtime", None)
+        if extension_runtime is not None:
+            extension_runtime.close()
         session_service = getattr(state, "session_service", None)
         if session_service is not None and session_service.is_session_active():
             session_service.end_session(session_service.session_manager.session_id)

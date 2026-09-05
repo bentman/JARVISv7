@@ -248,11 +248,14 @@ def test_registry_refuses_boundaries_that_contradict_the_declared_policies() -> 
         registry.register(descriptor(boundaries=bounded(timeout_ms=999)))
 
 
-def test_registry_refuses_input_schema_keywords_it_cannot_enforce() -> None:
+def test_registry_enforces_full_json_schema() -> None:
     registry = CapabilityRegistry()
-
-    with pytest.raises(ValueError, match="unsupported keywords: pattern"):
-        registry.register(descriptor(input_schema={"type": "object", "pattern": "^x$"}))
+    schema = {"type": "object", "properties": {"value": {"type": "string", "pattern": "^x$"}}}
+    registry.register(descriptor(input_schema=schema))
+    from backend.app.actions.contracts import validate_arguments
+    assert not validate_arguments(schema, {"value": "x"})
+    assert validate_arguments(schema, {"value": "y"})
+    assert validate_arguments({"type": "object", "$ref": "https://invalid.example/schema"}, {})
 
 
 def test_authorization_denies_arguments_the_input_schema_rejects() -> None:
@@ -271,7 +274,7 @@ def test_authorization_denies_arguments_the_input_schema_rejects() -> None:
     decision = registry.authorize(proposal(), auth_context())
 
     assert decision.outcome == "denied"
-    assert "arguments.query must have at most 8 characters" in decision.reason
+    assert "arguments[query] violates maxLength" in decision.reason
 
 
 def test_authorization_denies_capabilities_whose_readiness_is_unavailable() -> None:

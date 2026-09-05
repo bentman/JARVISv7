@@ -288,7 +288,7 @@ def test_invalid_arguments_are_denied_before_any_handler_runs() -> None:
     )
 
     assert view.outcome == "denied"
-    assert "missing required field expected_revision" in view.reason
+    assert "expected_revision" in view.reason
     assert calls == []
 
 

@@ -11,6 +11,7 @@ from backend.app.extensions.catalog import (
     build_extension_descriptors,
 )
 from backend.app.extensions.contracts import ExtensionCatalog, ExtensionError
+from backend.app.extensions.discovery import DEFINITION_FAMILIES, discover_definition_manifests
 from backend.app.extensions.prompts import list_prompt_templates_with_errors, load_prompt_template
 from backend.app.extensions.skills import list_skills_with_errors, load_skill_body
 from backend.app.extensions.store import ExtensionOverlayConflictError, ExtensionOverlayStore
@@ -113,6 +114,10 @@ class ExtensionService:
             ExtensionLoadErrorView("skill", error.skill_path, error.reason)
             for error in observation.skill_errors
         ]
+        errors += [
+            ExtensionLoadErrorView(error.family, error.source, error.reason)
+            for error in observation.definition_errors
+        ]
         with self._lock:
             self._catalog = catalog
             self._errors = errors
@@ -207,6 +212,7 @@ def observe_extensions(
     operator_config_keys: tuple[str, ...] = (),
     config_dir: Path | None = None,
     data_dir: Path | None = None,
+    runtime_provider: Callable[[], Any] | None = None,
 ) -> ExtensionObservation:
     from backend.app.core.settings import SETTING_ENV_CLASSIFICATION
     from backend.app.services.llm_provider_profiles import SecretStoreLockedError
@@ -250,7 +256,17 @@ def observe_extensions(
             )
 
     prompt_list = list_prompt_templates_with_errors(config_dir)
-    skill_list = list_skills_with_errors(data_dir)
+    skill_list = (
+        list_skills_with_errors(data_dir)
+        if config_dir is not None and data_dir is not None and config_dir == data_dir
+        else list_skills_with_errors(data_dir, config_dir=config_dir)
+    )
+    definition_lists = tuple(
+        discover_definition_manifests(family, config_root=config_dir, data_root=data_dir)
+        for family in sorted(DEFINITION_FAMILIES)
+    )
+    runtime = runtime_provider() if runtime_provider else None
+    runtime_definitions, runtime_records, runtime_errors = runtime.observation() if runtime else ((), (), ())
 
     return ExtensionObservation(
         settings=tuple(
@@ -269,7 +285,15 @@ def observe_extensions(
         prompt_errors=tuple(prompt_list.errors),
         skills=tuple(skill_list.skills),
         skill_errors=tuple(skill_list.errors),
+        executable_skills=tuple(runtime.executable_skills()) if runtime else (),
         capabilities=capabilities,
+        definitions=runtime_definitions if runtime is not None else tuple(
+            manifest for definition_list in definition_lists for manifest in definition_list.manifests
+        ),
+        definition_runtime=runtime_records,
+        definition_errors=runtime_errors + tuple(
+            error for definition_list in definition_lists for error in definition_list.errors
+        ),
     )
 
 

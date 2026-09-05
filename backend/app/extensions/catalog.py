@@ -8,6 +8,7 @@ from backend.app.extensions.contracts import (
     ExtensionDescriptor,
     extension_id,
 )
+from backend.app.extensions.discovery import DefinitionError, DefinitionManifest, DefinitionRuntime
 from backend.app.extensions.prompts import PromptTemplate, PromptTemplateError
 from backend.app.extensions.skills import SkillError, SkillManifest
 
@@ -52,7 +53,11 @@ class ExtensionObservation:
     prompt_errors: tuple[PromptTemplateError, ...] = ()
     skills: tuple[SkillManifest, ...] = ()
     skill_errors: tuple[SkillError, ...] = ()
+    executable_skills: tuple[str, ...] = ()
     capabilities: tuple[tuple[str, str, str], ...] = ()
+    definitions: tuple[DefinitionManifest, ...] = ()
+    definition_errors: tuple[DefinitionError, ...] = ()
+    definition_runtime: tuple[DefinitionRuntime, ...] = ()
 
 
 def build_extension_descriptors(
@@ -68,6 +73,11 @@ def build_extension_descriptors(
     records += [("prompt", record) for record in _prompts(observation)]
     records += [("skill", record) for record in _skills(observation)]
     records += [("capability", record) for record in _capabilities(observation)]
+    runtime = {(item.family, item.local_id): item for item in observation.definition_runtime}
+    records += [
+        (record.family, _definition(record, runtime.get((record.family, record.local_id))))
+        for record in observation.definitions
+    ]
 
     collisions = _collisions(records)
     descriptors: list[ExtensionDescriptor] = []
@@ -214,11 +224,11 @@ def _skills(observation: ExtensionObservation) -> list[ObservedRecord]:
             display_name=skill.name,
             version=skill.version,
             source=skill.source,
-            provenance="data/extensions/skills",
-            trust="external",
-            readiness="degraded" if skill.has_scripts else "ready",
-            availability="disabled" if skill.has_scripts else "available",
-            unavailable_explanation=SKILL_SCRIPTS_DISABLED if skill.has_scripts else "",
+            provenance=getattr(skill, "provenance", "data/extensions/skills"),
+            trust=getattr(skill, "trust", "external"),
+            readiness="degraded" if skill.has_scripts and skill.skill_id not in observation.executable_skills else "ready",
+            availability="disabled" if skill.has_scripts and skill.skill_id not in observation.executable_skills else "available",
+            unavailable_explanation=SKILL_SCRIPTS_DISABLED if skill.has_scripts and skill.skill_id not in observation.executable_skills else "",
             dependencies=skill.requested_tools,
             metadata_claims=skill.metadata_claims(),
         )
@@ -239,3 +249,23 @@ def _capabilities(observation: ExtensionObservation) -> list[ObservedRecord]:
         )
         for capability_id, readiness, availability in observation.capabilities
     ]
+
+
+def _definition(manifest: DefinitionManifest, runtime: DefinitionRuntime | None) -> ObservedRecord:
+    return ObservedRecord(
+        local_id=manifest.local_id,
+        display_name=manifest.display_name,
+        version=manifest.version,
+        source=manifest.source,
+        provenance=manifest.provenance,
+        trust=manifest.trust,
+        declared_enabled=manifest.declared_enabled,
+        readiness=runtime.readiness if runtime is not None else manifest.readiness,
+        availability=runtime.availability if runtime is not None else manifest.availability,
+        unavailable_explanation=(
+            runtime.unavailable_explanation if runtime is not None else manifest.unavailable_explanation
+        ),
+        dependencies=manifest.dependencies,
+        metadata_claims=manifest.metadata_claims,
+        definition=manifest.definition,
+    )

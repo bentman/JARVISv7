@@ -55,6 +55,31 @@ const cargoToml = readFileSync(new URL("../src-tauri/Cargo.toml", import.meta.ur
 const tauriConfig = JSON.parse(readFileSync(new URL("../src-tauri/tauri.conf.json", import.meta.url), "utf8"));
 const desktopSource = main + apiClient + residentVoice;
 
+const extensionCalls = [];
+const extensionController = createExtensionsPanelController({
+  invokeExtension: async (...args) => { extensionCalls.push(["invoke", ...args]); return { status: "awaiting_approval" }; },
+  answerExtensionInput: async (...args) => { extensionCalls.push(["answer", ...args]); },
+  decideAction: async (...args) => { extensionCalls.push(["decide", ...args]); },
+  cancelAction: async (...args) => { extensionCalls.push(["cancel", ...args]); },
+  getExtensionRuns: async () => ({ runs: [] }),
+}, () => undefined);
+await extensionController.invoke("acp:agent", "capability", { prompt: "hello" });
+await extensionController.answer("run", "request", { action: "accept", content: { value: "ok" } });
+await extensionController.decide("proposal", "approved");
+await extensionController.decide("proposal", "denied");
+assert.deepEqual(extensionCalls, [
+  ["invoke", "acp:agent", "capability", { prompt: "hello" }],
+  ["answer", "run", "request", { action: "accept", content: { value: "ok" } }],
+  ["decide", "proposal", "approved"],
+  ["decide", "proposal", "denied"],
+]);
+const failingExtensionController = createExtensionsPanelController({
+  invokeExtension: async () => { throw new Error("blocked"); },
+}, () => undefined);
+await failingExtensionController.invoke("mcp:server", "capability", {});
+assert.equal(failingExtensionController.snapshot().detailError, "blocked");
+assert.ok(extensionsPanel.includes("data-draft-key"), "extension forms must retain drafts across run refreshes");
+
 for (const relativePath of [
   "../package.json",
   "../src/index.html",

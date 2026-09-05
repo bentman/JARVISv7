@@ -59,6 +59,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     detailError: "",
     conflict: "",
     notice: "",
+    runtime: null,
+    runs: [],
   };
   let catalogSequence = 0;
   let errorsSequence = 0;
@@ -126,6 +128,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       const payload = await handlers.getExtensionDetail(extensionId);
       if (request !== detailSequence) return null;
       state.detail = payload;
+      if (handlers.getExtensionRuntime) state.runtime = await handlers.getExtensionRuntime(extensionId);
+      if (handlers.getExtensionRuns) state.runs = (await handlers.getExtensionRuns())?.runs || [];
       return payload;
     } catch (error) {
       if (request !== detailSequence) return null;
@@ -137,6 +141,46 @@ export function createExtensionsPanelController(handlers, render = () => undefin
         emit();
       }
     }
+  }
+
+  async function invoke(extensionId, capabilityId, argumentsValue) {
+    try {
+      const result = await handlers.invokeExtension(extensionId, capabilityId, argumentsValue);
+      state.notice = result?.status === "awaiting_approval" ? "Awaiting approval." : "Extension invoked.";
+      if (handlers.getExtensionRuns) state.runs = (await handlers.getExtensionRuns())?.runs || [];
+      emit();
+      return result;
+    } catch (error) { state.detailError = errorMessage(error, "Extension invocation failed."); emit(); return null; }
+  }
+
+  async function answer(runId, requestId, answerValue) {
+    try { await handlers.answerExtensionInput(runId, requestId, answerValue); }
+    catch (error) { state.detailError = errorMessage(error, "Extension input was not accepted."); emit(); return; }
+    if (handlers.getExtensionRuns) state.runs = (await handlers.getExtensionRuns())?.runs || [];
+    emit();
+  }
+
+  async function credential(extensionId, name, secret) {
+    try { await handlers.writeExtensionCredential(extensionId, name, secret); }
+    catch (error) { state.detailError = errorMessage(error, "Credential was not stored."); emit(); return; }
+    state.notice = "Credential stored.";
+    emit();
+  }
+
+  async function refreshRuns() {
+    if (!handlers.getExtensionRuns) return;
+    state.runs = (await handlers.getExtensionRuns())?.runs || [];
+    emit();
+  }
+
+  async function decide(proposalId, outcome) {
+    await handlers.decideAction(proposalId, outcome);
+    await refreshRuns();
+  }
+
+  async function cancel(proposalId) {
+    await handlers.cancelAction(proposalId);
+    await refreshRuns();
   }
 
   async function loadBody(extensionId) {
@@ -190,6 +234,11 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  function notice(message) {
+    state.notice = message;
+    emit();
+  }
+
   async function load() {
     await Promise.all([refreshCatalog(), refreshErrors()]);
   }
@@ -212,6 +261,13 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     loadBody,
     setState,
     filterFamily,
+    invoke,
+    answer,
+    credential,
+    refreshRuns,
+    decide,
+    cancel,
+    notice,
     cancelPendingReads,
     snapshot: () => copyState(state),
   };
@@ -377,6 +433,108 @@ function renderDetail(state) {
   }
   section.appendChild(buttons);
 
+  if (state.runtime?.operations?.length) {
+    const runtime = document.createElement("div");
+    runtime.className = "extensions-requested";
+    appendText(runtime, "Operations", "h4");
+    for (const operation of state.runtime.operations) {
+      const form = document.createElement("form");
+      appendText(form, operation.name, "strong");
+      const fields = operation.input_schema?.properties || {};
+      const complex = Object.values(fields).some((schema) => ["object", "array"].includes(schema.type));
+      const inputs = [];
+      if (complex) {
+        const json = document.createElement("textarea");
+        json.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:$json`;
+        json.placeholder = "Advanced JSON arguments";
+        json.required = true;
+        form.appendChild(json);
+        inputs.push(["$json", json, { type: "json" }]);
+      }
+      for (const [name, schema] of complex ? [] : Object.entries(fields)) {
+        const input = document.createElement("input");
+        input.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:${name}`;
+        input.name = name;
+        input.required = (operation.input_schema?.required || []).includes(name);
+        if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(select); continue; }
+        input.type = schema.type === "boolean" ? "checkbox" : schema.type === "number" || schema.type === "integer" ? "number" : "text";
+        input.placeholder = name;
+        form.appendChild(input);
+        inputs.push([name, input, schema]);
+      }
+      const submit = document.createElement("button");
+      submit.type = "submit";
+      submit.textContent = "Invoke";
+      submit.disabled = !operation.available;
+      form.appendChild(submit);
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        let argumentsValue;
+        try {
+          argumentsValue = inputs[0]?.[0] === "$json" ? JSON.parse(inputs[0][1].value) : Object.fromEntries(inputs.map(([name, input, schema]) => [name, schema.type === "boolean" ? input.checked : schema.type === "number" || schema.type === "integer" ? Number(input.value) : input.value]));
+        } catch {
+          state.actions.notice("Arguments must be valid JSON.");
+          return;
+        }
+        state.actions.invoke(detail.extension_id, operation.capability_id, argumentsValue);
+      });
+      runtime.appendChild(form);
+    }
+    if (detail.family === "mcp") {
+      const credential = document.createElement("form");
+      appendText(credential, "Credential", "strong");
+      const name = document.createElement("input"); name.placeholder = "name"; name.required = true;
+      const secret = document.createElement("input"); secret.type = "password"; secret.placeholder = "secret"; secret.required = true;
+      const save = document.createElement("button"); save.type = "submit"; save.textContent = "Store credential";
+      credential.append(name, secret, save);
+      credential.addEventListener("submit", (event) => { event.preventDefault(); state.actions.credential(detail.extension_id, name.value, secret.value); secret.value = ""; });
+      runtime.appendChild(credential);
+    }
+    section.appendChild(runtime);
+  }
+  const runs = state.runs.filter((run) => run.extension_id === detail.extension_id);
+  if (runs.length) {
+    const block = document.createElement("div"); block.className = "extensions-requested";
+    appendText(block, "Runs", "h4");
+    for (const run of runs) {
+      appendText(block, `${run.status} · ${run.run_id}`, "strong");
+      if (run.request) {
+        const form = document.createElement("form");
+        const request = run.request;
+        if (request.kind === "permission_request") {
+          const options = document.createElement("select"); options.dataset.draftKey = `${run.run_id}:${request.request_id}:option`;
+          for (const option of request.options || []) {
+            const entry = document.createElement("option"); entry.value = option.optionId; entry.textContent = `${option.name} (${option.kind})`; options.appendChild(entry);
+          }
+          const accept = document.createElement("button"); accept.type = "submit"; accept.textContent = "Accept";
+          const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Decline";
+          decline.addEventListener("click", () => state.actions.answer(run.run_id, request.request_id, { action: "decline" }));
+          form.append(options, accept, decline);
+          form.addEventListener("submit", (event) => { event.preventDefault(); state.actions.answer(run.run_id, request.request_id, { action: "accept", option_id: options.value }); });
+        } else {
+          const schema = request.requestedSchema || {};
+          const fields = schema.properties || {};
+          const complex = Object.values(fields).some((item) => ["object", "array"].includes(item.type));
+          const inputs = [];
+          if (complex) { const json = document.createElement("textarea"); json.dataset.draftKey = `${run.run_id}:${request.request_id}:$json`; json.placeholder = "Advanced JSON response"; json.required = true; form.appendChild(json); inputs.push(["$json", json, { type: "json" }]); }
+          appendText(form, JSON.stringify({ message: request.message, tool_call: request.tool_call }), "p", "extensions-row-meta");
+          for (const [name, item] of complex ? [] : Object.entries(fields)) { const input = Array.isArray(item.enum) ? document.createElement("select") : document.createElement("input"); input.dataset.draftKey = `${run.run_id}:${request.request_id}:${name}`; input.placeholder = name; input.required = (schema.required || []).includes(name); if (Array.isArray(item.enum)) for (const value of item.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; input.appendChild(option); } else input.type = item.type === "boolean" ? "checkbox" : item.type === "number" || item.type === "integer" ? "number" : "text"; form.appendChild(input); inputs.push([name, input, item]); }
+          const submit = document.createElement("button"); submit.type = "submit"; submit.textContent = "Send"; const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Cancel"; decline.addEventListener("click", () => state.actions.answer(run.run_id, request.request_id, { action: "decline" })); form.append(submit, decline);
+          form.addEventListener("submit", (event) => { event.preventDefault(); try { const content = inputs[0]?.[0] === "$json" ? JSON.parse(inputs[0][1].value) : Object.fromEntries(inputs.map(([name, input, item]) => [name, item.type === "boolean" ? input.checked : item.type === "number" || item.type === "integer" ? Number(input.value) : input.value])); state.actions.answer(run.run_id, request.request_id, { action: "accept", content }); } catch { state.actions.notice("Response must be valid JSON."); } });
+        }
+        block.appendChild(form);
+      }
+      if (run.status === "awaiting_approval" && run.proposal_id) {
+        const approve = document.createElement("button"); approve.type = "button"; approve.textContent = "Approve"; approve.addEventListener("click", () => state.actions.decide(run.proposal_id, "approved"));
+        const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Decline"; decline.addEventListener("click", () => state.actions.decide(run.proposal_id, "denied")); block.append(approve, decline);
+      }
+      if (["running", "awaiting_input", "awaiting_approval"].includes(run.status) && run.proposal_id) { const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel"; cancel.addEventListener("click", () => state.actions.cancel(run.proposal_id)); block.appendChild(cancel); }
+      if (run.events?.length) appendText(block, JSON.stringify(run.events.at(-1)), "p", "extensions-row-meta");
+      if (run.result) appendText(block, JSON.stringify(run.result), "p", "extensions-row-meta");
+    }
+    section.appendChild(block);
+  }
+
   if (state.body) {
     const body = document.createElement("details");
     body.open = true;
@@ -416,6 +574,7 @@ function renderErrors(state) {
 }
 
 function renderPanel(container, state, actions) {
+  const drafts = new Map([...container.querySelectorAll("[data-draft-key]")].map((field) => [field.dataset.draftKey, { value: field.value, checked: field.checked, focused: document.activeElement === field }]));
   const view = { ...state, actions };
   const header = document.createElement("div");
   header.className = "extensions-panel-header";
@@ -447,6 +606,13 @@ function renderPanel(container, state, actions) {
     renderDetail(view),
     renderErrors(view),
   );
+  for (const field of container.querySelectorAll("[data-draft-key]")) {
+    const draft = drafts.get(field.dataset.draftKey);
+    if (!draft) continue;
+    field.value = draft.value;
+    if (field.type === "checkbox") field.checked = draft.checked;
+    if (draft.focused) field.focus();
+  }
 }
 
 export function createExtensionsPanel(container, handlers, options = {}) {
@@ -458,6 +624,12 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     loadBody: (extensionId) => controller.loadBody(extensionId),
     setState: (extensionId, next) => controller.setState(extensionId, next),
     filterFamily: (family) => controller.filterFamily(family),
+    invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),
+    answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
+    credential: (extensionId, name, secret) => controller.credential(extensionId, name, secret),
+    decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
+    cancel: (proposalId) => controller.cancel(proposalId),
+    notice: (message) => controller.notice(message),
   };
   controller = createExtensionsPanelController(handlers, (state) => {
     if (open) renderPanel(container, state, actions);
@@ -468,6 +640,11 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     container.hidden = false;
     renderPanel(container, controller.snapshot(), actions);
     await controller.load();
+    polling = window.setInterval(() => {
+      const active = document.activeElement;
+      if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
+      controller.refreshRuns();
+    }, 1000);
     container.querySelector("h2")?.focus();
   }
 
@@ -475,10 +652,12 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     if (!open) return;
     open = false;
     controller.cancelPendingReads();
+    if (polling) { window.clearInterval(polling); polling = null; }
     container.hidden = true;
     container.replaceChildren();
     options.onClose?.();
   }
 
+  let polling = null;
   return { open: show, close, isOpen: () => open, controller };
 }

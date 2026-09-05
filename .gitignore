@@ -251,3 +251,5 @@ Thumbs.db
 
 # Local runtime binaries are operator-acquired artifacts, not source.
 /runtimes/llama.cpp/*
+# Local extension UI verification fixture.
+/reports/extensions-panel-smoke.html

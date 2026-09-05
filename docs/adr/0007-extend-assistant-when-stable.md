@@ -73,7 +73,7 @@ Negative:
 - Agent profile design must stay small enough for a personal project while still preventing hidden authority.
 - Delegation requires more evidence per turn/run.
 
-## Implementation
+## Current Design
 
 This ADR is partially implemented.
 
@@ -87,19 +87,16 @@ Implemented foundations:
 - Turn and session artifacts exist in `backend/app/artifacts/turn_artifact.py`, `backend/app/artifacts/session_artifact.py`, and `backend/app/artifacts/session_timeline.py`.
 - Provider profile, settings, readiness, and search-provider surfaces exist through backend services/routes and thin desktop API/UI bindings.
 - Action governance records exist in `backend/app/actions/contracts.py`, including capability descriptors, proposals, authorization decisions, approvals, execution results, cancellation policy, and delegated-run artifact fields.
+- ACP client sessions are admitted through the same `TurnEngine` session path and governed capability executor; ACP events, permission requests, cancellation, and results are available for turn artifacts and approval handling. No inbound ACP server, router-selected agent, or agents-as-tools surface is enabled.
 - The API currently keeps agent routes closed; `backend/tests/unit/api/test_routes.py` asserts that OpenAPI has no `/agents` routes.
 
 Not implemented yet:
 - Agent profile schema.
-- Agent registry entries or extension-catalog integration.
-- Direct invocation, router-selected invocation, agents-as-tools, or handoff modes.
-- ACP adapter for subprocess/session communication.
-- Agent process isolation rules for roots, environment, credentials, temp/cache paths, output caps, cleanup, and missing executables.
-- Agent-visible MCP filtering and capability exposure.
-- Shared approval pause/resume behavior for delegated or nested work.
-- Delegated-run execution and artifact population beyond reserved `TurnArtifact` fields.
-- Backend API, desktop, script, daemon, or future client surfaces for agent status, approvals, outputs, failures, and artifacts.
-- Focused agent tests because there is no agent implementation yet.
+- General agent profiles and registry beyond explicit ACP extension entries.
+- Router-selected invocation, agents-as-tools, or handoff modes.
+- Agent-facing delegated-run and client surfaces beyond the ACP client-session boundary.
+- Broader agent-mode approval and memory policies beyond explicit ACP client sessions.
+- Script, daemon, and future client surfaces beyond the implemented backend API and desktop extension controls.
 
 ## Confirmation
 
@@ -160,23 +157,36 @@ Validation evidence:
 
 Known absence checks:
 - No source directory or file currently implements an agent profile schema.
-- No source directory or file currently implements an agent registry or runtime.
-- No source directory or file currently implements ACP bridge behavior.
-- No source directory or file currently implements direct, router-selected, agents-as-tools, or handoff invocation.
-- No source directory or file currently implements agent process isolation or agent-visible MCP filtering.
+- General agent profiles and autonomous routing remain absent; explicit ACP client runs register as extensions.
+- ACP subprocess bridge behavior exists behind the governed process/action boundary and uses the same TurnEngine admission, approvals, and artifact path; inbound/server and agent-router behavior remains absent.
+- Router-selected, agents-as-tools, and handoff modes remain absent.
+- OS sandboxing and agent-visible MCP delegation filtering remain outside the explicit ACP client implementation.
 - `backend/tests/unit/api/test_routes.py` includes a route-surface guard that agent routes are absent from OpenAPI.
 
-## Follow-up
+## Remaining Work
 
 Gaps required to complete this ADR:
 - Complete ADR 0005's governed capability execution path.
 - Complete ADR 0006's extension catalog and extension-shape registration.
 - Define an agent profile schema with purpose, instructions, provider/model policy, invocation mode, capabilities, memory scope, approval class, timeout, cancellation, and output contract.
 - Define direct invocation, router-selected invocation, agents-as-tools, and handoff modes without giving any mode extra authority.
-- Add an ACP adapter boundary for subprocess agents and future client/TUI interoperability.
+- Add agent profiles, delegated-run APIs, router/agents-as-tools/handoff modes, and future client/TUI interoperability.
 - Map ACP session updates, permission requests, terminal/tool chunks, cancellation, stop reasons, and errors into JARVIS artifacts and run/turn state.
 - Add MCP filtering for agent-visible resources, prompts, and tools through application-owned capability policy.
 - Add process isolation rules for allowed roots, environment variables, credentials, temp/cache paths, output caps, cleanup, and missing executable failures.
-- Add delegated-run artifacts that record agent identity, selected profile, capabilities exposed, approvals requested, outputs, failures, cancellation, and final contract result.
+- Extend existing ACP delegated-run artifacts with profile and capability-scope evidence when broader agent profiles are introduced.
 - Add backend API, desktop, CLI/script, daemon, and future client status/approval surfaces before enabling long-running delegated work.
 - Add focused tests for read-only agents before privileged agents; add live validation only when the required model/provider/process is actually available.
+
+## Evidence
+
+Validated on linux-amd64:
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `npm --prefix desktop test`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+
+Protocol tests required execution outside the restricted runner because its asyncio
+subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
+with fixture data; a live native desktop, remote deployment, and other host classes
+remain unverified. The declared process controls are not an OS sandbox.

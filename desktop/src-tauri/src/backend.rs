@@ -960,6 +960,7 @@ pub fn decide_action(
     }
     let response = client
         .post(format!("{base_url}/actions/{proposal_id}/decision"))
+        .timeout(Duration::from_secs(60))
         .json(&body)
         .send()
         .map_err(|error| memory_transport_error(operation, error))?;
@@ -1044,6 +1045,44 @@ pub fn set_extension_state(
         .post(format!("{base_url}/extensions/{extension_id}/state"))
         .json(&body)
         .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_extension_runtime(client: &Client, base_url: &str, extension_id: &str) -> Result<String, String> {
+    let operation = "GET /extensions/{extension_id}/runtime";
+    let response = client.get(format!("{base_url}/extensions/{extension_id}/runtime")).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_extension_runs(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /extensions/runs";
+    let response = client.get(format!("{base_url}/extensions/runs")).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn invoke_extension(client: &Client, base_url: &str, extension_id: &str, capability_id: &str, arguments: Value) -> Result<String, String> {
+    let operation = "POST /extensions/{extension_id}/invoke";
+    let response = client.post(format!("{base_url}/extensions/{extension_id}/invoke"))
+        .json(&json!({"capability_id": capability_id, "arguments": arguments})).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn answer_extension_input(client: &Client, base_url: &str, run_id: &str, request_id: &str, answer: Value) -> Result<String, String> {
+    let operation = "POST /extensions/runs/{run_id}/input";
+    let response = client.post(format!("{base_url}/extensions/runs/{run_id}/input"))
+        .json(&json!({"request_id": request_id, "answer": answer})).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn write_extension_credential(client: &Client, base_url: &str, extension_id: &str, name: &str, secret: &str) -> Result<String, String> {
+    let operation = "POST /extensions/{extension_id}/credentials";
+    let response = client.post(format!("{base_url}/extensions/{extension_id}/credentials"))
+        .json(&json!({"name": name, "secret": secret})).send()
         .map_err(|error| memory_transport_error(operation, error))?;
     memory_response(operation, response)
 }

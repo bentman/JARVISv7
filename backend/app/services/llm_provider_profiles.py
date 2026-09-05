@@ -32,7 +32,7 @@ OPENAI_ENDPOINT = "https://api.openai.com/v1"
 ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
 SECRET_KEY_NAME = "JARVIS_SECRET_STORE_KEY"
 PREVIOUS_SECRET_KEY_NAME = "JARVIS_SECRET_STORE_PREVIOUS_KEY"
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 class ProviderConfigError(ValueError):
@@ -182,7 +182,32 @@ CREATE INDEX IF NOT EXISTS extension_event_by_extension
     ON extension_event(extension_id, occurred_at);
 """
 
-_MIGRATIONS: dict[int, str] = {1: _EXTENSION_SCHEMA}
+_EXTENSION_SECRET_SCHEMA = """
+BEGIN IMMEDIATE;
+CREATE TABLE IF NOT EXISTS shared_operator_secret (
+    owner_id TEXT NOT NULL,
+    secret_name TEXT NOT NULL,
+    nonce BLOB NOT NULL,
+    ciphertext BLOB NOT NULL,
+    key_version INTEGER NOT NULL DEFAULT 1,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY(owner_id, secret_name)
+);
+INSERT OR IGNORE INTO shared_operator_secret SELECT * FROM operator_secret;
+DROP TABLE operator_secret;
+ALTER TABLE shared_operator_secret RENAME TO operator_secret;
+CREATE TRIGGER IF NOT EXISTS delete_provider_secrets
+AFTER DELETE ON llm_provider_profile
+BEGIN
+    DELETE FROM operator_secret WHERE owner_id = OLD.profile_id;
+END;
+CREATE TABLE IF NOT EXISTS extension_run (
+    run_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL
+);
+"""
+
+_MIGRATIONS: dict[int, str] = {1: _EXTENSION_SCHEMA, 2: _EXTENSION_SECRET_SCHEMA}
 
 
 class LLMProviderProfileStore:
@@ -209,7 +234,7 @@ class LLMProviderProfileStore:
                 if version is not None:
                     self._migrate(connection, int(version[0]))
                     return
-            connection.executescript(_BASE_SCHEMA + _EXTENSION_SCHEMA)
+            connection.executescript(_BASE_SCHEMA + _EXTENSION_SCHEMA + _EXTENSION_SECRET_SCHEMA)
             connection.execute(
                 "UPDATE operator_schema SET version = ? WHERE singleton = 1", (SCHEMA_VERSION,)
             )
@@ -501,6 +526,12 @@ class LLMProviderProfileStore:
     def write_secret(self, owner_id: str, secret_name: str, value: str) -> None:
         if not value:
             raise ProviderConfigError("secret value cannot be empty")
+        if not owner_id.startswith("extension:"):
+            with self._connect() as connection:
+                if connection.execute(
+                    "SELECT 1 FROM llm_provider_profile WHERE profile_id = ?", (owner_id,)
+                ).fetchone() is None:
+                    raise ProviderConfigError("secret owner does not exist")
         key = self._master_key(generate=True)
         nonce = secrets.token_bytes(12)
         ciphertext = AESGCM(key).encrypt(nonce, value.encode("utf-8"), self._aad(owner_id, secret_name))
@@ -656,7 +687,8 @@ class LLMProviderProfileStore:
 
     @staticmethod
     def _aad(owner_id: str, secret_name: str) -> bytes:
-        return f"jarvisv7:{SCHEMA_VERSION}:{owner_id}:{secret_name}".encode()
+        # Encryption identity remains stable across database-only migrations.
+        return f"jarvisv7:2:{owner_id}:{secret_name}".encode()
 
     def _secret_count(self) -> int:
         with self._connect() as connection:

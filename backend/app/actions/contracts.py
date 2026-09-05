@@ -323,101 +323,32 @@ class CapabilityRegistry:
         )
 
 
-SCHEMA_KEYWORDS = {
-    "type", "properties", "required", "additionalProperties", "propertyNames",
-    "enum", "items", "minLength", "maxLength", "minItems", "maxItems",
-    "minimum", "maximum", "description",
-}
-SCHEMA_TYPES: dict[str, type | tuple[type, ...]] = {
-    "object": dict,
-    "array": (list, tuple),
-    "string": str,
-    "integer": int,
-    "number": (int, float),
-    "boolean": bool,
-}
 
 
 def validate_schema(schema: dict[str, Any]) -> None:
+    from jsonschema.validators import validator_for
+
     if not isinstance(schema, dict):
         raise ValueError("input_schema must be a mapping")
-    unsupported = sorted(set(schema) - SCHEMA_KEYWORDS)
-    if unsupported:
-        raise ValueError(f"input_schema uses unsupported keywords: {', '.join(unsupported)}")
-    declared = schema.get("type")
-    if declared is not None and declared not in SCHEMA_TYPES:
-        raise ValueError(f"input_schema declares an unsupported type: {declared}")
-    for subschema in schema.get("properties", {}).values():
-        validate_schema(subschema)
-    if "items" in schema:
-        validate_schema(schema["items"])
-    if "propertyNames" in schema:
-        validate_schema(schema["propertyNames"])
+    validator_for(schema).check_schema(schema)
 
 
 def validate_arguments(schema: dict[str, Any], arguments: dict[str, Any]) -> tuple[str, ...]:
-    return tuple(_schema_violations(schema, arguments, "arguments"))
+    from jsonschema.validators import validator_for
+    from referencing import Registry
+
+    # An empty registry resolves local references without fetching remote schemas.
+    validator = validator_for(schema)(schema, registry=Registry())
+    try:
+        return tuple(
+            f"arguments{''.join(f'[{part}]' for part in error.absolute_path)} violates {error.validator}"
+            + (f": {', '.join(error.validator_value)}" if error.validator == "required" else "")
+            for error in validator.iter_errors(arguments)
+        )
+    except Exception:
+        return ("arguments could not be validated against the declared schema",)
 
 
-def _schema_violations(schema: dict[str, Any], value: Any, path: str) -> list[str]:
-    declared = schema.get("type")
-    if declared is not None:
-        expected = SCHEMA_TYPES[declared]
-        if declared in {"integer", "number"} and isinstance(value, bool):
-            return [f"{path} must be {declared}"]
-        if not isinstance(value, expected):
-            return [f"{path} must be {declared}"]
-    if "enum" in schema and value not in schema["enum"]:
-        return [f"{path} must be one of: {', '.join(str(item) for item in schema['enum'])}"]
-
-    violations: list[str] = []
-    if isinstance(value, str):
-        violations += _bounds(path, len(value), schema.get("minLength"), schema.get("maxLength"), "characters")
-    elif isinstance(value, (list, tuple)):
-        violations += _bounds(path, len(value), schema.get("minItems"), schema.get("maxItems"), "items")
-        item_schema = schema.get("items")
-        if item_schema is not None:
-            for index, item in enumerate(value):
-                violations += _schema_violations(item_schema, item, f"{path}[{index}]")
-    elif isinstance(value, (int, float)) and not isinstance(value, bool):
-        minimum, maximum = schema.get("minimum"), schema.get("maximum")
-        if minimum is not None and value < minimum:
-            violations.append(f"{path} must be at least {minimum}")
-        if maximum is not None and value > maximum:
-            violations.append(f"{path} must be at most {maximum}")
-    elif isinstance(value, dict):
-        violations += _object_violations(schema, value, path)
-    return violations
-
-
-def _object_violations(schema: dict[str, Any], value: dict[str, Any], path: str) -> list[str]:
-    violations: list[str] = []
-    properties = schema.get("properties", {})
-    for name in schema.get("required", []):
-        if name not in value:
-            violations.append(f"{path} is missing required field {name}")
-    if schema.get("additionalProperties") is False:
-        for name in value:
-            if name not in properties:
-                violations.append(f"{path} does not accept field {name}")
-    allowed_names = schema.get("propertyNames", {}).get("enum")
-    if allowed_names is not None:
-        for name in value:
-            if name not in allowed_names:
-                violations.append(f"{path} does not accept key {name}")
-    for name, subschema in properties.items():
-        if name in value:
-            violations += _schema_violations(subschema, value[name], f"{path}.{name}")
-    return violations
-
-
-def _bounds(path: str, size: int, minimum: Any, maximum: Any, unit: str) -> list[str]:
-    violations: list[str] = []
-    if minimum is not None and size < minimum:
-        violations.append(f"{path} must have at least {minimum} {unit}")
-    if maximum is not None and size > maximum:
-        violations.append(f"{path} must have at most {maximum} {unit}")
-    return violations
 
 
 _EVIDENCE_SINKS: dict[type, Any] = {

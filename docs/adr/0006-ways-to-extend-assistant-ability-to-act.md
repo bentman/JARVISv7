@@ -61,9 +61,10 @@ Negative:
 - ACP integration adds process and session state that must stay aligned with the single interaction loop.
 - Hook behavior can become surprising unless event names, effects, and failure paths stay small and visible.
 
-## Implementation
+## Current Design
 
-This ADR is partially implemented.
+This ADR is implemented for the current extension catalog and governed runtime
+surfaces. Live external-server deployment evidence remains environment-dependent.
 
 Implemented foundations:
 - Operator settings are scoped and classified through `backend/app/core/settings.py`. `backend/app/services/operator_config_service.py` owns the operator field allowlist and secret masking; `backend/app/api/routes/config.py` and `backend/app/api/schemas/config.py` are the route surface over it. Operator writes are allowlisted, and secrets are masked.
@@ -72,27 +73,44 @@ Implemented foundations:
 - Prompt boundaries exist through `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_assembler.py`, `backend/app/cognition/prompt_renderer.py`, and `backend/app/cognition/prompt_chat_renderer.py`. Prompt segments carry authority labels, content type, and trust state.
 - Provider profiles are implemented through `backend/app/services/llm_provider_profiles.py`, `backend/app/services/llm_provider_service.py`, `backend/app/api/routes/llm_config.py`, and `backend/app/api/schemas/llm_config.py`.
 - Search providers are implemented as governed external-read behavior through `backend/app/cognition/search_policy.py`, `backend/app/services/search_service.py`, and `backend/app/runtimes/internetsearch/`.
-- Action governance records exist in `backend/app/actions/contracts.py`: capability descriptors, availability/readiness/effect classes, approval modes, model proposals, authorization decisions, approval records, execution results, action cancellation records, the action evidence accumulator, metadata claims, and collision checks. `CapabilityRegistry` enforces execution boundaries and the input-schema keywords it can validate at registration, and refuses any descriptor that fails them.
-- Turn artifacts in `backend/app/artifacts/turn_artifact.py` carry evidence for tools invoked, action proposals, authorization decisions, approval records, action execution results, cancellations, search evidence, memory evidence, runtime context, and failure state. `TurnEngine._persist_artifact` writes the action evidence. Only `delegated_runs` stays empty, because no producer exists until delegated agents arrive.
+- Action governance records exist in `backend/app/actions/contracts.py`: capability descriptors, availability/readiness/effect classes, approval modes, model proposals, authorization decisions, approval records, execution results, action cancellation records, the action evidence accumulator, metadata claims, and collision checks. `CapabilityRegistry` enforces execution boundaries and JSON Schema validity at registration, and refuses any descriptor that fails them.
+- Turn artifacts carry action, search, memory, runtime, and failure evidence. `TurnEngine.run_extension` admits explicit ACP requests through the existing turn lock and writes `delegated_runs`; remote output is retained as evidence without automatic memory promotion.
 - Desktop surfaces call backend APIs for settings, provider profiles, search evidence, personality selection, and governed action discovery, approval, execution status, cancellation, and audit through `desktop/src/api-client.js`, `desktop/src/components/settings-panel.js`, `desktop/src/components/llm-provider-settings.js`, `desktop/src/components/search-evidence.js`, `desktop/src/components/actions-panel.js`, `desktop/src/main.js`, and `desktop/src-tauri/src/backend.rs`.
 - The shared governed execution path this ADR depends on is built. ADR 0005 supplies one authorization ladder, an approval flow with declared modes, durable action evidence, and boundary rules the registry enforces before a capability can be registered. Every remaining extension shape attaches to that path rather than defining its own.
 
-- One backend-owned extension catalog exists in `backend/app/extensions/`. `ExtensionDescriptor` carries a stable `<family>:<local_id>` identifier, version, source, provenance, trust status, state, readiness, availability, dependencies, collisions, and untrusted metadata claims. Seven families register: settings, personality profiles, provider profiles, search providers, prompt templates, skills, and governed action descriptors.
+- One backend-owned extension catalog exists in `backend/app/extensions/`. `ExtensionDescriptor` carries a stable `<family>:<local_id>` identifier, version, source, provenance, trust status, state, readiness, availability, dependencies, collisions, and untrusted metadata claims. Built-in and declarative families register alongside settings, personality profiles, provider profiles, search providers, prompt templates, skills, and governed action descriptors.
 - The catalog observes each family live and persists only what an operator decided and the catalog cannot re-derive. `extension_overlay` and `extension_event` in `data/operator.sqlite` hold enabled state, trust, and the retirement audit trail behind a schema migration; health, dependencies, version, provenance, and collisions are derived per read so a stale row cannot claim to be healthy.
 - Enabling, disabling, or retiring an extension is a governed action. It routes through the ADR 0005 capability executor as `extension-state-update`, so it produces the same proposal, approval, and execution evidence as every other operator mutation.
 - Prompt templates are discoverable through `backend/app/extensions/prompts.py` and `config/prompts/`. A template may only declare `user` or `session` authority, so a reusable prompt cannot become hidden policy.
-- Skills load from `data/extensions/skills/<skill_id>/SKILL.md` through `backend/app/extensions/skills.py` with progressive disclosure: discovery reads frontmatter only, and the body is read solely on explicit request. Skills live outside version control, which is what makes their `external` trust meaningful.
-- A skill's `requested_tools` is recorded as an untrusted metadata claim, never a grant, and a skill declaring any authority-bearing field is rejected. A skill that declares scripts registers unavailable, because script execution needs a `privileged_execution` capability and none is registered.
-- Hook and plugin lifecycles are defined in `backend/app/extensions/lifecycle.py` without runners: closed hook event names, effect classes reused from ADR 0005, the rule that any hook beyond `local_read` must invoke a governed capability, and the plugin state machine in which packaging grants its contents nothing.
+- Declarative extension defaults are tracked under `config/extensions/{acp,mcp,hooks,plugins,skills,tools}` and operator additions are untracked under `data/extensions/{family}`. Discovery gives application defaults precedence for duplicate family/IDs and records application versus operator provenance and trust. Skills support both roots with progressive disclosure; the tracked `inspect-extensions` skill is instruction-only, while operator skills remain external.
+- A skill's `requested_tools` is recorded as an untrusted metadata claim, never a grant, and a skill declaring any authority-bearing field is rejected. Declared scripts resolve only through governed process execution.
+- Hook and plugin lifecycles and runners exist in `backend/app/extensions/{hooks,plugins}.py`: closed hook event names, effect classes reused from ADR 0005, application-owned `record_event`, governed capability dispatch, bounded plugin installation, bundle hashing, and child-definition validation.
+- MCP connection management exists in `backend/app/extensions/mcp.py` with official SDK transport, discovery, schema-preserving records, health, credential references, allowlists, elicitation, cancellation, and host authorization callbacks. ACP subprocess sessions exist in `backend/app/extensions/acp.py` with official SDK permission callbacks, progress/session events, cancellation, process boundaries, and cleanup.
 - Backend API and desktop surfaces exist through `backend/app/api/routes/extensions.py` and `desktop/src/components/extensions-panel.js`, covering catalog discovery, load errors, detail, progressive body disclosure, and state changes.
 
-Not implemented yet:
-- MCP connection management, discovery, health, schema preservation, resource exposure, elicitation, credential handling, cancellation, filtering, and per-call approval mapping.
-- ACP bridge behavior for agent subprocess/session integration, permission requests, progress updates, terminal/tool chunks, cancellation, and stop reasons.
-- Hook and plugin *runners*. Both lifecycles are defined and enforced at registration; neither executes anything.
-- Skill execution. Skills are catalogued and read, never run.
+- `ExtensionRuntimeService` registers extension operations with the shared capability service. Approvals bind a definition fingerprint; changed definitions require a new proposal. `ExtensionRuns` persists run state and marks interrupted work after restart without replaying effects.
+- The desktop exposes invocation, approvals, run progress, cancellation, credentials, and structured elicitation. Approval requests run off the native UI thread so nested input remains usable.
+
+Declarative definitions and their initial tracked defaults are documented in
+`config/extensions/README.md`. The disabled application hook default records
+no events until explicitly enabled. ACP bridge execution is implemented behind
+the governed process/action boundary; this does not complete agent runtime
+integration described by ADR 0007.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
+
+## Evidence
+
+Validated on linux-amd64:
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `npm --prefix desktop test`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+
+Protocol tests required execution outside the restricted runner because its asyncio
+subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
+with fixture data; a live native desktop, remote deployment, and other host classes
+remain unverified. The declared process controls are not an OS sandbox.
 
 ## Confirmation
 
@@ -179,18 +197,14 @@ Validation evidence:
 - `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/routing/test_provider_router.py`
 
-Known absence checks:
-- No source directory or file currently implements MCP connection management.
-- No source directory or file currently implements ACP bridge behavior.
-- No source directory or file currently executes a skill; loading and script declaration are catalogued only.
-- No source directory or file currently implements a hook runner or plugin installer; both lifecycles are definitions enforced at registration.
-- No source directory or file currently implements plugin lifecycle management beyond Tauri's desktop dependency plugin mechanism.
-- `backend/tests/unit/api/test_routes.py` includes a route-surface guard that agent routes are absent from OpenAPI.
+## Remaining Work
 
-## Follow-up
+The MCP, explicit ACP client, hook, plugin-installation, and skill-script follow-ups
+have implementation and focused test evidence. Deployment acceptance still requires
+the operator's actual remote services, agent executable, credentials, and native
+desktop session. Other host classes require their own execution evidence.
 
-Gaps required to complete this ADR:
-- Add MCP connection management for explicit server configuration, tool/resource/prompt discovery, schema preservation, health, credentials, cancellation, filtering, resource exposure, elicitation, and approval mapping.
-- Add ACP bridge behavior only through the JARVIS session, approval, artifact, and memory model.
-- Add a hook runner and a plugin installer once a shape needs them; both lifecycles are defined and enforced, and neither executes anything today.
-- Allow skill execution only behind a `privileged_execution` capability that satisfies the ADR 0005 process and root boundaries.
+MCP credentials currently support bearer tokens and explicitly allowlisted stdio
+environment variables. Interactive OAuth, optional MCP Tasks/Apps, inbound ACP,
+autonomous agent routing, and arbitrary plugin installation scripts are outside
+this implementation. Broader agent behavior remains governed by ADR 0007.

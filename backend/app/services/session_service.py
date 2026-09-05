@@ -145,6 +145,9 @@ class SessionService:
         self._failure_reason = None
         self._failure_phase = None
         self._invocation_source = None
+        runtime = getattr(self._engine, "extension_runtime", None)
+        if runtime is not None:
+            runtime.hooks.emit("session_started", {"session_id": self._session_manager.session_id})
         return self.status()
 
     def end_session(self, session_id: str, final_state: str = "IDLE") -> SessionCloseResult:
@@ -171,6 +174,9 @@ class SessionService:
                 memory_curation_policy_revision=policy.revision,
             )
         self._active = False
+        runtime = getattr(self._engine, "extension_runtime", None)
+        if runtime is not None:
+            runtime.hooks.emit("session_closed", {"session_id": session_id})
         self._state = final_state
         enqueue_status = "not_authorized"
         enqueue_error: str | None = None

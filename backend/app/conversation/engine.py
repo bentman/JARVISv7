@@ -103,6 +103,7 @@ class TurnEngine:
         search_service: SearchService | None = None,
         search_secret_values: tuple[str, ...] = (),
         capability_service: CapabilityService | None = None,
+        extension_runtime: Any | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -122,6 +123,8 @@ class TurnEngine:
         self.phase_observer: PhaseObserver | None = None
         self.search_service = search_service
         self.capability_service = capability_service
+        self.extension_runtime = extension_runtime
+        self._extension_operation = None
         self.search_intent = SearchIntentResolver(llm, secret_values=search_secret_values)
         self._turn_lock = threading.Lock()
         self._admission_lock = threading.Lock()
@@ -153,6 +156,8 @@ class TurnEngine:
         with self._admission_lock:
             self._closing = True
         self.search_intent.clear()
+        if self._extension_operation is not None:
+            self._extension_operation.cancel.set()
         if self.search_service:
             self.search_service.cancel_and_wait(timeout=0)
         if not self._idle.wait(timeout):
@@ -161,6 +166,39 @@ class TurnEngine:
     def run_text_turn(self, text: str) -> TurnResult:
         with self._admit_turn():
             return self._run_text_turn(text)
+
+    def run_extension(self, work: Callable, arguments: dict[str, Any], operation: Any) -> dict[str, Any]:
+        with self._admit_turn():
+            context = self._create_context("text")
+            operation.session_id, operation.turn_id = context.session_id, context.turn_id
+            self._extension_operation = operation
+            result: dict[str, Any] = {}
+            failure = None
+            try:
+                result = work()
+                return result
+            except Exception:
+                failure = "Extension execution failed or was cancelled."
+                raise
+            finally:
+                self._extension_operation = None
+                if self.session_manager is not None:
+                    runs = self.extension_runtime.runs.list() if self.extension_runtime else []
+                    self.session_manager.record_turn_artifact(TurnArtifact(
+                        turn_id=context.turn_id, session_id=context.session_id, input_modality="text",
+                        final_state="FAILED" if failure else "IDLE", transcript=arguments.get("prompt"),
+                        active_personality_profile_id=self.personality.profile_id,
+                        profile_epoch=self.session_manager.profile_epoch, failure_reason=failure,
+                        delegated_runs=[run for run in runs if run["turn_id"] == context.turn_id],
+                        tools_invoked=[operation.capability_id],
+                    ))
+
+    def _emit_hook(self, event: str, context: TurnContext) -> None:
+        if self.extension_runtime is None:
+            return
+        records = self.extension_runtime.hooks.emit(event, {"session_id": context.session_id, "turn_id": context.turn_id})
+        if records:
+            context.runtime_context.setdefault("hooks", []).extend(records)
 
     def _run_text_turn(self, text: str) -> TurnResult:
         ticket = self.llm_coordinator.register_interactive() if self.llm_coordinator else None
@@ -297,6 +335,7 @@ class TurnEngine:
         voice_turn_started_at: float | None = None,
     ) -> TurnResult:
         phase_durations_ms = phase_durations_ms if phase_durations_ms is not None else {}
+        self._emit_hook("transcript_committed", context)
         try:
             context.advance(ConversationState.REASONING)
             continuity_packet = (
@@ -349,6 +388,7 @@ class TurnEngine:
             )
 
             llm_started_at = time.perf_counter()
+            self._emit_hook("prompt_assembled", context)
             try:
                 response, prompt_envelope = self._generate_response(context, transcript, prompt_envelope, continuity_packet)
                 prompt = render_flat_prompt(prompt_envelope)
@@ -369,6 +409,7 @@ class TurnEngine:
                     failure_phase="llm" if voice_turn_started_at is not None else _failure_phase_for_state(context.state),
                 )
             context.advance(ConversationState.RESPONDING)
+            self._emit_hook("response_ready", context)
             stored_response = apply_personality_style_guard(
                 response,
                 policy,
@@ -1068,7 +1109,9 @@ class TurnEngine:
         if self.session_manager is not None:
             if modality not in {"voice", "text"}:
                 raise ValueError("modality must be voice or text")
-            return self.session_manager.create_turn_context(modality, phase_observer=self.phase_observer)  # type: ignore[arg-type]
+            context = self.session_manager.create_turn_context(modality, phase_observer=self.phase_observer)  # type: ignore[arg-type]
+            self._emit_hook("turn_admitted", context)
+            return context
         if modality == "voice":
             return TurnContext(session_id=self.session_id, modality="voice", phase_observer=self.phase_observer)
         if modality == "text":
@@ -1138,6 +1181,7 @@ class TurnEngine:
             action_cancellations=list(context.action_evidence.cancellations),
         )
         self.session_manager.record_turn_artifact(artifact)
+        self._emit_hook("turn_persisted", context)
         if self.episodic is not None:
             try:
                 self.episodic.write_entry(artifact, self.write_policy)

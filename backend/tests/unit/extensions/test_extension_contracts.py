@@ -6,6 +6,7 @@ from backend.app.extensions.contracts import (
     ExtensionDescriptor,
     ExtensionError,
 )
+from backend.app.extensions.discovery import parse_definition_manifest
 from backend.app.extensions.lifecycle import (
     HookDefinition,
     PluginDefinition,
@@ -122,3 +123,43 @@ def test_a_plugin_only_names_the_extensions_it_contains() -> None:
     assert payload["contained_extension_ids"] == ["skill:notes", "prompt:daily-review"]
     # Packaging names its contents; it grants them nothing.
     assert "trust" not in payload and "authority" not in payload
+
+
+def test_new_definition_families_require_a_definition() -> None:
+    with pytest.raises(ExtensionError, match="must declare a definition"):
+        ExtensionCatalog().register(
+            descriptor(extension_id="mcp:public", family="mcp", local_id="public")
+        )
+
+
+def test_definition_manifests_record_untrusted_metadata() -> None:
+    manifest = parse_definition_manifest(
+        "mcp",
+        "id: public\nname: Public\nversion: '1'\ndefinition:\n  transport: stdio\nmetadata:\n  label: built-in\n",
+        "config/extensions/mcp/public.yaml",
+        "config/extensions",
+        "application",
+    )
+
+    assert manifest.metadata_claims["declaration"]["trusted"] is False
+
+
+def test_definition_manifests_allow_a_secret_reference_but_not_a_secret() -> None:
+    manifest = parse_definition_manifest(
+        "mcp",
+        "id: remote\nname: Remote\nversion: '1'\ndefinition:\n  credential_ref: operator-mcp\n",
+        "config/extensions/mcp/remote.yaml",
+        "config/extensions",
+        "application",
+    )
+
+    assert manifest.definition["credential_ref"] == "operator-mcp"
+
+    with pytest.raises(ValueError, match="secret-bearing field"):
+        parse_definition_manifest(
+            "mcp",
+            "id: bad\nname: Bad\nversion: '1'\ndefinition:\n  token: value\n",
+            "config/extensions/mcp/bad.yaml",
+            "config/extensions",
+            "application",
+        )

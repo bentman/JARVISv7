@@ -13,11 +13,16 @@ use backend::{
     get_extension_body as backend_extension_body,
     get_extension_detail as backend_extension_detail,
     get_extension_errors as backend_extension_errors,
+    get_extension_runtime as backend_extension_runtime,
+    get_extension_runs as backend_extension_runs,
     get_extensions as backend_extensions,
     get_action_capabilities as backend_action_capabilities,
     get_action_status as backend_action_status,
     get_artifact_retention_policy as backend_artifact_retention_policy,
     get_pending_actions as backend_pending_actions,
+    invoke_extension as backend_invoke_extension,
+    answer_extension_input as backend_answer_extension_input,
+    write_extension_credential as backend_write_extension_credential,
     propose_action as backend_propose_action,
     set_extension_state as backend_set_extension_state,
     get_desktop_status as backend_desktop_status, get_json,
@@ -632,7 +637,7 @@ fn get_action_status(
 }
 
 #[tauri::command]
-fn decide_action(
+async fn decide_action(
     proposal_id: String,
     outcome: String,
     reason: Option<String>,
@@ -642,13 +647,10 @@ fn decide_action(
     let proposal_id = required_proposal_id(proposal_id)?;
     let outcome = required_action_outcome(outcome)?;
     let reason = optional_trimmed(reason);
-    backend_decide_action(
-        &state.http_client,
-        &base_url,
-        &proposal_id,
-        &outcome,
-        reason.as_deref(),
-    )
+    let client = state.http_client.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        backend_decide_action(&client, &base_url, &proposal_id, &outcome, reason.as_deref())
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -709,6 +711,32 @@ fn set_extension_state(
         expected_revision,
         reason.as_deref(),
     )
+}
+
+#[tauri::command]
+fn get_extension_runtime(extension_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_extension_runtime(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?)
+}
+
+#[tauri::command]
+fn get_extension_runs(state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_extension_runs(&state.http_client, &backend_base_url(&state)?)
+}
+
+#[tauri::command]
+fn invoke_extension(extension_id: String, capability_id: String, action_arguments: Value, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_invoke_extension(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?, &required_extension_id(capability_id)?, action_arguments)
+}
+
+#[tauri::command]
+fn answer_extension_input(run_id: String, request_id: String, answer: Value, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_answer_extension_input(&state.http_client, &backend_base_url(&state)?, &required_extension_id(run_id)?, &required_extension_id(request_id)?, answer)
+}
+
+#[tauri::command]
+fn write_extension_credential(extension_id: String, name: String, secret: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    if name.trim().is_empty() || secret.is_empty() { return Err("credential name and secret are required".to_string()); }
+    backend_write_extension_credential(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?, name.trim(), &secret)
 }
 
 #[tauri::command]
@@ -889,6 +917,11 @@ pub fn run() {
             get_extension_detail,
             get_extension_body,
             set_extension_state,
+            get_extension_runtime,
+            get_extension_runs,
+            invoke_extension,
+            answer_extension_input,
+            write_extension_credential,
             get_resident_voice_status,
             start_resident_voice_stream,
             stop_resident_voice_stream,

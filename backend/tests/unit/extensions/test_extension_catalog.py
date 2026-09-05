@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from backend.app.extensions.catalog import ExtensionObservation, build_extension_descriptors
 from backend.app.extensions.contracts import ExtensionCatalog
+from backend.app.extensions.discovery import (
+    DefinitionRuntime,
+    discover_definition_manifests,
+    parse_definition_manifest,
+)
 from backend.app.extensions.skills import parse_skill_frontmatter
 
 
@@ -118,3 +123,56 @@ def test_every_built_descriptor_registers_without_collision() -> None:
     assert catalog.families() == {
         "capability": 1, "personality": 1, "search_provider": 1, "setting": 1,
     }
+
+
+def test_generic_definition_records_keep_source_and_operator_provenance() -> None:
+    definition = parse_definition_manifest(
+        "mcp",
+        "id: docs\nname: Docs\nversion: '1'\ndefinition:\n  transport: stdio\n",
+        "data/extensions/mcp/docs.yaml",
+        "data/extensions",
+        "operator",
+    )
+
+    item = descriptors(definitions=(definition,))["mcp:docs"]
+
+    assert (item.source, item.provenance, item.trust) == (
+        "data/extensions/mcp/docs.yaml", "data/extensions", "operator",
+    )
+    assert (item.readiness, item.availability) == ("unavailable", "unknown")
+
+
+def test_runtime_observation_controls_generic_definition_health() -> None:
+    definition = parse_definition_manifest(
+        "mcp",
+        "id: docs\nname: Docs\nversion: '1'\ndefinition:\n  transport: stdio\n",
+        "config/extensions/mcp/docs.yaml",
+        "config/extensions",
+        "application",
+    )
+
+    item = descriptors(
+        definitions=(definition,),
+        definition_runtime=(DefinitionRuntime("mcp", "docs", "ready", "available"),),
+    )["mcp:docs"]
+
+    assert (item.readiness, item.availability) == ("ready", "available")
+
+
+def test_application_definitions_win_and_operator_collisions_are_reported(tmp_path) -> None:
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    for root, name in ((config, "Application"), (data, "Operator")):
+        directory = root / "extensions" / "mcp"
+        directory.mkdir(parents=True)
+        (directory / "docs.yaml").write_text(
+            f"id: docs\nname: {name}\nversion: '1'\ndefinition:\n  transport: stdio\n",
+            encoding="utf-8",
+        )
+
+    discovered = discover_definition_manifests("mcp", config_root=config, data_root=data)
+
+    assert [(item.display_name, item.provenance) for item in discovered.manifests] == [
+        ("Application", "config/extensions"),
+    ]
+    assert "retained" in discovered.errors[0].reason

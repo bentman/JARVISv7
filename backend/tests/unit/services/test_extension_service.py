@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from backend.app.extensions.catalog import ExtensionObservation
+from backend.app.extensions.discovery import DefinitionError
 from backend.app.extensions.prompts import list_prompt_templates_with_errors
 from backend.app.extensions.skills import list_skills_with_errors
 from backend.app.extensions.store import ExtensionOverlayStore
-from backend.app.services.extension_service import ExtensionService, ExtensionServiceError
+from backend.app.services.extension_service import (
+    ExtensionService,
+    ExtensionServiceError,
+    observe_extensions,
+)
 
 
 def seed(tmp_path: Path) -> None:
@@ -149,3 +155,36 @@ def test_a_corrupt_overlay_degrades_instead_of_raising(tmp_path: Path) -> None:
 
     assert store.available() is False
     assert instance.catalog().families == {"search_provider": 1}
+
+
+def test_definition_load_errors_are_exposed_without_breaking_other_families(tmp_path: Path) -> None:
+    instance = service(
+        tmp_path,
+        definition_errors=(DefinitionError("mcp", "data/extensions/mcp/bad.yaml", "bad yaml"),),
+    )
+
+    assert [(item.family, item.source, item.reason) for item in instance.errors().errors] == [
+        ("mcp", "data/extensions/mcp/bad.yaml", "bad yaml"),
+    ]
+
+
+def test_observation_discovers_application_definitions(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    definition = config / "extensions" / "mcp" / "docs.yaml"
+    definition.parent.mkdir(parents=True)
+    definition.write_text(
+        "id: docs\nname: Docs\nversion: '1'\ndefinition:\n  transport: stdio\n",
+        encoding="utf-8",
+    )
+
+    observed = observe_extensions(
+        settings_provider=lambda: SimpleNamespace(),
+        personality_provider=lambda: SimpleNamespace(profiles=[], errors=[]),
+        config_dir=config,
+        data_dir=data,
+    )
+
+    assert [(item.local_id, item.provenance) for item in observed.definitions] == [
+        ("docs", "config/extensions"),
+    ]

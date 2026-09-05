@@ -136,6 +136,14 @@ export function createApiClient(invoke) {
         expectedRevision,
         reason,
       }),
+    getExtensionRuntime: (extensionId) => invokeMemory(invoke, "get_extension_runtime", { extensionId }),
+    getExtensionRuns: () => invokeMemory(invoke, "get_extension_runs"),
+    invokeExtension: (extensionId, capabilityId, actionArguments = {}) =>
+      invokeMemory(invoke, "invoke_extension", { extensionId, capabilityId, actionArguments }),
+    answerExtensionInput: (runId, requestId, answer) =>
+      invokeMemory(invoke, "answer_extension_input", { runId, requestId, answer }),
+    writeExtensionCredential: (extensionId, name, secret) =>
+      invokeMemory(invoke, "write_extension_credential", { extensionId, name, secret }),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
     cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
     openSearchSource: (url) => invoke("open_search_source", { url }),

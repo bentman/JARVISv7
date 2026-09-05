@@ -57,7 +57,7 @@ Negative:
 - Capability metadata can become stale unless readiness and health checks are real observations.
 - More artifact detail is needed as actions become more capable.
 
-## Implementation
+## Current Design
 
 This ADR is partially implemented.
 
@@ -71,7 +71,7 @@ Settings and provider configuration are explicit backend actions. Operator confi
 
 Prompt and artifact boundaries reserve action evidence. `PromptEnvelope` has `tool` authority and `tool_result` content type. Renderers mark tool results as untrusted context. `TurnArtifact` records `tools_invoked`, `action_proposals`, `authorization_decisions`, `approval_records`, `action_execution_results`, `action_cancellations`, `delegated_runs`, search evidence, runtime context, retrieved memory evidence, failure state, and phase timings.
 
-The shared action contract is wired. `backend/app/actions/contracts.py` defines `CapabilityDescriptor`, `ModelActionProposal`, `AuthorizationContext`, `AuthorizationDecision`, `ApprovalAuditRecord`, `ExecutionResultRecord`, `ActionCancellationRecord`, `ActionEvidence`, and `CapabilityRegistry`. Descriptors declare an approval mode of `turn_boundary` or `same_turn`. The registry validates effect classes, readiness states, availability states, authorization rules, timeout/cancellation/result schema metadata, unavailable explanations, sorted snapshots, duplicate capability IDs, untrusted metadata claims, execution boundaries, and the input-schema keywords it can actually enforce. Authorization denies unregistered capabilities, arguments the input schema rejects, unavailable readiness, unavailable capabilities, denied rules, and unapproved capabilities that require approval.
+The shared action contract is wired. `backend/app/actions/contracts.py` defines `CapabilityDescriptor`, `ModelActionProposal`, `AuthorizationContext`, `AuthorizationDecision`, `ApprovalAuditRecord`, `ExecutionResultRecord`, `ActionCancellationRecord`, `ActionEvidence`, and `CapabilityRegistry`. Descriptors declare an approval mode of `turn_boundary` or `same_turn`. The registry validates effect classes, readiness states, availability states, authorization rules, timeout/cancellation/result schema metadata, unavailable explanations, sorted snapshots, duplicate capability IDs, untrusted metadata claims, execution boundaries, and JSON Schema validation without remote schema fetching. Authorization denies unregistered capabilities, arguments the input schema rejects, unavailable readiness, unavailable capabilities, denied rules, and unapproved capabilities that require approval.
 
 `backend/app/actions/catalog.py` builds thirteen descriptors for search, memory lifecycle, provider configuration, and operator configuration from a `CapabilityObservation` of live state: enabled search providers, memory-service and curation presence, provider secret-store lock state and per-profile `readiness_state`, and `.env` presence. `CapabilityService` re-observes on every catalog read and proposal, so readiness and availability are observations rather than static claims.
 
@@ -83,7 +83,7 @@ The shared action contract is wired. `backend/app/actions/contracts.py` defines 
 
 The existing `/memory`, `/config/llm`, and `/config/operator` mutation routes record direct operator authority through `CapabilityService.operator_action`, so an operator request is represented as an approved proposal with an execution result. Their status codes and response bodies are unchanged.
 
-`backend/app/actions/boundaries.py` also declares the process and root isolation rules that file, workspace, shell, MCP, plugin, skill-script, and agent capabilities must satisfy before they can be registered. `ProcessBoundary` requires an explicit argv allowlist, an explicit environment allowlist rather than a wildcard, and a working root drawn from the declared storage roots, and it scrubs every environment key it did not allowlist so a parent-process secret cannot reach a child. The registry refuses a `privileged_execution` descriptor that omits these, and refuses any process-bearing capability that is not cancellable. No such capability is registered, so these rules are reachable today only through registration refusal.
+`backend/app/actions/boundaries.py` also declares the process and root isolation rules that file, workspace, shell, MCP, plugin, skill-script, and agent capabilities must satisfy before they can be registered. `ProcessBoundary` requires an explicit argv allowlist, an explicit environment allowlist rather than a wildcard, and a working root drawn from the declared storage roots, and it scrubs every environment key it did not allowlist so a parent-process secret cannot reach a child. The registry refuses a `privileged_execution` descriptor that omits these, and refuses any process-bearing capability that is not cancellable. Extension tool, skill-script, stdio MCP, and ACP capabilities now register these boundaries and execute through the shared action service.
 
 The `/memory`, `/config/llm`, and `/config/operator` mutation routes now authorize and execute on one path. `CapabilityService.execute_operator_action` mints the proposal, authorizes it with `caller="operator_api"`, records the approval and execution result, and re-raises the owning service's typed error so route status codes and conflict payloads are unchanged. An operator request carries its own authority, so availability and readiness are recorded but do not gate: the owning service reports those conditions with more fidelity than a descriptor explanation can. Operator-configuration keys are surfaced for discovery rather than enforced in the input schema, because the service rejects unknown keys per field and reports them.
 
@@ -91,7 +91,7 @@ Action evidence is durable. `backend/app/artifacts/storage.py` appends each reco
 
 The desktop exposes the governed action loop. `desktop/src/components/actions-panel.js` renders capability discovery with live availability and its unavailable explanation, pending approvals with approve, deny, and cancel controls, execution status, and the audit list. It proxies through `desktop/src-tauri/src/backend.rs` and `lib.rs` commands, builds DOM without `innerHTML`, never calls the backend directly, and never infers whether a proposal can be approved from its status string — it submits and renders the backend's answer.
 
-What remains: `delegated_runs` has no producer and stays empty.
+Explicit ACP sessions produce `delegated_runs` through `TurnEngine.run_extension`. Broader agent modes remain ADR 0007 work.
 
 ## Confirmation
 
@@ -167,8 +167,21 @@ Validation commands:
 - `npm --prefix desktop test` for desktop action/config/memory/search contract changes
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` for Tauri bridge changes; the static desktop suite matches command and route names as strings and never compiles them
 
-## Follow-up
+## Remaining Work
 
 Required to complete this ADR:
 
-- Populate `delegated_runs` when delegated agent execution exists; it has no producer today, so this cannot close until ADR 0007 introduces delegated agents.
+- Validate real external providers and other host classes before making deployment claims. Explicit ACP delegated artifacts are implemented.
+
+## Evidence
+
+Validated on linux-amd64:
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `npm --prefix desktop test`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+
+Protocol tests required execution outside the restricted runner because its asyncio
+subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
+with fixture data; a live native desktop, remote deployment, and other host classes
+remain unverified. The declared process controls are not an OS sandbox.

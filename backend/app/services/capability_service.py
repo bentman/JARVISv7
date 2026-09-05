@@ -119,6 +119,7 @@ class _PendingProposal:
     decision: AuthorizationDecision
     created_at: float
     expires_at: str
+    definition_claim: dict[str, Any] = field(default_factory=dict)
     decided: bool = False
     status: str = "awaiting_approval"
     execution: dict[str, Any] | None = None
@@ -142,13 +143,26 @@ class CapabilityService:
         self._pending: dict[str, _PendingProposal] = {}
         self._audit: deque[dict[str, Any]] = deque(maxlen=MAX_AUDIT_RECORDS)
         self._active: dict[str, ActionOperation] = {}
+        self._extension_bindings: Callable[[], list[tuple[CapabilityDescriptor, CapabilityHandler]]] | None = None
+        self._contexts: dict[str, AuthorizationContext] = {}
+        self.refresh()
+
+    def bind_extensions(
+        self, provider: Callable[[], list[tuple[CapabilityDescriptor, CapabilityHandler]]]
+    ) -> None:
+        self._extension_bindings = provider
         self.refresh()
 
     def refresh(self) -> None:
         registry = CapabilityRegistry()
         for descriptor in build_descriptors(self._observe()):
             registry.register(descriptor)
+        bindings = self._extension_bindings() if self._extension_bindings else []
+        for descriptor, _handler in bindings:
+            registry.register(descriptor)
         with self._lock:
+            for descriptor, handler in bindings:
+                self._handlers[descriptor.capability_id] = handler
             self._registry = registry
             self._evict_expired()
 
@@ -179,6 +193,7 @@ class CapabilityService:
         reason: str,
         caller: str = "actions_api",
         session_id: str = "api",
+        turn_id: str | None = None,
     ) -> ActionProposalView:
         self.refresh()
         descriptor = self.descriptor(capability_id)
@@ -204,9 +219,10 @@ class CapabilityService:
             reason=reason,
         )
         context = AuthorizationContext(
-            session_id=session_id, turn_id=f"api:{proposal_id}", caller=caller
+            session_id=session_id, turn_id=turn_id or f"api:{proposal_id}", caller=caller
         )
         with self._lock:
+            self._contexts[proposal_id] = context
             decision = self._registry.authorize(proposal, context)
         self._record("action_proposal", proposal, capability_id)
         self._record("authorization_decision", decision, capability_id)
@@ -264,10 +280,15 @@ class CapabilityService:
             raise CapabilityServiceError(
                 409, "capability_unavailable", "capability is no longer registered"
             )
+        if descriptor.metadata_claims.get("definition", {}) != pending.definition_claim:
+            with self._lock:
+                pending.status = "denied"
+            raise CapabilityServiceError(409, "definition_changed", "extension changed; propose the action again")
+        original = self._contexts.get(proposal_id)
         context = AuthorizationContext(
-            session_id="api",
-            turn_id=f"api:{proposal_id}",
-            caller="actions_api",
+            session_id=original.session_id if original else "api",
+            turn_id=original.turn_id if original else f"api:{proposal_id}",
+            caller=original.caller if original else "actions_api",
             operator_approved=True,
             approval_id=approval.approval_id,
         )
@@ -482,8 +503,10 @@ class CapabilityService:
             if descriptor.boundaries
             else DEFAULT_BOUNDARY
         )
+        context = self._contexts.get(proposal.proposal_id)
         operation = ActionOperation(
-            "api", f"api:{proposal.proposal_id}", proposal.proposal_id,
+            context.session_id if context else "api",
+            context.turn_id if context else f"api:{proposal.proposal_id}", proposal.proposal_id,
             proposal.capability_id, boundary,
         )
         with self._lock:
@@ -553,6 +576,7 @@ class CapabilityService:
                 decision=decision,
                 created_at=now.timestamp(),
                 expires_at=expires_at,
+                definition_claim=dict(self._registry.get(proposal.capability_id).metadata_claims.get("definition", {})),
             )
         return self._view_proposal(
             proposal, decision, status="awaiting_approval", expires_at=expires_at
@@ -564,6 +588,7 @@ class CapabilityService:
             key for key, item in self._pending.items() if item.created_at < cutoff
         ]:
             self._pending.pop(proposal_id, None)
+            self._contexts.pop(proposal_id, None)
 
     def _view(self, descriptor: CapabilityDescriptor) -> CapabilityView:
         return CapabilityView(

@@ -15,20 +15,20 @@ from backend.app.actions.contracts import (
 
 ExtensionFamily = Literal[
     "setting", "personality", "provider", "search_provider",
-    "prompt", "skill", "capability", "hook", "plugin",
+    "prompt", "skill", "capability", "hook", "plugin", "mcp", "acp", "tool",
 ]
 TrustStatus = Literal["application", "operator", "external", "untrusted"]
 ExtensionState = Literal["enabled", "disabled", "retired"]
 
 EXTENSION_FAMILIES = {
     "setting", "personality", "provider", "search_provider",
-    "prompt", "skill", "capability", "hook", "plugin",
+    "prompt", "skill", "capability", "hook", "plugin", "mcp", "acp", "tool",
 }
 TRUST_STATUSES = {"application", "operator", "external", "untrusted"}
 EXTENSION_STATES = {"enabled", "disabled", "retired"}
 READINESS_STATES = {"ready", "degraded", "unavailable"}
 AVAILABILITY_STATES = {"available", "disabled", "misconfigured", "unknown"}
-DEFINED_FAMILIES = {"hook", "plugin"}
+DEFINED_FAMILIES = {"hook", "plugin", "mcp", "acp", "tool"}
 
 SAFE_LOCAL_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 

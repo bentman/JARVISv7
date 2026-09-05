@@ -143,10 +143,13 @@ def test_secret_storage_encrypts_replaces_deletes_and_rotates(tmp_path, monkeypa
     assert store.read_secret(profile.profile_id, "api_key") == "replacement-secret"
 
     old_key = store.env_path.read_text(encoding="utf-8").split("JARVIS_SECRET_STORE_KEY=", 1)[1].splitlines()[0]
+    store.write_secret("extension:mcp:example", "bearer", "extension-private-token")
+    assert b"extension-private-token" not in store.db_path.read_bytes()
     store.rotate_key()
     new_key = store.env_path.read_text(encoding="utf-8").split("JARVIS_SECRET_STORE_KEY=", 1)[1].splitlines()[0]
     assert old_key != new_key
     assert store.read_secret(profile.profile_id, "api_key") == "replacement-secret"
+    assert store.read_secret("extension:mcp:example", "bearer") == "extension-private-token"
     assert "JARVIS_SECRET_STORE_PREVIOUS_KEY" not in store.env_path.read_text(encoding="utf-8")
 
     store.delete_secret(profile.profile_id, "api_key")
