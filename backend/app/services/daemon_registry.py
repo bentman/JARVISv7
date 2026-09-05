@@ -193,4 +193,10 @@ def _process_is_alive(pid: int) -> bool:
         return False
     except PermissionError:
         return True
+    except OSError as exc:
+        # Windows has no signal-0 no-op: os.kill() on a nonexistent PID raises
+        # OSError WinError 87 rather than the POSIX ProcessLookupError.
+        if os.name == "nt" and getattr(exc, "winerror", None) == 87:
+            return False
+        raise
     return True
