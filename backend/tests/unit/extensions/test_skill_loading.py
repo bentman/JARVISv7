@@ -11,6 +11,7 @@ from backend.app.extensions.skills import (
     parse_skill_frontmatter,
     resolve_skill_script,
 )
+from backend.tests.symlink_helpers import symlink_or_skip
 
 BODY = "# Release notes\n\nThe full procedure lives here."
 MANIFEST = (
@@ -136,7 +137,7 @@ def test_script_symlink_escape_is_rejected(tmp_path: Path) -> None:
     )
     outside = tmp_path / "outside.py"
     outside.write_text("print('outside')", encoding="utf-8")
-    (directory / "build.py").symlink_to(outside)
+    symlink_or_skip(outside, directory / "build.py")
 
     result = list_skills_with_errors(tmp_path)
 
@@ -149,7 +150,7 @@ def test_skill_manifest_symlink_is_rejected_for_discovery_and_direct_load(tmp_pa
     outside = tmp_path / "outside.md"
     outside.write_text(MANIFEST, encoding="utf-8")
     (directory / "SKILL.md").unlink()
-    (directory / "SKILL.md").symlink_to(outside)
+    symlink_or_skip(outside, directory / "SKILL.md")
 
     result = list_skills_with_errors(tmp_path)
 
@@ -228,6 +229,7 @@ def test_standard_scripts_directory_is_discoverable_and_resolves_contained_scrip
     assert skill.has_scripts is True
     assert resolve_skill_script("builder", "build.py", tmp_path) == (scripts / "build.py").resolve()
     assert resolve_skill_script("builder", "scripts/build.py", tmp_path) == (scripts / "build.py").resolve()
+    assert resolve_skill_script("builder", r"scripts\build.py", tmp_path) == (scripts / "build.py").resolve()
 
 
 @pytest.mark.parametrize("skill_id", ["../escape", "a/b"])

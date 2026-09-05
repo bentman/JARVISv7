@@ -324,11 +324,16 @@ def resolve_skill_script(
     effective_config = CONFIG_DIR if base_dir is None and config_dir is None else config_dir
     skill_root, _ = _select_skill_path(skill_id, base_dir, effective_config)
     manifest = load_skill_manifest(skill_id, base_dir, config_dir=effective_config)
-    if script in manifest.scripts:
-        relative = script
+    normalized_script = script.replace("\\", "/")
+    if normalized_script in manifest.scripts:
+        relative = normalized_script
     else:
-        candidate = Path(script)
-        relative = script if candidate.parts and candidate.parts[0] == "scripts" else str(Path("scripts") / candidate)
+        candidate = PurePosixPath(normalized_script)
+        relative = (
+            normalized_script
+            if candidate.parts and candidate.parts[0] == "scripts"
+            else str(PurePosixPath("scripts") / candidate)
+        )
     if not relative.startswith("scripts/") and relative != "scripts":
         raise ValueError(f"script is not declared by skill: {script}")
     path = _contained_skill_path(skill_root, relative)

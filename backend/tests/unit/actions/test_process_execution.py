@@ -51,6 +51,23 @@ def test_scrubs_parent_environment_before_launching_child() -> None:
     assert result["stdout"] == "visible None\n"
 
 
+def test_normalizes_captured_output_line_endings() -> None:
+    result, _ = run_process(
+        _operation(),
+        _process_boundary(),
+        (
+            sys.executable,
+            "-c",
+            "import sys; "
+            "sys.stdout.buffer.write(b'ready\\r\\nagain\\r'); "
+            "sys.stderr.buffer.write(b'err\\r\\n')",
+        ),
+    )
+
+    assert result["stdout"] == "ready\nagain\n"
+    assert result["stderr"] == "err\n"
+
+
 def test_rejects_unapproved_executable_before_launching() -> None:
     with pytest.raises(BoundaryViolationError, match="not allowlisted"):
         run_process(_operation(), _process_boundary(), ("sh", "-c", "echo no"))

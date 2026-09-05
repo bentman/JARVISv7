@@ -6,6 +6,7 @@ import pytest
 from backend.app.actions.boundaries import ActionCancelledError, ActionOperation, ExecutionBoundary
 from backend.app.extensions.discovery import parse_definition_manifest
 from backend.app.extensions.plugins import PluginInstaller
+from backend.tests.symlink_helpers import symlink_or_skip
 
 
 def _operation() -> ActionOperation:
@@ -95,7 +96,7 @@ def test_refuses_a_symlink_in_the_bundle(tmp_path: Path) -> None:
     bundle = _bundle(config)
     outside = tmp_path / "outside.yaml"
     outside.write_text("outside", encoding="utf-8")
-    (bundle / "mcp" / "escape.yaml").symlink_to(outside)
+    symlink_or_skip(outside, bundle / "mcp" / "escape.yaml")
 
     with pytest.raises(ValueError, match="contains a symlink"):
         PluginInstaller(config, data).install(_manifest(), _operation())

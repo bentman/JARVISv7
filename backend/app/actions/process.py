@@ -23,6 +23,10 @@ _POLL_SECONDS = 0.01
 _STOP_SECONDS = 1.0
 
 
+def _decode_output(value: bytearray) -> str:
+    return value.decode("utf-8", errors="replace").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def run_process(
     operation: ActionOperation,
     process_boundary: ProcessBoundary,
@@ -114,8 +118,8 @@ def run_process(
     }
     result = {
         "exit_code": process.returncode,
-        "stdout": stdout.decode("utf-8", errors="replace"),
-        "stderr": stderr.decode("utf-8", errors="replace"),
+        "stdout": _decode_output(stdout),
+        "stderr": _decode_output(stderr),
     }
     return bound_result(result, operation.boundary.max_result_bytes, artifacts), artifacts
 
