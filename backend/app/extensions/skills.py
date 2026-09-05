@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any
 
 import yaml
@@ -84,7 +84,15 @@ def _relative_paths(value: Any, field_name: str) -> tuple[str, ...]:
         raise ValueError(f"{field_name} must be a list of strings")
     for item in value:
         candidate = Path(item)
-        if candidate.is_absolute() or ".." in candidate.parts:
+        # Path.is_absolute() is host-OS-dependent (a leading "/" is not absolute
+        # under Windows pathlib semantics without a drive letter), so a declared
+        # POSIX-style root path must be checked independently of the host platform.
+        if (
+            candidate.is_absolute()
+            or candidate.drive
+            or PurePosixPath(item).is_absolute()
+            or ".." in candidate.parts
+        ):
             raise ValueError(f"{field_name} entries must stay inside the skill directory: {item}")
     return tuple(value)
 
