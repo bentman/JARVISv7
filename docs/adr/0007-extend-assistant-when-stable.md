@@ -163,7 +163,7 @@ Known absence checks:
 - OS sandboxing and agent-visible MCP delegation filtering remain outside the explicit ACP client implementation.
 - `backend/tests/unit/api/test_routes.py` includes a route-surface guard that agent routes are absent from OpenAPI.
 
-## Remaining Work
+## Follow Up
 
 Gaps required to complete this ADR:
 - Complete ADR 0005's governed capability execution path.

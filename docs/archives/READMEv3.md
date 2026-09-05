@@ -185,7 +185,7 @@ The end goal is not blandness. It is personality that survives validation.
 
 * * *
 
-## ⚠️ Remaining Work
+## ⚠️ Follow Up
 
 The main unanswered question is no longer what JARVIS should be. The answer is in [ProjectVision.md](ProjectVision.md): a local, voice-first, desktop-resident assistant with explicit cognition, real continuity, reliable runtime selection, visible state, and clean failure behavior. The remaining work is mostly the more irritating category: implementation quality.
 

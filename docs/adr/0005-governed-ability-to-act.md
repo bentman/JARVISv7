@@ -167,12 +167,6 @@ Validation commands:
 - `npm --prefix desktop test` for desktop action/config/memory/search contract changes
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` for Tauri bridge changes; the static desktop suite matches command and route names as strings and never compiles them
 
-## Remaining Work
-
-Required to complete this ADR:
-
-- Validate real external providers and other host classes before making deployment claims. Explicit ACP delegated artifacts are implemented.
-
 ## Evidence
 
 Validated on linux-amd64:
@@ -185,3 +179,9 @@ Protocol tests required execution outside the restricted runner because its asyn
 subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
 with fixture data; a live native desktop, remote deployment, and other host classes
 remain unverified. The declared process controls are not an OS sandbox.
+
+## Follow Up
+
+Required to complete this ADR:
+
+- Validate real external providers and other host classes before making deployment claims. Explicit ACP delegated artifacts are implemented.

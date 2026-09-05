@@ -299,7 +299,7 @@ Project vision defines the intended shape and the invariants that should survive
 The repository must keep separate records for separate purposes:
 
 - `ProjectVision.md` defines direction and enduring shape
-- `docs/adr/` records accepted architecture decisions, current design boundaries, implementation paths, consequences, remaining work, and evidence
+- `docs/adr/` records accepted architecture decisions, current design boundaries, implementation paths, consequences, follow up, and evidence
 - `repo_tree.md` guides where repository content belongs
 
 Implementation is complete only when the intended outcome works in the real product path on the hardware classes it claims as validated.

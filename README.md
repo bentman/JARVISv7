@@ -220,7 +220,7 @@ This is a meaningful foundation, not the final form. Better retrieval, preferenc
 
 * * *
 
-## ⚠️ Remaining Work
+## ⚠️ Follow Up
 
 The main unanswered question is no longer what JARVIS should be. The answer is in [ProjectVision.md](ProjectVision.md): a local, voice-first, desktop-resident assistant that grows from a truthful runtime foundation into useful memory, governed action, reusable capability, and eventually opt-in agent behavior.
 

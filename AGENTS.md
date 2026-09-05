@@ -107,7 +107,7 @@ If answers are not concrete, do not add the test. When scope exposes obsolete or
 - Do not commit generated artifacts unless the task requires it. Ensure `.gitignore` covers new generated output.
 - Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
 - Source code and tests describe the system as it exists. Development narration belongs in chat, commits, pull requests, or durable ADRs.
-- When a change materially implements, removes, or changes behavior described by an accepted ADR, update the affected ADR `Status`, `Current Design`, `Remaining Work`, and `Evidence` sections in the same change. Use `Remaining Work` only for gaps required to complete that ADR's decision; move separate future architecture into a new ADR or backlog, and mark older ADRs superseded when a later decision replaces them.
+- When a change materially implements, removes, or changes behavior described by an accepted ADR, update the affected ADR `Status`, `Current Design`, `Follow Up`, and `Evidence` sections in the same change. Use `Follow Up` only for gaps required to complete that ADR's decision; move separate future architecture into a new ADR or backlog, and mark older ADRs superseded when a later decision replaces them.
 - Default to no comment. Keep a comment only when it explains a non-obvious invariant, constraint, workaround, or public contract.
 - Source artifacts contain no conversation/session residue, agent references, phase notes, temporary planning references, or completed-work justifications.
 - Use positive scope boundaries: say what owns behavior, not what a module "is not."

@@ -197,7 +197,7 @@ Validation evidence:
 - `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/routing/test_provider_router.py`
 
-## Remaining Work
+## Follow Up
 
 The MCP, explicit ACP client, hook, plugin-installation, and skill-script follow-ups
 have implementation and focused test evidence. Deployment acceptance still requires
