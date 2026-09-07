@@ -94,8 +94,11 @@ Implemented foundations:
 Declarative definitions and their initial tracked defaults are documented in
 `config/extensions/README.md`. The disabled application hook default records
 no events until explicitly enabled. ACP bridge execution is implemented behind
-the governed process/action boundary; this does not complete agent runtime
-integration described by ADR 0007.
+the governed process/action boundary.
+
+An inbound ACP server exists in `backend/app/extensions/acp_server.py`. It accepts external client connections over TCP using a JSON-RPC 2.0 protocol, manages session lifecycle with configurable max sessions and timeouts, and routes incoming messages through `TurnEngine.run_text_turn()`. Server start/stop/status and session list endpoints are exposed through `backend/app/api/routes/acp_server.py`.
+
+MCP credentials now support interactive OAuth 2.0 authorization code flow with PKCE. `backend/app/extensions/mcp_oauth.py` provides `McpOAuthConfig`, `McpOAuthFlow` (authorization URL generation, code exchange, token refresh, local callback server), and `McpOAuthTokenStore` (JSON file persistence with 0o600 permissions). `McpConnectionDefinition` accepts an optional `oauth` field for OAuth-configured connections.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
@@ -183,12 +186,14 @@ Validation evidence:
 - `backend/tests/unit/services/test_action_evidence_log.py`
 - `backend/tests/unit/api/test_action_routes.py`
 - `backend/tests/unit/routing/test_provider_router.py`
+- `backend/tests/unit/extensions/test_acp_server.py`
+- `backend/tests/unit/extensions/test_mcp_oauth.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1455 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 17 passed, including actual local MCP and ACP SDK peers.
 - `npm --prefix desktop test`: PASS.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
@@ -197,12 +202,6 @@ remain unverified. The declared process controls are not an OS sandbox.
 
 ## Follow-up
 
-The MCP, explicit ACP client, hook, plugin-installation, and skill-script follow-ups
-have implementation and focused test evidence. Deployment acceptance still requires
-the operator's actual remote services, agent executable, credentials, and native
-desktop session. Other host classes require their own execution evidence.
+The MCP, explicit ACP client, hook, plugin-installation, skill-script, inbound ACP server, and OAuth credential follow-ups have implementation and focused test evidence. Deployment acceptance still requires the operator's actual remote services, agent executable, credentials, and native desktop session. Other host classes require their own execution evidence.
 
-MCP credentials currently support bearer tokens and explicitly allowlisted stdio
-environment variables. Interactive OAuth, optional MCP Tasks/Apps, inbound ACP,
-autonomous agent routing, and arbitrary plugin installation scripts are outside
-this implementation. Broader agent behavior remains governed by ADR 0007.
+MCP credentials now support bearer tokens, explicitly allowlisted stdio environment variables, and interactive OAuth 2.0 with PKCE. Optional MCP Tasks/Apps, autonomous agent routing, and arbitrary plugin installation scripts remain outside this implementation. Broader agent behavior is governed by ADR 0007.

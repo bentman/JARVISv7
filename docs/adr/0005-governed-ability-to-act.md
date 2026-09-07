@@ -1,7 +1,7 @@
 # 0005 - Governed Ability to Act
 
 Date: 2026-09-01
-Status: Accepted
+Status: Implemented
 Related: 0002, 0003, 0004, 0006, 0007
 
 ## Context and Problem Statement
@@ -91,7 +91,9 @@ Action evidence is durable. `backend/app/artifacts/storage.py` appends each reco
 
 The desktop exposes the governed action loop. `desktop/src/components/actions-panel.js` renders capability discovery with live availability and its unavailable explanation, pending approvals with approve, deny, and cancel controls, execution status, and the audit list. It proxies through `desktop/src-tauri/src/backend.rs` and `lib.rs` commands, builds DOM without `innerHTML`, never calls the backend directly, and never infers whether a proposal can be approved from its status string — it submits and renders the backend's answer.
 
-Explicit ACP sessions produce `delegated_runs` through `TurnEngine.run_extension`. Broader agent modes remain ADR 0007 work.
+Explicit ACP sessions produce `delegated_runs` through `TurnEngine.run_extension`. Agent invocation routes through the governed capability path via `agent-invoke-{profile_id}` capability descriptors built from `AgentRegistry.to_capability_records()`.
+
+Runtime test infrastructure validates the governed action path without live external services. `backend/tests/fixtures/search_providers.py` provides mock DDGS, SearXNG, and Tavily responses with configurable failure modes. `backend/tests/fixtures/action_governance.py` provides helpers for testing the full governed path (proposal, authorization, execution) with mock providers. `scripts/validate_backend.py` gained a `--mock` flag for the `runtime` subcommand to run mock-based tests alongside live ones.
 
 ## Confirmation
 
@@ -159,19 +161,22 @@ Test coverage:
 - `backend/tests/unit/services/test_memory_service.py`
 - `backend/tests/unit/api/test_memory_routes.py`
 - `backend/tests/runtime/services/test_search_public_providers_live.py`
+- `backend/tests/fixtures/search_providers.py`
+- `backend/tests/fixtures/action_governance.py`
 
 Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_backend.py unit`
 - `backend/.venv/Scripts/python scripts/validate_backend.py integration` when action behavior crosses service/API boundaries
 - `backend/.venv/Scripts/python scripts/validate_backend.py runtime --families services --devices ...` for live external-provider validation claims
+- `backend/.venv/Scripts/python scripts/validate_backend.py runtime --mock` for mock-based governed action tests
 - `npm --prefix desktop test` for desktop action/config/memory/search contract changes
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` for Tauri bridge changes; the static desktop suite matches command and route names as strings and never compiles them
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1259 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 19 passed, including actual local MCP and ACP SDK peers.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1455 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 17 passed, including actual local MCP and ACP SDK peers.
 - `npm --prefix desktop test`: PASS.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml --offline`: PASS.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
@@ -180,6 +185,4 @@ remain unverified. The declared process controls are not an OS sandbox.
 
 ## Follow-up
 
-Required to complete this ADR:
-
-- Validate real external providers and other host classes before making deployment claims. Explicit ACP delegated artifacts are implemented.
+- Validate real external providers and other host classes before making deployment claims. Mock-based governed action tests now cover the code paths without live services.
