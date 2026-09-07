@@ -703,35 +703,3 @@ export function createMemoryPanel(container, handlers, options = {}) {
 
   return { open: show, close, isOpen: () => open, controller };
 }
-
-export function createOperatorPanelCoordinator(options) {
-  // Each panel closes only the others that are currently open, so adding a panel never
-  // changes the close sequence a caller already observes.
-  const panels = [
-    { name: "memory", isOpen: options.isMemoryOpen, open: options.openMemory, close: options.closeMemory, focus: options.focusMemoryTrigger },
-    { name: "settings", isOpen: options.isSettingsOpen, open: options.openSettings, close: options.closeSettings, focus: options.focusSettingsTrigger },
-    { name: "actions", isOpen: options.isActionsOpen, open: options.openActions, close: options.closeActions, focus: options.focusActionsTrigger },
-    { name: "extensions", isOpen: options.isExtensionsOpen, open: options.openExtensions, close: options.closeExtensions, focus: options.focusExtensionsTrigger },
-  ].filter((panel) => panel.isOpen && panel.open && panel.close);
-
-  async function toggle(name) {
-    const target = panels.find((panel) => panel.name === name);
-    if (!target) return;
-    if (target.isOpen()) {
-      target.close();
-      target.focus?.();
-      return;
-    }
-    for (const panel of panels) {
-      if (panel !== target && panel.isOpen()) panel.close();
-    }
-    await target.open();
-  }
-
-  return {
-    toggleMemory: () => toggle("memory"),
-    toggleSettings: () => toggle("settings"),
-    toggleActions: () => toggle("actions"),
-    toggleExtensions: () => toggle("extensions"),
-  };
-}

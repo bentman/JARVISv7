@@ -6,10 +6,13 @@ import { renderDegradedList, selectedFamilyBlockers } from "./components/degrade
 import { renderReadiness as renderReadinessPanel } from "./components/readiness-panel.js";
 import { createResidentVoicePresenter } from "./components/resident-voice.js";
 import { renderServiceStatus } from "./components/service-status.js";
-import { closeSettings, openSettings } from "./components/settings-panel.js";
-import { createMemoryPanel, createOperatorPanelCoordinator } from "./components/memory-panel.js";
+import { clearRestartRequired, closeSettings, markRestartRequired, openSettings, restartRequiredScopes } from "./components/settings-panel.js";
+import { closeProviderSettings, openProviderSettings, providerSettingsOpen } from "./components/llm-provider-settings.js";
+import { createMemoryPanel } from "./components/memory-panel.js";
 import { createActionsPanel } from "./components/actions-panel.js";
 import { createExtensionsPanel } from "./components/extensions-panel.js";
+import { createAgentsPanel } from "./components/agents-panel.js";
+import { createAdvancedPanelCoordinator } from "./components/advanced-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 import { createDesktopPolling } from "./components/desktop-polling.js";
@@ -27,15 +30,17 @@ const residentStatusEl = document.querySelector("#resident-voice-status");
 const personalityCurrentEl = document.querySelector("#personality-current");
 const personalitySelectEl = document.querySelector("#personality-select");
 const personalityDetailEl = document.querySelector("#personality-detail");
-const settingsTriggerEl = document.querySelector("#settings-trigger");
 const settingsRestartRequiredEl = document.querySelector("#settings-restart-required");
 const settingsPanelEl = document.querySelector("#settings-panel");
-const memoryTriggerEl = document.querySelector("#memory-trigger");
+const providersPanelEl = document.querySelector("#providers-panel");
 const memoryPanelEl = document.querySelector("#memory-panel");
-const actionsTriggerEl = document.querySelector("#actions-trigger");
 const actionsPanelEl = document.querySelector("#actions-panel");
-const extensionsTriggerEl = document.querySelector("#extensions-trigger");
 const extensionsPanelEl = document.querySelector("#extensions-panel");
+const agentsPanelEl = document.querySelector("#agents-panel");
+const advancedTriggerEl = document.querySelector("#advanced-controls-trigger");
+const advancedDialogEl = document.querySelector("#advanced-panel");
+const advancedRailEl = document.querySelector("#advanced-panel-rail");
+const advancedCloseEl = document.querySelector("#advanced-panel-close");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
@@ -73,7 +78,7 @@ const memoryPanel = createMemoryPanel(
     forgetMemory: (...args) => api.forgetMemory(...args),
     getMemoryCurationStatus: (...args) => api.getMemoryCurationStatus(...args),
   },
-  { onClose: () => memoryTriggerEl.focus() },
+  { onClose: () => advancedPanel.requestClose() },
 );
 
 const actionsPanel = createActionsPanel(
@@ -87,7 +92,7 @@ const actionsPanel = createActionsPanel(
     decideAction: (...args) => api.decideAction(...args),
     cancelAction: (...args) => api.cancelAction(...args),
   },
-  { onClose: () => actionsTriggerEl.focus() },
+  { onClose: () => advancedPanel.requestClose() },
 );
 
 const extensionsPanel = createExtensionsPanel(
@@ -106,7 +111,7 @@ const extensionsPanel = createExtensionsPanel(
     decideAction: (...args) => api.decideAction(...args),
     cancelAction: (...args) => api.cancelAction(...args),
   },
-  { onClose: () => extensionsTriggerEl.focus() },
+  { onClose: () => advancedPanel.requestClose() },
 );
 let activePersonalityId = "default";
 let desktopState = null;
@@ -117,38 +122,75 @@ const RESIDENT_VOICE_MODE_STORAGE_KEY = "jarvisv7_active_resident_voice_mode";
 let ttsVoicePreferenceRestored = false;
 let residentVoiceModePreferenceRestored = false;
 
-const operatorPanels = createOperatorPanelCoordinator({
-  isMemoryOpen: () => memoryPanel.isOpen(),
-  openMemory: () => memoryPanel.open(),
-  closeMemory: () => memoryPanel.close(),
-  focusMemoryTrigger: () => memoryTriggerEl.focus(),
-  isSettingsOpen: () => !settingsPanelEl.hidden,
-  openSettings: () =>
-    openSettings(settingsPanelEl, {
-      getOperatorConfig: api.getOperatorConfig,
-      writeOperatorConfig: api.writeOperatorConfig,
-      getLlmConfig: api.getLlmConfig,
-      createLlmProfile: api.createLlmProfile,
-      updateLlmProfile: api.updateLlmProfile,
-      deleteLlmProfile: api.deleteLlmProfile,
-      testLlmProfile: api.testLlmProfile,
-      updateLlmSelection: api.updateLlmSelection,
-      rotateSecretStoreKey: api.rotateSecretStoreKey,
-      restartBackend: restartBackendForSettings,
-      onRestartRequiredChange: updateSettingsRestartRequired,
-      returnFocusEl: settingsTriggerEl,
-    }),
-  closeSettings: () => closeSettings(),
-  focusSettingsTrigger: () => settingsTriggerEl.focus(),
-  isActionsOpen: () => actionsPanel.isOpen(),
-  openActions: () => actionsPanel.open(),
-  closeActions: () => actionsPanel.close(),
-  focusActionsTrigger: () => actionsTriggerEl.focus(),
-  isExtensionsOpen: () => extensionsPanel.isOpen(),
-  openExtensions: () => extensionsPanel.open(),
-  closeExtensions: () => extensionsPanel.close(),
-  focusExtensionsTrigger: () => extensionsTriggerEl.focus(),
+const agentsPanel = createAgentsPanel(
+  agentsPanelEl,
+  {
+    listAgents: (...args) => api.listAgents(...args),
+    listAgentRuns: (...args) => api.listAgentRuns(...args),
+    invokeAgent: (...args) => api.invokeAgent(...args),
+    cancelAgent: (...args) => api.cancelAgent(...args),
+  },
+  { onClose: () => advancedPanel.requestClose() },
+);
+
+const advancedPanel = createAdvancedPanelCoordinator({
+  dismiss: () => advancedDialogEl.close(),
+  categories: [
+    {
+      id: "providers",
+      isOpen: () => providerSettingsOpen(),
+      open: () =>
+        openProviderSettings(providersPanelEl, {
+          handlers: {
+            getLlmConfig: api.getLlmConfig,
+            createLlmProfile: api.createLlmProfile,
+            updateLlmProfile: api.updateLlmProfile,
+            deleteLlmProfile: api.deleteLlmProfile,
+            testLlmProfile: api.testLlmProfile,
+            updateLlmSelection: api.updateLlmSelection,
+            rotateSecretStoreKey: api.rotateSecretStoreKey,
+          },
+          restartBackend: restartBackendForSettings,
+          restartRequiredScopes,
+          markRestartRequired,
+          clearRestartRequired,
+          onClose: () => advancedPanel.requestClose(),
+        }),
+      close: () => closeProviderSettings(),
+    },
+    {
+      id: "settings",
+      isOpen: () => !settingsPanelEl.hidden,
+      open: () =>
+        openSettings(settingsPanelEl, {
+          getOperatorConfig: api.getOperatorConfig,
+          writeOperatorConfig: api.writeOperatorConfig,
+          restartBackend: restartBackendForSettings,
+          onRestartRequiredChange: updateSettingsRestartRequired,
+        }),
+      close: () => closeSettings(),
+    },
+    { id: "memory", isOpen: () => memoryPanel.isOpen(), open: () => memoryPanel.open(), close: () => memoryPanel.close() },
+    { id: "actions", isOpen: () => actionsPanel.isOpen(), open: () => actionsPanel.open(), close: () => actionsPanel.close() },
+    { id: "extensions", isOpen: () => extensionsPanel.isOpen(), open: () => extensionsPanel.open(), close: () => extensionsPanel.close() },
+    { id: "agents", isOpen: () => agentsPanel.isOpen(), open: () => agentsPanel.open(), close: () => agentsPanel.close() },
+  ],
 });
+
+let lastAdvancedCategoryId = "providers";
+
+function renderAdvancedRail() {
+  const active = advancedPanel.activeCategoryId();
+  for (const button of advancedRailEl.querySelectorAll("button[data-category]")) {
+    button.setAttribute("aria-selected", button.dataset.category === active ? "true" : "false");
+  }
+}
+
+async function openAdvancedCategory(categoryId) {
+  const opened = await advancedPanel.openCategory(categoryId);
+  if (opened) lastAdvancedCategoryId = opened;
+  renderAdvancedRail();
+}
 
 const presenceByProfile = {
   default: { listening: "Listening.", transcribing: "Transcribing.", reasoning: "Understood." },
@@ -570,9 +612,11 @@ async function restartBackendForSettings() {
   await completeBackendStart(startPayload);
 }
 
-function updateSettingsRestartRequired(required, details = {}) {
+function updateSettingsRestartRequired(required) {
   if (!settingsRestartRequiredEl) return;
-  settingsRestartRequiredEl.hidden = !(required && !details.panelOpen);
+  // The badge stands in for the advanced-control surface while it is dismissed; with the surface
+  // open the mounted category shows its own restart state.
+  settingsRestartRequiredEl.hidden = !(required && !advancedDialogEl.open);
   settingsRestartRequiredEl.textContent = required ? "Restart required" : "";
 }
 
@@ -662,20 +706,32 @@ if (residentTtsVoiceEl) {
   });
 }
 
-memoryTriggerEl.addEventListener("click", () => {
-  operatorPanels.toggleMemory().catch((error) => showError(String(error)));
+advancedTriggerEl.addEventListener("click", () => {
+  advancedDialogEl.showModal();
+  updateSettingsRestartRequired(restartRequiredScopes().length > 0);
+  openAdvancedCategory(lastAdvancedCategoryId).catch((error) => showError(String(error)));
 });
 
-actionsTriggerEl.addEventListener("click", () => {
-  operatorPanels.toggleActions().catch((error) => showError(String(error)));
+advancedCloseEl.addEventListener("click", () => advancedDialogEl.close());
+
+advancedDialogEl.addEventListener("click", (event) => {
+  // A click reported against the dialog itself landed on the backdrop, not on panel content.
+  if (event.target === advancedDialogEl) advancedDialogEl.close();
 });
 
-extensionsTriggerEl.addEventListener("click", () => {
-  operatorPanels.toggleExtensions().catch((error) => showError(String(error)));
+// showModal() gives Escape dismissal, focus containment and focus return for free; this single
+// hook therefore covers Escape, the Close button and a backdrop click alike.
+advancedDialogEl.addEventListener("close", () => {
+  advancedPanel.closeActive();
+  renderAdvancedRail();
+  updateSettingsRestartRequired(restartRequiredScopes().length > 0);
 });
 
-settingsTriggerEl.addEventListener("click", () => {
-  operatorPanels.toggleSettings().catch((error) => showError(String(error)));
+advancedRailEl.addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-category]");
+  if (!button) return;
+  // Each panel focuses its own heading once mounted, so the rail does not claim focus itself.
+  openAdvancedCategory(button.dataset.category).catch((error) => showError(String(error)));
 });
 
 if (wakeToggleEl) {

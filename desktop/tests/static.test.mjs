@@ -8,13 +8,17 @@ import { createResidentVoicePresenter } from "../src/components/resident-voice.j
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
 import { createSearchStatus, renderSearchEvidence } from "../src/components/search-evidence.js";
 import { createApiClient } from "../src/api-client.js";
+import { restartScopeDisables } from "../src/components/settings-panel.js";
 import {
+  builtinProfileNotice,
+  defaultEditingProfile,
   providerChoiceGroups,
+  providerRestartDisabled,
   providerSelectionPayload,
 } from "../src/components/llm-provider-settings.js";
+import { createAdvancedPanelCoordinator } from "../src/components/advanced-panel.js";
 import {
   createMemoryPanelController,
-  createOperatorPanelCoordinator,
   curationActivityState,
   formatCurationResult,
   memoryActionsEnabled,
@@ -34,6 +38,14 @@ import {
   formatExtensionOrigin,
   requestedCapabilities,
 } from "../src/components/extensions-panel.js";
+import {
+  agentCancelNotice,
+  agentInvokeEnabled,
+  agentInvokeNotice,
+  agentRunActivityState,
+  agentRunProfileId,
+  createAgentsPanelController,
+} from "../src/components/agents-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
 const apiClient = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
@@ -47,6 +59,7 @@ const llmProviderSettings = readFileSync(new URL("../src/components/llm-provider
 const memoryPanel = readFileSync(new URL("../src/components/memory-panel.js", import.meta.url), "utf8");
 const actionsPanel = readFileSync(new URL("../src/components/actions-panel.js", import.meta.url), "utf8");
 const extensionsPanel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+const agentsPanel = readFileSync(new URL("../src/components/agents-panel.js", import.meta.url), "utf8");
 const backend = readFileSync(new URL("../src-tauri/src/backend.rs", import.meta.url), "utf8");
 const lib = readFileSync(new URL("../src-tauri/src/lib.rs", import.meta.url), "utf8");
 const index = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
@@ -80,6 +93,99 @@ await failingExtensionController.invoke("mcp:server", "capability", {});
 assert.equal(failingExtensionController.snapshot().detailError, "blocked");
 assert.ok(extensionsPanel.includes("data-draft-key"), "extension forms must retain drafts across run refreshes");
 
+const agentProfile = {
+  profile_id: "researcher",
+  display_name: "Researcher",
+  purpose: "Investigate a question",
+  invocation_modes: ["direct", "as_tool"],
+  capability_ids: ["search-public-web"],
+  memory_scope: "episodic",
+  approval_class: "standard",
+  cancellable: true,
+};
+const agentRunRecord = {
+  kind: "action_proposal",
+  capability_id: "agent-invoke-researcher",
+  proposal_id: "p-1",
+  recorded_at: "2026-09-07T10:00:00+00:00",
+  record: { proposal_id: "p-1", status: "awaiting_approval" },
+};
+assert.equal(agentRunProfileId(agentRunRecord), "researcher", "agent runs must derive the profile from the capability id");
+assert.equal(agentRunProfileId({ capability_id: "extension-invoke-x" }), "", "non-agent audit records must not claim an agent");
+assert.equal(agentRunActivityState(agentRunRecord), "blocked", "an unapproved agent run must not read as active");
+assert.equal(agentRunActivityState({ record: { status: "success" } }), "succeeded");
+assert.equal(agentRunActivityState({}), "idle", "an audit record without a nested status must not invent one");
+assert.equal(agentInvokeNotice({ status: "awaiting_approval" }), "Agent invocation is awaiting approval.", "governed invocations must not report success");
+assert.equal(agentInvokeNotice({ status: "success" }), "Agent run completed.");
+assert.equal(agentCancelNotice({ profile_id: "researcher", cancelled: false }), "No cancellable agent run was found.", "a refused cancel must be reported honestly");
+assert.equal(agentCancelNotice({ profile_id: "researcher", cancelled: true }), "Agent run cancelled.");
+assert.equal(agentInvokeEnabled(agentProfile, " ", false), false, "an empty prompt must not invoke an agent");
+assert.equal(agentInvokeEnabled({ ...agentProfile, invocation_modes: ["as_tool"] }, "go", false), false, "only direct-invocable agents may be invoked here");
+assert.equal(agentInvokeEnabled(agentProfile, "go", true), false, "a pending mutation must block a second invocation");
+assert.equal(agentInvokeEnabled(agentProfile, "go", false), true);
+
+{
+  const agentCalls = [];
+  const controller = createAgentsPanelController({
+    listAgents: async () => ({ agents: [agentProfile] }),
+    listAgentRuns: async () => ({ records: [agentRunRecord] }),
+    invokeAgent: async (...args) => { agentCalls.push(["invoke", ...args]); return { agent_id: "researcher", status: "awaiting_approval" }; },
+    cancelAgent: async (...args) => { agentCalls.push(["cancel", ...args]); return { profile_id: "researcher", cancelled: false }; },
+  });
+  await controller.load();
+  const loaded = controller.snapshot();
+  assert.deepEqual(loaded.agents, [agentProfile], "the agent catalog must be unwrapped from its list envelope");
+  assert.deepEqual(loaded.runs, [agentRunRecord], "agent runs must be unwrapped from the audit records envelope");
+  controller.selectAgent("researcher");
+  controller.setPrompt("summarize the readiness report");
+  await controller.invoke("researcher", "summarize the readiness report");
+  assert.deepEqual(agentCalls, [["invoke", "researcher", "summarize the readiness report"]]);
+  const invoked = controller.snapshot();
+  assert.equal(invoked.mutationPending, false, "the mutation lock must release after an invocation");
+  assert.equal(invoked.notice, "Agent invocation is awaiting approval.");
+  assert.equal(invoked.prompt, "", "a completed invocation must clear the prompt draft");
+  await controller.cancel("researcher");
+  assert.deepEqual(agentCalls[1], ["cancel", "researcher"]);
+  assert.equal(controller.snapshot().notice, "No cancellable agent run was found.");
+}
+
+{
+  const controller = createAgentsPanelController({
+    invokeAgent: async () => { throw new Error("agent capability is not authorized"); },
+    listAgentRuns: async () => ({ records: [] }),
+  });
+  await controller.invoke("researcher", "go");
+  const failed = controller.snapshot();
+  assert.equal(failed.mutationError, "agent capability is not authorized", "a failed invocation must report as an error");
+  assert.equal(failed.notice, "", "a failed invocation must not also read as a success notice");
+  assert.equal(failed.mutationPending, false);
+}
+
+{
+  const firstAgents = deferred();
+  let agentListCalls = 0;
+  const controller = createAgentsPanelController({
+    listAgents: () => (agentListCalls++ === 0 ? firstAgents.promise : Promise.resolve({ agents: [agentProfile] })),
+  });
+  const staleRequest = controller.refreshAgents();
+  await controller.refreshAgents();
+  firstAgents.resolve({ agents: [] });
+  await staleRequest;
+  assert.deepEqual(controller.snapshot().agents, [agentProfile], "stale agent responses must not replace a newer catalog");
+}
+
+{
+  const controller = createAgentsPanelController({
+    listAgents: async () => { throw new Error("agent registry is unavailable"); },
+  });
+  await controller.refreshAgents();
+  assert.equal(controller.snapshot().agentsError, "agent registry is unavailable", "an unavailable registry must be surfaced, not hidden");
+}
+
+for (const banned of ["innerHTML", "fetch(", "localStorage", "style.display"]) {
+  assert.ok(!agentsPanel.includes(banned), `agents panel must not use ${banned}`);
+}
+
 for (const relativePath of [
   "../package.json",
   "../src/index.html",
@@ -92,6 +198,8 @@ for (const relativePath of [
   "../src/components/memory-panel.js",
   "../src/components/actions-panel.js",
   "../src/components/extensions-panel.js",
+  "../src/components/agents-panel.js",
+  "../src/components/advanced-panel.js",
   "../src/components/resident-voice.js",
   "../src/components/service-status.js",
   "../src/components/desktop-polling.js",
@@ -185,6 +293,24 @@ assert.match(style, /\.status-panel,\s*\.operator-panel\s*{\s*overflow-y:\s*auto
 assert.ok(style.includes("@media (max-width: 820px)"));
 assert.ok(!style.includes("@media (max-width: 1180px)"));
 assert.ok(!style.includes("grid-template-areas"));
+for (const selector of [
+  ".advanced-panel",
+  ".advanced-panel::backdrop",
+  ".advanced-panel-rail",
+  '.advanced-panel-rail button[aria-selected="true"]',
+  ".advanced-panel-detail",
+  ".agents-panel",
+  "--color-backdrop",
+]) {
+  assert.ok(style.includes(selector), `advanced-control style contract missing: ${selector}`);
+}
+for (const dead of [".icon-button", ".operator-trigger-group", ".settings-trigger-group"]) {
+  assert.ok(!style.includes(dead), `dead operator trigger-row style must be removed: ${dead}`);
+}
+assert.ok(
+  !style.includes(".status-panel #personality-select"),
+  "Personality must share the operator-panel selector sizing once it moves to the right sidebar",
+);
 for (const snippet of [
   'document.createElement("article")',
   'document.createElement("span")',
@@ -298,6 +424,53 @@ assert.ok(index.includes("resident-tts-voice"), "desktop must expose resident vo
 assert.ok(index.includes("Voice Selector"), "desktop must label resident voice selector");
 assert.ok(index.includes("ptt-only"), "desktop must include PTT-only resident mode");
 assert.ok(index.indexOf("resident-voice-panel") < index.indexOf("wake-monitor-panel"), "Resident Voice must render above Wake in the operator panel");
+assert.ok(
+  index.indexOf("personality-panel") < index.indexOf("resident-voice-panel"),
+  "Personality must render above Resident Voice in the operator panel",
+);
+assert.ok(
+  index.indexOf("advanced-controls-trigger") < index.indexOf('class="panel conversation-panel"'),
+  "the advanced-control launch button must sit in the left status sidebar below the status indicators",
+);
+assert.ok(
+  index.indexOf("service-status") < index.indexOf("advanced-controls-trigger"),
+  "Backend, Readiness and Services must stay above the advanced-control launch button",
+);
+assert.ok(!index.includes("operator-trigger-group"), "the single-letter operator trigger row must be gone");
+assert.ok(index.includes('<dialog id="advanced-panel"'), "advanced controls must open one dialog surface");
+assert.ok(index.includes('id="advanced-panel-rail"'), "the advanced-control dialog must carry a category rail");
+assert.ok(index.includes('id="advanced-panel-close"'), "the advanced-control dialog must expose an explicit close control");
+for (const category of ["providers", "settings", "memory", "actions", "extensions", "agents"]) {
+  assert.ok(
+    index.includes(`data-category="${category}"`),
+    `advanced-control rail missing category: ${category}`,
+  );
+  assert.ok(
+    index.includes(`id="${category}-panel"`),
+    `advanced-control detail pane missing mount: ${category}-panel`,
+  );
+}
+for (const label of ["Providers &amp; Models", "Operator Settings", "Actions &amp; Capabilities", "Agents"]) {
+  assert.ok(index.includes(label), `advanced-control rail missing label: ${label}`);
+}
+assert.ok(
+  index.indexOf("<dialog") > index.indexOf("</main>"),
+  "the advanced-control dialog must sit outside the overflow-hidden shell",
+);
+assert.ok(main.includes("showModal()"), "the advanced-control surface must use native modal dismissal and focus handling");
+assert.ok(
+  main.includes('advancedDialogEl.addEventListener("close"'),
+  "Escape, the close button and a backdrop click must all tear down through one close hook",
+);
+assert.ok(
+  main.includes("event.target === advancedDialogEl"),
+  "a backdrop click must dismiss the advanced-control surface",
+);
+assert.ok(main.includes("advancedDialogEl.open"), "the restart badge must reflect whether the advanced surface is showing");
+assert.ok(main.includes('aria-selected'), "the rail must mark the showing category");
+assert.ok(!main.includes("createOperatorPanelCoordinator"), "category switching must have one owner");
+assert.ok(main.includes("createAgentsPanel"), "Agents must be mounted in the desktop surface");
+assert.ok(main.includes("openProviderSettings"), "Providers & Models must be mounted as its own category");
 assert.ok(index.includes("hands-free"), "desktop must include hands-free resident mode");
 assert.ok(index.includes("continuous"), "desktop must include continuous resident mode");
 assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
@@ -437,11 +610,52 @@ assert.ok(settingsPanel.includes("field.advanced"), "settings panel must use adv
 assert.ok(!settingsPanel.includes("LLM_MODEL_MODE"), "settings panel must not hardcode model mode field");
 assert.ok(!settingsPanel.includes("Local LLM intent (llama.cpp)"), "settings panel must not hardcode backend sections");
 assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
+assert.ok(
+  !settingsPanel.includes('querySelectorAll("input, select, button")'),
+  "an operator-config save must not blanket-disable another category's controls",
+);
+assert.ok(!settingsPanel.includes("llm-provider-settings.js"), "Providers & Models must not be nested inside the operator settings form");
+assert.equal(restartScopeDisables(["operator"], "operator"), true);
+assert.equal(restartScopeDisables(["operator"], "provider"), false, "restart scopes must not leak across categories");
+assert.equal(restartScopeDisables(new Set(["provider"]), "provider"), true);
+assert.equal(restartScopeDisables(null, "operator"), false);
 assert.ok(llmProviderSettings.includes("Model Providers"), "settings must expose Model Providers");
 assert.ok(llmProviderSettings.includes("Allow cloud escalation"), "settings must expose cloud escalation authorization");
 assert.ok(llmProviderSettings.includes("Test connection"), "settings must expose provider readiness testing");
 assert.ok(llmProviderSettings.includes("Remove stored credential"), "settings must expose credential removal");
 assert.ok(!llmProviderSettings.includes("innerHTML"), "provider settings must render through DOM text APIs");
+assert.ok(llmProviderSettings.includes("openProviderSettings"), "Providers & Models must be mountable as its own advanced-control category");
+
+const builtinManaged = { profile_id: "builtin:managed-llama-cpp", name: "managed llama.cpp", kind: "managed_llama_cpp", builtin: true };
+const editableLab = { profile_id: "lab", name: "Lab", kind: "openai_compatible" };
+const editableCloud = { profile_id: "cloud", name: "Cloud", kind: "openai", cloud_eligible: true };
+const builtinSelection = { primary_profile_id: "builtin:managed-llama-cpp" };
+assert.equal(
+  defaultEditingProfile([builtinManaged, editableLab], builtinSelection)?.profile_id,
+  "lab",
+  "the provider editor must open on an editable profile instead of a read-only built-in",
+);
+assert.equal(
+  defaultEditingProfile([builtinManaged, editableLab, editableCloud], builtinSelection, "cloud")?.profile_id,
+  "cloud",
+  "the acted-on profile must stay selected after a create or update reload",
+);
+assert.equal(
+  defaultEditingProfile([builtinManaged], builtinSelection)?.profile_id,
+  "builtin:managed-llama-cpp",
+  "with no editable profile the selected built-in is still shown",
+);
+assert.equal(defaultEditingProfile([], {})?.profile_id, undefined, "an empty catalog must resolve to no profile");
+assert.equal(defaultEditingProfile(null, null), null);
+assert.ok(
+  builtinProfileNotice(builtinManaged).includes("cannot be edited"),
+  "a built-in profile must explain why its controls are read-only",
+);
+assert.equal(builtinProfileNotice(editableLab), "", "an editable profile must not claim to be read-only");
+assert.equal(providerRestartDisabled(["operator"]), false, "an operator-config save must not freeze provider controls");
+assert.equal(providerRestartDisabled(["provider"]), true);
+assert.equal(providerRestartDisabled(new Set(["operator", "provider"])), true);
+assert.equal(providerRestartDisabled([]), false);
 
 assert.deepEqual(providerSelectionPayload("primary", "", false, "cloud"), {
   primary_profile_id: "primary",
@@ -1110,57 +1324,103 @@ assert.equal(
 );
 
 const panelEvents = [];
-let memoryOpen = false;
-let settingsOpen = true;
-let actionsOpen = false;
-let extensionsOpen = false;
-const coordinator = createOperatorPanelCoordinator({
-  isMemoryOpen: () => memoryOpen,
-  openMemory: async () => {
-    panelEvents.push("open-memory");
-    memoryOpen = true;
+let dismissals = 0;
+function advancedCategory(id, openInitially = false) {
+  let open = openInitially;
+  return {
+    id,
+    isOpen: () => open,
+    open: async () => {
+      panelEvents.push(`open-${id}`);
+      open = true;
+    },
+    close: () => {
+      panelEvents.push(`close-${id}`);
+      open = false;
+    },
+  };
+}
+const advancedCategories = [
+  advancedCategory("providers"),
+  advancedCategory("settings", true),
+  advancedCategory("memory"),
+  advancedCategory("actions"),
+  advancedCategory("extensions"),
+  advancedCategory("agents"),
+];
+const coordinator = createAdvancedPanelCoordinator({
+  categories: advancedCategories,
+  dismiss: () => {
+    dismissals += 1;
+    coordinator.closeActive();
   },
-  closeMemory: () => {
-    panelEvents.push("close-memory");
-    memoryOpen = false;
-  },
-  focusMemoryTrigger: () => panelEvents.push("focus-memory"),
-  isSettingsOpen: () => settingsOpen,
-  openSettings: async () => {
-    panelEvents.push("open-settings");
-    settingsOpen = true;
-  },
-  closeSettings: () => {
-    panelEvents.push("close-settings");
-    settingsOpen = false;
-  },
-  focusSettingsTrigger: () => panelEvents.push("focus-settings"),
-  isActionsOpen: () => actionsOpen,
-  openActions: async () => {
-    panelEvents.push("open-actions");
-    actionsOpen = true;
-  },
-  closeActions: () => {
-    panelEvents.push("close-actions");
-    actionsOpen = false;
-  },
-  focusActionsTrigger: () => panelEvents.push("focus-actions"),
-  isExtensionsOpen: () => extensionsOpen,
-  openExtensions: async () => {
-    panelEvents.push("open-extensions");
-    extensionsOpen = true;
-  },
-  closeExtensions: () => {
-    panelEvents.push("close-extensions");
-    extensionsOpen = false;
-  },
-  focusExtensionsTrigger: () => panelEvents.push("focus-extensions"),
 });
-await coordinator.toggleMemory();
+assert.deepEqual(
+  coordinator.categoryIds(),
+  ["providers", "settings", "memory", "actions", "extensions", "agents"],
+  "every advanced-control category must be registered, including Agents and Providers & Models",
+);
+assert.equal(coordinator.activeCategoryId(), "settings", "the rail must report which category is showing");
+
+await coordinator.openCategory("memory");
 assert.deepEqual(panelEvents, ["close-settings", "open-memory"], "memory open must deterministically close settings first");
+assert.equal(coordinator.activeCategoryId(), "memory");
 panelEvents.length = 0;
-await coordinator.toggleSettings();
-assert.deepEqual(panelEvents, ["close-memory", "open-settings"], "settings open must deterministically close memory first");
+
+await coordinator.openCategory("agents");
+assert.deepEqual(panelEvents, ["close-memory", "open-agents"], "a rail is single-select, so switching must close the previous category");
+panelEvents.length = 0;
+
+await coordinator.openCategory("agents");
+assert.deepEqual(panelEvents, [], "re-selecting the showing category must not remount it");
+await coordinator.openCategory("nonexistent");
+assert.deepEqual(panelEvents, [], "an unknown category must be ignored rather than closing the surface");
+
+coordinator.requestClose();
+assert.deepEqual(panelEvents, ["close-agents"], "dismissal must close whichever category is showing");
+assert.equal(dismissals, 1);
+assert.equal(coordinator.activeCategoryId(), "", "nothing may stay mounted after dismissal");
+panelEvents.length = 0;
+
+coordinator.requestClose();
+assert.deepEqual(panelEvents, [], "dismissing an already-dismissed surface must be a no-op");
+
+// A category's own Close button reports through onClose, which asks the host to dismiss. That
+// report must not re-enter as a second dismissal, and it must not fire during a rail switch.
+const reentrantEvents = [];
+let reentrantDismissals = 0;
+const reentrant = [];
+function reentrantCategory(id, openInitially = false) {
+  let open = openInitially;
+  return {
+    id,
+    isOpen: () => open,
+    open: async () => {
+      reentrantEvents.push(`open-${id}`);
+      open = true;
+    },
+    close: () => {
+      reentrantEvents.push(`close-${id}`);
+      open = false;
+      reentrantCoordinator.requestClose();
+    },
+  };
+}
+reentrant.push(reentrantCategory("memory", true), reentrantCategory("agents"));
+const reentrantCoordinator = createAdvancedPanelCoordinator({
+  categories: reentrant,
+  dismiss: () => {
+    reentrantDismissals += 1;
+    reentrantCoordinator.closeActive();
+  },
+});
+await reentrantCoordinator.openCategory("agents");
+assert.deepEqual(reentrantEvents, ["close-memory", "open-agents"], "a category switch must not dismiss the whole surface");
+assert.equal(reentrantDismissals, 0, "closing a category to switch rails is not a dismissal");
+reentrantEvents.length = 0;
+reentrantCoordinator.closeActive();
+assert.deepEqual(reentrantEvents, ["close-agents"], "teardown must close each category exactly once");
+assert.equal(reentrantDismissals, 0, "an onClose report during teardown must not re-enter as a new dismissal");
 
 for (const command of [
   "get_memory_policy",
@@ -1196,7 +1456,6 @@ assert.ok(!memoryPanel.includes("fetch("), "memory panel must not call backend H
 assert.ok(!memoryPanel.includes("localStorage"), "memory policy must not be persisted in renderer storage");
 assert.ok(!memoryPanel.includes("ACTION_STATES"), "renderer must not duplicate lifecycle transition policy");
 assert.ok(!memoryPanel.includes(".has(record.lifecycle_state)"), "action availability must not be inferred from lifecycle state");
-assert.ok(index.includes('id="memory-trigger"'), "operator area must expose one Memory control");
 assert.ok(index.includes('id="memory-panel"'), "operator area must include one hidden Memory panel");
 
 for (const command of [
@@ -1259,7 +1518,6 @@ assert.ok(
   "approval availability must not be inferred from a status string",
 );
 
-assert.ok(index.includes('id="actions-trigger"'), "operator area must expose one Actions control");
 assert.ok(index.includes('id="actions-panel"'), "operator area must include one hidden Actions panel");
 
 {
@@ -1456,7 +1714,6 @@ assert.ok(
   "extension availability must not be inferred from its family",
 );
 
-assert.ok(index.includes('id="extensions-trigger"'), "operator area must expose one Extensions control");
 assert.ok(index.includes('id="extensions-panel"'), "operator area must include one hidden Extensions panel");
 
 {
@@ -1593,4 +1850,4 @@ assert.deepEqual(
 );
 assert.deepEqual(requestedCapabilities({ metadata_claims: {} }), []);
 
-console.log("desktop static, memory, action, and extension behavior checks passed");
+console.log("desktop static, advanced-control, memory, action, extension, and agent behavior checks passed");

@@ -70,6 +70,27 @@ export function providerSelectionPayload(primaryId, fallbackId, escalationEnable
   };
 }
 
+export function defaultEditingProfile(profiles, selection, preferredProfileId = null) {
+  const available = Array.isArray(profiles) ? profiles : [];
+  return (
+    selectedProfile(available, preferredProfileId) ||
+    available.find((profile) => !profile.builtin) ||
+    selectedProfile(available, selection?.primary_profile_id) ||
+    available[0] ||
+    null
+  );
+}
+
+export function builtinProfileNotice(profile) {
+  return profile?.builtin
+    ? "This built-in profile is managed by the backend and cannot be edited. Use New profile to create an editable one."
+    : "";
+}
+
+export function providerRestartDisabled(scopes) {
+  return [...(scopes || [])].includes("provider");
+}
+
 export function providerChoiceGroups(profiles) {
   return {
     local: localProfiles(profiles).map((profile) => profile.profile_id),
@@ -100,6 +121,7 @@ function setProfileFields(profile, controls) {
   ]) {
     control.disabled = !editable && Boolean(profile);
   }
+  if (controls.notice) controls.notice.textContent = builtinProfileNotice(profile);
   controls.save.textContent = profile ? "Save profile" : "Create profile";
   controls.save.disabled = Boolean(profile?.builtin);
   controls.delete.disabled = !profile || profile.builtin;
@@ -199,10 +221,13 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const remove = element("button", "Delete profile");
   const rotate = element("button", "Rotate credential-store key");
   const profileStatus = element("p");
-  const controls = { name, kind, endpoint, model, context, timeout, credential, removeCredential, save, test, delete: remove };
-  let editingProfile = selectedProfile(profiles, selection.primary_profile_id) || profiles[0] || null;
+  const profileNotice = element("p");
+  profileNotice.className = "model-provider-notice";
+  const controls = { name, kind, endpoint, model, context, timeout, credential, removeCredential, save, test, delete: remove, notice: profileNotice };
+  let editingProfile = defaultEditingProfile(profiles, selection, callbacks.preferredProfileId);
 
   fillProfileSelect(profileSelect, profiles, editingProfile?.profile_id);
+  profileSelect.value = editingProfile?.profile_id || "";
   const managedOption = option("managed_llama_cpp", "managed llama.cpp");
   managedOption.disabled = true;
   kind.appendChild(managedOption);
@@ -241,13 +266,11 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
         [selection.primary_profile_id, selection.local_fallback_profile_id, selection.cloud_profile_id].includes(
           editingProfile.profile_id,
         );
-      if (editingProfile) {
-        await handlers.updateLlmProfile(editingProfile.profile_id, profilePayload(controls));
-      } else {
-        await handlers.createLlmProfile(profilePayload(controls));
-      }
+      const saved = editingProfile
+        ? await handlers.updateLlmProfile(editingProfile.profile_id, profilePayload(controls))
+        : await handlers.createLlmProfile(profilePayload(controls));
       if (wasSelected) callbacks.onRestartRequired?.();
-      await callbacks.reload?.();
+      await callbacks.reload?.({ selectProfileId: saved?.profile_id || editingProfile?.profile_id || null });
     } catch (error) {
       profileStatus.textContent = `Profile save failed: ${error.message || error}`;
     }
@@ -272,7 +295,7 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
     profileStatus.textContent = "Deleting profile…";
     try {
       await handlers.deleteLlmProfile(editingProfile.profile_id);
-      await callbacks.reload?.();
+      await callbacks.reload?.({ selectProfileId: null });
     } catch (error) {
       profileStatus.textContent = `Profile delete failed: ${error.message || error}`;
     }
@@ -305,8 +328,110 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
     test,
     remove,
     rotate,
+    profileNotice,
     profileStatus,
   );
   section.append(heading, summary, selectionGroup, profileGroup, status);
+  if (providerRestartDisabled(callbacks.restartScopes)) {
+    // A pending provider restart freezes provider writes only. Browsing profiles and testing a
+    // connection stay available because both are read-only.
+    for (const control of [
+      saveSelection, save, remove, rotate, newProfile,
+      primary, fallback, escalation, cloud,
+      name, kind, endpoint, model, context, timeout, credential, removeCredential,
+    ]) {
+      control.disabled = true;
+    }
+  }
   return section;
+}
+
+let activeProviderContainer = null;
+let providerGeneration = 0;
+let providerHandlers = null;
+let providerOptions = {};
+let preferredProfileId = null;
+
+function providerUnavailable(containerEl, message) {
+  const notice = element("p", message);
+  containerEl.replaceChildren(notice);
+}
+
+function renderProviderPanel(containerEl, payload) {
+  const heading = element("h2", "Providers & Models");
+  heading.tabIndex = -1;
+  const scopes = providerOptions.restartRequiredScopes?.() || [];
+  const restartState = element("p", "Restart required.");
+  const restartButton = element("button", "Restart");
+  restartButton.type = "button";
+  restartState.hidden = scopes.length === 0;
+  restartButton.hidden = scopes.length === 0;
+  restartButton.addEventListener("click", async () => {
+    restartState.textContent = "Restarting.";
+    try {
+      await providerOptions.restartBackend?.();
+      providerOptions.clearRestartRequired?.();
+      await loadProviderSettings(containerEl);
+    } catch (error) {
+      restartState.textContent = "Restart failed.";
+    }
+  });
+
+  const settings = createLlmProviderSettings(payload, providerHandlers, {
+    preferredProfileId,
+    restartScopes: scopes,
+    onRestartRequired: () => {
+      providerOptions.markRestartRequired?.("provider");
+      loadProviderSettings(containerEl);
+    },
+    reload: (result = {}) => {
+      if ("selectProfileId" in result) preferredProfileId = result.selectProfileId;
+      return loadProviderSettings(containerEl);
+    },
+  });
+
+  containerEl.replaceChildren(heading, restartState, restartButton, settings);
+}
+
+async function loadProviderSettings(containerEl) {
+  const request = ++providerGeneration;
+  if (!providerHandlers?.getLlmConfig) {
+    providerUnavailable(containerEl, "Providers are unavailable.");
+    return;
+  }
+  let payload;
+  try {
+    payload = await providerHandlers.getLlmConfig();
+  } catch (error) {
+    if (request !== providerGeneration || activeProviderContainer !== containerEl) return;
+    providerUnavailable(containerEl, "Providers are unavailable.");
+    return;
+  }
+  if (request !== providerGeneration || activeProviderContainer !== containerEl) return;
+  renderProviderPanel(containerEl, payload);
+}
+
+export async function openProviderSettings(containerEl, options = {}) {
+  activeProviderContainer = containerEl;
+  providerHandlers = options.handlers || providerHandlers;
+  providerOptions = { ...providerOptions, ...options };
+  containerEl.hidden = false;
+  containerEl.textContent = "Loading providers…";
+  await loadProviderSettings(containerEl);
+  if (activeProviderContainer !== containerEl) return;
+  containerEl.querySelector("h2")?.focus();
+}
+
+export function closeProviderSettings() {
+  if (!activeProviderContainer) return;
+  providerGeneration += 1;
+  activeProviderContainer.hidden = true;
+  activeProviderContainer.replaceChildren();
+  activeProviderContainer = null;
+  preferredProfileId = null;
+  providerOptions.onClose?.();
+}
+
+export function providerSettingsOpen() {
+  return Boolean(activeProviderContainer);
 }

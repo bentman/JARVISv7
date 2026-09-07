@@ -79,48 +79,41 @@ Negative:
 
 ## Implementation
 
-Not yet implemented.
+This ADR is implemented.
 
-Scope:
-- `desktop/src/index.html`
-- `desktop/src/main.js`
-- `desktop/src/style.css`
-- `desktop/src/components/agents-panel.js`
-- `desktop/src/components/memory-panel.js`
-- `desktop/src/components/actions-panel.js`
-- `desktop/src/components/extensions-panel.js`
-- `desktop/src/components/settings-panel.js`
-- `desktop/src/components/llm-provider-settings.js`
-- `desktop/src/components/appearance-controls.js`
+Layout:
+- `desktop/src/index.html` keeps Backend, Readiness, and Services in the left status sidebar and adds a single `#advanced-controls-trigger` button, with the `#settings-restart-required` badge, in an `.operator-actions` section directly below Services.
+- The Personality block moves to the right operator sidebar directly above Resident Voice. Its `dl.facts` markup is replaced by `<label class="selector-label" for="personality-select">Current</label>`, so Personality `CURRENT`, Resident Voice `VOICE SELECTOR`, and `MODE` are the same element and class. The `#personality-select`, `#personality-current`, and `#personality-detail` ids are unchanged.
+- The right-side Memory/Actions/Extensions/Settings icon-button row and the four inline mount sections are removed, along with the `.icon-button`, `.settings-trigger-group`, and `.operator-trigger-group` rules in `desktop/src/style.css`.
 
-No backend route, Tauri command, API-client route, or capability-record change is part of this ADR. The underlying `/agents`, action, extension, memory, settings, provider-profile, readiness, and diagnostics APIs already exist.
+Advanced-control surface:
+- `desktop/src/index.html` adds a native `<dialog id="advanced-panel">` outside `.shell`, holding a header, a `#advanced-panel-rail` category rail of six buttons, and six hidden mounts: `#providers-panel`, `#settings-panel`, `#memory-panel`, `#actions-panel`, `#extensions-panel`, `#agents-panel`.
+- `showModal()` supplies modal focus containment, Escape dismissal, `::backdrop`, and focus return to the launch button. `desktop/src/main.js` adds only backdrop-click dismissal and routes Escape, the Close button, and a backdrop click through a single `close`-event hook.
+- `desktop/src/components/advanced-panel.js` introduces `createAdvancedPanelCoordinator`, a DOM-free single-select sequencer over `{ id, isOpen, open, close }` categories exposing `openCategory`, `closeActive`, `requestClose`, and `activeCategoryId`. It suppresses dismissal while a category switch or teardown is in progress, so a panel's own `onClose` report cannot re-enter as a new dismissal.
+- `createOperatorPanelCoordinator` is removed from `desktop/src/components/memory-panel.js`; the coordinator above replaces it as the single owner of category switching.
+- `desktop/src/style.css` adds `.advanced-panel`, `::backdrop`, `.advanced-panel-rail` with an `[aria-selected="true"]` state, and `.advanced-panel-detail`, sized with `min()` and collapsing to a single column inside the existing 820px breakpoint. A `--color-backdrop` token is added inside the token block.
 
-Expected shape of the change:
-- Remove the current right-side Memory/Actions/Extensions/Settings trigger row.
-- Add one advanced-control launch button below Backend, Readiness, and Services in the left sidebar.
-- Implement one advanced-control panel with a category rail and detail pane for Providers & Models, Operator Settings, Memory, Actions & Capabilities, Extensions, and Agents.
-- Move the Personality selector/detail block from the left sidebar to the right sidebar directly above Resident Voice.
-- Keep Resident Voice and Wake in the right sidebar.
-- Keep Backend, Readiness, and Services in the left sidebar.
-- Align right-sidebar selector label typography so Personality `CURRENT`, Resident Voice `VOICE SELECTOR`, and Resident Voice `MODE` use the same font size, weight, casing pattern, and spacing.
-- Preserve each panel's existing behavior after relocation.
-- Add concrete responsive sizing, keyboard focus handling, Escape/backdrop dismissal, and visible selected-category state for the advanced-control panel.
+Agents:
+- `desktop/src/components/agents-panel.js` is rewritten to the panel contract used by Actions and Extensions: a DOM-free `createAgentsPanelController(handlers, onState)` plus `createAgentsPanel(container, handlers, options)` returning `{ open, close, isOpen, controller }`, mounted from `desktop/src/main.js` through the existing `apiClient` agent methods.
+- It unwraps `AgentListResponse.agents` and `AgentRunResponse.records`, uses separate sequence counters for the catalog and runs, and renders runs from their capability-audit envelope (`kind`, `capability_id`, `recorded_at`, nested `record`) rather than assuming top-level run fields. `agentRunProfileId` derives the agent from the `agent-invoke-` capability prefix.
+- Governed outcomes are reported honestly: an `awaiting_approval` invocation is not shown as success, a refused cancel is reported as refused, and the Cancel control is gated on the profile's `cancellable` flag.
+
+Provider and settings state:
+- `desktop/src/components/llm-provider-settings.js` gains the `openProviderSettings` / `closeProviderSettings` mount for the Providers & Models category, so provider controls no longer live inside the operator settings form. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
+- `desktop/src/components/settings-panel.js` replaces its boolean `restartRequired` with a `restartScopes` set of `operator` and `provider`. The badge, restart notice, and Restart button reflect the union; operator fields are disabled only by the operator scope and provider controls only by the provider scope. The blanket `querySelectorAll("input, select, button")` disable is removed, so an unrelated operator-config save no longer disables Providers & Models. Both mounts carry a generation guard so a resolved load cannot repopulate a container that was switched away.
+
+No backend route, Tauri command, API-client route, or capability-record change was made.
 
 ## Confirmation
 
-Confirmation requires:
-- `npm --prefix desktop test` covering advanced-control launch, category switching, relocated panel mounting, selected-category state, keyboard dismissal, focus behavior, provider default selection, provider post-mutation reselection, built-in-profile messaging, scoped restart-required behavior, and right-sidebar selector-label typography.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml` to confirm no Tauri-side change was introduced.
-- A live desktop session: Backend, Readiness, and Services remain visible on the left; the advanced-control button appears directly below them; Personality appears on the right above Resident Voice; Resident Voice and Wake remain visible; Agents, Memory, Actions, Extensions, Settings, and Providers & Models are reachable from the advanced-control panel and keep their existing behavior.
+Validated on `linux-amd64` (WSL2):
+
+- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, `agentRunProfileId`, honest invoke/cancel reporting, stale-response ordering, provider default selection, post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, and the advanced-control style contract.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml` — `PASS`. `Finished \`dev\` profile ... in 36.12s`, confirming no Tauri-side change was introduced.
+- Live desktop session — `SKIPPED`. No screenshot or window-capture tool is available on this host, so the surface was not observed visually. In its place the rendered markup and components were driven end to end in a real DOM outside the repo (no repo dependency added), asserting: Backend/Readiness/Services remain in the left sidebar with the launch button below them; Personality renders above Resident Voice with all three selector labels sharing `.selector-label`; each category mounts and unmounts on rail switching; dismissal unmounts every category exactly once and a rail switch never dismisses; the provider editor opens on an editable profile; selecting a built-in shows the read-only explanation; an operator-config save leaves provider controls enabled; the save outcome survives the re-render; a created profile stays selected after reload; and the agent catalog, run records, and an `awaiting_approval` invocation render honestly.
 
 ## Follow-up
 
-Gaps required to complete this ADR:
-- Implement the left-sidebar advanced-control launch button below Backend, Readiness, and Services.
-- Implement the shared advanced-control panel in the desktop HTML, JavaScript, and CSS.
-- Mount Providers & Models, Operator Settings, Memory, Actions & Capabilities, Extensions, and Agents inside the shared panel.
-- Move Personality to the right sidebar above Resident Voice.
-- Keep Backend, Readiness, Services, Resident Voice, and Wake outside the shared panel.
-- Fix provider profile default selection, built-in read-only messaging, post-mutation reselection, and scoped restart-required behavior.
-- Align the right-sidebar selector label typography for Personality, Voice Selector, and Mode.
-- Add or update desktop tests for the relocated controls and state-handling fixes.
+The decision is fully implemented. One validation step remains and requires a host with a visible desktop session:
+
+- Confirm the advanced-control dialog's sizing, rail spacing, and selected-category contrast, and confirm Escape, backdrop click, and focus return against a real WebView2/WebKit `<dialog>`. Report the host class and the exact command.
