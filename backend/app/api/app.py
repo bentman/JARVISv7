@@ -3,6 +3,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, replace
 
+from backend.app.agents.registry import AgentRegistry
 from backend.app.cache.manager import CacheManager
 from backend.app.cognition.memory_extraction import MemoryCandidateExtractor
 from backend.app.conversation.engine import TurnEngine
@@ -94,6 +95,7 @@ class ApiState:
     capability_service: CapabilityService | None = None
     extension_service: ExtensionService | None = None
     extension_runtime: ExtensionRuntimeService | None = None
+    agent_registry: AgentRegistry | None = None
 
 
 def build_engine(state: ApiState, session_manager: SessionManager | None = None) -> TurnEngine:
@@ -167,6 +169,7 @@ def build_startup_state() -> ApiState:
     )
     memory_service: MemoryService | None = None
     operator_config = OperatorConfigService()
+    agent_registry = AgentRegistry()
     capability_service = CapabilityService(
         observe=lambda: observe_capabilities(
             settings_provider=load_settings,
@@ -175,6 +178,7 @@ def build_startup_state() -> ApiState:
             operator_config_keys=operator_config.keys,
             env_file=ENV_FILE,
             extension_catalog_present=True,
+            agent_registry_provider=lambda: agent_registry,
         ),
         handlers=build_capability_handlers(
             memory_service_provider=lambda: memory_service,
@@ -193,6 +197,7 @@ def build_startup_state() -> ApiState:
             capability_service_provider=lambda: capability_service,
             runtime_provider=lambda: extension_runtime,
             operator_config_keys=operator_config.keys,
+            agent_registry_provider=lambda: agent_registry,
         ),
     )
     engine = TurnEngine(
@@ -302,6 +307,7 @@ def build_startup_state() -> ApiState:
         capability_service=capability_service,
         extension_service=extension_service,
         extension_runtime=extension_runtime,
+        agent_registry=agent_registry,
     )
     return state
 
@@ -363,6 +369,8 @@ async def lifespan(app: FastAPI):
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
     from backend.app.api.routes import (
         actions,
+        acp_server,
+        agents,
         config,
         daemon,
         diagnostics,
@@ -383,6 +391,7 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.state.daemon_registry = DaemonRegistry()
     app.include_router(health.router)
     app.include_router(actions.router)
+    app.include_router(acp_server.router)
     app.include_router(extensions.router)
     app.include_router(daemon.router)
     app.include_router(readiness.router)
@@ -395,4 +404,5 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app.include_router(llm_config.router)
     app.include_router(memory.router)
     app.include_router(memory_curation.router)
+    app.include_router(agents.router)
     return app

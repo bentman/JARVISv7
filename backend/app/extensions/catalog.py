@@ -58,6 +58,7 @@ class ExtensionObservation:
     definitions: tuple[DefinitionManifest, ...] = ()
     definition_errors: tuple[DefinitionError, ...] = ()
     definition_runtime: tuple[DefinitionRuntime, ...] = ()
+    agents: tuple[tuple[str, str, str, str], ...] = ()
 
 
 def build_extension_descriptors(
@@ -73,6 +74,7 @@ def build_extension_descriptors(
     records += [("prompt", record) for record in _prompts(observation)]
     records += [("skill", record) for record in _skills(observation)]
     records += [("capability", record) for record in _capabilities(observation)]
+    records += [("agent", record) for record in _agents(observation)]
     runtime = {(item.family, item.local_id): item for item in observation.definition_runtime}
     records += [
         (record.family, _definition(record, runtime.get((record.family, record.local_id))))
@@ -248,6 +250,20 @@ def _capabilities(observation: ExtensionObservation) -> list[ObservedRecord]:
             unavailable_explanation="" if availability == "available" else CAPABILITY_UNAVAILABLE,
         )
         for capability_id, readiness, availability in observation.capabilities
+    ]
+
+
+def _agents(observation: ExtensionObservation) -> list[ObservedRecord]:
+    return [
+        ObservedRecord(
+            local_id=profile_id,
+            display_name=display_name,
+            source=source_path,
+            provenance="config/agents",
+            trust="application",
+            metadata_claims={"purpose": {"value": purpose, "trusted": False}},
+        )
+        for profile_id, display_name, purpose, source_path in observation.agents
     ]
 
 

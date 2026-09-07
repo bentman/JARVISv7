@@ -111,3 +111,118 @@ def test_local_grounding_ignores_retrieved_instructions(search_model):
     if "inches" in checked.lower():
         assert any(word in checked.lower() for word in ("incorrect", "unrelated", "not"))
     assert "[S1]" in checked
+
+
+# ---------------------------------------------------------------------------
+# Mock-based governed action tests (no live services required)
+# ---------------------------------------------------------------------------
+
+
+from backend.app.actions.catalog import SEARCH_PRIVATE_WEB, SEARCH_PUBLIC_WEB
+from backend.app.actions.contracts import AuthorizationContext
+from backend.tests.fixtures.action_governance import (
+    make_capability_service_with_mock_search,
+    make_search_proposal,
+)
+from backend.tests.fixtures.search_providers import (
+    SAMPLE_DDGS_RESPONSE,
+    SAMPLE_TAVILY_RESPONSE,
+    mock_ddgs_provider,
+    mock_tavily_provider,
+)
+
+
+def test_search_governed_action_evidence():
+    """Verify that a search through the governed path produces correct action evidence."""
+    search_args = {
+        "mode": "search",
+        "topic": "Python documentation",
+        "queries": ["Python documentation"],
+    }
+    service = make_capability_service_with_mock_search([mock_ddgs_provider()])
+
+    from backend.app.services.search_service import SearchService
+
+    # Build a SearchService with the same mock providers for the operation
+    mock_prov = mock_ddgs_provider()
+    search_svc = SearchService([mock_prov])
+
+    def run_search():
+        with search_svc.operation("governed", "turn-1") as op:
+            search_svc.retrieve(op, **search_args)
+        return op.snapshot()
+
+    result = service.execute_operator_action(SEARCH_PUBLIC_WEB, search_args, run_search)
+    assert result is not None
+    assert result["evidence"]["sources"]
+    assert len(result["evidence"]["sources"]) == len(SAMPLE_DDGS_RESPONSE)
+    assert result["evidence"]["outcome"] == "success"
+    assert len(result["evidence"]["attempts"]) == 1
+
+
+def test_search_multiple_providers_fallback():
+    """When first provider fails, verify fallback evidence shows both attempts."""
+    from backend.app.services.search_service import SearchService
+
+    search_svc = SearchService([
+        mock_ddgs_provider(failure_mode="timeout"),
+        mock_tavily_provider(
+            responses={"Python documentation": SAMPLE_TAVILY_RESPONSE},
+        ),
+    ])
+    with search_svc.operation("s", "t") as op:
+        evidence = search_svc.retrieve(
+            op, mode="search", topic="Python documentation",
+            queries=["Python documentation"],
+        )
+    assert len(evidence.attempts) == 2
+    assert evidence.attempts[0].status == "timeout"
+    assert evidence.attempts[0].provider == "ddgs"
+    assert evidence.attempts[1].status == "success"
+    assert evidence.attempts[1].provider == "tavily"
+    assert evidence.sources
+    assert evidence.outcome == "success"
+
+
+def test_search_cancellation_through_governed_path():
+    """Verify cancellation works through the governed search flow."""
+    from backend.app.services.search_service import SearchService
+
+    search_svc = SearchService([mock_ddgs_provider()])
+    with search_svc.operation("session", "turn") as op:
+        # Before cancel: operations should succeed
+        assert not op.cancel.is_set()
+        # Cancel the operation
+        assert search_svc.cancel("session", "turn")
+        assert op.cancel.is_set()
+        # After cancel: check() should raise
+        with pytest.raises(Exception):
+            op.check()
+        assert op.evidence.cancel_requested
+        # Wrong session/turn should not cancel
+        assert not search_svc.cancel("wrong", "turn")
+        assert not search_svc.cancel("session", "wrong")
+
+
+def test_search_private_requires_approval():
+    """Verify private search triggers approval_required in the governed path."""
+    service = make_capability_service_with_mock_search([
+        mock_ddgs_provider(),
+        mock_tavily_provider(),
+    ])
+    proposal = make_search_proposal("private query", private=True)
+
+    # Without operator approval -> approval_required
+    context = AuthorizationContext(
+        session_id="test", turn_id="turn-1", caller="test",
+    )
+    decision = service.authorize_turn(proposal, context)
+    assert decision.outcome == "approval_required"
+    assert decision.approval_required
+
+    # With operator approval -> allowed
+    approved_context = AuthorizationContext(
+        session_id="test", turn_id="turn-1", caller="test", operator_approved=True,
+    )
+    approved_decision = service.authorize_turn(proposal, approved_context)
+    assert approved_decision.outcome == "allowed"

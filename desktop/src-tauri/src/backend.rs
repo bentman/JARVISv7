@@ -1179,6 +1179,58 @@ fn tail_file(path: &PathBuf) -> String {
     lines.join("\n")
 }
 
+pub fn list_agents(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /agents";
+    let response = client
+        .get(format!("{base_url}/agents"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn get_agent(client: &Client, base_url: &str, profile_id: &str) -> Result<String, String> {
+    let operation = "GET /agents/{profile_id}";
+    let response = client
+        .get(format!("{base_url}/agents/{profile_id}"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn invoke_agent(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+    prompt: &str,
+) -> Result<String, String> {
+    let operation = "POST /agents/invoke";
+    let body = json!({ "profile_id": profile_id, "prompt": prompt });
+    let response = client
+        .post(format!("{base_url}/agents/invoke"))
+        .json(&body)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn list_agent_runs(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /agents/runs";
+    let response = client
+        .get(format!("{base_url}/agents/runs"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn cancel_agent(client: &Client, base_url: &str, profile_id: &str) -> Result<String, String> {
+    let operation = "POST /agents/{profile_id}/cancel";
+    let response = client
+        .post(format!("{base_url}/agents/{profile_id}/cancel"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 #[cfg(test)]
 mod tests {
     use super::python_path_for_host;

@@ -806,6 +806,7 @@ def observe_capabilities(
     operator_config_keys: tuple[str, ...] = (),
     env_file: Any = None,
     extension_catalog_present: bool = False,
+    agent_registry_provider: Callable[[], Any] | None = None,
 ) -> CapabilityObservation:
     from backend.app.actions.catalog import ProviderObservation
     from backend.app.services.llm_provider_profiles import SecretStoreLockedError
@@ -833,6 +834,13 @@ def observe_capabilities(
             store_present, store_locked = True, True
         except Exception:
             store_present = False
+
+    agent_capability_records: tuple[tuple[str, str, str, str, str, int, bool], ...] = ()
+    if agent_registry_provider is not None:
+        registry = agent_registry_provider()
+        if registry is not None:
+            agent_capability_records = tuple(registry.to_capability_records())
+
     return CapabilityObservation(
         search_providers=(
             ("ddgs", bool(getattr(settings, "use_ddgs", False))),
@@ -847,6 +855,7 @@ def observe_capabilities(
         operator_config_present=bool(env_file is not None and env_file.is_file()),
         operator_config_keys=operator_config_keys,
         extension_catalog_present=extension_catalog_present,
+        agents=agent_capability_records,
     )
 
 

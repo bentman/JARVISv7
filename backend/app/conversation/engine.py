@@ -12,6 +12,8 @@ from typing import Any
 from uuid import uuid4
 
 import numpy as np
+from backend.app.agents.invocation import AgentInvocationResult
+from backend.app.agents.schema import AgentProfile
 from backend.app.actions.catalog import SEARCH_PRIVATE_WEB, SEARCH_PUBLIC_WEB
 from backend.app.actions.contracts import (
     ActionCancellationRecord,
@@ -25,7 +27,7 @@ from backend.app.actions.contracts import (
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
-from backend.app.cognition.prompt_envelope import PromptEnvelope
+from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.search_policy import (
@@ -191,6 +193,52 @@ class TurnEngine:
                         profile_epoch=self.session_manager.profile_epoch, failure_reason=failure,
                         delegated_runs=[run for run in runs if run["turn_id"] == context.turn_id],
                         tools_invoked=[operation.capability_id],
+                    ))
+
+    def run_agent(self, profile: AgentProfile, prompt: str, *, mode: str = "direct") -> AgentInvocationResult:
+        with self._admit_turn():
+            context = self._create_context("text")
+            failure = None
+            response = ""
+            try:
+                envelope = assemble_prompt_envelope(prompt, self.personality)
+                agent_segment = PromptSegment(
+                    authority="application",
+                    content_type="instruction",
+                    trusted=True,
+                    text=f"Agent: {profile.display_name}\n{profile.instructions}",
+                )
+                envelope = envelope.with_segment(agent_segment)
+                response = bound_single_turn_response(self.llm.generate_envelope(envelope))
+                return AgentInvocationResult(
+                    agent_id=profile.profile_id,
+                    status="success",
+                    output={"response": response},
+                    turn_id=context.turn_id,
+                    session_id=context.session_id,
+                )
+            except Exception as exc:
+                failure = str(exc)
+                return AgentInvocationResult(
+                    agent_id=profile.profile_id,
+                    status="failure",
+                    output={},
+                    turn_id=context.turn_id,
+                    session_id=context.session_id,
+                    error=failure,
+                )
+            finally:
+                if self.session_manager is not None:
+                    self.session_manager.record_turn_artifact(TurnArtifact(
+                        turn_id=context.turn_id,
+                        session_id=context.session_id,
+                        input_modality="text",
+                        final_state="FAILED" if failure else "IDLE",
+                        transcript=prompt,
+                        active_personality_profile_id=self.personality.profile_id,
+                        profile_epoch=self.session_manager.profile_epoch,
+                        failure_reason=failure,
+                        delegated_runs=[{"agent_id": profile.profile_id, "mode": mode, "response": response}],
                     ))
 
     def _emit_hook(self, event: str, context: TurnContext) -> None:

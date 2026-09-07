@@ -213,6 +213,7 @@ def observe_extensions(
     config_dir: Path | None = None,
     data_dir: Path | None = None,
     runtime_provider: Callable[[], Any] | None = None,
+    agent_registry_provider: Callable[[], Any] | None = None,
 ) -> ExtensionObservation:
     from backend.app.core.settings import SETTING_ENV_CLASSIFICATION
     from backend.app.services.llm_provider_profiles import SecretStoreLockedError
@@ -268,6 +269,12 @@ def observe_extensions(
     runtime = runtime_provider() if runtime_provider else None
     runtime_definitions, runtime_records, runtime_errors = runtime.observation() if runtime else ((), (), ())
 
+    agent_records: tuple[tuple[str, str, str, str], ...] = ()
+    if agent_registry_provider is not None:
+        registry = agent_registry_provider()
+        if registry is not None:
+            agent_records = tuple(registry.to_extension_records())
+
     return ExtensionObservation(
         settings=tuple(
             (key, SETTING_ENV_CLASSIFICATION.get(key, "advanced")) for key in operator_config_keys
@@ -294,6 +301,7 @@ def observe_extensions(
         definition_errors=runtime_errors + tuple(
             error for definition_list in definition_lists for error in definition_list.errors
         ),
+        agents=agent_records,
     )
 
 

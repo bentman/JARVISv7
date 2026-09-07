@@ -36,6 +36,7 @@ class McpConnectionDefinition:
     credential_ref: str | None = None
     process: dict[str, Any] | None = None
     enabled: bool = True
+    oauth: dict[str, Any] | None = None
     tool_allowlist: tuple[str, ...] = ()
     resource_allowlist: tuple[str, ...] = ()
     prompt_allowlist: tuple[str, ...] = ()
@@ -68,14 +69,36 @@ class McpConnectionDefinition:
             values = getattr(self, name)
             if any(not item or item != item.strip() for item in values):
                 raise ValueError(f"{name} entries must be non-empty strings")
+        if self.oauth is not None:
+            self._validate_oauth(self.oauth)
+
+    @staticmethod
+    def _validate_oauth(oauth: dict[str, Any]) -> None:
+        if not isinstance(oauth, dict):
+            raise ValueError("oauth must be a mapping")
+        for required in ("authorization_url", "token_url", "client_id"):
+            if required not in oauth:
+                raise ValueError(f"oauth requires {required}")
+        for url_field in ("authorization_url", "token_url"):
+            parsed = urlsplit(str(oauth[url_field]))
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise ValueError(f"oauth.{url_field} must be a valid HTTPS URL")
+        if not isinstance(oauth["client_id"], str) or not oauth["client_id"]:
+            raise ValueError("oauth.client_id must be a non-empty string")
+        scopes = oauth.get("scopes", [])
+        if not isinstance(scopes, list) or any(not isinstance(s, str) or not s for s in scopes):
+            raise ValueError("oauth.scopes must be a list of non-empty strings")
+        redirect_port = oauth.get("redirect_port", 19823)
+        if not isinstance(redirect_port, int) or not (1024 <= redirect_port <= 65535):
+            raise ValueError("oauth.redirect_port must be an integer between 1024 and 65535")
 
     @classmethod
     def from_mapping(cls, connection_id: str, value: dict[str, Any]) -> McpConnectionDefinition:
         if not isinstance(value, dict):
             raise ValueError("MCP definition must be a mapping")
         allowed = {
-            "transport", "command", "url", "credential_ref", "enabled", "tool_allowlist",
-            "resource_allowlist", "prompt_allowlist", "process",
+            "transport", "command", "url", "credential_ref", "enabled", "oauth",
+            "tool_allowlist", "resource_allowlist", "prompt_allowlist", "process",
         }
         unknown = sorted(set(value) - allowed)
         if unknown:
@@ -104,6 +127,9 @@ class McpConnectionDefinition:
         enabled = value.get("enabled", True)
         if not isinstance(enabled, bool):
             raise ValueError("enabled must be a boolean")
+        oauth = value.get("oauth")
+        if oauth is not None and not isinstance(oauth, dict):
+            raise ValueError("oauth must be a mapping")
         return cls(
             connection_id=connection_id,
             transport=transport,  # type: ignore[arg-type]
@@ -112,6 +138,7 @@ class McpConnectionDefinition:
             credential_ref=credential_ref,
             process=dict(process) if process is not None else None,
             enabled=enabled,
+            oauth=dict(oauth) if oauth is not None else None,
             **filters,
         )
 

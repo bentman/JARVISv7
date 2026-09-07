@@ -15,14 +15,14 @@ from backend.app.actions.contracts import (
 
 ExtensionFamily = Literal[
     "setting", "personality", "provider", "search_provider",
-    "prompt", "skill", "capability", "hook", "plugin", "mcp", "acp", "tool",
+    "prompt", "skill", "capability", "hook", "plugin", "mcp", "acp", "tool", "agent",
 ]
 TrustStatus = Literal["application", "operator", "external", "untrusted"]
 ExtensionState = Literal["enabled", "disabled", "retired"]
 
 EXTENSION_FAMILIES = {
     "setting", "personality", "provider", "search_provider",
-    "prompt", "skill", "capability", "hook", "plugin", "mcp", "acp", "tool",
+    "prompt", "skill", "capability", "hook", "plugin", "mcp", "acp", "tool", "agent",
 }
 TRUST_STATUSES = {"application", "operator", "external", "untrusted"}
 EXTENSION_STATES = {"enabled", "disabled", "retired"}

@@ -12,7 +12,9 @@
 # local agent/client state
 /.agents/
 /.claude/
+/.cline/
 /.codex/
+/.qwen/
 
 # ------------------------------------------------------------
 # Python

@@ -1033,10 +1033,10 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
     }
 
 
-def test_agent_routes_are_absent_from_openapi() -> None:
+def test_agent_routes_present_in_openapi() -> None:
     paths = _client().app.openapi()["paths"]
 
-    assert not any(path.startswith("/agents") for path in paths)
+    assert any(path.startswith("/agents") for path in paths)
 
 
 def test_action_routes_are_wired_into_the_real_app() -> None:

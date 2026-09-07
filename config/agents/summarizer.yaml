@@ -1,0 +1,25 @@
+profile_id: summarizer
+display_name: Text Summarizer
+purpose: Summarize text content into concise key points
+instructions: >
+  You summarize text content provided by the user. Extract key points
+  and present them in a structured format. Do not add opinions or
+  interpretations beyond what the source material contains.
+invocation_modes:
+  - direct
+  - as_tool
+capability_ids: []
+memory_scope: working
+approval_class: none
+timeout_ms: 30000
+cancellable: true
+output_contract:
+  type: object
+  properties:
+    summary:
+      type: string
+    key_points:
+      type: array
+      items:
+        type: string
+provider_model_policy: {}

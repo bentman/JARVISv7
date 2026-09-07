@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -314,3 +315,116 @@ def bound_result(
 
 def _is_int(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
+
+
+AGENT_ID_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+AGENT_TEMP_ROOTS: tuple[str, ...] = ("data", "cache", "reports")
+SENSITIVE_ENV_PATTERNS: tuple[str, ...] = ("TOKEN", "SECRET", "PASSWORD", "KEY", "CREDENTIAL")
+MIN_AGENT_OUTPUT_BYTES = 1024
+MAX_AGENT_OUTPUT_BYTES = 1_000_000_000
+
+
+@dataclass(frozen=True, slots=True)
+class AgentIsolation:
+    process_boundary: ProcessBoundary
+    agent_id: str
+    max_output_bytes: int
+    allowed_temp_roots: tuple[str, ...]
+    credential_refs: tuple[str, ...]
+    cleanup_on_exit: bool
+
+    def __post_init__(self) -> None:
+        if not self.agent_id or not AGENT_ID_PATTERN.match(self.agent_id):
+            raise BoundaryViolationError(
+                "agent_id must match ^[a-z0-9][a-z0-9-]*$"
+            )
+        if not MIN_AGENT_OUTPUT_BYTES <= self.max_output_bytes <= MAX_AGENT_OUTPUT_BYTES:
+            raise BoundaryViolationError(
+                f"max_output_bytes must be between {MIN_AGENT_OUTPUT_BYTES} "
+                f"and {MAX_AGENT_OUTPUT_BYTES}"
+            )
+        for root in self.allowed_temp_roots:
+            if not any(
+                root.startswith(allowed + "/") for allowed in AGENT_TEMP_ROOTS
+            ):
+                raise BoundaryViolationError(
+                    f"allowed_temp_roots entries must start with one of: "
+                    f"{', '.join(AGENT_TEMP_ROOTS)}"
+                )
+        for ref in self.credential_refs:
+            if not isinstance(ref, str) or not ref:
+                raise BoundaryViolationError(
+                    "credential_refs entries must be non-empty strings"
+                )
+        if not self.process_boundary.subprocess:
+            raise BoundaryViolationError(
+                "underlying process boundary must have subprocess=True"
+            )
+        if self.process_boundary.working_root not in ALLOWED_STORAGE_ROOTS:
+            raise BoundaryViolationError(
+                "underlying process boundary working_root must be within "
+                "ALLOWED_STORAGE_ROOTS"
+            )
+
+    def validate_agent_environment(
+        self, env: dict[str, str]
+    ) -> dict[str, str]:
+        allowlisted = set(self.process_boundary.env_passthrough)
+        scrubbed = {
+            k: v
+            for k, v in env.items()
+            if not (
+                any(pat in k.upper() for pat in SENSITIVE_ENV_PATTERNS)
+                and k not in allowlisted
+            )
+        }
+        return self.process_boundary.scrub_environment(scrubbed)
+
+    def resolve_agent_working_directory(self) -> Path:
+        resolved = self.process_boundary.resolve_working_directory()
+        working = (REPO_ROOT / self.process_boundary.working_root).resolve()
+        if resolved != working and working not in resolved.parents:
+            raise BoundaryViolationError(
+                "agent working directory escapes the process working root"
+            )
+        return resolved
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "process_boundary": self.process_boundary.to_dict(),
+            "agent_id": self.agent_id,
+            "max_output_bytes": self.max_output_bytes,
+            "allowed_temp_roots": list(self.allowed_temp_roots),
+            "credential_refs": list(self.credential_refs),
+            "cleanup_on_exit": self.cleanup_on_exit,
+        }
+
+    @classmethod
+    def from_mapping(
+        cls, agent_id: str, mapping: dict[str, Any]
+    ) -> AgentIsolation:
+        valid_keys = {
+            "process",
+            "max_output_bytes",
+            "allowed_temp_roots",
+            "credential_refs",
+            "cleanup_on_exit",
+        }
+        unknown = set(mapping) - valid_keys
+        if unknown:
+            raise BoundaryViolationError(
+                f"unknown keys in agent mapping: {', '.join(sorted(unknown))}"
+            )
+        if "process" not in mapping:
+            raise BoundaryViolationError(
+                "agent mapping must include 'process'"
+            )
+        process_boundary = ProcessBoundary.from_mapping(mapping["process"])
+        return cls(
+            process_boundary=process_boundary,
+            agent_id=agent_id,
+            max_output_bytes=int(mapping.get("max_output_bytes", 64000)),
+            allowed_temp_roots=tuple(mapping.get("allowed_temp_roots", ())),
+            credential_refs=tuple(mapping.get("credential_refs", ())),
+            cleanup_on_exit=bool(mapping.get("cleanup_on_exit", True)),
+        )

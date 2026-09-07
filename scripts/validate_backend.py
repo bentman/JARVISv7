@@ -216,7 +216,9 @@ def _pytest_available() -> bool:
     return importlib.util.find_spec("pytest") is not None
 
 
-def _build_pytest_command(targets: list[str], marker_expr: str | None = None) -> list[str]:
+def _build_pytest_command(
+    targets: list[str], marker_expr: str | None = None, keyword_expr: str | None = None,
+) -> list[str]:
     command = [
         sys.executable,
         "-m",
@@ -225,16 +227,20 @@ def _build_pytest_command(targets: list[str], marker_expr: str | None = None) ->
     ]
     if marker_expr:
         command.extend(["-m", marker_expr])
+    if keyword_expr:
+        command.extend(["-k", keyword_expr])
     command.extend(targets)
     return command
 
 
-def _run_pytest(targets: list[str], marker_expr: str | None = None) -> int:
+def _run_pytest(
+    targets: list[str], marker_expr: str | None = None, keyword_expr: str | None = None,
+) -> int:
     if not _pytest_available():
         print("pytest is not installed in backend/.venv")
         return 3
 
-    command = _build_pytest_command(targets, marker_expr=marker_expr)
+    command = _build_pytest_command(targets, marker_expr=marker_expr, keyword_expr=keyword_expr)
     completed = subprocess.run(command, cwd=APP_REPO_ROOT, check=False)
     if completed.returncode == 5:
         return 2
@@ -293,6 +299,10 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     runtime = subparsers.add_parser("runtime", parents=[shared])
     runtime.add_argument("--families")
     runtime.add_argument("--devices")
+    runtime.add_argument(
+        "--mock", action="store_true",
+        help="run mock-based runtime tests instead of live tests",
+    )
 
     subparsers.add_parser("regression", parents=[shared])
     subparsers.add_parser("matrix", parents=[shared])
@@ -310,6 +320,11 @@ def _command_integration() -> int:
 
 
 def _command_runtime(args: argparse.Namespace) -> int:
+    if getattr(args, "mock", False):
+        return _run_pytest(
+            ["backend/tests/runtime"],
+            keyword_expr="governed or fallback or mock",
+        )
     marker_expr = _runtime_marker_expr(args.families, args.devices)
     return _run_pytest(["backend/tests/runtime"], marker_expr=marker_expr)
 

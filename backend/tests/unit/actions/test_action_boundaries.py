@@ -7,6 +7,7 @@ import pytest
 from backend.app.actions.boundaries import (
     ActionCancelledError,
     ActionOperation,
+    AgentIsolation,
     BoundaryViolationError,
     ExecutionBoundary,
     ProcessBoundary,
@@ -187,3 +188,292 @@ def test_a_process_path_inside_the_working_root_resolves() -> None:
     assert boundary.resolve_path("sessions/turn.json") == (
         REPO_ROOT / "data" / "sessions" / "turn.json"
     ).resolve()
+
+
+# ---------------------------------------------------------------------------
+# AgentIsolation tests
+# ---------------------------------------------------------------------------
+
+
+def _pb(**overrides: object) -> ProcessBoundary:
+    values: dict[str, object] = {
+        "subprocess": True,
+        "argv_allowlist": ["python"],
+        "env_passthrough": ["PATH"],
+        "working_root": "data",
+    }
+    values.update(overrides)
+    return ProcessBoundary.from_mapping(values)
+
+
+def _agent(**overrides: object) -> AgentIsolation:
+    defaults: dict[str, object] = {
+        "process_boundary": _pb(),
+        "agent_id": "agent-1",
+        "max_output_bytes": 64000,
+        "allowed_temp_roots": (),
+        "credential_refs": (),
+        "cleanup_on_exit": True,
+    }
+    defaults.update(overrides)
+    return AgentIsolation(**defaults)  # type: ignore[arg-type]
+
+
+class TestAgentIsolationCreation:
+    def test_valid_creation(self) -> None:
+        agent = _agent()
+        assert agent.agent_id == "agent-1"
+        assert agent.max_output_bytes == 64000
+        assert agent.cleanup_on_exit is True
+        assert agent.allowed_temp_roots == ()
+        assert agent.credential_refs == ()
+
+    def test_valid_agent_id_with_digits_and_dashes(self) -> None:
+        agent = _agent(agent_id="a1-b2-c3")
+        assert agent.agent_id == "a1-b2-c3"
+
+
+class TestAgentIdValidation:
+    def test_empty_agent_id_is_refused(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="agent_id must match"):
+            _agent(agent_id="")
+
+    def test_uppercase_agent_id_is_refused(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="agent_id must match"):
+            _agent(agent_id="Agent-1")
+
+    def test_special_chars_agent_id_is_refused(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="agent_id must match"):
+            _agent(agent_id="agent_1!")
+
+    def test_leading_dash_is_refused(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="agent_id must match"):
+            _agent(agent_id="-agent")
+
+
+class TestMaxOutputBytes:
+    def test_too_low(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="max_output_bytes"):
+            _agent(max_output_bytes=512)
+
+    def test_too_high(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="max_output_bytes"):
+            _agent(max_output_bytes=2_000_000_000)
+
+    def test_lower_boundary_accepted(self) -> None:
+        agent = _agent(max_output_bytes=1024)
+        assert agent.max_output_bytes == 1024
+
+    def test_upper_boundary_accepted(self) -> None:
+        agent = _agent(max_output_bytes=1_000_000_000)
+        assert agent.max_output_bytes == 1_000_000_000
+
+
+class TestAllowedTempRoots:
+    def test_valid_temp_roots(self) -> None:
+        agent = _agent(allowed_temp_roots=("data/agent-tmp", "cache/agent-work"))
+        assert agent.allowed_temp_roots == ("data/agent-tmp", "cache/agent-work")
+
+    def test_temp_root_outside_allowed_storage_roots(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="allowed_temp_roots"):
+            _agent(allowed_temp_roots=("models/weights",))
+
+    def test_temp_root_with_unknown_prefix(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="allowed_temp_roots"):
+            _agent(allowed_temp_roots=("etc/config",))
+
+    def test_temp_root_matching_storage_root_exactly_is_refused(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="allowed_temp_roots"):
+            _agent(allowed_temp_roots=("data",))
+
+
+class TestSubprocessRequirement:
+    def test_requires_subprocess_true(self) -> None:
+        pb = ProcessBoundary.from_mapping({
+            "subprocess": False,
+            "argv_allowlist": ["python"],
+            "env_passthrough": ["PATH"],
+            "working_root": "data",
+        })
+        with pytest.raises(BoundaryViolationError, match="subprocess=True"):
+            _agent(process_boundary=pb)
+
+
+class TestValidateAgentEnvironment:
+    def test_scrubs_sensitive_keys(self) -> None:
+        agent = _agent(
+            process_boundary=_pb(env_passthrough=["PATH", "HOME"])
+        )
+        env = {
+            "PATH": "/usr/bin",
+            "HOME": "/home/agent",
+            "API_TOKEN": "secret-token",
+            "DB_PASSWORD": "hunter2",
+            "AWS_SECRET": "s3cret",
+            "MY_CREDENTIAL": "cred-value",
+            "PRIVATE_KEY": "key-data",
+        }
+        result = agent.validate_agent_environment(env)
+        assert result == {"PATH": "/usr/bin", "HOME": "/home/agent"}
+
+    def test_preserves_allowlisted_sensitive_keys(self) -> None:
+        agent = _agent(
+            process_boundary=_pb(env_passthrough=["PATH", "MY_TOKEN"])
+        )
+        env = {
+            "PATH": "/usr/bin",
+            "MY_TOKEN": "allowed-token",
+            "UNRELATED_SECRET": "must-scrub",
+        }
+        result = agent.validate_agent_environment(env)
+        assert result == {"PATH": "/usr/bin", "MY_TOKEN": "allowed-token"}
+
+    def test_case_insensitive_sensitive_matching(self) -> None:
+        agent = _agent(process_boundary=_pb(env_passthrough=["PATH"]))
+        env = {
+            "PATH": "/usr/bin",
+            "api_token": "lowercase-secret",
+            "Api_Key": "mixed-case-secret",
+        }
+        result = agent.validate_agent_environment(env)
+        assert result == {"PATH": "/usr/bin"}
+
+
+class TestResolveAgentWorkingDirectory:
+    def test_resolves_within_working_root(self) -> None:
+        agent = _agent()
+        resolved = agent.resolve_agent_working_directory()
+        expected = (REPO_ROOT / "data").resolve()
+        assert resolved == expected
+
+    def test_refuses_escape_via_relative_path(self) -> None:
+        from unittest.mock import patch
+
+        pb = ProcessBoundary.from_mapping({
+            "subprocess": True,
+            "argv_allowlist": ["python"],
+            "env_passthrough": ["PATH"],
+            "working_root": "data",
+        })
+        agent = _agent(process_boundary=pb)
+        with patch.object(
+            type(pb), "resolve_working_directory", return_value=Path("/etc/passwd"),
+        ):
+            with pytest.raises(BoundaryViolationError, match="escapes"):
+                agent.resolve_agent_working_directory()
+
+
+class TestFromMapping:
+    def test_with_defaults(self) -> None:
+        agent = AgentIsolation.from_mapping("agent-1", {
+            "process": {
+                "subprocess": True,
+                "argv_allowlist": ["python"],
+                "env_passthrough": ["PATH"],
+                "working_root": "data",
+            },
+        })
+        assert agent.agent_id == "agent-1"
+        assert agent.max_output_bytes == 64000
+        assert agent.allowed_temp_roots == ()
+        assert agent.credential_refs == ()
+        assert agent.cleanup_on_exit is True
+
+    def test_with_all_fields(self) -> None:
+        agent = AgentIsolation.from_mapping("agent-2", {
+            "process": {
+                "subprocess": True,
+                "argv_allowlist": ["git"],
+                "env_passthrough": ["PATH", "HOME"],
+                "working_root": "cache",
+            },
+            "max_output_bytes": 128000,
+            "allowed_temp_roots": ["cache/agent-tmp"],
+            "credential_refs": ["github-pat"],
+            "cleanup_on_exit": False,
+        })
+        assert agent.agent_id == "agent-2"
+        assert agent.max_output_bytes == 128000
+        assert agent.allowed_temp_roots == ("cache/agent-tmp",)
+        assert agent.credential_refs == ("github-pat",)
+        assert agent.cleanup_on_exit is False
+
+    def test_unknown_keys_rejected(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="unknown keys"):
+            AgentIsolation.from_mapping("agent-1", {
+                "process": {
+                    "subprocess": True,
+                    "argv_allowlist": ["python"],
+                    "env_passthrough": ["PATH"],
+                    "working_root": "data",
+                },
+                "bogus_field": True,
+            })
+
+    def test_missing_process_rejected(self) -> None:
+        with pytest.raises(BoundaryViolationError, match="must include 'process'"):
+            AgentIsolation.from_mapping("agent-1", {"max_output_bytes": 64000})
+
+    def test_invalid_process_data_rejected(self) -> None:
+        with pytest.raises(BoundaryViolationError):
+            AgentIsolation.from_mapping("agent-1", {"process": {}})
+
+
+class TestToDict:
+    def test_roundtrip(self) -> None:
+        agent = _agent(
+            allowed_temp_roots=("data/agent-tmp",),
+            credential_refs=("github-pat",),
+        )
+        serialized = agent.to_dict()
+        restored = AgentIsolation.from_mapping(
+            serialized["agent_id"],
+            {
+                "process": serialized["process_boundary"],
+                "max_output_bytes": serialized["max_output_bytes"],
+                "allowed_temp_roots": serialized["allowed_temp_roots"],
+                "credential_refs": serialized["credential_refs"],
+                "cleanup_on_exit": serialized["cleanup_on_exit"],
+            },
+        )
+        assert restored.agent_id == agent.agent_id
+        assert restored.max_output_bytes == agent.max_output_bytes
+        assert restored.allowed_temp_roots == agent.allowed_temp_roots
+        assert restored.credential_refs == agent.credential_refs
+        assert restored.cleanup_on_exit == agent.cleanup_on_exit
+
+    def test_to_dict_structure(self) -> None:
+        agent = _agent()
+        d = agent.to_dict()
+        assert set(d.keys()) == {
+            "process_boundary",
+            "agent_id",
+            "max_output_bytes",
+            "allowed_temp_roots",
+            "credential_refs",
+            "cleanup_on_exit",
+        }
+        assert isinstance(d["process_boundary"], dict)
+        assert isinstance(d["allowed_temp_roots"], list)
+        assert isinstance(d["credential_refs"], list)
+
+
+class TestCleanupOnExit:
+    def test_default_true(self) -> None:
+        agent = _agent()
+        assert agent.cleanup_on_exit is True
+
+    def test_explicit_false(self) -> None:
+        agent = _agent(cleanup_on_exit=False)
+        assert agent.cleanup_on_exit is False
+
+    def test_from_mapping_default_true(self) -> None:
+        agent = AgentIsolation.from_mapping("agent-1", {
+            "process": {
+                "subprocess": True,
+                "argv_allowlist": ["python"],
+                "env_passthrough": ["PATH"],
+                "working_root": "data",
+            },
+        })
+        assert agent.cleanup_on_exit is True

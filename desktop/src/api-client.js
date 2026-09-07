@@ -147,5 +147,11 @@ export function createApiClient(invoke) {
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
     cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
     openSearchSource: (url) => invoke("open_search_source", { url }),
+    listAgents: () => invokeMemory(invoke, "list_agents"),
+    getAgent: (profileId) => invokeMemory(invoke, "get_agent", { profileId }),
+    invokeAgent: (profileId, prompt) =>
+      invokeMemory(invoke, "invoke_agent", { profileId, prompt }),
+    listAgentRuns: () => invokeMemory(invoke, "list_agent_runs"),
+    cancelAgent: (profileId) => invokeMemory(invoke, "cancel_agent", { profileId }),
   };
 }

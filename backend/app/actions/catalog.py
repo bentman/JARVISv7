@@ -68,6 +68,7 @@ class CapabilityObservation:
     operator_config_present: bool = False
     operator_config_keys: tuple[str, ...] = ()
     extension_catalog_present: bool = False
+    agents: tuple[tuple[str, str, str, str, str, int, bool], ...] = ()
 
     @property
     def enabled_search_providers(self) -> tuple[str, ...]:
@@ -85,6 +86,7 @@ def build_descriptors(observation: CapabilityObservation) -> tuple[CapabilityDes
         *_provider(observation),
         _operator(observation),
         _extension(observation),
+        *_agents(observation),
     )
 
 
@@ -400,6 +402,60 @@ def _extension(observation: CapabilityObservation) -> CapabilityDescriptor:
         unavailable_explanation="" if present else EXTENSION_CATALOG_UNAVAILABLE,
         approval_mode="same_turn",
     )
+
+
+def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, ...]:
+    descriptors = []
+    for (
+        capability_id,
+        profile_id,
+        display_name,
+        effect_class,
+        auth_rule,
+        timeout_ms,
+        cancellable,
+    ) in observation.agents:
+        descriptors.append(
+            CapabilityDescriptor(
+                capability_id=capability_id,
+                source="config/agents",
+                provenance="backend.app.agents.registry",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "prompt": {"type": "string", "minLength": 1, "maxLength": 4000},
+                    },
+                    "required": ["prompt"],
+                    "additionalProperties": False,
+                },
+                effect_class=effect_class,
+                readiness="ready",
+                availability="available",
+                authorization_rule=auth_rule,
+                execution_owner="backend.app.agents.invocation",
+                timeout_policy={"timeout_ms": timeout_ms},
+                cancellation_policy={"cancellable": cancellable},
+                result_schema={
+                    "type": "object",
+                    "properties": {
+                        "agent_id": {"type": "string"},
+                        "output": {},
+                        "status": {"type": "string"},
+                    },
+                },
+                artifact_evidence={
+                    "records": [
+                        "action_proposals",
+                        "authorization_decisions",
+                        "delegated_runs",
+                    ]
+                },
+                unavailable_explanation="",
+                approval_mode="turn_boundary" if auth_rule == "requires_approval" else "same_turn",
+                metadata_claims={"agent_id": {"value": profile_id, "trusted": False}},
+            )
+        )
+    return tuple(descriptors)
 
 
 def _capability(

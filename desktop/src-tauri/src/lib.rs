@@ -23,6 +23,11 @@ use backend::{
     invoke_extension as backend_invoke_extension,
     answer_extension_input as backend_answer_extension_input,
     write_extension_credential as backend_write_extension_credential,
+    list_agents as backend_list_agents,
+    get_agent as backend_get_agent,
+    invoke_agent as backend_invoke_agent,
+    list_agent_runs as backend_list_agent_runs,
+    cancel_agent as backend_cancel_agent,
     propose_action as backend_propose_action,
     set_extension_state as backend_set_extension_state,
     get_desktop_status as backend_desktop_status, get_json,
@@ -740,6 +745,36 @@ fn write_extension_credential(extension_id: String, name: String, secret: String
 }
 
 #[tauri::command]
+fn list_agents(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_list_agents(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_agent(profile_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_get_agent(&state.http_client, &base_url, &profile_id)
+}
+
+#[tauri::command]
+fn invoke_agent(profile_id: String, prompt: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_invoke_agent(&state.http_client, &base_url, &profile_id, &prompt)
+}
+
+#[tauri::command]
+fn list_agent_runs(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_list_agent_runs(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn cancel_agent(profile_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_cancel_agent(&state.http_client, &base_url, &profile_id)
+}
+
+#[tauri::command]
 fn cancel_action(proposal_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_cancel_action(
@@ -922,6 +957,11 @@ pub fn run() {
             invoke_extension,
             answer_extension_input,
             write_extension_credential,
+            list_agents,
+            get_agent,
+            invoke_agent,
+            list_agent_runs,
+            cancel_agent,
             get_resident_voice_status,
             start_resident_voice_stream,
             stop_resident_voice_stream,
