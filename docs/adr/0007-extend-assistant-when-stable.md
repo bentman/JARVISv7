@@ -21,16 +21,7 @@ The architecture needs a stability gate: agent work can start in narrow slices, 
 - Depend on ADR 0006 extension cataloging before packaging agents, skills, MCP connections, hooks, or plugins.
 - Keep non-agent assistant use functional when all agent features are disabled.
 
-## Considered Options
-
-- Add agent routes and runtime first, then backfill governance.
-- Use provider-native agents as the primary agent system.
-- Keep agents out of JARVISv7 entirely.
-- Add agents only after the assistant foundations they depend on are stable enough to host them.
-
 ## Decision Outcome
-
-Chosen option: `Add agents only after the assistant foundations they depend on are stable enough to host them`.
 
 An agent is a role-scoped reasoning and delegation unit with a defined purpose, available capabilities, memory scope, permission boundary, invocation mode, and completion contract.
 

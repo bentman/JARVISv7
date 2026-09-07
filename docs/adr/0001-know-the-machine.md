@@ -18,15 +18,7 @@ The system needs to know operating system, architecture, CPU, memory, GPU, CUDA,
 - Desktop and script surfaces need the same backend readiness truth.
 - Defined host-class support must distinguish researched configuration from live validation.
 
-## Considered Options
-
-- Let each runtime detect its own hardware and dependency state.
-- Put readiness and runtime selection policy in desktop or launch scripts.
-- Centralize host profile, provisioning, preflight, readiness, and startup context in the backend.
-
 ## Decision Outcome
-
-Chosen option: `Centralize host profile, provisioning, preflight, readiness, and startup context in the backend`.
 
 JARVISv7 centralizes host knowledge in backend hardware and startup layers. Runtimes, setup scripts, diagnostics, readiness APIs, desktop status surfaces, and validation claims consume that shared evidence.
 

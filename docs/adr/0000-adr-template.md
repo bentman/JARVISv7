@@ -14,17 +14,11 @@ Why this decision exists. What problem, force, constraint, or architecture gap r
 - Driver 2
 - Driver 3
 
-## Considered Options
-
-- Option A
-- Option B
-- Option C
-
 ## Decision Outcome
 
-Chosen option: `Option A`.
+State the decision directly.
 
-Short rationale for why this option was selected.
+Short rationale for why this decision was selected.
 
 ## Consequences
 

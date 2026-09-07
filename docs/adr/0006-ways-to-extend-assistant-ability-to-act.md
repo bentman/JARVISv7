@@ -20,16 +20,7 @@ Future extension families may include reusable prompts, skills, MCP connections,
 - Track provenance, trust, readiness, enablement, health, dependency state, and collisions before broad model-callable extension exposure.
 - Keep the desktop a thin surface over backend-owned policy, registry, execution, artifacts, and API contracts.
 
-## Considered Options
-
-- Treat each extension family as a separate feature with its own lifecycle and permission model.
-- Treat every extension as a tool.
-- Treat plugins as the primary architecture boundary.
-- Define extensions by function, then route executable effects through the governed capability loop.
-
 ## Decision Outcome
-
-Chosen option: `Define extensions by function, then route executable effects through the governed capability loop`.
 
 JARVISv7 will define extension shapes by function first:
 

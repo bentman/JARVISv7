@@ -19,15 +19,7 @@ The architecture needs one governable action loop. A capability must have a stab
 - Action results and external content must return as untrusted context.
 - Tools, search, provider configuration, memory lifecycle, MCP, skills, plugins, and agents need one evidence model.
 
-## Considered Options
-
-- Let each feature define its own action permission and audit behavior.
-- Rely on prompt instructions to keep model-initiated action safe.
-- Define a shared capability/action contract and wire executable action paths through it.
-
 ## Decision Outcome
-
-Chosen option: `Define a shared capability/action contract and wire executable action paths through it`.
 
 Risk determines friction:
 

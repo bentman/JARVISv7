@@ -18,15 +18,7 @@ Without a single loop, desktop UI, scripts, voice services, memory, search, and 
 - Memory ingestion must come from committed turn/session artifacts rather than surface-specific transcripts.
 - Desktop, scripts, daemon discovery, and future clients should render backend loop state instead of owning assistant behavior.
 
-## Considered Options
-
-- Build separate text and voice flows with shared helper functions.
-- Put the primary loop in the desktop shell and call backend runtimes as services.
-- Use backend `TurnEngine` as the committed interaction-loop authority, with modality-specific ingress delegating into it.
-
 ## Decision Outcome
-
-Chosen option: `Use backend TurnEngine as the committed interaction-loop authority`.
 
 Every normal assistant interaction that can affect session state, continuity, memory, tools, artifacts, or later agent behavior enters `TurnEngine` directly or through a service wrapper that delegates to it.
 

@@ -20,15 +20,7 @@ Without layered memory, transcripts, search results, retrieval caches, model-gen
 - Caches should accelerate retrieval without becoming memory authority.
 - Desktop and API surfaces need to use backend-owned memory services.
 
-## Considered Options
-
-- Replay recent transcripts as the primary memory mechanism.
-- Let the model maintain or rewrite durable memory directly.
-- Use layered, application-owned memory with explicit promotion and artifact evidence.
-
 ## Decision Outcome
-
-Chosen option: `Use layered, application-owned memory with explicit promotion and artifact evidence`.
 
 JARVISv7 implements separate memory layers for present-turn context, active-session working memory, persisted turn/session artifacts, episodic memory, semantic memory, semantic curation jobs, lifecycle controls, and retrieval cache acceleration. Models may propose semantic candidates from persisted evidence, but the application owns durable identity, lifecycle state, correction, deletion, permission, and retention.
 

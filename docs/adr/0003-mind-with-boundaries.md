@@ -19,15 +19,7 @@ Without an explicit model/application boundary, model output could become hidden
 - Provider selection, fallback, cloud escalation, and failure classification must remain application-owned.
 - Durable state changes need service ownership and artifact evidence.
 
-## Considered Options
-
-- Let model prompts carry most policy and rely on model compliance.
-- Use provider-native behavior directly whenever available.
-- Treat the model as a bounded worker and require application-owned contracts before model output can affect durable state or side effects.
-
 ## Decision Outcome
-
-Chosen option: `Treat the model as a bounded worker`.
 
 The application owns session and turn state, prompt assembly, personality policy boundaries, provider routing, search planning, memory proposal validation, runtime readiness, artifacts, and status reporting. The model may produce natural-language responses, structured classifications, search plans, memory candidates, and future tool or agent proposals. Those outputs become trusted only after application-owned parsing, validation, authorization, or review.
 
