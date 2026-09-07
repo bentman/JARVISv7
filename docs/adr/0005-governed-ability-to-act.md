@@ -1,7 +1,7 @@
 # 0005 - Governed Ability to Act
 
 Date: 2026-09-01
-Status: Implemented
+Status: Accepted
 Related: 0002, 0003, 0004, 0006, 0007
 
 ## Context and Problem Statement
@@ -51,7 +51,7 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented.
+This ADR is partially implemented. The shared action mechanics are in place. A first reclassification pass is done: capabilities whose only effect is a local write confined to `data/` no longer require approval. Reclassifying the remaining broad defaults is follow-up.
 
 Search is the clearest implemented governed action path. `SearchIntentResolver` detects explicit search intent, rejects secrets, asks for confirmation before private outbound queries, limits query count, and emits a structured `SearchPlan`. `SearchService` executes provider attempts, records sources and limitations, supports cancellation, and returns `SearchEvidence`. `TurnEngine` records search evidence, provider names, cancellation, failure phase, and final state in the turn artifact.
 
@@ -73,13 +73,11 @@ The shared action contract is wired. `backend/app/actions/contracts.py` defines 
 
 `TurnEngine` expresses the search confirmation handshake in this vocabulary. A search plan becomes a `ModelActionProposal` against `search-public-web` or `search-private-web`; a private plan produces an `approval_required` decision carrying an approval ID, and the user's confirmation, refusal, or silence on the next turn becomes an approval record, a denial, or a cancellation. `TurnContext.action_evidence` carries the records, and `_persist_artifact` writes proposals, authorization decisions, approval records, execution results, and cancellations into the turn artifact. Conversational behavior, prompts, and outcome strings are unchanged.
 
-The existing `/memory`, `/config/llm`, and `/config/operator` mutation routes record direct operator authority through `CapabilityService.operator_action`, so an operator request is represented as an approved proposal with an execution result. Their status codes and response bodies are unchanged.
-
 `backend/app/actions/boundaries.py` also declares the process and root isolation rules that file, workspace, shell, MCP, plugin, skill-script, and agent capabilities must satisfy before they can be registered. `ProcessBoundary` requires an explicit argv allowlist, an explicit environment allowlist rather than a wildcard, and a working root drawn from the declared storage roots, and it scrubs every environment key it did not allowlist so a parent-process secret cannot reach a child. The registry refuses a `privileged_execution` descriptor that omits these, and refuses any process-bearing capability that is not cancellable. Extension tool, skill-script, stdio MCP, and ACP capabilities now register these boundaries and execute through the shared action service.
 
-The `/memory`, `/config/llm`, and `/config/operator` mutation routes now authorize and execute on one path. `CapabilityService.execute_operator_action` mints the proposal, authorizes it with `caller="operator_api"`, records the approval and execution result, and re-raises the owning service's typed error so route status codes and conflict payloads are unchanged. An operator request carries its own authority, so availability and readiness are recorded but do not gate: the owning service reports those conditions with more fidelity than a descriptor explanation can. Operator-configuration keys are surfaced for discovery rather than enforced in the input schema, because the service rejects unknown keys per field and reports them.
+The `/memory`, `/config/llm`, and `/config/operator` mutation routes now authorize and execute on one path. `CapabilityService.execute_operator_action` mints the proposal, authorizes it with `caller="operator_api"`, records an approval record only for approval-gated direct requests, records the execution result, and re-raises the owning service's typed error so route status codes and conflict payloads are unchanged. An operator request carries its own authority, so availability and readiness are recorded but do not gate: the owning service reports those conditions with more fidelity than a descriptor explanation can. Operator-configuration keys are surfaced for discovery rather than enforced in the input schema, because the service rejects unknown keys per field and reports them. Provider profile writes and provider selection changes are direct `allow` local writes; provider deletion, credential-store key rotation, and provider connectivity tests remain approval-gated. `backend/app/actions/catalog.py` classifies `memory-policy-update` and `extension-state-update` as direct `allow` local writes as well: both mutate only `data/`-rooted local storage (`data/memory/semantic/memory.sqlite` and the `extension_overlay` table in `data/operator.sqlite`), so approval added no evidence a local write already carries. `operator-config-write` remains approval-gated because it writes `.env` at the repo root, outside the `data/` boundary this reclassification covers.
 
-Action evidence is durable. `backend/app/artifacts/storage.py` appends each record to `data/actions/action-log.jsonl` and fsyncs it, independent of any conversation session; the bounded in-memory audit remains only as the read path for `GET /actions/audit`. This deviates from the follow-up's wording of a "session artifact": API-initiated actions routinely arrive with no active session, and a session-scoped artifact would drop exactly those records, along with everything held in memory when a process dies before the session closes.
+Action evidence is durable. `backend/app/artifacts/storage.py` appends each record to `data/actions/action-log.jsonl` and fsyncs it, independent of any conversation session; the bounded in-memory audit remains only as the read path for `GET /actions/audit`. API-initiated actions can occur without an active session, so the action log is the durable evidence record for direct operator actions.
 
 The desktop exposes the governed action loop. `desktop/src/components/actions-panel.js` renders capability discovery with live availability and its unavailable explanation, pending approvals with approve, deny, and cancel controls, execution status, and the audit list. It proxies through `desktop/src-tauri/src/backend.rs` and `lib.rs` commands, builds DOM without `innerHTML`, never calls the backend directly, and never infers whether a proposal can be approved from its status string — it submits and renders the backend's answer.
 
@@ -170,11 +168,18 @@ Validation results (linux-amd64):
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
+Validation results (windows-amd64):
+- `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_capability_service.py backend\tests\unit\api\test_llm_config_routes.py backend\tests\unit\services\test_llm_provider_profiles.py`: PASS, 51 passed. Covers provider profile write authorization, LLM config routes, and provider profile storage.
+- `backend\.venv\Scripts\python -m pytest backend\tests\unit\actions\test_action_contracts.py backend\tests\unit\services\test_capability_service.py backend\tests\unit\services\test_extension_service.py backend\tests\unit\api\test_extension_routes.py backend\tests\unit\services\test_memory_service.py backend\tests\unit\api\test_memory_routes.py backend\tests\unit\api\test_action_routes.py`: PASS, 113 passed. Covers the `memory-policy-update` and `extension-state-update` reclassification to `allow`.
+- `backend\.venv\Scripts\python scripts\validate_backend.py unit`: PASS, 1449 passed, 8 skipped. `backend/tests/unit/extensions/test_mcp_oauth.py::TestMcpOAuthTokenStore::test_file_permissions` is now skipped on `os.name == "nt"`, matching the existing Linux/POSIX-only skip convention used elsewhere in this suite; it asserts POSIX `0600` file-mode bits that Windows does not report the same way.
+
 Protocol tests required execution outside the restricted runner because its asyncio
-subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
-with fixture data; a live native desktop, remote deployment, and other host classes
-remain unverified. The declared process controls are not an OS sandbox.
+subprocess/thread I/O stalled. Live native desktop behavior, remote deployment,
+and other host classes remain unverified. The declared process controls are not
+an OS sandbox.
 
 ## Follow-up
 
-- Validate real external providers and other host classes before making deployment claims. Mock-based governed action tests now cover the code paths without live services.
+- Continue the reclassification pass for the remaining capabilities not yet covered by the `data/`-write criterion: catalog inspection, health checks, credential entry for operator-selected local storage, and read-only discovery where no private data leaves the host. Keep evidence recording for governed actions, but require interrupting approval only for external writes, destructive local changes, privileged process execution, private-context transmission, and delegated external agent authority.
+- Define any session-scoped or capability-scoped grant mechanism only after the full reclassification proves repeated approval prompts remain a concrete operator problem. Grants must be explicit, bounded, revocable, and visible in action evidence.
+- Validate the fully revised posture through capability-service tests and desktop action/extension/operator flows before marking this ADR implemented.

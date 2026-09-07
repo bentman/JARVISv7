@@ -28,7 +28,7 @@ function backendStartupError(error) {
 }
 
 function memoryApiError(error) {
-  const message = String(error?.message || error || "Memory operation failed.");
+  const message = String(error?.message || error || "Backend operation failed.");
   let payload;
   try {
     payload = JSON.parse(message);
@@ -36,7 +36,11 @@ function memoryApiError(error) {
     payload = { status: null, body: null, message };
   }
   const detail = payload.body?.detail;
-  const wrapped = new Error(detail?.message || payload.message || "Memory operation failed.");
+  const bodyMessage =
+    (detail && typeof detail === "object" ? detail.message : null) ||
+    (typeof detail === "string" ? detail : null) ||
+    payload.body?.message;
+  const wrapped = new Error(bodyMessage || payload.message || "Backend operation failed.");
   wrapped.status = payload.status ?? null;
   wrapped.body = payload.body ?? null;
   wrapped.detail = detail ?? null;

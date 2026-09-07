@@ -63,6 +63,22 @@ def _bad_request(exc: Exception) -> HTTPException:
     return HTTPException(status_code=400, detail={"error": "invalid_provider_configuration", "message": str(exc)})
 
 
+def _profile_action_arguments(request: LLMProviderProfileWrite, profile_id: str | None = None) -> dict[str, object]:
+    arguments: dict[str, object] = {
+        "name": request.name,
+        "kind": request.kind,
+        "endpoint": request.endpoint,
+        "model": request.model,
+        "context_window": request.context_window,
+        "timeout_seconds": request.timeout_seconds,
+        "api_key": request.api_key,
+        "clear_api_key": request.clear_api_key,
+    }
+    if profile_id is not None:
+        arguments["profile_id"] = profile_id
+    return arguments
+
+
 @router.get("/config/llm", response_model=LLMProviderConfigResponse)
 def get_llm_config() -> LLMProviderConfigResponse:
     store = _store()
@@ -81,7 +97,7 @@ def create_llm_profile(
         profile = execute_operator_action(
             actions,
             catalog.PROVIDER_PROFILE_WRITE,
-            {"name": request.name, "kind": request.kind},
+            _profile_action_arguments(request),
             lambda: _store().create_profile(
                 name=request.name,
                 kind=request.kind,
@@ -107,7 +123,7 @@ def update_llm_profile(
         profile = execute_operator_action(
             actions,
             catalog.PROVIDER_PROFILE_WRITE,
-            {"profile_id": profile_id, "name": request.name},
+            _profile_action_arguments(request, profile_id),
             lambda: _store().update_profile(
                 profile_id,
                 name=request.name,

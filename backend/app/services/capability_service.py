@@ -407,19 +407,20 @@ class CapabilityService:
             decision = self._registry.authorize(proposal, context)
         self._record("action_proposal", proposal, capability_id)
         self._record("authorization_decision", decision, capability_id)
-        self._record(
-            "approval_record",
-            ApprovalAuditRecord(
-                approval_id=approval_id,
-                proposal_id=proposal_id,
-                capability_id=capability_id,
-                outcome="approved",
-                decided_by="operator_api",
-                decided_at=started_at,
-                reason="direct operator request",
-            ),
-            capability_id,
-        )
+        if descriptor is not None and descriptor.authorization_rule == "requires_approval":
+            self._record(
+                "approval_record",
+                ApprovalAuditRecord(
+                    approval_id=approval_id,
+                    proposal_id=proposal_id,
+                    capability_id=capability_id,
+                    outcome="approved",
+                    decided_by="operator_api",
+                    decided_at=started_at,
+                    reason="direct operator request",
+                ),
+                capability_id,
+            )
         # An operator request carries its own authority, so availability and readiness are
         # recorded but do not gate: the owning service reports those conditions with more
         # fidelity than a descriptor explanation can.

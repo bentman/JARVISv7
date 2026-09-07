@@ -1,14 +1,14 @@
 # 0007 - Extend Assistant When Stable
 
 Date: 2026-09-01
-Status: Implemented
+Status: Accepted
 Related: 0002, 0003, 0004, 0005, 0006
 
 ## Context and Problem Statement
 
 JARVISv7 should become agent-capable only after the underlying assistant is dependable enough to host delegation. Agents add role-scoped reasoning, specialized context, multi-step execution, and separate process boundaries; those features amplify weaknesses in turn ownership, memory, approvals, artifacts, and runtime readiness.
 
-The current codebase implements major prerequisites: one committed turn engine, resident voice delegation into that engine, prompt authority boundaries, retrieval-backed memory, turn/session artifacts, provider profiles, search evidence, settings surfaces, diagnostics, and action-governance records. Agent routes and agent runtime code remain intentionally absent.
+The current codebase implements major prerequisites: one committed turn engine, resident voice delegation into that engine, prompt authority boundaries, retrieval-backed memory, turn/session artifacts, provider profiles, search evidence, settings surfaces, diagnostics, action-governance records, file-backed agent profiles, direct agent invocation, agent API routes, and a desktop agent panel. Operational agent management and protocol-complete delegated-agent behavior remain incomplete.
 
 The architecture needs a stability gate: agent work can start in narrow slices, but it must not fork sessions, memory, approval, extension, or artifact behavior away from the assistant foundation.
 
@@ -60,13 +60,13 @@ Positive:
 Negative:
 - Broad agent functionality is intentionally delayed until registry, capability, approval, and client surfaces exist.
 - Provider-native agent features may need wrapping before they fit v7's policy and artifact model.
-- ACP subprocess adapters require lifecycle, timeout, cancellation, output, and credential discipline.
+- ACP v2 subprocess adapters require lifecycle, timeout, cancellation, output, and credential discipline.
 - Agent profile design must stay small enough for a personal project while still preventing hidden authority.
 - Delegation requires more evidence per turn/run.
 
 ## Implementation
 
-This ADR is partially implemented.
+This ADR is partially implemented for direct agent operation and the current extension/governance integration. Some invocation modes and profile-management workflows remain follow-up work.
 
 Implemented foundations:
 - `backend/app/conversation/engine.py` centralizes text and voice turns through the same reasoning path, session continuity, personality policy, memory retrieval, search planning, response generation, artifact recording, and final state reporting.
@@ -78,9 +78,9 @@ Implemented foundations:
 - Turn and session artifacts exist in `backend/app/artifacts/turn_artifact.py`, `backend/app/artifacts/session_artifact.py`, and `backend/app/artifacts/session_timeline.py`.
 - Provider profile, settings, readiness, and search-provider surfaces exist through backend services/routes and thin desktop API/UI bindings.
 - Action governance records exist in `backend/app/actions/contracts.py`, including capability descriptors, proposals, authorization decisions, approvals, execution results, cancellation policy, and delegated-run artifact fields.
-- ACP client sessions are admitted through the same `TurnEngine` session path and governed capability executor; ACP events, permission requests, cancellation, and results are available for turn artifacts and approval handling.
+- ACP client sessions are admitted through the same `TurnEngine` session path and governed capability executor; ACP events, permission requests, cancellation, and results are available for turn artifacts and approval handling. Current ACP behavior must be aligned to Agent Client Protocol v2 before the project claims ACP compatibility for either outbound agent adapters or the inbound JARVIS server.
 
-The agent system is implemented.
+The current agent system is file-backed and operational for direct invocation, governed execution evidence, and inspection.
 
 Agent profiles are defined by `AgentProfile` in `backend/app/agents/schema.py`. Each profile declares a `profile_id`, `display_name`, `purpose`, `instructions`, `invocation_modes` (from `direct`, `router_selected`, `as_tool`, `handoff`), `capability_ids`, `memory_scope` (from `none`, `working`, `episodic`, `semantic`, `full`), `approval_class` (from `none`, `standard`, `strict`), `timeout_ms`, `cancellable`, `output_contract`, and `provider_model_policy`. Authority-bearing fields (`tool_policy`, `routing_policy`, `memory_policy`, `safety_overrides`, `hidden_instructions`) are rejected at load time. Profiles are loaded from YAML files under `config/agents/` by `backend/app/agents/loader.py`.
 
@@ -91,6 +91,8 @@ Invocation is implemented in `backend/app/agents/invocation.py`. `AgentInvoker.i
 `AgentRouter` in `backend/app/agents/router.py` provides heuristic router-selected invocation by matching keywords from the profile's purpose against the request text.
 
 Agent API routes exist at `backend/app/api/routes/agents.py`: `GET /agents` (list profiles), `GET /agents/{profile_id}` (detail), `POST /agents/invoke` (invoke through governed capability path), `GET /agents/runs` (list runs), `POST /agents/{profile_id}/cancel` (cancel). The desktop agent panel at `desktop/src/components/agents-panel.js` provides catalog display, invocation, run tracking, and cancellation through Tauri commands.
+
+Agent profile authoring is not an operator UI workflow in the current codebase. Profiles are edited as YAML under `config/agents/`, then loaded and validated by `AgentRegistry`. The desktop should not expose add/remove/modify controls until backend-owned profile mutation routes exist.
 
 Session mapping in `backend/app/agents/session_mapping.py` maps ACP session events into `AgentSessionRecord` entries that produce `delegated_runs` dicts for `TurnArtifact`. `TurnArtifact.agent_evidence()` filters delegated runs for agent-specific evidence.
 
@@ -187,13 +189,19 @@ Validation results (linux-amd64):
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
 Protocol tests required execution outside the restricted runner because its asyncio
-subprocess/thread I/O stalled. Desktop/mobile screenshots use the actual component
-with fixture data; a live native desktop, remote deployment, and other host classes
-remain unverified. The declared process controls are not an OS sandbox.
+subprocess/thread I/O stalled. Live native desktop behavior, remote deployment,
+and other host classes remain unverified. The declared process controls are not
+an OS sandbox.
 
 ## Follow-up
 
-- Handoff mode implementation: the `handoff` invocation mode is declared in the schema but not yet wired as a distinct runtime path. Direct and as_tool invocation are functional; router_selected uses a heuristic keyword matcher.
-- Live agent validation requires actual model/provider/process availability. Unit tests cover the code paths; runtime tests are gated on hardware.
-- OS sandboxing remains outside the declared process controls. `AgentIsolation` provides application-level environment scrubbing and path containment, not kernel-level isolation.
-- Autonomous agent routing beyond the heuristic keyword matcher is not implemented. The router is a starting point for future selection logic.
+- Agent profile control plane: add backend-owned create, update, delete, enable, disable, validation, conflict handling, persistence rules, audit evidence, and desktop controls. Desktop must not mutate profile YAML directly. Operator profile changes must produce clear validation/storage errors and leave the registry in a reloadable state.
+- Agent identity/runtime split: keep agent profile identity separate from runtime adapter. The profile owns purpose, instructions, invocation modes, capability IDs, memory scope, approval class, output contract, provider/model policy, and operator-visible metadata. Runtime adapters own how the work is executed: internal `TurnEngine` for JARVIS-owned agents, or Agent Client Protocol v2 for external agents. Do not add a JARVIS-specific external-agent protocol.
+- Built-in external agent defaults: ship disabled-by-default, backend-owned ACP v2 profiles/adapters for Antigravity (`agy`), Claude Code, Codex, GitHub Copilot, and Qwen-capable agent execution. These defaults should be immutable application profiles with operator overrides stored outside tracked config. Availability is determined by installed ACP v2 command/runtime discovery, not by assuming the tools exist.
+- Outbound ACP v2: delegated subprocess agents must use Agent Client Protocol v2, including initialization/version negotiation, optional auth, `session/new`, `session/list`, `session/resume`, `session/close`, `session/prompt`, streamed `session/update`, `session/request_permission`, `elicitation/create`, cancellation, and durable run evidence. Prompt acceptance and foreground completion are separate states and must be reflected in artifacts and desktop status.
+- Inbound ACP v2: replace the current local bridge with an Agent Client Protocol v2 server before exposing inbound agent-client interoperability. A compatible server must expose ACP v2 session lifecycle, update notifications, permission and elicitation handling, cancellation, and absolute-path conventions through the backend-owned turn engine.
+- Router and handoff behavior: `router_selected`, `as_tool`, and `handoff` modes need explicit execution paths, ranking or selection evidence, confidence/fallback behavior, approval boundaries, cancellation, and artifacts. The current heuristic selector is not an autonomous routing policy.
+- Agent capability integration: agent invocation must be usable from the assistant loop, not only from manual desktop controls. The model may propose an agent capability, but backend policy decides eligibility, approval, memory scope, and execution.
+- Desktop Agents: provide a working operator surface for profile list/detail, create/update/delete, enable/disable, adapter configuration, invocation, cancellation, run status, approval/input prompts, evidence, and errors. Add/remove/modify controls are incomplete until the backend control plane exists.
+- Validation: prove profile mutation, direct invocation, as-tool invocation, router-selected invocation, handoff, ACP v2 inbound/outbound operation, cancellation, approval, elicitation, run evidence, and native desktop behavior before marking this ADR implemented.
+- Live agent validation requires actual model/provider/process availability. Unit tests cover code paths; runtime tests are gated on hardware. `AgentIsolation` provides application-level environment scrubbing and path containment, not kernel-level isolation.

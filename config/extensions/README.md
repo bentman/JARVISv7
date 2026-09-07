@@ -20,11 +20,9 @@ The `definition` mapping is family-specific. Optional fields are `enabled`,
 credential reference and must not appear in definitions.
 
 Supported definition directories are `acp`, `mcp`, `hooks`, `plugins`, and
-`tools`. ACP and MCP definitions are configuration only until their governed
-runtime path is selected and available. Definitions never grant authority by
-themselves; executable effects require ADR 0005 capability registration,
-process boundaries, authorization, approval where required, cancellation, and
-evidence.
+`tools`. Definitions never grant authority by themselves; executable effects
+require ADR 0005 capability registration, process boundaries, authorization,
+approval where required, cancellation, and evidence.
 
 Tool definitions use a fixed `command` list plus a mandatory `process` mapping;
 they may optionally identify a `skill_id` and declared `script`. Plugin
@@ -34,5 +32,6 @@ list of bundled family, ID, and relative path entries.
 MCP definitions may use stdio (with `command` and `process`) or streamable HTTP
 (with `url`). `credential_ref` resolves an application-owned credential: HTTP
 uses a bearer authorization header, while stdio uses an explicit environment
-variable mapping through `env_passthrough`. Interactive remote OAuth is not
-implemented.
+variable mapping through `env_passthrough`. MCP definitions may declare OAuth
+authorization-code configuration; desktop/native OAuth connection flow remains
+ADR 0006 follow-up work.

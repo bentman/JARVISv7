@@ -82,6 +82,29 @@ def test_catalog_reports_provider_capabilities_misconfigured_when_the_secret_sto
     assert "secret store is locked" in entry.unavailable_explanation
 
 
+def test_provider_profile_write_is_a_direct_local_write_without_approval() -> None:
+    instance = service()
+
+    entry = capability(instance.catalog(), PROVIDER_PROFILE_WRITE)
+    result = instance.execute_operator_action(
+        PROVIDER_PROFILE_WRITE,
+        {
+            "name": "local",
+            "kind": "openai_compatible",
+            "endpoint": "http://127.0.0.1:8888/v1",
+            "model": "qwen",
+            "context_window": 32768,
+            "timeout_seconds": 60,
+        },
+        lambda: {"saved": True},
+    )
+
+    assert entry.authorization_rule == "allow"
+    assert result == {"saved": True}
+    kinds = [record["kind"] for record in instance.audit(limit=100).records]
+    assert kinds.count("approval_record") == 0
+
+
 def test_catalog_reports_operator_config_misconfigured_without_an_env_file() -> None:
     instance = service(CapabilityObservation(operator_config_present=False))
 

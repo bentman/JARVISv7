@@ -289,7 +289,8 @@ for (const selector of [
 ]) {
   assert.ok(style.includes(selector), `desktop layout contract missing: ${selector}`);
 }
-assert.match(style, /\.status-panel,\s*\.operator-panel\s*{\s*overflow-y:\s*auto;/);
+assert.match(style, /\.status-panel\s*{\s*overflow-y:\s*auto;/);
+assert.match(style, /\.operator-panel\s*{[\s\S]*overflow:\s*hidden;/);
 assert.ok(style.includes("@media (max-width: 820px)"));
 assert.ok(!style.includes("@media (max-width: 1180px)"));
 assert.ok(!style.includes("grid-template-areas"));
@@ -299,6 +300,9 @@ for (const selector of [
   ".advanced-panel-rail",
   '.advanced-panel-rail button[aria-selected="true"]',
   ".advanced-panel-detail",
+  ".extensions-panel-layout",
+  ".extensions-panel-list",
+  ".extensions-panel-detail",
   ".agents-panel",
   "--color-backdrop",
 ]) {
@@ -598,7 +602,8 @@ assert.ok(main.includes("dataset.profileId"), "desktop must attach turn profile 
 assert.ok(!main.includes("[profile:"), "desktop must not append profile metadata into assistant message text");
 assert.ok(main.includes("Description"), "desktop must display profile description");
 assert.ok(main.includes("Locale"), "desktop must display profile locale");
-assert.ok(main.includes("Default words"), "desktop must display profile default word count");
+assert.ok(!main.includes("Default words"), "desktop must not show profile default word count in the compact operator sidebar");
+assert.ok(main.includes("personalityDetailEl.textContent"), "desktop must keep compact personality metadata on one rendered line");
 assert.ok(!main.includes("profile.tone"), "desktop must not depend on old personality tone field");
 assert.ok(!main.includes("profile.brevity"), "desktop must not depend on old personality brevity field");
 assert.ok(!main.includes("profile.formality"), "desktop must not depend on old personality formality field");
@@ -1849,5 +1854,10 @@ assert.deepEqual(
   ["search-public-web"],
 );
 assert.deepEqual(requestedCapabilities({ metadata_claims: {} }), []);
+assert.ok(extensionsPanel.includes("extensions-panel-layout"), "extensions must render list and detail in separate columns");
+assert.ok(!memoryPanel.includes('textContent = "Close"'), "advanced Memory must rely on the dialog Close button");
+assert.ok(!actionsPanel.includes('textContent = "Close"'), "advanced Actions must rely on the dialog Close button");
+assert.ok(!extensionsPanel.includes('textContent = "Close"'), "advanced Extensions must rely on the dialog Close button");
+assert.ok(!agentsPanel.includes('textContent = "Close"'), "advanced Agents must rely on the dialog Close button");
 
 console.log("desktop static, advanced-control, memory, action, extension, and agent behavior checks passed");

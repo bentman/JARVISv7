@@ -208,6 +208,7 @@ class TestMcpOAuthTokenStore:
             store.delete(ref)
             assert store.load(ref) is None
 
+    @pytest.mark.skipif(os.name == "nt", reason="validates Linux/POSIX file-permission-mode semantics")
     def test_file_permissions(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             store = McpOAuthTokenStore(Path(tmpdir))

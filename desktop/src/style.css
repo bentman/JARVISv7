@@ -237,8 +237,7 @@ h3 {
   overflow: hidden;
 }
 
-.status-panel,
-.operator-panel {
+.status-panel {
   overflow-y: auto;
 }
 
@@ -263,6 +262,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  overflow: hidden;
 }
 
 .operator-header,
@@ -609,6 +609,26 @@ h3 {
   padding: var(--space-2);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
+}
+
+.extensions-panel-layout {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.45fr) minmax(0, 0.55fr);
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.extensions-panel-list,
+.extensions-panel-detail {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2);
+  min-height: 0;
+}
+
+.extensions-panel-list {
+  max-height: calc(min(760px, 88vh) - 74px);
+  overflow-y: auto;
 }
 
 .extensions-status {
@@ -996,6 +1016,11 @@ dd {
   font-size: 0.68rem;
 }
 
+.resident-voice-status {
+  max-height: 11.5rem;
+  overflow-y: auto;
+}
+
 .resident-voice-hint {
   margin: var(--space-1) 0 var(--space-2);
   padding-bottom: var(--space-2);
@@ -1030,6 +1055,19 @@ dd {
 .wake-indicator-fields {
   display: grid;
   gap: var(--space-1);
+}
+
+.wake-monitor-panel {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.wake-monitor-panel .wake-indicator {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .families {
@@ -1285,6 +1323,7 @@ dd {
   width: 100%;
   margin-top: var(--space-1);
   padding: var(--space-1);
+  font-size: var(--text-sm);
 }
 
 button {
@@ -1441,6 +1480,14 @@ select:disabled {
     flex-wrap: wrap;
     border-right: 0;
     border-bottom: 1px solid var(--color-border);
+  }
+
+  .extensions-panel-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .extensions-panel-list {
+    max-height: none;
   }
 }
 .search-sources { display: grid; gap: 0.4rem; font-size: 0.85em; }

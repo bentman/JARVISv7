@@ -223,7 +223,7 @@ def _memory(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
         _capability(
             MEMORY_POLICY_UPDATE,
             "local_write",
-            "requires_approval",
+            "allow",
             **{
                 **common,
                 "input_schema": {
@@ -257,11 +257,11 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
             "profile_id": _PROFILE_ID,
             "name": {"type": "string", "minLength": 1, "maxLength": 80},
             "kind": {"type": "string", "maxLength": 40},
-            "endpoint": {"type": "string", "maxLength": 2048},
-            "model": {"type": "string", "minLength": 1, "maxLength": 240},
+            "endpoint": {"type": ["string", "null"], "maxLength": 2048},
+            "model": {"type": ["string", "null"], "minLength": 1, "maxLength": 240},
             "context_window": {"type": "integer", "minimum": 512, "maximum": 2_000_000},
             "timeout_seconds": {"type": "number", "minimum": 1, "maximum": 600},
-            "api_key": {"type": "string", "maxLength": 512},
+            "api_key": {"type": ["string", "null"], "maxLength": 512},
             "clear_api_key": {"type": "boolean"},
         },
         "required": ["name", "kind", "endpoint", "model", "context_window", "timeout_seconds"],
@@ -295,7 +295,7 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         _capability(
             PROVIDER_PROFILE_WRITE,
             "local_write",
-            "requires_approval",
+            "allow",
             **{**common, "input_schema": profile_write_schema},
         ),
         _capability(
@@ -307,7 +307,7 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         _capability(
             PROVIDER_SELECTION_UPDATE,
             "local_write",
-            "requires_approval",
+            "allow",
             **{
                 **common,
                 "input_schema": {
@@ -381,7 +381,7 @@ def _extension(observation: CapabilityObservation) -> CapabilityDescriptor:
     return _capability(
         EXTENSION_STATE_UPDATE,
         "local_write",
-        "requires_approval",
+        "allow",
         source="builtin",
         provenance="backend.app.services.extension_service",
         input_schema={

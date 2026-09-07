@@ -106,10 +106,19 @@ If answers are not concrete, do not add the test. When scope exposes obsolete or
 - Honor `.agentignore` as a contract for files agents should not read, index, embed, or transmit unless explicit task instructions and repo policy permit it.
 - Do not commit generated artifacts unless the task requires it. Ensure `.gitignore` covers new generated output.
 - Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
-- Source code and tests describe the system as it exists. Development narration belongs in chat, commits, pull requests, or durable ADRs.
-- When a change materially implements, removes, or changes behavior described by an accepted ADR, update the affected ADR `Status`, `Current Design`, `Follow Up`, and `Evidence` sections in the same change. Use `Follow Up` only for gaps required to complete that ADR's decision; move separate future architecture into a new ADR or backlog, and mark older ADRs superseded when a later decision replaces them.
+- Source code and tests describe the system as it exists. Development narration belongs in chat, commits, or pull requests; durable ADRs hold architecture decisions and rationale.
+- ADR rules:
+  - One ADR owns one architecture decision.
+  - Do not restate another ADR's work; reference the owning ADR by ID.
+  - `Accepted` means chosen but not fully implemented or validated.
+  - `Implemented` means code matches the decision and evidence exists.
+  - `Follow-up` is only unfinished work required to complete that ADR.
+  - If follow-up changes the decision, create or supersede an ADR.
+  - Keep UI/layout redesign ADRs separate from behavior-defect fixes unless the defect is caused by the redesign.
+  - ADRs must not include screenshots or sister-project references.
+- When a change materially implements, removes, or changes behavior described by an accepted ADR, update the affected ADR `Status`, `Implementation`, `Confirmation`, and `Follow-up` sections in the same change.
 - Default to no comment. Keep a comment only when it explains a non-obvious invariant, constraint, workaround, or public contract.
-- Source artifacts contain no conversation/session residue, agent references, phase notes, temporary planning references, or completed-work justifications.
+- Source artifacts contain no conversation/session residue, authoring-agent reports or references, phase notes, temporary planning references, or self-justifying completed-work narration.
 - Use positive scope boundaries: say what owns behavior, not what a module "is not."
 - Cross-reference docs only where acting correctly requires reading the target.
 - Helper artifacts are maintenance surfaces for approved designs, not design authority. Approved names: `docs/helpers/<area>-<purpose>.md`, `docs/helpers/<area>-<purpose>.ps1`, `docs/temp/<name>-YYYYMMDDHHMMSS.zip`.

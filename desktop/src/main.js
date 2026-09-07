@@ -252,21 +252,7 @@ function appendPresence(stateName) {
 function updatePersonalityDisplay(profile) {
   activePersonalityId = profile.profile_id || activePersonalityId;
   personalityCurrentEl.textContent = activePersonalityId;
-  const metadataFields = [
-    ["Description", profile.description],
-    ["Locale", profile.locale],
-    ["Default words", profile.max_words_default],
-  ];
-  const rows = metadataFields.map(([label, value]) => {
-    const row = document.createElement("div");
-    const labelEl = document.createElement("span");
-    const valueEl = document.createElement("span");
-    labelEl.textContent = `${label}: `;
-    valueEl.textContent = value || "—";
-    row.append(labelEl, valueEl);
-    return row;
-  });
-  personalityDetailEl.replaceChildren(...rows);
+  personalityDetailEl.textContent = `Locale: ${profile.locale || "—"}  Description: ${profile.description || "—"}`;
 }
 
 function renderProfileDiagnostics(profileErrors) {

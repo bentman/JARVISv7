@@ -8,9 +8,9 @@ Related: 0002, 0004, 0005, 0006, 0007
 
 The backend, Tauri, and desktop component surfaces for agents, actions, extensions, memory, settings, provider profiles, readiness, and diagnostics exist. The desktop operator layout must expose them clearly without changing backend ownership.
 
-`desktop/src/index.html` currently uses a three-column layout: a left status sidebar, the conversation panel, and a right operator sidebar. The left sidebar shows durable status information: Backend, Readiness, Services, and Personality. The right sidebar shows Resident Voice, Wake, and a row of single-letter/operator buttons for Memory, Actions, Extensions, and Settings.
+Before this ADR, `desktop/src/index.html` used a three-column layout: a left status sidebar, the conversation panel, and a right operator sidebar. The left sidebar showed durable status information: Backend, Readiness, Services, and Personality. The right sidebar showed Resident Voice, Wake, and a row of single-letter/operator buttons for Memory, Actions, Extensions, and Settings.
 
-The required desktop change has three parts:
+At decision time, the desktop defects were:
 
 - Agent capability is not exposed in the desktop surface. `desktop/src/components/agents-panel.js` exists and `desktop/src/api-client.js` reaches Tauri commands backed by live `/agents` routes, but `desktop/src/main.js` and `desktop/src/index.html` do not mount it.
 - Provider-profile editing falls back to read-only built-in profiles without a clear explanation, loses the just-created or just-edited profile after reload, and lets unrelated operator-config saves disable Providers & Models controls.
@@ -25,7 +25,7 @@ Backend, Readiness, and Services are not operator-control categories. They are p
 - Keep Backend, Readiness, and Services visible on the left instead of nesting them behind a new control panel.
 - Keep frequent session controls visible on the right: Personality, Resident Voice, and Wake.
 - Replace the right-side Memory/Actions/Extensions/Settings button row with one clear launch button for advanced operator controls.
-- Make no backend route, Tauri command, or capability-record changes.
+- Make no backend route or Tauri command changes. Provider profile writes and provider selection changes are direct operator-local writes and do not require a separate approval record.
 - Preserve ADR 0005's governed-action visibility and ADR 0006's extension vocabulary.
 
 ## Decision Outcome
@@ -69,7 +69,7 @@ Positive:
 - Backend, Readiness, and Services remain visible while the operator works.
 - Personality, Resident Voice, and Wake stay fast to reach.
 - Provider-editor state better matches backend state.
-- No backend, Tauri, or capability-registry surface changes are required.
+- Provider profile writes and provider selection changes become direct local writes in the capability registry; destructive provider actions remain approval-gated.
 
 Negative:
 - This touches multiple desktop surfaces in one change.
@@ -79,7 +79,7 @@ Negative:
 
 ## Implementation
 
-This ADR is implemented.
+This ADR is partially implemented.
 
 Layout:
 - `desktop/src/index.html` keeps Backend, Readiness, and Services in the left status sidebar and adds a single `#advanced-controls-trigger` button, with the `#settings-restart-required` badge, in an `.operator-actions` section directly below Services.
@@ -102,7 +102,7 @@ Provider and settings state:
 - `desktop/src/components/llm-provider-settings.js` gains the `openProviderSettings` / `closeProviderSettings` mount for the Providers & Models category, so provider controls no longer live inside the operator settings form. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
 - `desktop/src/components/settings-panel.js` replaces its boolean `restartRequired` with a `restartScopes` set of `operator` and `provider`. The badge, restart notice, and Restart button reflect the union; operator fields are disabled only by the operator scope and provider controls only by the provider scope. The blanket `querySelectorAll("input, select, button")` disable is removed, so an unrelated operator-config save no longer disables Providers & Models. Both mounts carry a generation guard so a resolved load cannot repopulate a container that was switched away.
 
-No backend route, Tauri command, API-client route, or capability-record change was made.
+No backend route, Tauri command, or API-client route change was made. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
 
 ## Confirmation
 
@@ -110,10 +110,14 @@ Validated on `linux-amd64` (WSL2):
 
 - `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, `agentRunProfileId`, honest invoke/cancel reporting, stale-response ordering, provider default selection, post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, and the advanced-control style contract.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` — `PASS`. `Finished \`dev\` profile ... in 36.12s`, confirming no Tauri-side change was introduced.
-- Live desktop session — `SKIPPED`. No screenshot or window-capture tool is available on this host, so the surface was not observed visually. In its place the rendered markup and components were driven end to end in a real DOM outside the repo (no repo dependency added), asserting: Backend/Readiness/Services remain in the left sidebar with the launch button below them; Personality renders above Resident Voice with all three selector labels sharing `.selector-label`; each category mounts and unmounts on rail switching; dismissal unmounts every category exactly once and a rail switch never dismisses; the provider editor opens on an editable profile; selecting a built-in shows the read-only explanation; an operator-config save leaves provider controls enabled; the save outcome survives the re-render; a created profile stays selected after reload; and the agent catalog, run records, and an `awaiting_approval` invocation render honestly.
+- Live desktop session — `SKIPPED`. Native WebView2 behavior was not exercised on this host.
+
+Validated on `windows-amd64`:
+
+- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers compact Personality metadata, right-sidebar scroll ownership, advanced-control category registration, Extensions list/detail split, and single dialog-level Close control.
+- `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_capability_service.py backend\tests\unit\api\test_llm_config_routes.py backend\tests\unit\services\test_llm_provider_profiles.py` — `PASS`, 51 passed. Covers provider profile writes as direct local actions and provider profile storage/routes.
 
 ## Follow-up
 
-The decision is fully implemented. One validation step remains and requires a host with a visible desktop session:
-
-- Confirm the advanced-control dialog's sizing, rail spacing, and selected-category contrast, and confirm Escape, backdrop click, and focus return against a real WebView2/WebKit `<dialog>`. Report the host class and the exact command.
+- Validate the operator desktop in a native visible session on `windows-amd64`: right sidebar startup fit, selector font size, compact Personality metadata, advanced dialog sizing, Extensions list/detail split, single Close control, Escape, backdrop click, and focus return. Report the exact command or manual run path and observable result.
+- Run a native desktop provider-profile smoke test against the running backend: create an editable `openai_compatible` profile with endpoint, model, context window, timeout, and credential; verify save succeeds, the created profile remains selected, and backend validation or storage failures surface as specific operator-readable errors.

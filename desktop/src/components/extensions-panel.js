@@ -580,11 +580,6 @@ function renderPanel(container, state, actions) {
   header.className = "extensions-panel-header";
   const heading = appendText(header, "Extensions", "h2");
   heading.tabIndex = -1;
-  const close = document.createElement("button");
-  close.type = "button";
-  close.textContent = "Close";
-  close.addEventListener("click", () => actions.close());
-  header.appendChild(close);
 
   const messages = document.createElement("div");
   messages.setAttribute("aria-live", "polite");
@@ -598,13 +593,20 @@ function renderPanel(container, state, actions) {
       );
     }
   }
+  const layout = document.createElement("div");
+  layout.className = "extensions-panel-layout";
+  const listColumn = document.createElement("div");
+  listColumn.className = "extensions-panel-list";
+  listColumn.append(renderCatalog(view), renderErrors(view));
+  const detailColumn = document.createElement("div");
+  detailColumn.className = "extensions-panel-detail";
+  detailColumn.appendChild(renderDetail(view));
+  layout.append(listColumn, detailColumn);
 
   container.replaceChildren(
     header,
     messages,
-    renderCatalog(view),
-    renderDetail(view),
-    renderErrors(view),
+    layout,
   );
   for (const field of container.querySelectorAll("[data-draft-key]")) {
     const draft = drafts.get(field.dataset.draftKey);

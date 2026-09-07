@@ -345,11 +345,6 @@ function renderPanel(container, state, actions) {
   header.className = "agents-panel-header";
   const heading = appendText(header, "Agents", "h2");
   heading.tabIndex = -1;
-  const close = document.createElement("button");
-  close.type = "button";
-  close.textContent = "Close";
-  close.addEventListener("click", () => actions.close());
-  header.appendChild(close);
 
   const messages = document.createElement("div");
   messages.setAttribute("aria-live", "polite");
