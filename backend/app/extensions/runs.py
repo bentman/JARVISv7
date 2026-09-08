@@ -66,6 +66,10 @@ class ExtensionRuns:
             self.update(run_id, events=(payload["events"] + [event])[-40:])
 
     def request(self, run_id: str, request: dict[str, Any], operation: ActionOperation) -> dict[str, Any]:
+        if not operation.interactive_input_allowed:
+            raise ValueError(
+                "this extension needs operator input; run it from the Extensions panel"
+            )
         request_id = uuid4().hex
         signal = threading.Event()
         answer: dict[str, Any] = {}

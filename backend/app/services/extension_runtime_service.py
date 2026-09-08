@@ -423,6 +423,31 @@ class ExtensionRuntimeService:
         errors = tuple(DefinitionError(key.split(":", 1)[0], key, message) for key, message in {**self._errors, **self._load_errors}.items())
         return tuple(definitions), tuple(records), errors
 
+    def tool_catalog(self) -> list[dict[str, Any]]:
+        """Model-facing description of every extension operation, keyed by capability id.
+
+        ACP operations are excluded: they execute through TurnEngine.run_extension, which
+        re-acquires the single turn lock, so selecting one from inside a turn cannot run.
+        ADR 0007 owns agent delegation.
+        """
+        self.actions.refresh()
+        with self._lock:
+            operations = {key: list(value) for key, value in self._operations.items()}
+        catalog: list[dict[str, Any]] = []
+        for identifier, items in sorted(operations.items()):
+            if identifier.startswith(("acp:", "skill:")):
+                continue
+            for item in items:
+                if not item["available"]:
+                    continue
+                catalog.append({
+                    "capability_id": item["capability_id"],
+                    "extension_id": identifier,
+                    "name": item["name"],
+                    "input_schema": item["input_schema"],
+                })
+        return catalog
+
     def executable_skills(self) -> list[str]:
         return [key.split(":", 1)[1] for key, operations in self._operations.items()
                 if key.startswith("skill:") and any(item["available"] for item in operations)]

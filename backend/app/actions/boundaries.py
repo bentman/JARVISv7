@@ -253,6 +253,10 @@ class ActionOperation:
         self.boundary = boundary
         self.cancel = threading.Event()
         self.done = threading.Event()
+        # A conversation turn holds the single turn lock while it runs, so an extension
+        # that blocks for operator input would stall the turn until its deadline. The
+        # turn path clears this; every other caller keeps interactive input available.
+        self.interactive_input_allowed = True
         self.lock = threading.RLock()
         self.started = time.monotonic()
 

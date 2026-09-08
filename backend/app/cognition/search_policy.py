@@ -10,8 +10,10 @@ from backend.app.services.search_service import SearchEvidence
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 _CANDIDATE = re.compile(r"\b(search(?:ing)?|research(?:ing)?|find(?:ing)?|look(?:ing)?(?:\s+\w+){0,2}\s*up|lookup|investigate|browse|verify)\b|\b(?:check|use|on)\s+(?:the\s+)?(?:web|internet|online)\b", re.I)
-_CONFIRM = re.compile(r"(?:yes(?: please)?|go ahead|proceed|confirm|do it)[.!]?", re.I)
-_CANCEL = re.compile(r"(?:no(?: thanks)?|stop|cancel|never\s?mind|forget that)[.!]?", re.I)
+CONFIRM_REPLY = re.compile(r"(?:yes(?: please)?|go ahead|proceed|confirm|do it)[.!]?", re.I)
+_CONFIRM = CONFIRM_REPLY
+CANCEL_REPLY = re.compile(r"(?:no(?: thanks)?|stop|cancel|never\s?mind|forget that)[.!]?", re.I)
+_CANCEL = CANCEL_REPLY
 _SECRET = re.compile(r"\b(?:sk-[\w-]{10,}|tvly-[\w-]+)|\b(?:password|api[_ -]?key|access[_ -]?token|secret)\s*[:=]\s*\S+", re.I)
 _PRIVATE = re.compile(r"\b[\w.+-]+@[\w.-]+\.[a-z]{2,}\b|(?:[A-Za-z]:[\\/]|\\\\|/Users/|/home/)|\b(?:my|our)\s+(?:address|account|medical|diagnosis|employer|client|customer|salary|phone)\b|\b\d{3}[- .]\d{2,3}[- .]\d{4}\b", re.I)
 _CITATION = re.compile(r"\[S\d+\]")
@@ -47,9 +49,11 @@ class SearchIntentResolver:
         self.secret_values = tuple(value for value in secret_values if len(value) >= 4)
         self.pending: SearchPlan | None = None
         self.clarification_mode: Literal["search", "research"] | None = None
-        self.pending_action_ref: tuple[str, str] | None = None
+        # (proposal_id, approval_id, capability_id): the capability travels with the
+        # reference so a resolver cannot assume which capability was parked.
+        self.pending_action_ref: tuple[str, str, str] | None = None
         self.resolved_approval: (
-            tuple[tuple[str, str], Literal["approved", "denied", "expired"]] | None
+            tuple[tuple[str, str, str], Literal["approved", "denied", "expired"]] | None
         ) = None
 
     def clear(self) -> None:
@@ -67,7 +71,7 @@ class SearchIntentResolver:
     def _resolve_approval(
         self,
         pending: SearchPlan | None,
-        action_ref: tuple[str, str] | None,
+        action_ref: tuple[str, str, str] | None,
         outcome: Literal["approved", "denied", "expired"],
     ) -> None:
         if pending is not None and action_ref:

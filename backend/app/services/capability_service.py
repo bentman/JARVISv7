@@ -219,6 +219,53 @@ class CapabilityService:
         with self._lock:
             return self._registry.authorize(proposal, context)
 
+    def execute_authorized(
+        self,
+        proposal: ModelActionProposal,
+        context: AuthorizationContext,
+        *,
+        definition_claim: dict[str, Any] | None = None,
+        interactive_input_allowed: bool = False,
+    ) -> tuple[AuthorizationDecision | None, ExecutionResultRecord]:
+        """Run a proposal a conversation turn already authorized.
+
+        The turn engine owns proposal identity, conversational approval, and turn-artifact
+        evidence; this re-runs the ADR 0005 ladder against current state and executes through
+        the same path the operator API uses. A turn must still answer even when the
+        capability has gone away, so state changes return a failure record rather than raising.
+        """
+        self.refresh()
+        descriptor = self.descriptor(proposal.capability_id)
+        if descriptor is None:
+            return None, self._turn_failure(proposal, "capability is no longer registered")
+        if definition_claim is not None:
+            current = dict(descriptor.metadata_claims.get("definition", {}))
+            if current != definition_claim:
+                return None, self._turn_failure(
+                    proposal, "extension changed after approval; propose the action again"
+                )
+        with self._lock:
+            decision = self._registry.authorize(proposal, context)
+        if decision.outcome != "allowed":
+            return decision, self._turn_failure(proposal, decision.reason)
+        return decision, self._run(
+            proposal, descriptor, interactive_input_allowed=interactive_input_allowed
+        )
+
+    def _turn_failure(self, proposal: ModelActionProposal, error: str) -> ExecutionResultRecord:
+        now = utc_now_iso()
+        record = ExecutionResultRecord(
+            proposal_id=proposal.proposal_id,
+            capability_id=proposal.capability_id,
+            status="failure",
+            result={},
+            started_at=now,
+            completed_at=now,
+            error=error,
+        )
+        self._record("execution_result", record, proposal.capability_id)
+        return record
+
     def propose(
         self,
         *,
@@ -523,6 +570,23 @@ class CapabilityService:
         descriptor: CapabilityDescriptor,
         decision: AuthorizationDecision,
     ) -> ActionProposalView:
+        record = self._run(proposal, descriptor)
+        return self._view_proposal(
+            proposal, decision, status=record.status, execution=record.to_dict()
+        )
+
+    def _run(
+        self,
+        proposal: ModelActionProposal,
+        descriptor: CapabilityDescriptor,
+        *,
+        interactive_input_allowed: bool = True,
+    ) -> ExecutionResultRecord:
+        """Execute one authorized proposal.
+
+        Both the operator API path and the conversation path run through here, so there is
+        one execution implementation, one boundary, and one evidence record.
+        """
         handler = self._handlers.get(proposal.capability_id)
         started_at = utc_now_iso()
         if handler is None:
@@ -536,9 +600,7 @@ class CapabilityService:
                 error="capability has no application-owned execution handler",
             )
             self._record("execution_result", record, proposal.capability_id)
-            return self._view_proposal(
-                proposal, decision, status="failure", execution=record.to_dict()
-            )
+            return record
 
         boundary = (
             ExecutionBoundary.from_mapping(descriptor.boundaries)
@@ -551,6 +613,7 @@ class CapabilityService:
             context.turn_id if context else f"api:{proposal.proposal_id}", proposal.proposal_id,
             proposal.capability_id, boundary,
         )
+        operation.interactive_input_allowed = interactive_input_allowed
         with self._lock:
             self._active[proposal.proposal_id] = operation
         status: ExecutionStatus = "success"
@@ -592,7 +655,7 @@ class CapabilityService:
                 ),
                 proposal.capability_id,
             )
-        return self._view_proposal(proposal, decision, status=status, execution=record.to_dict())
+        return record
 
     def _park(
         self, proposal: ModelActionProposal, decision: AuthorizationDecision

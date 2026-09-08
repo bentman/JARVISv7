@@ -119,6 +119,27 @@ discovered tools, resources, and prompts remain proposable after a restart inste
 retracting until rediscovery. Stored health is not replayed as a live claim: a snapshot restored
 from disk reports `unknown` until the connection is contacted again.
 
+The turn engine selects extension capabilities natively. `LLMBase.generate_with_tools` offers
+eligible operations to the model; `backend/app/cognition/tool_policy.py` bounds the offer to what
+fits the context window and grounds a result back as an untrusted `tool_result` segment. Selection
+is offered only for operations the ladder could allow: available, ready, non-denied, extension-owned
+operations. ACP operations are excluded because they execute through `TurnEngine.run_extension`,
+which re-acquires the single turn lock ADR 0002 owns.
+
+`CapabilityService.execute_authorized` is the turn-scoped entry point. It re-runs the ADR 0005
+ladder against current state, re-checks the definition fingerprint bound at approval, and executes
+through the same `_run` implementation the operator API uses, so there is one execution path and one
+evidence trail. The operator API keeps refusing `turn_boundary` capabilities: that guard protects
+the API edge, where no turn lock, turn artifact, or conversational approval channel exists.
+
+Approval is conversational. A capability whose effect class requires it is proposed, parked, and
+described to the user; a confirming reply on the next turn records the approval and executes, a
+declining reply records the denial, and any other reply lapses the approval as a turn-boundary
+cancellation. The parked capability travels with its approval reference, so no resolver assumes
+which capability was parked. One capability runs per turn; a second round is an agent loop, which
+ADR 0007 owns. An extension that blocks for operator input is refused inside a turn and directed to
+the Extensions panel rather than stalling the turn until its deadline.
+
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
 ## Confirmation
@@ -139,6 +160,9 @@ Implementation evidence:
 - `backend/app/cognition/prompt_assembler.py`
 - `backend/app/cognition/prompt_renderer.py`
 - `backend/app/cognition/prompt_chat_renderer.py`
+- `backend/app/cognition/tool_policy.py`
+- `backend/app/runtimes/llm/base.py`
+- `backend/app/routing/provider_router.py`
 - `backend/app/services/llm_provider_profiles.py`
 - `backend/app/services/llm_provider_service.py`
 - `backend/app/api/routes/llm_config.py`
@@ -191,6 +215,7 @@ Validation evidence:
 - `backend/tests/unit/runtimes/internetsearch/test_page_reader.py`
 - `backend/tests/unit/conversation/test_search_turn.py`
 - `backend/tests/unit/conversation/test_engine.py`
+- `backend/tests/unit/conversation/test_tool_turn.py`
 - `backend/tests/unit/artifacts/test_turn_artifact.py`
 - `backend/tests/unit/actions/test_action_contracts.py`
 - `backend/tests/unit/actions/test_action_boundaries.py`
@@ -210,7 +235,7 @@ Validation evidence:
 - `backend/tests/integration/test_extension_runtime.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1499 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1521 passed.
 - `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 22 passed, including actual local MCP and ACP SDK peers.
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
@@ -226,7 +251,7 @@ an OS sandbox.
 - MCP protocol/auth alignment: protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are implemented. What remains is transport-level validation: a streamable-HTTP MCP connection exercised against a live authorization challenge, which no current test covers.
 - Skills and tools: keep skills as procedural knowledge, not authority. Desktop must support skill discovery, body inspection, requested-capability visibility, enable/disable/retire state, import/edit of operator-owned skills, and clear validation errors. Skill scripts may execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
 - Hooks and plugins: keep hooks deterministic and event-scoped with visible enablement, errors, and run evidence. Plugin installation remains local-bundle installation unless a later ADR approves remote plugin sources or arbitrary install scripts.
-- Assistant integration: extension runtime is not complete when it is only manually invocable from an operator panel. The turn engine needs a capability-selection path that can choose eligible extension operations, request approval or elicitation, execute, cancel, and return evidence into the same turn artifacts without bypassing ADR 0002 or ADR 0005.
+- Assistant integration: implemented. The turn engine selects eligible extension operations natively, requests conversational approval, executes, cancels, and returns proposal, decision, approval, execution, and cancellation evidence into the same turn artifacts. Mid-turn structured elicitation stays bounded out: its answer path is HTTP-only and cannot reach a voice turn, so an extension needing operator input is refused in-turn and directed to the Extensions panel.
 - Desktop acceptance: the Extensions panel must work as a control surface, not only a catalog. Required behavior includes list/detail split, per-extension runtime detail, operation forms from schemas, run progress, approval/input handling, cancellation, credential/OAuth flow, load errors, and stable behavior in the native desktop on `windows-amd64`.
 - Agent and ACP agent interoperability: do not define a separate extension-owned agent protocol. ADR 0007 owns agent profiles, external-agent defaults, and Agent Client Protocol v2 inbound/outbound behavior.
 - Validation: add mocked SDK tests, local stdio MCP tests, streamable-HTTP MCP tests with auth, extension-runtime tests, and native desktop checks before marking the ADR implemented. Unit and integration tests prove local contracts; they do not prove each external provider or executable works on an operator machine.

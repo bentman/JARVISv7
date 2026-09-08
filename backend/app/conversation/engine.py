@@ -31,6 +31,8 @@ from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.cognition.prompt_renderer import render_flat_prompt
 from backend.app.cognition.responder import bound_single_turn_response, sanitize_for_tts
 from backend.app.cognition.search_policy import (
+    CANCEL_REPLY,
+    CONFIRM_REPLY,
     SearchIntentResolver,
     SearchPlan,
     ground_search_prompt,
@@ -38,6 +40,11 @@ from backend.app.cognition.search_policy import (
     search_speech,
 )
 from backend.app.cognition.style_guard import apply_personality_style_guard
+from backend.app.cognition.tool_policy import (
+    MAX_TURN_TOOL_CALLS,
+    ground_tool_prompt,
+    tool_offer_budget,
+)
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.conversation.states import ConversationState
 from backend.app.conversation.turn_manager import PhaseObserver, TurnContext
@@ -48,7 +55,7 @@ from backend.app.memory.write_policy import WritePolicy
 from backend.app.personality.policy import compile_personality_policy
 from backend.app.personality.schema import PersonalityProfile
 from backend.app.runtimes.internetsearch.page_reader import SearchCancelledError
-from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.llm.base import LLMBase, ToolCallResult, ToolDefinition
 from backend.app.runtimes.stt.barge_in import BargeInDetector
 from backend.app.runtimes.stt.base import STTBase
 from backend.app.runtimes.tts import playback
@@ -82,6 +89,29 @@ class TurnResult:
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
     failure_phase: str | None = None
     search: dict[str, object] | None = None
+
+
+def _turn_tools_invoked(context: TurnContext) -> list[str]:
+    """Search providers and capabilities actually run during the turn, in order."""
+    providers: list[str] = []
+    if context.search_operation is not None:
+        providers = [
+            attempt.provider
+            for attempt in context.search_operation.evidence.attempts
+            if attempt.status not in {"disabled", "misconfigured"}
+        ]
+    return list(dict.fromkeys([*providers, *context.tools_invoked]))
+
+
+@dataclass(slots=True)
+class PendingToolApproval:
+    """A tool the assistant offered to run, waiting on the user's next reply."""
+
+    proposal: ModelActionProposal
+    approval_id: str
+    definition_claim: dict[str, Any]
+    extension_id: str
+    operation_name: str
 
 
 class TurnEngine:
@@ -127,6 +157,8 @@ class TurnEngine:
         self.capability_service = capability_service
         self.extension_runtime = extension_runtime
         self._extension_operation = None
+        self._pending_tool: PendingToolApproval | None = None
+        self._last_tool_result: tuple[str, Any] | None = None
         self.search_intent = SearchIntentResolver(llm, secret_values=search_secret_values)
         self._turn_lock = threading.Lock()
         self._admission_lock = threading.Lock()
@@ -553,9 +585,16 @@ class TurnEngine:
         return result
 
     def _generate_response(self, context: TurnContext, transcript: str, envelope: PromptEnvelope, continuity: Any) -> tuple[str, PromptEnvelope]:
+        settled = self._resolve_pending_tool(context, transcript)
+        if settled is not None:
+            grounded = self._ground_last_tool(context, envelope)
+            if grounded is not None:
+                return bound_single_turn_response(self.llm.generate_envelope(grounded)), grounded
+            return settled, envelope
         operation = context.search_operation
         if operation is None:
-            return bound_single_turn_response(self.llm.generate_envelope(envelope)), envelope
+            response, grounded = self._respond_with_tools(context, envelope)
+            return bound_single_turn_response(response), grounded
         operation.check()
         prior_topic = ""
         if continuity is not None and continuity.policy_decision in {"start_new_session", "ignore_stale_context", "summarize_and_close"}:
@@ -573,7 +612,7 @@ class TurnEngine:
             if self.search_intent.pending is not None:
                 decision = self._propose_search(context, self.search_intent.pending)
                 self.search_intent.pending_action_ref = (
-                    (decision.proposal_id, decision.approval_id or "")
+                    (decision.proposal_id, decision.approval_id or "", decision.capability_id)
                     if decision and decision.approval_id
                     else None
                 )
@@ -607,6 +646,219 @@ class TurnEngine:
         response = bound_single_turn_response(self.llm.generate_envelope(grounded))
         operation.check()
         return response, grounded
+
+    def _respond_with_tools(
+        self, context: TurnContext, envelope: PromptEnvelope
+    ) -> tuple[str, PromptEnvelope]:
+        """Answer, offering eligible capabilities when the runtime can call tools."""
+        tools = self._tool_definitions(envelope)
+        if not tools:
+            return self.llm.generate_envelope(envelope), envelope
+        context.runtime_context["tools_offered"] = [tool.name for tool in tools]
+        try:
+            result = self.llm.generate_with_tools(envelope, tools)
+        except Exception:
+            # Selection is best-effort: a provider that cannot offer tools must not
+            # cost the user their answer.
+            return self.llm.generate_envelope(envelope), envelope
+        if not isinstance(result, ToolCallResult) or result.call is None:
+            return result.text if isinstance(result, ToolCallResult) else "", envelope
+        response = self._run_selected_tool(context, envelope, result.call)
+        if response is not None:
+            return response, envelope
+        grounded = self._ground_last_tool(context, envelope)
+        if grounded is None:
+            return "That action returned more than I can reason over in one turn.", envelope
+        return self.llm.generate_envelope(grounded), grounded
+
+    def _run_selected_tool(
+        self, context: TurnContext, envelope: PromptEnvelope, call: Any
+    ) -> str | None:
+        """Propose, authorize, and run one selected capability.
+
+        Returns a response string when the turn is finished early (approval requested,
+        denial, or failure), or None when a result is ready to ground.
+        """
+        assert self.capability_service is not None
+        if len(context.tools_invoked) >= MAX_TURN_TOOL_CALLS:
+            return None
+        descriptor = self.capability_service.descriptor(call.name)
+        if descriptor is None:
+            # The model named something the registry does not offer; say so rather than
+            # answering as though an action had run.
+            return "I tried to use a capability that is not available."
+        proposal = ModelActionProposal(
+            proposal_id=uuid4().hex,
+            capability_id=call.name,
+            arguments=dict(call.arguments),
+            proposed_by="model",
+            reason="the assistant selected this capability for the request",
+        )
+        decision = self.capability_service.authorize_turn(
+            proposal,
+            AuthorizationContext(
+                session_id=context.session_id,
+                turn_id=context.turn_id,
+                caller="conversation-turn",
+            ),
+        )
+        context.action_evidence.record(proposal)
+        if decision.outcome == "approval_required":
+            approval_id = decision.approval_id or uuid4().hex
+            context.action_evidence.record(AuthorizationDecision(
+                proposal_id=decision.proposal_id,
+                capability_id=decision.capability_id,
+                outcome=decision.outcome,
+                reason=decision.reason,
+                approval_required=True,
+                approval_id=approval_id,
+            ))
+            catalog = self.extension_runtime.tool_catalog() if self.extension_runtime else []
+            entry = next(
+                (item for item in catalog if item["capability_id"] == call.name),
+                {"extension_id": call.name, "name": ""},
+            )
+            self._pending_tool = PendingToolApproval(
+                proposal=proposal,
+                approval_id=approval_id,
+                definition_claim=dict(descriptor.metadata_claims.get("definition", {})),
+                extension_id=entry["extension_id"],
+                operation_name=entry["name"],
+            )
+            return (
+                f"May I run {entry['extension_id']} {entry['name']}? Reply yes to confirm."
+            ).replace("  ", " ")
+        context.action_evidence.record(decision)
+        if decision.outcome != "allowed":
+            return f"I cannot run that action. {decision.reason}"
+        pending = PendingToolApproval(
+            proposal=proposal,
+            approval_id="",
+            definition_claim=dict(descriptor.metadata_claims.get("definition", {})),
+            extension_id=call.name,
+            operation_name="",
+        )
+        return self._execute_tool(context, pending)
+
+    def _execute_tool(
+        self, context: TurnContext, pending: PendingToolApproval, *, approved: bool = False
+    ) -> str | None:
+        """Run one authorized capability inside the turn.
+
+        Returns failure text when the turn must explain itself, or None when a result is
+        ready to ground into the answer.
+        """
+        assert self.capability_service is not None
+        context.advance(ConversationState.ACTING)
+        try:
+            decision, record = self.capability_service.execute_authorized(
+                pending.proposal,
+                AuthorizationContext(
+                    session_id=context.session_id,
+                    turn_id=context.turn_id,
+                    caller="conversation-turn",
+                    operator_approved=approved,
+                    approval_id=pending.approval_id or None,
+                ),
+                definition_claim=pending.definition_claim,
+                interactive_input_allowed=False,
+            )
+        finally:
+            context.advance(ConversationState.REASONING)
+        if approved and decision is not None:
+            context.action_evidence.record(decision)
+        context.action_evidence.record(record)
+        context.tools_invoked.append(pending.proposal.capability_id)
+        if record.status != "success":
+            return self._tool_failure_text(record)
+        self._last_tool_result = (pending.proposal.capability_id, record.result)
+        return None
+
+    def _ground_last_tool(
+        self, context: TurnContext, envelope: PromptEnvelope
+    ) -> PromptEnvelope | None:
+        last = getattr(self, "_last_tool_result", None)
+        if last is None:
+            return None
+        self._last_tool_result = None
+        name, result = last
+        return ground_tool_prompt(envelope, tool_name=name, result=result, llm=self.llm)
+
+    def _tool_definitions(self, envelope: PromptEnvelope) -> tuple[Any, ...]:
+        """Offer only capabilities the ladder could actually allow right now."""
+        if self.capability_service is None or self.extension_runtime is None:
+            return ()
+        if not self.llm.supports_tool_calling():
+            return ()
+        try:
+            catalog = self.extension_runtime.tool_catalog()
+        except Exception:
+            return ()
+        if not catalog:
+            return ()
+        views = {view.capability_id: view for view in self.capability_service.catalog().capabilities}
+        offers = []
+        for entry in catalog:
+            view = views.get(entry["capability_id"])
+            if view is None or not getattr(view, "executable", True):
+                continue
+            if view.availability != "available" or view.readiness == "unavailable":
+                continue
+            if view.authorization_rule == "deny":
+                continue
+            offers.append(ToolDefinition(
+                name=entry["capability_id"],
+                description=f"{entry['extension_id']} operation '{entry['name']}'",
+                input_schema=entry["input_schema"] or {"type": "object"},
+            ))
+        return tool_offer_budget(envelope, tuple(offers), self.llm)
+
+    def _resolve_pending_tool(self, context: TurnContext, transcript: str) -> str | None:
+        """Settle a tool approval the previous turn asked for.
+
+        Returns a response when the reply settled the approval, otherwise None so the
+        turn continues normally.
+        """
+        pending, self._pending_tool = self._pending_tool, None
+        if pending is None or self.capability_service is None:
+            return None
+        text = transcript.strip()
+        if CONFIRM_REPLY.fullmatch(text):
+            context.action_evidence.record(ApprovalAuditRecord(
+                approval_id=pending.approval_id,
+                proposal_id=pending.proposal.proposal_id,
+                capability_id=pending.proposal.capability_id,
+                outcome="approved",
+                decided_by="user",
+                decided_at=utc_now_iso(),
+                reason="the user confirmed the proposed action",
+            ))
+            return self._execute_tool(context, pending, approved=True) or ""
+        if CANCEL_REPLY.fullmatch(text):
+            context.action_evidence.record(ApprovalAuditRecord(
+                approval_id=pending.approval_id,
+                proposal_id=pending.proposal.proposal_id,
+                capability_id=pending.proposal.capability_id,
+                outcome="denied",
+                decided_by="user",
+                decided_at=utc_now_iso(),
+                reason="the user declined the proposed action",
+            ))
+            return "Cancelled."
+        context.action_evidence.record(ActionCancellationRecord(
+            proposal_id=pending.proposal.proposal_id,
+            capability_id=pending.proposal.capability_id,
+            cancelled_by="turn_boundary",
+            cancelled_at=utc_now_iso(),
+            reason="approval was not confirmed on the next turn",
+        ))
+        return None
+
+    @staticmethod
+    def _tool_failure_text(record: ExecutionResultRecord) -> str:
+        if record.status == "cancelled":
+            return "That action was cancelled before it finished."
+        return f"I could not complete that action. {record.error or ''}".strip()
 
     def _propose_search(self, context: TurnContext, plan: SearchPlan) -> AuthorizationDecision | None:
         if self.capability_service is None:
@@ -649,9 +901,7 @@ class TurnEngine:
         resolved = self.search_intent.resolved_approval
         if self.capability_service is None or resolved is None:
             return
-        (proposal_id, approval_id), outcome = resolved
-        # Only search-private-web carries requires_approval, so a resolved approval is always its own.
-        capability_id = SEARCH_PRIVATE_WEB
+        (proposal_id, approval_id, capability_id), outcome = resolved
         if outcome == "expired":
             context.action_evidence.record(
                 ActionCancellationRecord(
@@ -1218,10 +1468,7 @@ class TurnEngine:
             phase_durations_ms=dict(result.phase_durations_ms),
             failure_phase=result.failure_phase,
             search=search,
-            tools_invoked=list(dict.fromkeys(
-                attempt.provider for attempt in context.search_operation.evidence.attempts
-                if attempt.status not in {"disabled", "misconfigured"}
-            )) if context.search_operation else [],
+            tools_invoked=_turn_tools_invoked(context),
             action_proposals=list(context.action_evidence.proposals),
             authorization_decisions=list(context.action_evidence.authorization_decisions),
             approval_records=list(context.action_evidence.approvals),

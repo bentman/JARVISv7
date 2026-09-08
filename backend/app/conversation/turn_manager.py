@@ -32,6 +32,7 @@ class TurnContext:
     phase_observer: PhaseObserver | None = None
     search_operation: SearchOperation | None = None
     action_evidence: ActionEvidence = field(default_factory=ActionEvidence)
+    tools_invoked: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.phase_timestamps.setdefault(self.state.value, self.started_at)
