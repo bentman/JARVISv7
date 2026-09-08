@@ -25,7 +25,6 @@ _EXTRA_REQUIREMENT_SPECS: dict[str, tuple[str, ...]] = {
     "dev": (
         "pytest",
         "pytest-cov",
-        "httpx2",
         "ruff",
         "mypy",
         "types-PyYAML",

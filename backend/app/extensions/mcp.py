@@ -76,10 +76,14 @@ class McpConnectionDefinition:
     def _validate_oauth(oauth: dict[str, Any]) -> None:
         if not isinstance(oauth, dict):
             raise ValueError("oauth must be a mapping")
-        for required in ("authorization_url", "token_url", "client_id"):
-            if required not in oauth:
-                raise ValueError(f"oauth requires {required}")
-        for url_field in ("authorization_url", "token_url"):
+        if "client_id" not in oauth:
+            raise ValueError("oauth requires client_id")
+        # Endpoints are optional: when absent they are discovered from the server's
+        # protected-resource metadata, and an explicit value overrides discovery.
+        declared = [field for field in ("authorization_url", "token_url") if field in oauth]
+        if len(declared) == 1:
+            raise ValueError("oauth requires both authorization_url and token_url, or neither")
+        for url_field in declared:
             parsed = urlsplit(str(oauth[url_field]))
             if parsed.scheme != "https" or not parsed.netloc:
                 raise ValueError(f"oauth.{url_field} must be a valid HTTPS URL")
@@ -91,6 +95,17 @@ class McpConnectionDefinition:
         redirect_port = oauth.get("redirect_port", 19823)
         if not isinstance(redirect_port, int) or not (1024 <= redirect_port <= 65535):
             raise ValueError("oauth.redirect_port must be an integer between 1024 and 65535")
+        resource = oauth.get("resource")
+        if resource is not None:
+            parsed = urlsplit(str(resource))
+            if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+                raise ValueError("oauth.resource must be a valid HTTP(S) URL")
+        unknown = set(oauth) - {
+            "authorization_url", "token_url", "client_id", "client_secret",
+            "scopes", "redirect_port", "resource",
+        }
+        if unknown:
+            raise ValueError(f"oauth has unsupported fields: {', '.join(sorted(unknown))}")
 
     @classmethod
     def from_mapping(cls, connection_id: str, value: dict[str, Any]) -> McpConnectionDefinition:

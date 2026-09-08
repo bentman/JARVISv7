@@ -89,7 +89,22 @@ the governed process/action boundary.
 
 An inbound ACP server exists in `backend/app/extensions/acp_server.py`. It accepts external client connections over TCP using a JSON-RPC 2.0 protocol, manages session lifecycle with configurable max sessions and timeouts, and routes incoming messages through `TurnEngine.run_text_turn()`. Server start/stop/status and session list endpoints are exposed through `backend/app/api/routes/acp_server.py`. The current inbound method surface is a local bridge, not an Agent Client Protocol v2-compatible server.
 
-MCP credentials now support interactive OAuth 2.0 authorization code flow with PKCE. `backend/app/extensions/mcp_oauth.py` provides `McpOAuthConfig`, `McpOAuthFlow` (authorization URL generation, code exchange, token refresh, local callback server), and `McpOAuthTokenStore` (JSON file persistence with 0o600 permissions). `McpConnectionDefinition` accepts an optional `oauth` field for OAuth-configured connections.
+MCP credentials support the OAuth 2.0 authorization code flow and resolve on the live connection
+path. `backend/app/extensions/mcp_oauth.py` provides `McpOAuthConfig`, `McpOAuthFlow`
+(authorization URL generation, code exchange, token refresh, local callback server), and
+authorization-server discovery. The code verifier is held against the state it was minted with and
+consumed once, so it never travels through the browser and an unknown or replayed state cannot
+redeem a code. Authorization and token requests carry the RFC 8707 `resource` parameter, binding a
+token to one MCP server. When a connection declares no `authorization_url` and `token_url`, they are
+discovered through RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata;
+an explicit endpoint overrides discovery. Tokens persist in the application's encrypted operator
+secret store and refresh when expired.
+
+`ExtensionRuntimeService.mcp_credentials` is the single host-owned credential resolver for MCP.
+An OAuth connection resolves a bearer token there; a connection with no stored authorization is
+refused rather than connected unauthenticated. Because `ProcessBoundary.scrub_environment` is an
+allowlist, a stdio credential absent from the connection's `env_passthrough` is refused rather than
+silently dropped into an unauthenticated server start.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
@@ -181,7 +196,7 @@ Validation evidence:
 - `backend/tests/unit/extensions/test_mcp_oauth.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1455 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1497 passed.
 - `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 17 passed, including actual local MCP and ACP SDK peers.
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
@@ -194,7 +209,7 @@ an OS sandbox.
 ## Follow-up
 
 - MCP operations: make configured MCP connections operational from backend and desktop. The operator must be able to add, edit, disable, retire, credential, OAuth-connect, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML for normal use. Discovery remains explicit and governed; discovered tools, resources, and prompts become capability-backed operations only through the shared registry. MCP resources and prompts are untrusted context until accepted by application code, and MCP tool calls remain approval-gated according to effect class.
-- MCP protocol/auth alignment: complete streamable-HTTP authorization against the current MCP authorization requirements, including protected-resource metadata, resource-bound tokens, PKCE, secure local token storage, refresh, and no token passthrough. Stdio MCP continues to receive only explicitly allowed environment values through the process boundary.
+- MCP protocol/auth alignment: protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are implemented. What remains is transport-level validation: a streamable-HTTP MCP connection exercised against a live authorization challenge, which no current test covers.
 - Skills and tools: keep skills as procedural knowledge, not authority. Desktop must support skill discovery, body inspection, requested-capability visibility, enable/disable/retire state, import/edit of operator-owned skills, and clear validation errors. Skill scripts may execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
 - Hooks and plugins: keep hooks deterministic and event-scoped with visible enablement, errors, and run evidence. Plugin installation remains local-bundle installation unless a later ADR approves remote plugin sources or arbitrary install scripts.
 - Assistant integration: extension runtime is not complete when it is only manually invocable from an operator panel. The turn engine needs a capability-selection path that can choose eligible extension operations, request approval or elicitation, execute, cancel, and return evidence into the same turn artifacts without bypassing ADR 0002 or ADR 0005.

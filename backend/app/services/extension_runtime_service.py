@@ -263,14 +263,7 @@ class ExtensionRuntimeService:
         )
         definition = McpConnectionDefinition.from_mapping(manifest.local_id, manifest.definition)
         async def credentials(_definition: Any) -> dict[str, str]:
-            if not definition.credential_ref:
-                return {}
-            value = self.runs.store.read_secret(f"extension:mcp:{manifest.local_id}", definition.credential_ref)
-            if value is None:
-                raise ValueError("MCP credential is unavailable")
-            if definition.transport == "stdio":
-                return {definition.credential_ref: value}
-            return {"Authorization": f"Bearer {value}"}
+            return self.mcp_credentials(definition, manifest.local_id)
         async def authorize(op: ActionOperation, kind: str, request: dict[str, Any]) -> None:
             op.check()
         async def elicit(_definition: Any, request: dict[str, Any]) -> dict[str, Any]:
@@ -298,6 +291,31 @@ class ExtensionRuntimeService:
             finally:
                 await runtime.close()
         return asyncio.run(invoke())
+
+    def mcp_credentials(self, definition: Any, local_id: str) -> dict[str, str]:
+        """Resolve host-owned credentials for one MCP connection."""
+        if definition.oauth is not None:
+            from backend.app.extensions.mcp_oauth import resolve_oauth_bearer
+
+            access = resolve_oauth_bearer(
+                self.runs.store, local_id, definition.oauth, resource_url=definition.url,
+            )
+            return {"Authorization": f"Bearer {access}"}
+        if not definition.credential_ref:
+            return {}
+        value = self.runs.store.read_secret(f"extension:mcp:{local_id}", definition.credential_ref)
+        if value is None:
+            raise ValueError("MCP credential is unavailable")
+        if definition.transport == "stdio":
+            # scrub_environment is an allowlist, so a credential the connection does not pass
+            # through is dropped silently and the server would start unauthenticated.
+            if definition.credential_ref not in definition.process_boundary.env_passthrough:
+                raise ValueError(
+                    "MCP credential is not listed in the connection's env_passthrough; "
+                    "the server would start without it"
+                )
+            return {definition.credential_ref: value}
+        return {"Authorization": f"Bearer {value}"}
 
     def detail(self, extension_id: str) -> dict[str, Any]:
         self.actions.refresh()

@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import json
-import os
 import re
-import stat
-import tempfile
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -17,8 +15,15 @@ from backend.app.extensions.mcp_oauth import (
     McpOAuthConfig,
     McpOAuthFlow,
     McpOAuthToken,
-    McpOAuthTokenStore,
+    config_from_definition,
+    discover_authorization_server,
+    load_oauth_token,
+    parse_resource_metadata_url,
+    protected_resource_metadata_url,
+    resolve_oauth_bearer,
+    save_oauth_token,
 )
+from backend.app.services.extension_runtime_service import ExtensionRuntimeService
 
 
 def _valid_oauth_config(**overrides: object) -> McpOAuthConfig:
@@ -132,15 +137,34 @@ class TestMcpOAuthFlow:
         url, state = flow.start_authorization()
         assert "code_challenge=" in url
         assert "code_challenge_method=S256" in url
-        # State includes code_verifier separated by colon
-        assert ":" in state
+        # The verifier is held on the host, never carried through the browser.
+        assert state not in url.split("code_challenge=")[1]
+        assert "code_verifier" not in url
+        assert f"state={state}" in url
 
     def test_start_authorization_without_pkce(self) -> None:
         config = _valid_oauth_config(pkce=False)
         flow = McpOAuthFlow(config)
         url, state = flow.start_authorization()
         assert "code_challenge=" not in url
-        assert ":" not in state
+        assert f"state={state}" in url
+
+    def test_exchange_code_rejects_an_unissued_state(self) -> None:
+        flow = McpOAuthFlow(_valid_oauth_config())
+        with pytest.raises(ValueError, match="unknown or already used"):
+            flow.exchange_code("auth-code", "never-issued")
+
+    def test_exchange_code_rejects_a_replayed_state(self) -> None:
+        flow = McpOAuthFlow(_valid_oauth_config())
+        _, state = flow.start_authorization()
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({"access_token": "t"}).encode("utf-8")
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            flow.exchange_code("auth-code", state)
+        with pytest.raises(ValueError, match="unknown or already used"):
+            flow.exchange_code("auth-code", state)
 
     def test_exchange_code_constructs_correct_request(self) -> None:
         config = _valid_oauth_config()
@@ -155,8 +179,9 @@ class TestMcpOAuthFlow:
         }).encode("utf-8")
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
+        _, state = flow.start_authorization()
         with patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
-            token = flow.exchange_code("auth-code", "state123", code_verifier="verifier")
+            token = flow.exchange_code("auth-code", state)
             assert token.access_token == "new-token"
             assert token.refresh_token == "new-refresh"
             call_args = mock_urlopen.call_args[0][0]
@@ -164,7 +189,8 @@ class TestMcpOAuthFlow:
             body = call_args.data.decode("utf-8")
             assert "grant_type=authorization_code" in body
             assert "code=auth-code" in body
-            assert "code_verifier=verifier" in body
+            # The flow supplies the verifier it minted; the caller never handles it.
+            assert "code_verifier=" in body
 
     def test_refresh_token_constructs_correct_request(self) -> None:
         config = _valid_oauth_config()
@@ -195,44 +221,176 @@ class TestMcpOAuthFlow:
             flow.refresh_token(token)
 
 
-class TestMcpOAuthTokenStore:
-    def test_save_load_delete_cycle(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            store = McpOAuthTokenStore(Path(tmpdir))
-            token = _valid_token()
-            ref = store.save("test-conn", token)
-            assert ref == "oauth:test-conn"
-            loaded = store.load(ref)
-            assert loaded is not None
-            assert loaded.access_token == token.access_token
-            assert loaded.refresh_token == token.refresh_token
-            store.delete(ref)
-            assert store.load(ref) is None
+class _FakeSecretStore:
+    """Stands in for the application's encrypted operator secret store."""
 
-    @pytest.mark.skipif(os.name == "nt", reason="validates Linux/POSIX file-permission-mode semantics")
-    def test_file_permissions(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            store = McpOAuthTokenStore(Path(tmpdir))
-            token = _valid_token()
-            store.save("test-conn", token)
-            filepath = Path(tmpdir) / "mcp_oauth" / "test-conn.json"
-            mode = os.stat(filepath).st_mode
-            assert stat.S_IMODE(mode) == 0o600
+    def __init__(self) -> None:
+        self.secrets: dict[tuple[str, str], str] = {}
 
-    def test_load_non_oauth_ref_returns_none(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            store = McpOAuthTokenStore(Path(tmpdir))
-            assert store.load("bearer:some-token") is None
+    def write_secret(self, owner_id: str, secret_name: str, value: str) -> None:
+        self.secrets[(owner_id, secret_name)] = value
 
-    def test_load_missing_file_returns_none(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            store = McpOAuthTokenStore(Path(tmpdir))
-            assert store.load("oauth:nonexistent") is None
+    def read_secret(self, owner_id: str, secret_name: str) -> str | None:
+        return self.secrets.get((owner_id, secret_name))
 
-    def test_delete_non_oauth_ref_is_noop(self) -> None:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            store = McpOAuthTokenStore(Path(tmpdir))
-            store.delete("bearer:some-token")  # should not raise
+
+class TestOAuthTokenPersistence:
+    def test_a_saved_token_round_trips_through_the_secret_store(self) -> None:
+        store = _FakeSecretStore()
+        save_oauth_token(store, "test-conn", _valid_token())
+        loaded = load_oauth_token(store, "test-conn")
+        assert loaded is not None
+        assert loaded.access_token == "test-access-token"
+        assert loaded.refresh_token == "test-refresh-token"
+
+    def test_tokens_are_namespaced_per_connection(self) -> None:
+        store = _FakeSecretStore()
+        save_oauth_token(store, "conn-a", _valid_token())
+        assert load_oauth_token(store, "conn-b") is None
+
+    def test_an_unauthorized_connection_is_reported_not_silently_unauthenticated(self) -> None:
+        oauth = {
+            "authorization_url": "https://auth.example.com/authorize",
+            "token_url": "https://auth.example.com/token",
+            "client_id": "test-client",
+        }
+        with pytest.raises(ValueError, match="not authorized"):
+            resolve_oauth_bearer(_FakeSecretStore(), "test-conn", oauth)
+
+    def test_an_unexpired_token_is_used_without_refreshing(self) -> None:
+        store = _FakeSecretStore()
+        save_oauth_token(store, "test-conn", _valid_token())
+        oauth = {
+            "authorization_url": "https://auth.example.com/authorize",
+            "token_url": "https://auth.example.com/token",
+            "client_id": "test-client",
+        }
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            assert resolve_oauth_bearer(store, "test-conn", oauth) == "test-access-token"
+        mock_urlopen.assert_not_called()
+
+    def test_an_expired_token_is_refreshed_and_written_back(self) -> None:
+        store = _FakeSecretStore()
+        expired = _valid_token(
+            expires_at=(datetime.now(UTC) - timedelta(hours=1)).isoformat()
+        )
+        save_oauth_token(store, "test-conn", expired)
+        oauth = {
+            "authorization_url": "https://auth.example.com/authorize",
+            "token_url": "https://auth.example.com/token",
+            "client_id": "test-client",
+        }
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "access_token": "refreshed-token",
+            "expires_in": 3600,
+        }).encode("utf-8")
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            assert resolve_oauth_bearer(store, "test-conn", oauth) == "refreshed-token"
+        assert load_oauth_token(store, "test-conn").access_token == "refreshed-token"
+
+    def test_an_expired_token_without_a_refresh_token_requires_reconnection(self) -> None:
+        store = _FakeSecretStore()
+        save_oauth_token(store, "test-conn", _valid_token(
+            refresh_token=None,
+            expires_at=(datetime.now(UTC) - timedelta(hours=1)).isoformat(),
+        ))
+        oauth = {
+            "authorization_url": "https://auth.example.com/authorize",
+            "token_url": "https://auth.example.com/token",
+            "client_id": "test-client",
+        }
+        with pytest.raises(ValueError, match="reconnect"):
+            resolve_oauth_bearer(store, "test-conn", oauth)
+
+
+class TestAuthorizationServerDiscovery:
+    def test_the_well_known_url_preserves_the_resource_path(self) -> None:
+        assert protected_resource_metadata_url("https://mcp.example.test/mcp") == (
+            "https://mcp.example.test/.well-known/oauth-protected-resource/mcp"
+        )
+
+    def test_a_challenge_header_yields_the_metadata_url(self) -> None:
+        header = 'Bearer error="invalid_token", resource_metadata="https://a.test/.well-known/x"'
+        assert parse_resource_metadata_url(header) == "https://a.test/.well-known/x"
+
+    def test_a_challenge_without_metadata_yields_none(self) -> None:
+        assert parse_resource_metadata_url('Bearer error="invalid_token"') is None
+
+    def test_discovery_follows_metadata_to_the_authorization_endpoints(self) -> None:
+        pages = {
+            "https://mcp.example.test/.well-known/oauth-protected-resource/mcp": {
+                "resource": "https://mcp.example.test/mcp",
+                "authorization_servers": ["https://auth.example.test"],
+                "scopes_supported": ["read"],
+            },
+            "https://auth.example.test/.well-known/oauth-authorization-server": {
+                "authorization_endpoint": "https://auth.example.test/authorize",
+                "token_endpoint": "https://auth.example.test/token",
+            },
+        }
+        with patch("backend.app.extensions.mcp_oauth._fetch_json", side_effect=lambda url: pages[url]):
+            found = discover_authorization_server("https://mcp.example.test/mcp")
+        assert found["authorization_url"] == "https://auth.example.test/authorize"
+        assert found["token_url"] == "https://auth.example.test/token"
+
+    def test_metadata_without_an_authorization_server_is_refused(self) -> None:
+        with (
+            patch("backend.app.extensions.mcp_oauth._fetch_json", return_value={}),
+            pytest.raises(ValueError, match="no authorization server"),
+        ):
+            discover_authorization_server("https://mcp.example.test/mcp")
+
+    def test_a_definition_without_endpoints_discovers_them(self) -> None:
+        with patch(
+            "backend.app.extensions.mcp_oauth.discover_authorization_server",
+            return_value={
+                "authorization_url": "https://auth.example.test/authorize",
+                "token_url": "https://auth.example.test/token",
+                "scopes_supported": ("read",),
+                "resource": "https://mcp.example.test/mcp",
+            },
+        ):
+            config = config_from_definition(
+                {"client_id": "c"}, resource_url="https://mcp.example.test/mcp"
+            )
+        assert config.token_url == "https://auth.example.test/token"
+        assert config.resource == "https://mcp.example.test/mcp"
+
+    def test_an_explicit_endpoint_overrides_discovery(self) -> None:
+        with patch("backend.app.extensions.mcp_oauth.discover_authorization_server") as discover:
+            config = config_from_definition({
+                "client_id": "c",
+                "authorization_url": "https://auth.example.com/authorize",
+                "token_url": "https://auth.example.com/token",
+            })
+        discover.assert_not_called()
+        assert config.token_url == "https://auth.example.com/token"
+
+
+class TestResourceBoundTokens:
+    def test_the_resource_parameter_is_sent_on_every_token_leg(self) -> None:
+        config = _valid_oauth_config(resource="https://mcp.example.test/mcp")
+        flow = McpOAuthFlow(config)
+        url, state = flow.start_authorization()
+        assert "resource=https%3A%2F%2Fmcp.example.test%2Fmcp" in url
+        mock_response = MagicMock()
+        mock_response.read.return_value = json.dumps({
+            "access_token": "t", "refresh_token": "r",
+        }).encode("utf-8")
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+            token = flow.exchange_code("auth-code", state)
+            assert "resource=https" in mock_urlopen.call_args[0][0].data.decode("utf-8")
+            flow.refresh_token(token)
+            assert "resource=https" in mock_urlopen.call_args[0][0].data.decode("utf-8")
+
+    def test_a_non_http_resource_is_rejected(self) -> None:
+        with pytest.raises(ValueError, match="resource must be a valid HTTP"):
+            _valid_oauth_config(resource="not-a-url")
 
 
 class TestMcpConnectionDefinitionOAuth:
@@ -298,3 +456,60 @@ class TestMcpConnectionDefinitionOAuth:
     def test_oauth_not_mapping_raises(self) -> None:
         with pytest.raises(ValueError, match="oauth must be a mapping"):
             McpConnectionDefinition.from_mapping("test", self._valid_mapping(oauth="not-a-dict"))
+
+
+class TestMcpCredentialResolution:
+    """The host resolves MCP credentials; a dropped secret must never look like success."""
+
+    def _service(self, store: _FakeSecretStore) -> Any:
+        service = ExtensionRuntimeService.__new__(ExtensionRuntimeService)
+        service.runs = SimpleNamespace(store=store)
+        return service
+
+    def _definition(self, **overrides: object) -> McpConnectionDefinition:
+        base: dict[str, Any] = {
+            "transport": "stdio",
+            "command": ["/bin/echo", "hi"],
+            "process": {
+                "subprocess": True,
+                "argv_allowlist": ["/bin/echo"],
+                "env_passthrough": ["API_TOKEN"],
+                "working_root": "data",
+            },
+            "credential_ref": "API_TOKEN",
+        }
+        base.update(overrides)
+        return McpConnectionDefinition.from_mapping("conn", base)
+
+    def test_an_allowlisted_stdio_credential_is_passed_through(self) -> None:
+        store = _FakeSecretStore()
+        store.write_secret("extension:mcp:conn", "API_TOKEN", "s3cret")
+        resolved = self._service(store).mcp_credentials(self._definition(), "conn")
+        assert resolved == {"API_TOKEN": "s3cret"}
+
+    def test_a_credential_missing_from_env_passthrough_is_refused_not_dropped(self) -> None:
+        store = _FakeSecretStore()
+        store.write_secret("extension:mcp:conn", "API_TOKEN", "s3cret")
+        definition = self._definition(process={
+            "subprocess": True,
+            "argv_allowlist": ["/bin/echo"],
+            "env_passthrough": [],
+            "working_root": "data",
+        })
+        with pytest.raises(ValueError, match="env_passthrough"):
+            self._service(store).mcp_credentials(definition, "conn")
+
+    def test_an_oauth_connection_resolves_a_bearer_token(self) -> None:
+        store = _FakeSecretStore()
+        save_oauth_token(store, "conn", _valid_token())
+        definition = McpConnectionDefinition.from_mapping("conn", {
+            "transport": "streamable_http",
+            "url": "https://mcp.example.test/mcp",
+            "oauth": {
+                "client_id": "c",
+                "authorization_url": "https://auth.example.com/authorize",
+                "token_url": "https://auth.example.com/token",
+            },
+        })
+        resolved = self._service(store).mcp_credentials(definition, "conn")
+        assert resolved == {"Authorization": "Bearer test-access-token"}
