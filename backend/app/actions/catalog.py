@@ -23,6 +23,8 @@ PROVIDER_SECRET_ROTATE = "provider-secret-rotate"
 PROVIDER_CONNECTIVITY_TEST = "provider-connectivity-test"
 OPERATOR_CONFIG_WRITE = "operator-config-write"
 EXTENSION_STATE_UPDATE = "extension-state-update"
+EXTENSION_DEFINITION_WRITE = "extension-definition-write"
+EXTENSION_DEFINITION_DELETE = "extension-definition-delete"
 
 SEARCH_UNAVAILABLE = (
     "No web search provider is enabled. Enable DDGS, SearXNG, or Tavily in operator configuration."
@@ -82,6 +84,7 @@ def build_descriptors(observation: CapabilityObservation) -> tuple[CapabilityDes
         *_provider(observation),
         _operator(observation),
         _extension(observation),
+        *_extension_definitions(observation),
         *_agents(observation),
     )
 
@@ -356,6 +359,66 @@ def _operator(observation: CapabilityObservation) -> CapabilityDescriptor:
         result_schema={"type": "object"},
         unavailable_explanation="" if present else OPERATOR_CONFIG_UNAVAILABLE,
         approval_mode="same_turn",
+    )
+
+
+_DEFINITION_FAMILY = {"type": "string", "enum": ["mcp", "acp", "tool", "hook", "plugin"]}
+_DEFINITION_ID = {"type": "string", "minLength": 1, "maxLength": 128}
+
+
+def _extension_definitions(
+    observation: CapabilityObservation,
+) -> tuple[CapabilityDescriptor, ...]:
+    """Operator-owned declarative definitions are created and removed as governed actions.
+
+    This is what lets an operator manage an MCP connection without hand-editing YAML, while
+    keeping one write path, one authorization ladder, and one evidence trail.
+    """
+    present = observation.extension_catalog_present
+    common: dict[str, Any] = {
+        "source": "builtin",
+        "provenance": "backend.app.services.extension_runtime_service",
+        "readiness": "ready" if present else "unavailable",
+        "availability": "available" if present else "disabled",
+        "execution_owner": (
+            "backend.app.services.extension_runtime_service.ExtensionRuntimeService"
+        ),
+        "timeout_policy": {"timeout_ms": CONFIG_TIMEOUT_MS},
+        "cancellation_policy": {"cancellable": False, "owner": "ExtensionRuntimeService"},
+        "result_schema": {"type": "object"},
+        "unavailable_explanation": "" if present else EXTENSION_CATALOG_UNAVAILABLE,
+        "approval_mode": "same_turn",
+    }
+    return (
+        _capability(
+            EXTENSION_DEFINITION_WRITE,
+            "local_write",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "family": _DEFINITION_FAMILY,
+                    "local_id": _DEFINITION_ID,
+                    "definition": {"type": "object"},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 200},
+                    "version": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "enabled": {"type": "boolean"},
+                },
+                "required": ["family", "local_id", "definition", "name", "version"],
+                "additionalProperties": False,
+            },
+            **common,
+        ),
+        _capability(
+            EXTENSION_DEFINITION_DELETE,
+            "local_write",
+            input_schema={
+                "type": "object",
+                "properties": {"family": _DEFINITION_FAMILY, "local_id": _DEFINITION_ID},
+                "required": ["family", "local_id"],
+                "additionalProperties": False,
+            },
+            **common,
+        ),
     )
 
 

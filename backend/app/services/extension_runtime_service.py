@@ -8,8 +8,9 @@ import threading
 from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
+import yaml
 from backend.app.actions.boundaries import (
     ActionCancelledError,
     ActionOperation,
@@ -23,13 +24,17 @@ from backend.app.actions.contracts import (
 )
 from backend.app.actions.process import run_process
 from backend.app.core.paths import CONFIG_DIR, DATA_DIR
+from backend.app.extensions.contracts import SAFE_LOCAL_ID
 from backend.app.extensions.discovery import (
     DEFINITION_FAMILIES,
+    DefinitionFamily,
     DefinitionManifest,
+    definitions_directory,
     discover_definition_manifests,
+    parse_definition_manifest,
 )
 from backend.app.extensions.hooks import HookRunner
-from backend.app.extensions.runs import ExtensionRuns
+from backend.app.extensions.runs import ExtensionRuns, McpSnapshots
 from backend.app.extensions.skills import resolve_skill_script
 from backend.app.extensions.store import ExtensionOverlayStore
 from backend.app.services.capability_service import CapabilityService
@@ -61,8 +66,11 @@ class ExtensionRuntimeService:
         self.data_dir = data_dir or DATA_DIR
         self.overlay = ExtensionOverlayStore(db_path)
         self.runs = ExtensionRuns(db_path)
+        self.snapshots = McpSnapshots(store=self.runs.store)
         self.hooks = HookRunner(actions, self.definitions)
-        self._snapshots: dict[str, dict[str, Any]] = {}
+        # Discovery survives restart, so an operator does not have to rediscover every
+        # connection before its tools are proposable again.
+        self._snapshots: dict[str, dict[str, Any]] = self.snapshots.all()
         self._operations: dict[str, list[dict[str, Any]]] = {}
         self._errors: dict[str, str] = {}
         self._load_errors: dict[str, str] = {}
@@ -274,9 +282,12 @@ class ExtensionRuntimeService:
             try:
                 if name == "discover":
                     snapshot = (await runtime.refresh(operation)).to_dict()
-                    self._snapshots[f"mcp:{manifest.local_id}"] = snapshot
+                    identifier = f"mcp:{manifest.local_id}"
+                    self._snapshots[identifier] = snapshot
                     if snapshot.get("health") != "ready":
+                        self.snapshots.delete(identifier)
                         raise ValueError("MCP discovery failed")
+                    self.snapshots.save(identifier, snapshot)
                     return snapshot
                 kind, value = name.split(":", 1)
                 if kind == "tool":
@@ -291,6 +302,72 @@ class ExtensionRuntimeService:
             finally:
                 await runtime.close()
         return asyncio.run(invoke())
+
+    @staticmethod
+    def _definition_family(family: str) -> DefinitionFamily:
+        if family not in DEFINITION_FAMILIES:
+            raise ValueError("unknown extension family")
+        return cast(DefinitionFamily, family)
+
+    def _definition_path(self, family: str, local_id: str) -> Path:
+        if not SAFE_LOCAL_ID.match(local_id):
+            raise ValueError(f"id must match {SAFE_LOCAL_ID.pattern}")
+        _, data_dir = definitions_directory(
+            self._definition_family(family), config_root=self.config_dir, data_root=self.data_dir
+        )
+        return data_dir / f"{local_id}.yaml"
+
+    def write_definition(self, family: str, local_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        """Create or replace an operator-owned declarative definition.
+
+        The definition is parsed and family-validated before it is written, so a malformed
+        connection is refused with its reason instead of persisted and failing later.
+        An application definition of the same family and id keeps precedence and is never
+        overwritten, so this cannot shadow a tracked default.
+        """
+        path = self._definition_path(family, local_id)
+        document = {**payload, "id": local_id}
+        text = yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
+        manifest = parse_definition_manifest(
+            self._definition_family(family), text, str(path), "data/extensions", "operator"
+        )
+        self._validate_family_definition(manifest)
+        config_dir, _ = definitions_directory(
+            self._definition_family(family), config_root=self.config_dir, data_root=self.data_dir
+        )
+        if (config_dir / f"{local_id}.yaml").is_file():
+            raise ValueError("an application definition owns this family and id")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+        self.actions.refresh()
+        return {"extension_id": f"{family}:{local_id}", "source": str(path)}
+
+    def delete_definition(self, family: str, local_id: str) -> dict[str, Any]:
+        path = self._definition_path(family, local_id)
+        if not path.is_file():
+            raise ValueError("unknown operator definition")
+        path.unlink()
+        identifier = f"{family}:{local_id}"
+        if family == "mcp":
+            self.snapshots.delete(identifier)
+            self._snapshots.pop(identifier, None)
+        self.actions.refresh()
+        return {"extension_id": identifier, "removed": True}
+
+    def _validate_family_definition(self, manifest: DefinitionManifest) -> None:
+        """Run the family's own contract so an invalid definition never reaches disk."""
+        if manifest.family == "mcp":
+            from backend.app.extensions.mcp import McpConnectionDefinition
+
+            McpConnectionDefinition.from_mapping(manifest.local_id, manifest.definition)
+        elif manifest.family == "acp":
+            from backend.app.extensions.acp import AcpDefinition
+
+            AcpDefinition.from_mapping(manifest.local_id, manifest.definition)
+        else:
+            # tool, hook, and plugin contracts are enforced when their operations are built.
+            for _ in self._operations_for(manifest):
+                break
 
     def mcp_credentials(self, definition: Any, local_id: str) -> dict[str, str]:
         """Resolve host-owned credentials for one MCP connection."""

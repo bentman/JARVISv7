@@ -32,7 +32,7 @@ OPENAI_ENDPOINT = "https://api.openai.com/v1"
 ANTHROPIC_ENDPOINT = "https://api.anthropic.com/v1"
 SECRET_KEY_NAME = "JARVIS_SECRET_STORE_KEY"
 PREVIOUS_SECRET_KEY_NAME = "JARVIS_SECRET_STORE_PREVIOUS_KEY"
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class ProviderConfigError(ValueError):
@@ -207,7 +207,19 @@ CREATE TABLE IF NOT EXISTS extension_run (
 );
 """
 
-_MIGRATIONS: dict[int, str] = {1: _EXTENSION_SCHEMA, 2: _EXTENSION_SECRET_SCHEMA}
+_MCP_SNAPSHOT_SCHEMA = """
+CREATE TABLE IF NOT EXISTS mcp_discovery_snapshot (
+    extension_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL,
+    discovered_at TEXT NOT NULL
+);
+"""
+
+_MIGRATIONS: dict[int, str] = {
+    1: _EXTENSION_SCHEMA,
+    2: _EXTENSION_SECRET_SCHEMA,
+    3: _MCP_SNAPSHOT_SCHEMA,
+}
 
 
 class LLMProviderProfileStore:
@@ -234,7 +246,9 @@ class LLMProviderProfileStore:
                 if version is not None:
                     self._migrate(connection, int(version[0]))
                     return
-            connection.executescript(_BASE_SCHEMA + _EXTENSION_SCHEMA + _EXTENSION_SECRET_SCHEMA)
+            connection.executescript(
+                _BASE_SCHEMA + _EXTENSION_SCHEMA + _EXTENSION_SECRET_SCHEMA + _MCP_SNAPSHOT_SCHEMA
+            )
             connection.execute(
                 "UPDATE operator_schema SET version = ? WHERE singleton = 1", (SCHEMA_VERSION,)
             )

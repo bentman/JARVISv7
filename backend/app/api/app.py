@@ -267,7 +267,10 @@ def build_startup_state() -> ApiState:
                 agent_registry_provider=lambda: agent_registry,
                 engine_provider=lambda: session_service.engine(),
             ),
-            **build_extension_handlers(extension_service_provider=lambda: extension_service),
+            **build_extension_handlers(
+                extension_service_provider=lambda: extension_service,
+                extension_runtime_provider=lambda: extension_runtime,
+            ),
         }
     )
     resident_voice = ResidentVoiceInvocationService(

@@ -106,6 +106,19 @@ refused rather than connected unauthenticated. Because `ProcessBoundary.scrub_en
 allowlist, a stdio credential absent from the connection's `env_passthrough` is refused rather than
 silently dropped into an unauthenticated server start.
 
+Operator-owned declarative definitions are created and removed through governed actions rather
+than by hand-editing YAML. `extension-definition-write` and `extension-definition-delete` route
+through the ADR 0005 executor and write into `data/extensions/{family}`, the location discovery
+already reads, so provenance, trust, precedence, and collision reporting are unchanged. A
+definition is parsed and family-validated before it reaches disk, so a malformed connection is
+refused with its reason instead of persisted; an application definition of the same family and id
+keeps precedence and is never overwritten.
+
+MCP discovery snapshots persist in `mcp_discovery_snapshot` behind a schema migration, so
+discovered tools, resources, and prompts remain proposable after a restart instead of silently
+retracting until rediscovery. Stored health is not replayed as a live claim: a snapshot restored
+from disk reports `unknown` until the connection is contacted again.
+
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
 ## Confirmation
@@ -194,10 +207,11 @@ Validation evidence:
 - `backend/tests/unit/routing/test_provider_router.py`
 - `backend/tests/unit/extensions/test_acp_server.py`
 - `backend/tests/unit/extensions/test_mcp_oauth.py`
+- `backend/tests/integration/test_extension_runtime.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1497 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 17 passed, including actual local MCP and ACP SDK peers.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1499 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 22 passed, including actual local MCP and ACP SDK peers.
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
@@ -208,7 +222,7 @@ an OS sandbox.
 
 ## Follow-up
 
-- MCP operations: make configured MCP connections operational from backend and desktop. The operator must be able to add, edit, disable, retire, credential, OAuth-connect, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML for normal use. Discovery remains explicit and governed; discovered tools, resources, and prompts become capability-backed operations only through the shared registry. MCP resources and prompts are untrusted context until accepted by application code, and MCP tool calls remain approval-gated according to effect class.
+- MCP operations: the backend surface is complete. An operator can add, edit, delete, enable, disable, retire, credential, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML, and discovery survives restart. What remains is the desktop control surface for these operations and the interactive OAuth connect flow, which has no route or UI above the flow module.
 - MCP protocol/auth alignment: protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are implemented. What remains is transport-level validation: a streamable-HTTP MCP connection exercised against a live authorization challenge, which no current test covers.
 - Skills and tools: keep skills as procedural knowledge, not authority. Desktop must support skill discovery, body inspection, requested-capability visibility, enable/disable/retire state, import/edit of operator-owned skills, and clear validation errors. Skill scripts may execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
 - Hooks and plugins: keep hooks deterministic and event-scoped with visible enablement, errors, and run evidence. Plugin installation remains local-bundle installation unless a later ADR approves remote plugin sources or arbitrary install scripts.

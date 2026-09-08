@@ -885,8 +885,9 @@ def build_agent_handlers(
 def build_extension_handlers(
     *,
     extension_service_provider: Callable[[], Any],
+    extension_runtime_provider: Callable[[], Any] | None = None,
 ) -> dict[str, CapabilityHandler]:
-    """Executor for the extension-state descriptor the catalog builds from live observation."""
+    """Executors for the extension descriptors the catalog builds from live observation."""
     from backend.app.actions import catalog
 
     def set_state(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
@@ -902,7 +903,32 @@ def build_extension_handlers(
             )
         )
 
-    return {catalog.EXTENSION_STATE_UPDATE: set_state}
+    def _runtime() -> Any:
+        runtime = extension_runtime_provider() if extension_runtime_provider else None
+        if runtime is None:
+            raise CapabilityServiceError(503, "unavailable", "extension runtime is unavailable")
+        return runtime
+
+    def write_definition(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        payload = {
+            "name": arguments["name"],
+            "version": arguments["version"],
+            "definition": arguments["definition"],
+        }
+        if "enabled" in arguments:
+            payload["enabled"] = arguments["enabled"]
+        return _runtime().write_definition(
+            arguments["family"], arguments["local_id"], payload
+        )
+
+    def delete_definition(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        return _runtime().delete_definition(arguments["family"], arguments["local_id"])
+
+    return {
+        catalog.EXTENSION_STATE_UPDATE: set_state,
+        catalog.EXTENSION_DEFINITION_WRITE: write_definition,
+        catalog.EXTENSION_DEFINITION_DELETE: delete_definition,
+    }
 
 
 def observe_capabilities(

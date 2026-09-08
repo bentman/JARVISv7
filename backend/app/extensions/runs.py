@@ -92,3 +92,49 @@ class ExtensionRuns:
                 raise ValueError("request already answered")
             result.update(answer)
             signal.set()
+
+
+class McpSnapshots:
+    """Durable MCP discovery snapshots.
+
+    Discovered tools, resources, and prompts become capability-backed operations, so losing
+    them on restart would silently retract capabilities an operator had already discovered.
+    Health is not stored: it is derived per read so a stale row cannot claim to be healthy.
+    """
+
+    def __init__(self, db_path: Path | None = None, store: Any = None) -> None:
+        self.store = store or LLMProviderProfileStore(db_path=db_path)
+
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.store.db_path, timeout=10)
+
+    def save(self, extension_id: str, snapshot: dict[str, Any]) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "INSERT INTO mcp_discovery_snapshot VALUES (?, ?, ?) "
+                "ON CONFLICT(extension_id) DO UPDATE SET payload = excluded.payload, "
+                "discovered_at = excluded.discovered_at",
+                (extension_id, json.dumps(snapshot), utc_now_iso()),
+            )
+
+    def all(self) -> dict[str, dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                "SELECT extension_id, payload, discovered_at FROM mcp_discovery_snapshot"
+            ).fetchall()
+        result: dict[str, dict[str, Any]] = {}
+        for extension_id, payload, discovered_at in rows:
+            snapshot = json.loads(payload)
+            snapshot["discovered_at"] = discovered_at
+            # The connection has not been contacted in this process, so the stored health
+            # is history, not a live claim. The operations remain usable; readiness is
+            # re-established by the next discovery.
+            snapshot["health"] = "unknown"
+            result[extension_id] = snapshot
+        return result
+
+    def delete(self, extension_id: str) -> None:
+        with self._connect() as connection:
+            connection.execute(
+                "DELETE FROM mcp_discovery_snapshot WHERE extension_id = ?", (extension_id,)
+            )

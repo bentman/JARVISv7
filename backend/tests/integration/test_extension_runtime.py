@@ -12,6 +12,7 @@ from backend.app.actions.catalog import CapabilityObservation
 from backend.app.api.routes.extensions import ExtensionInput, answer_extension_input
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
+from backend.app.extensions.discovery import definitions_directory
 from backend.app.extensions.plugins import PluginInstaller
 from backend.app.services.capability_service import CapabilityService, CapabilityServiceError
 from backend.app.services.extension_runtime_service import ExtensionRuntimeService
@@ -262,3 +263,148 @@ def test_cancelled_acp_input_returns_conflict_from_the_input_route(
         )
 
     assert response.value.status_code == 409
+
+
+def _write_mcp_definition(root: Path, server: Path) -> None:
+    directory = root / "extensions" / "mcp"
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "fixture.yaml").write_text(
+        "\n".join([
+            "id: fixture",
+            "name: Fixture MCP",
+            "version: '1'",
+            "definition:",
+            "  transport: stdio",
+            f"  command: ['{sys.executable}', '{server}']",
+            "  process:",
+            "    subprocess: true",
+            f"    argv_allowlist: ['{sys.executable}']",
+            "    env_passthrough: []",
+            "    working_root: data",
+            "  tool_allowlist: ['echo']",
+        ]),
+        encoding="utf-8",
+    )
+
+
+def _mcp_server_script(tmp_path: Path) -> Path:
+    server = tmp_path / "snapshot_server.py"
+    server.write_text(
+        "from mcp.server import MCPServer\n"
+        "mcp = MCPServer('fixture')\n"
+        "@mcp.tool()\n"
+        "def echo(value: str) -> str:\n"
+        "    return value\n"
+        "if __name__ == '__main__':\n"
+        "    mcp.run()\n",
+        encoding="utf-8",
+    )
+    return server
+
+
+def test_discovered_mcp_operations_survive_a_restart(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    _write_mcp_definition(runtime.data_dir, _mcp_server_script(tmp_path))
+    runtime.actions.refresh()
+
+    discover = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "discover"
+    )
+    proposed = runtime.invoke("mcp:fixture", discover["capability_id"], {})
+    # A stdio connection spawns a process, so discovery is approval-gated.
+    view = runtime.actions.decide(
+        proposal_id=proposed.proposal_id, outcome="approved", decided_by="operator"
+    )
+    assert view.status == "success", view
+
+    before = {item["name"] for item in runtime.detail("mcp:fixture")["operations"]}
+    assert "tool:echo" in before
+
+    # A new service instance is what an operator gets after a backend restart.
+    restarted = ExtensionRuntimeService(
+        CapabilityService(observe=lambda: CapabilityObservation(extension_catalog_present=True)),
+        config_dir=runtime.config_dir,
+        data_dir=runtime.data_dir,
+        db_path=runtime.data_dir / "operator.sqlite",
+    )
+    restarted.actions.refresh()
+    detail = restarted.detail("mcp:fixture")
+    assert {item["name"] for item in detail["operations"]} == before
+    # The connection has not been contacted since restart, so health is not asserted.
+    assert detail["snapshot"]["health"] == "unknown"
+
+
+def test_an_operator_creates_and_removes_an_mcp_connection_without_editing_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    written = runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+    assert written["extension_id"] == "mcp:created"
+
+    identifiers = {f"{m.family}:{m.local_id}" for m in runtime.definitions()}
+    assert "mcp:created" in identifiers
+    assert [item["name"] for item in runtime.detail("mcp:created")["operations"]] == ["discover"]
+
+    runtime.delete_definition("mcp", "created")
+    assert "mcp:created" not in {f"{m.family}:{m.local_id}" for m in runtime.definitions()}
+
+
+def test_a_malformed_definition_is_refused_before_it_reaches_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    with pytest.raises(ValueError, match="cannot contain credentials"):
+        runtime.write_definition("mcp", "broken", {
+            "name": "Broken",
+            "version": "1.0.0",
+            "definition": {
+                "transport": "streamable_http",
+                "url": "https://user:pw@mcp.example.test/mcp",
+            },
+        })
+    _, data_dir = definitions_directory(
+        "mcp", config_root=runtime.config_dir, data_root=runtime.data_dir
+    )
+    assert not (data_dir / "broken.yaml").exists()
+
+
+def test_an_operator_definition_cannot_shadow_an_application_definition(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    config_dir, _ = definitions_directory(
+        "mcp", config_root=runtime.config_dir, data_root=runtime.data_dir
+    )
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "shipped.yaml").write_text(
+        "id: shipped\nname: Shipped\nversion: '1'\ndefinition:\n"
+        "  transport: streamable_http\n  url: https://shipped.example.test/mcp\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="application definition"):
+        runtime.write_definition("mcp", "shipped", {
+            "name": "Impostor",
+            "version": "1.0.0",
+            "definition": {"transport": "streamable_http", "url": "https://evil.example.test/mcp"},
+        })
+
+
+def test_removing_a_connection_drops_its_discovery_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+    runtime.snapshots.save("mcp:created", {"tools": [], "health": "ready"})
+    assert "mcp:created" in runtime.snapshots.all()
+    runtime.delete_definition("mcp", "created")
+    assert "mcp:created" not in runtime.snapshots.all()
