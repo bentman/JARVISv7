@@ -54,8 +54,11 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented for the current extension catalog and governed runtime
-surfaces. Live external-server deployment evidence and some optional extension families remain follow-up work.
+The decision is implemented across the extension catalog, the governed runtime, the MCP
+authorization path, the turn engine's capability selection, and the desktop control surface. The
+ADR stays `Accepted` rather than `Implemented` because its own desktop-acceptance bar names
+`windows-amd64`, and this repository's evidence was produced on `linux-amd64`. Live external-server
+deployment on operator machines is likewise unproven by a local suite.
 
 Implemented foundations:
 - Operator settings are scoped and classified through `backend/app/core/settings.py`. `backend/app/services/operator_config_service.py` owns the operator field allowlist and secret masking; `backend/app/api/routes/config.py` and `backend/app/api/schemas/config.py` are the route surface over it. Operator writes are allowlisted, and secrets are masked.
@@ -76,7 +79,7 @@ Implemented foundations:
 - Declarative extension defaults are tracked under `config/extensions/{acp,mcp,hooks,plugins,skills,tools}` and operator additions are untracked under `data/extensions/{family}`. Discovery gives application defaults precedence for duplicate family/IDs and records application versus operator provenance and trust. Skills support both roots with progressive disclosure; the tracked `inspect-extensions` skill is instruction-only, while operator skills remain external.
 - A skill's `requested_tools` is recorded as an untrusted metadata claim, never a grant, and a skill declaring any authority-bearing field is rejected. Declared scripts resolve only through governed process execution.
 - Hook and plugin lifecycles and runners exist in `backend/app/extensions/{hooks,plugins}.py`: closed hook event names, effect classes reused from ADR 0005, application-owned `record_event`, governed capability dispatch, bounded plugin installation, bundle hashing, and child-definition validation.
-- MCP connection management exists in `backend/app/extensions/mcp.py` with official SDK transport, discovery, schema-preserving records, health, credential references, allowlists, elicitation, cancellation, and host authorization callbacks. ACP subprocess sessions exist in `backend/app/extensions/acp.py` with official SDK permission callbacks, progress/session events, cancellation, process boundaries, and cleanup. ACP compatibility is not complete until inbound and outbound adapters use Agent Client Protocol v2 method names, session lifecycle, update projection, permission requests, elicitation, and cancellation semantics.
+- MCP connection management exists in `backend/app/extensions/mcp.py` with official SDK transport, discovery, schema-preserving records, health, credential references, allowlists, elicitation, cancellation, and host authorization callbacks. ACP subprocess sessions exist in `backend/app/extensions/acp.py` with official SDK permission callbacks, progress/session events, cancellation, process boundaries, and cleanup. What this ADR owns is the governed process boundary those sessions run behind; ADR 0007 owns Agent Client Protocol conformance.
 - Backend API and desktop surfaces exist through `backend/app/api/routes/extensions.py` and `desktop/src/components/extensions-panel.js`, covering catalog discovery, load errors, detail, progressive body disclosure, and state changes.
 
 - `ExtensionRuntimeService` registers extension operations with the shared capability service. Approvals bind a definition fingerprint; changed definitions require a new proposal. `ExtensionRuns` persists run state and marks interrupted work after restart without replaying effects.
@@ -87,7 +90,7 @@ Declarative definitions and their initial tracked defaults are documented in
 no events until explicitly enabled. ACP bridge execution is implemented behind
 the governed process/action boundary.
 
-An inbound ACP server exists in `backend/app/extensions/acp_server.py`. It accepts external client connections over TCP using a JSON-RPC 2.0 protocol, manages session lifecycle with configurable max sessions and timeouts, and routes incoming messages through `TurnEngine.run_text_turn()`. Server start/stop/status and session list endpoints are exposed through `backend/app/api/routes/acp_server.py`. The current inbound method surface is a local bridge, not an Agent Client Protocol v2-compatible server.
+A local inbound bridge exists in `backend/app/extensions/acp_server.py`. It accepts client connections over loopback TCP using JSON-RPC 2.0, manages session lifecycle with configurable maximum sessions and timeouts, and routes incoming messages through `TurnEngine.run_text_turn()`, so an external client enters the same single interaction loop as every other surface. Start, stop, status, and session-list endpoints are exposed through `backend/app/api/routes/acp_server.py`. It is a local bridge; protocol conformance for external agent clients belongs to ADR 0007.
 
 MCP credentials support the OAuth 2.0 authorization code flow and resolve on the live connection
 path. `backend/app/extensions/mcp_oauth.py` provides `McpOAuthConfig`, `McpOAuthFlow`
@@ -152,6 +155,12 @@ An OAuth block could not previously be declared at all: the definition parser's 
 rejected `authorization_url` and `token_url`. Keys ending in `_url` name a public endpoint and are
 no longer treated as secret-bearing, while an inline `client_secret` is still refused and must use a
 credential reference.
+
+Operator-owned skills are imported, edited, and removed through `extension-skill-write` and
+`extension-skill-delete`. The manifest is parsed before it is written, so a skill declaring an
+authority-bearing field is refused with its reason rather than landing on disk, and an application
+skill of the same id is never overwritten. The desktop gates skill editing on provenance, because an
+operator skill is external-trust by design; trust does not indicate ownership.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
@@ -249,8 +258,8 @@ Validation evidence:
 - `backend/tests/integration/test_mcp_http_auth.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1523 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 25 passed, including actual local MCP and ACP SDK peers and a bearer-protected streamable-HTTP MCP server.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1525 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 28 passed, including actual local MCP and ACP SDK peers and a bearer-protected streamable-HTTP MCP server.
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
@@ -261,11 +270,10 @@ an OS sandbox.
 
 ## Follow-up
 
-- MCP operations: the backend surface is complete. An operator can add, edit, delete, enable, disable, retire, credential, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML, and discovery survives restart. What remains is the desktop control surface for these operations and the interactive OAuth connect flow, which has no route or UI above the flow module.
+- MCP operations: implemented. An operator can add, edit, delete, enable, disable, retire, credential, OAuth-connect, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML. Discovery stays explicit and governed, discovered items become capability-backed operations only through the shared registry, results remain untrusted context, and tool calls stay approval-gated by effect class.
 - MCP protocol/auth alignment: implemented and validated. Protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are covered, including a streamable-HTTP connection exercised against a live bearer-protected server and its 401 challenge.
-- Skills and tools: keep skills as procedural knowledge, not authority. Desktop must support skill discovery, body inspection, requested-capability visibility, enable/disable/retire state, import/edit of operator-owned skills, and clear validation errors. Skill scripts may execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
-- Hooks and plugins: keep hooks deterministic and event-scoped with visible enablement, errors, and run evidence. Plugin installation remains local-bundle installation unless a later ADR approves remote plugin sources or arbitrary install scripts.
+- Skills and tools: implemented. Skills remain procedural knowledge; `requested_tools` stays an untrusted claim and an authority-bearing field is refused. The desktop supports discovery, body inspection, enable/disable/retire, import and edit of operator-owned skills, and reports validation errors with their reason. Skill scripts execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
+- Hooks and plugins: implemented. Hook events are a closed set, effect classes are matched against the capability a hook invokes, and hook evidence follows the capability service's configured sink. Plugin installation remains local-bundle installation; remote plugin sources and arbitrary install scripts would need a new ADR.
 - Assistant integration: implemented. The turn engine selects eligible extension operations natively, requests conversational approval, executes, cancels, and returns proposal, decision, approval, execution, and cancellation evidence into the same turn artifacts. Mid-turn structured elicitation stays bounded out: its answer path is HTTP-only and cannot reach a voice turn, so an extension needing operator input is refused in-turn and directed to the Extensions panel.
 - Desktop acceptance: list/detail split, per-extension runtime detail, schema operation forms, run progress, approval and elicitation handling, confirmed cancellation, credential entry, the OAuth connect flow, and load errors are implemented and covered by `desktop/tests/static.test.mjs`. Native desktop behavior on `windows-amd64` remains unverified; `docs/helpers/extensions-desktop-acceptance.md` is the operator checklist that produces that evidence.
-- Agent and ACP agent interoperability: do not define a separate extension-owned agent protocol. ADR 0007 owns agent profiles, external-agent defaults, and Agent Client Protocol v2 inbound/outbound behavior.
-- Validation: add mocked SDK tests, local stdio MCP tests, streamable-HTTP MCP tests with auth, extension-runtime tests, and native desktop checks before marking the ADR implemented. Unit and integration tests prove local contracts; they do not prove each external provider or executable works on an operator machine.
+- Validation: mocked SDK tests, local stdio MCP tests, streamable-HTTP MCP tests with authorization, and extension-runtime tests all exist and pass. The remaining gap is native desktop behavior on `windows-amd64`, which this host class cannot produce; `docs/helpers/extensions-desktop-acceptance.md` is the operator checklist for it. Unit and integration tests prove local contracts; they do not prove each external provider or executable works on an operator machine.

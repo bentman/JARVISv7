@@ -2192,3 +2192,51 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
   const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
   assert.ok(!panel.includes("code_verifier"), "the desktop must never handle a PKCE verifier");
 }
+
+{
+  // Operator skills are editable through the governed capability, not a direct write.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => {
+      proposals.push(request);
+      return { status: "success" };
+    },
+  });
+  await controller.saveSkill("notes", "---\nname: notes\n---\nbody");
+  assert.equal(proposals[0].capabilityId, "extension-skill-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    local_id: "notes",
+    body: "---\nname: notes\n---\nbody",
+  });
+  assert.equal(controller.snapshot().notice, "Skill saved.");
+
+  await controller.removeSkill("notes");
+  assert.equal(proposals[1].capabilityId, "extension-skill-delete");
+  assert.equal(controller.snapshot().selectedExtensionId, "");
+}
+
+{
+  // A refused save must surface the backend's reason, not claim success.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async () => ({
+      status: "failure",
+      execution: { error: "skill declares an authority-bearing field" },
+    }),
+  });
+  await controller.saveSkill("rogue", "---\nname: rogue\n---\nbody");
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.detailError.includes("authority-bearing"));
+  assert.notEqual(snapshot.notice, "Skill saved.");
+}
+
+{
+  // Operator-skill ownership is decided by provenance: these skills carry external trust.
+  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+  const editorAt = panel.indexOf('appendText(editor, "Edit skill"');
+  assert.ok(editorAt > 0, "the skill editor must exist");
+  const guard = panel.slice(panel.lastIndexOf("if (detail.family === \"skill\"", editorAt), editorAt);
+  assert.ok(guard.includes("provenance"), "skill editing must gate on provenance");
+  assert.ok(!guard.includes('trust === "operator"'), "operator skills do not carry operator trust");
+}

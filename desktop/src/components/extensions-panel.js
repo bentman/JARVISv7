@@ -209,6 +209,51 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  async function saveSkill(localId, body) {
+    if (!handlers.proposeAction) return;
+    try {
+      const result = await handlers.proposeAction({
+        capabilityId: "extension-skill-write",
+        actionArguments: { local_id: localId, body },
+        reason: `Save operator skill ${localId}`,
+        proposedBy: "operator",
+      });
+      if (result?.status !== "success") {
+        state.detailError = result?.execution?.error || "The skill was not saved.";
+        emit();
+        return;
+      }
+    } catch (error) {
+      state.detailError = errorMessage(error, "The skill was not saved.");
+      emit();
+      return;
+    }
+    state.notice = "Skill saved.";
+    await refreshCatalog();
+    emit();
+  }
+
+  async function removeSkill(localId) {
+    if (!handlers.proposeAction) return;
+    try {
+      await handlers.proposeAction({
+        capabilityId: "extension-skill-delete",
+        actionArguments: { local_id: localId },
+        reason: `Remove operator skill ${localId}`,
+        proposedBy: "operator",
+      });
+    } catch (error) {
+      state.detailError = errorMessage(error, "The skill was not removed.");
+      emit();
+      return;
+    }
+    state.notice = "Skill removed.";
+    state.detail = null;
+    state.selectedExtensionId = "";
+    await refreshCatalog();
+    emit();
+  }
+
   async function refreshRuns() {
     if (!handlers.getExtensionRuns) return;
     state.runs = (await handlers.getExtensionRuns())?.runs || [];
@@ -310,6 +355,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     invoke,
     answer,
     credential,
+    saveSkill,
+    removeSkill,
     startOauth,
     completeOauth,
     refreshRuns,
@@ -596,6 +643,31 @@ function renderDetail(state) {
       runtime.appendChild(oauth);
     }
   }
+  if (detail.family === "skill" && String(detail.provenance || "").startsWith("data/extensions")) {
+    // Operator-authored skills live under data/extensions and carry external trust;
+    // application skills stay read-only. Provenance, not trust, is the ownership test.
+    const editor = document.createElement("form");
+    appendText(editor, "Edit skill", "strong");
+    const body = document.createElement("textarea");
+    body.dataset.draftKey = `${detail.extension_id}:skill-body`;
+    body.value = state.body || "";
+    body.required = true;
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.textContent = "Save skill";
+    save.disabled = state.mutationPending;
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Remove skill";
+    remove.disabled = state.mutationPending;
+    remove.addEventListener("click", () => state.actions.removeSkill(detail.local_id));
+    editor.append(body, save, remove);
+    editor.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.actions.saveSkill(detail.local_id, body.value);
+    });
+    runtime.appendChild(editor);
+  }
   if (runtime.childNodes.length) {
     section.appendChild(runtime);
   }
@@ -737,6 +809,8 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),
     answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
     credential: (extensionId, name, secret) => controller.credential(extensionId, name, secret),
+    saveSkill: (localId, body) => controller.saveSkill(localId, body),
+    removeSkill: (localId) => controller.removeSkill(localId),
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),

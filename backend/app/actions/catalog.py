@@ -25,6 +25,8 @@ OPERATOR_CONFIG_WRITE = "operator-config-write"
 EXTENSION_STATE_UPDATE = "extension-state-update"
 EXTENSION_DEFINITION_WRITE = "extension-definition-write"
 EXTENSION_DEFINITION_DELETE = "extension-definition-delete"
+EXTENSION_SKILL_WRITE = "extension-skill-write"
+EXTENSION_SKILL_DELETE = "extension-skill-delete"
 
 SEARCH_UNAVAILABLE = (
     "No web search provider is enabled. Enable DDGS, SearXNG, or Tavily in operator configuration."
@@ -415,6 +417,31 @@ def _extension_definitions(
                 "type": "object",
                 "properties": {"family": _DEFINITION_FAMILY, "local_id": _DEFINITION_ID},
                 "required": ["family", "local_id"],
+                "additionalProperties": False,
+            },
+            **common,
+        ),
+        _capability(
+            EXTENSION_SKILL_WRITE,
+            "local_write",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "local_id": _DEFINITION_ID,
+                    "body": {"type": "string", "minLength": 1, "maxLength": 60000},
+                },
+                "required": ["local_id", "body"],
+                "additionalProperties": False,
+            },
+            **common,
+        ),
+        _capability(
+            EXTENSION_SKILL_DELETE,
+            "local_write",
+            input_schema={
+                "type": "object",
+                "properties": {"local_id": _DEFINITION_ID},
+                "required": ["local_id"],
                 "additionalProperties": False,
             },
             **common,

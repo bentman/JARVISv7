@@ -987,10 +987,18 @@ def build_extension_handlers(
     def delete_definition(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
         return _runtime().delete_definition(arguments["family"], arguments["local_id"])
 
+    def write_skill(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        return _runtime().write_skill(arguments["local_id"], arguments["body"])
+
+    def delete_skill(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        return _runtime().delete_skill(arguments["local_id"])
+
     return {
         catalog.EXTENSION_STATE_UPDATE: set_state,
         catalog.EXTENSION_DEFINITION_WRITE: write_definition,
         catalog.EXTENSION_DEFINITION_DELETE: delete_definition,
+        catalog.EXTENSION_SKILL_WRITE: write_skill,
+        catalog.EXTENSION_SKILL_DELETE: delete_skill,
     }
 
 

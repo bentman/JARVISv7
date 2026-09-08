@@ -370,6 +370,48 @@ class ExtensionRuntimeService:
             for _ in self._operations_for(manifest):
                 break
 
+    def write_skill(self, local_id: str, body: str) -> dict[str, Any]:
+        """Create or replace an operator-owned skill.
+
+        The manifest is parsed before it is written, so a skill that declares authority or
+        malformed frontmatter is refused with its reason instead of landing on disk and
+        failing at discovery.
+        """
+        from backend.app.extensions.skills import (
+            SKILL_MANIFEST,
+            operator_skills_directory,
+            parse_skill_frontmatter,
+        )
+
+        if not SAFE_LOCAL_ID.match(local_id):
+            raise ValueError(f"id must match {SAFE_LOCAL_ID.pattern}")
+        parse_skill_frontmatter(local_id, body, f"data/extensions/skills/{local_id}")
+        application = (
+            self.config_dir / "extensions" / "skills" / local_id / SKILL_MANIFEST
+        )
+        if application.is_file():
+            raise ValueError("an application skill owns this id")
+        directory = operator_skills_directory(self.data_dir) / local_id
+        directory.mkdir(parents=True, exist_ok=True)
+        (directory / SKILL_MANIFEST).write_text(body, encoding="utf-8")
+        self.actions.refresh()
+        return {"extension_id": f"skill:{local_id}", "source": str(directory / SKILL_MANIFEST)}
+
+    def delete_skill(self, local_id: str) -> dict[str, Any]:
+        from backend.app.extensions.skills import SKILL_MANIFEST, operator_skills_directory
+
+        if not SAFE_LOCAL_ID.match(local_id):
+            raise ValueError(f"id must match {SAFE_LOCAL_ID.pattern}")
+        manifest = operator_skills_directory(self.data_dir) / local_id / SKILL_MANIFEST
+        if not manifest.is_file():
+            raise ValueError("unknown operator skill")
+        manifest.unlink()
+        directory = manifest.parent
+        if not any(directory.iterdir()):
+            directory.rmdir()
+        self.actions.refresh()
+        return {"extension_id": f"skill:{local_id}", "removed": True}
+
     def oauth_status(self, extension_id: str) -> dict[str, Any]:
         """Report whether an MCP connection is OAuth-configured and currently authorized."""
         from backend.app.extensions.mcp import McpConnectionDefinition

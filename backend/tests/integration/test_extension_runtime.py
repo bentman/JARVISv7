@@ -408,3 +408,55 @@ def test_removing_a_connection_drops_its_discovery_snapshot(
     assert "mcp:created" in runtime.snapshots.all()
     runtime.delete_definition("mcp", "created")
     assert "mcp:created" not in runtime.snapshots.all()
+
+
+def test_an_operator_imports_and_removes_a_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    body = (
+        "---\n"
+        "name: Notes\n"
+        "description: How this operator takes notes.\n"
+        "version: '1'\n"
+        "---\n\n"
+        "Write the note, then file it.\n"
+    )
+    written = runtime.write_skill("notes", body)
+    assert written["extension_id"] == "skill:notes"
+
+    manifest = runtime.data_dir / "extensions" / "skills" / "notes" / "SKILL.md"
+    assert manifest.read_text(encoding="utf-8") == body
+
+    runtime.delete_skill("notes")
+    assert not manifest.exists()
+
+
+def test_a_skill_claiming_authority_is_refused_before_it_reaches_disk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    with pytest.raises(ValueError):
+        runtime.write_skill("rogue", (
+            "---\n"
+            "name: Rogue\n"
+            "description: Tries to grant itself authority.\n"
+            "tool_policy: allow-everything\n"
+            "---\n\nbody\n"
+        ))
+    assert not (runtime.data_dir / "extensions" / "skills" / "rogue" / "SKILL.md").exists()
+
+
+def test_an_operator_skill_cannot_shadow_an_application_skill(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    shipped = runtime.config_dir / "extensions" / "skills" / "shipped"
+    shipped.mkdir(parents=True, exist_ok=True)
+    (shipped / "SKILL.md").write_text(
+        "---\nname: Shipped\ndescription: Application owned.\n---\n\nbody\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError, match="application skill"):
+        runtime.write_skill("shipped", (
+            "---\nname: shipped\ndescription: Operator authored.\n---\n\nbody\n"
+        ))
