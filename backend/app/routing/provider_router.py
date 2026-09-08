@@ -4,9 +4,15 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from typing import TypeVar
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope
-from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.llm.base import (
+    LLMBase,
+    ToolCallingUnavailableError,
+    ToolCallResult,
+    ToolDefinition,
+)
 from backend.app.runtimes.llm.provider_runtime import ProviderRequestError
 from backend.app.services.llm_provider_profiles import ProviderProfile, ProviderSelection
 
@@ -19,6 +25,8 @@ _NEGATED_CLOUD_REQUEST = re.compile(
     re.IGNORECASE,
 )
 _QUOTED_DISCUSSION = re.compile(r"\b(?:say|quote|phrase|means?|example)\b.{0,40}\b(?:use cloud|escalate this|ask claude)\b", re.IGNORECASE)
+
+_Result = TypeVar("_Result")
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,6 +81,27 @@ class RoutedLLM(LLMBase):
     def generate_structured(self, envelope: PromptEnvelope, schema: dict[str, object]) -> str:
         return self._execute(envelope, lambda runtime: runtime.generate_structured(envelope, schema))
 
+    def generate_with_tools(
+        self, envelope: PromptEnvelope, tools: tuple[ToolDefinition, ...], **kwargs: object
+    ) -> ToolCallResult:
+        return self._execute(
+            envelope, lambda runtime: runtime.generate_with_tools(envelope, tools, **kwargs)
+        )
+
+    def supports_tool_calling(self) -> bool:
+        return any(
+            self.runtimes[profile_id].supports_tool_calling()
+            for profile_id, _ in self._candidates()
+        )
+
+    def _candidates(self) -> list[tuple[str, str]]:
+        candidates: list[tuple[str, str]] = [(self.selection.primary_profile_id, "primary")]
+        if self.selection.local_fallback_profile_id:
+            candidates.append((self.selection.local_fallback_profile_id, "local_fallback"))
+        if self.selection.cloud_escalation_enabled and self.selection.cloud_profile_id:
+            candidates.append((self.selection.cloud_profile_id, "failure_escalation"))
+        return candidates
+
     def evidence(self) -> dict[str, object]:
         return {
             "primary_profile_id": self.selection.primary_profile_id,
@@ -80,18 +109,16 @@ class RoutedLLM(LLMBase):
             "attempts": [asdict(attempt) for attempt in self.last_attempts],
         }
 
-    def _execute(self, envelope: PromptEnvelope, invoke: Callable[[LLMBase], str]) -> str:
+    def _execute(
+        self, envelope: PromptEnvelope, invoke: Callable[[LLMBase], _Result]
+    ) -> _Result:
         self.last_attempts = []
         explicit_cloud = self._explicit_cloud_request(envelope)
         if explicit_cloud:
             target = self._explicit_cloud_target(envelope)
             return self._attempt(target, "explicit_request", invoke)
 
-        candidates: list[tuple[str, str]] = [(self.selection.primary_profile_id, "primary")]
-        if self.selection.local_fallback_profile_id:
-            candidates.append((self.selection.local_fallback_profile_id, "local_fallback"))
-        if self.selection.cloud_escalation_enabled and self.selection.cloud_profile_id:
-            candidates.append((self.selection.cloud_profile_id, "failure_escalation"))
+        candidates = self._candidates()
 
         last_error: Exception | None = None
         for index, (profile_id, trigger) in enumerate(candidates):
@@ -107,7 +134,9 @@ class RoutedLLM(LLMBase):
         assert last_error is not None
         raise last_error
 
-    def _attempt(self, profile_id: str, trigger: str, invoke: Callable[[LLMBase], str]) -> str:
+    def _attempt(
+        self, profile_id: str, trigger: str, invoke: Callable[[LLMBase], _Result]
+    ) -> _Result:
         profile = self.profiles[profile_id]
         runtime = self.runtimes[profile_id]
         started = time.perf_counter()
@@ -197,6 +226,9 @@ class RoutedLLM(LLMBase):
 
     @staticmethod
     def _eligible_failure(exc: Exception) -> bool:
+        # A runtime with no tool protocol has not failed; the next candidate may have one.
+        if isinstance(exc, ToolCallingUnavailableError):
+            return True
         if isinstance(exc, ProviderRequestError):
             return exc.escalation_eligible
         lowered = str(exc).casefold()

@@ -1,9 +1,45 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any
 
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.cognition.prompt_renderer import render_flat_prompt
+
+
+@dataclass(frozen=True, slots=True)
+class ToolDefinition:
+    """One capability offered to the model for selection."""
+
+    name: str
+    description: str
+    input_schema: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCall:
+    name: str
+    arguments: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class ToolCallResult:
+    """Either the model answered, or it selected one tool. Never both, never invented."""
+
+    text: str = ""
+    call: ToolCall | None = None
+
+
+class ToolCallingUnavailableError(RuntimeError):
+    """A runtime has no tool-calling protocol.
+
+    This is a capability fact, not a provider failure, so it must not be recorded as
+    provider failure pressure with an invented escalation eligibility.
+    """
+
+    def __init__(self, runtime_name: str) -> None:
+        super().__init__(f"native tool calling is unavailable on {runtime_name}")
 
 
 class LLMBase(ABC):
@@ -16,6 +52,16 @@ class LLMBase(ABC):
 
     def generate_structured(self, envelope: PromptEnvelope, schema: dict[str, object]) -> str:
         raise RuntimeError("schema-constrained generation is unavailable")
+
+    def generate_with_tools(
+        self, envelope: PromptEnvelope, tools: tuple[ToolDefinition, ...], **kwargs: object
+    ) -> ToolCallResult:
+        raise ToolCallingUnavailableError(self.runtime_name())
+
+    def supports_tool_calling(self) -> bool:
+        # Support is derived from the implementation rather than declared, so a runtime
+        # cannot claim a protocol it does not implement.
+        return type(self).generate_with_tools is not LLMBase.generate_with_tools
 
     def context_window(self) -> int:
         return 2048

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any
 
@@ -8,7 +9,12 @@ from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.core.settings import load_settings
 from backend.app.models.llm_profiles import openai_api_base, server_origin
-from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.llm.base import (
+    LLMBase,
+    ToolCall,
+    ToolCallResult,
+    ToolDefinition,
+)
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarStatus
 
 _ORIGINAL_GET = httpx.get
@@ -118,6 +124,62 @@ class LlamaCppLLM(LLMBase):
 
     def generate_structured(self, envelope: PromptEnvelope, schema: dict[str, object]) -> str:
         return self.generate_envelope(envelope, response_format={"type": "json_object", "schema": schema})
+
+    def generate_with_tools(
+        self, envelope: PromptEnvelope, tools: tuple[ToolDefinition, ...], **kwargs: object
+    ) -> ToolCallResult:
+        """Offer tools over the OpenAI-compatible chat surface.
+
+        llama.cpp only honors tools when the server runs with --jinja and the model's chat
+        template declares a tool section; otherwise it silently returns ordinary content,
+        which is indistinguishable from declining. The caller records what was offered so
+        "nothing was chosen" stays visible rather than being asserted as a decision.
+        """
+        chat_prompt = render_chat_prompt(envelope)
+        payload = self._chat_payload_from_messages(chat_prompt.messages)
+        payload.update(chat_prompt.generation)
+        payload.update(kwargs)
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema,
+                },
+            }
+            for tool in tools
+        ]
+        payload["tool_choice"] = "auto"
+        try:
+            data = self._post_chat_completion(payload)
+        except httpx.TransportError as exc:
+            if not self._recover_sidecar():
+                raise RuntimeError(f"llama.cpp chat completion failed: {exc}") from exc
+            try:
+                data = self._post_chat_completion(payload)
+            except Exception as retry_exc:
+                raise RuntimeError(
+                    f"llama.cpp chat completion failed after sidecar recovery: {retry_exc}"
+                ) from retry_exc
+        except Exception as exc:
+            raise RuntimeError(f"llama.cpp chat completion failed: {exc}") from exc
+
+        choices = data.get("choices") if isinstance(data, dict) else None
+        message = choices[0].get("message") if isinstance(choices, list) and choices else None
+        message = message if isinstance(message, dict) else {}
+        calls = message.get("tool_calls")
+        if isinstance(calls, list) and calls:
+            function = calls[0].get("function") if isinstance(calls[0], dict) else None
+            if isinstance(function, dict) and isinstance(function.get("name"), str):
+                raw = function.get("arguments", {})
+                arguments = raw if isinstance(raw, dict) else json.loads(raw or "{}")
+                return ToolCallResult(call=ToolCall(function["name"], arguments))
+            raise RuntimeError("llama.cpp returned an unparsable tool call")
+        generated = _chat_completion_text(data)
+        if not generated.strip():
+            raise RuntimeError("llama.cpp chat completion returned an empty response")
+        return ToolCallResult(text=generated)
 
     def _sidecar_ready(self) -> bool:
         if self.sidecar_status is not None:

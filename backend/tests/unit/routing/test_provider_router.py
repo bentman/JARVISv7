@@ -3,7 +3,12 @@ from __future__ import annotations
 import pytest
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
 from backend.app.routing.provider_router import RoutedLLM
-from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.llm.base import (
+    LLMBase,
+    ToolCall,
+    ToolCallResult,
+    ToolDefinition,
+)
 from backend.app.runtimes.llm.provider_runtime import ProviderRequestError
 from backend.app.services.llm_provider_profiles import ProviderProfile, ProviderSelection
 
@@ -123,3 +128,58 @@ def test_cloud_primary_is_persistent_authorization_for_normal_and_explicit_turns
 
     assert router.generate_envelope(_envelope("answer normally")) == "normal"
     assert router.generate_envelope(_envelope("ask Claude about this")) == "explicit"
+
+
+class _ToolRuntime(_Runtime):
+    """A runtime that implements the tool protocol, so supports_tool_calling() is True."""
+
+    def __init__(self, name: str, outcomes: list[ToolCallResult | Exception]) -> None:
+        super().__init__(name, [])
+        self.tool_outcomes = outcomes
+
+    def generate_with_tools(self, envelope, tools, **kwargs) -> ToolCallResult:
+        self.calls += 1
+        outcome = self.tool_outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+_TOOLS = (ToolDefinition("search-public-web", "Search", {"type": "object"}),)
+
+
+def test_a_runtime_without_tool_support_is_skipped_and_the_chain_continues():
+    primary = _Runtime("local", [])  # inherits the raising LLMBase implementation
+    fallback = _Runtime("ollama", [])
+    cloud = _ToolRuntime("anthropic", [ToolCallResult(call=ToolCall("search-public-web", {}))])
+    router = _router(primary, fallback, cloud)
+
+    result = router.generate_with_tools(_envelope("look this up"), _TOOLS)
+
+    assert result.call == ToolCall("search-public-web", {})
+    assert [attempt.trigger for attempt in router.last_attempts] == [
+        "primary", "local_fallback", "failure_escalation",
+    ]
+    # The skip is recorded as a failed attempt, so the choice of provider stays visible.
+    assert [attempt.outcome for attempt in router.last_attempts] == ["failed", "failed", "succeeded"]
+
+
+def test_the_router_reports_no_tool_support_when_no_candidate_has_it():
+    router = _router(_Runtime("local", []), _Runtime("ollama", []), _Runtime("anthropic", []))
+    assert router.supports_tool_calling() is False
+
+
+def test_the_router_reports_tool_support_when_any_candidate_has_it():
+    router = _router(_Runtime("local", []), _Runtime("ollama", []), _ToolRuntime("anthropic", []))
+    assert router.supports_tool_calling() is True
+
+
+def test_a_tool_capable_primary_is_not_escalated():
+    primary = _ToolRuntime("local", [ToolCallResult(text="answered locally")])
+    cloud = _ToolRuntime("anthropic", [])
+    router = _router(primary, _Runtime("ollama", []), cloud)
+
+    result = router.generate_with_tools(_envelope("hello"), _TOOLS)
+
+    assert (result.text, result.call) == ("answered locally", None)
+    assert cloud.calls == 0

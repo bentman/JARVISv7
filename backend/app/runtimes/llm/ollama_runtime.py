@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import httpx
 from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.core.settings import load_settings
-from backend.app.runtimes.llm.base import LLMBase
+from backend.app.runtimes.llm.base import (
+    LLMBase,
+    ToolCall,
+    ToolCallResult,
+    ToolDefinition,
+)
 
 _ORIGINAL_GET = httpx.get
 _ORIGINAL_POST = httpx.post
@@ -45,6 +51,47 @@ class OllamaLLM(LLMBase):
 
     def generate_structured(self, envelope: PromptEnvelope, schema: dict[str, object]) -> str:
         return self.generate_envelope(envelope, format=schema)
+
+    def generate_with_tools(
+        self, envelope: PromptEnvelope, tools: tuple[ToolDefinition, ...], **kwargs: object
+    ) -> ToolCallResult:
+        chat_prompt = render_chat_prompt(envelope)
+        payload = self._chat_payload(chat_prompt.messages, chat_prompt.generation)
+        payload.update(kwargs)
+        payload["think"] = False
+        payload["tools"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema,
+                },
+            }
+            for tool in tools
+        ]
+        try:
+            post_func = httpx.post if httpx.post is not _ORIGINAL_POST else self.client.post
+            response = post_func(f"{self.base_url}/api/chat", json=payload, timeout=self.timeout)
+            response.raise_for_status()
+            data = response.json()
+        except Exception as exc:
+            raise RuntimeError(f"ollama chat failed: {exc}") from exc
+        message = data.get("message") if isinstance(data, dict) else None
+        message = message if isinstance(message, dict) else {}
+        calls = message.get("tool_calls")
+        # A tool call carries empty content, so it is read before the empty-response check.
+        if isinstance(calls, list) and calls:
+            function = calls[0].get("function") if isinstance(calls[0], dict) else None
+            if isinstance(function, dict) and isinstance(function.get("name"), str):
+                raw = function.get("arguments", {})
+                arguments = raw if isinstance(raw, dict) else json.loads(raw or "{}")
+                return ToolCallResult(call=ToolCall(function["name"], arguments))
+            raise RuntimeError("ollama returned an unparsable tool call")
+        content = message.get("content")
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("ollama chat returned an empty response")
+        return ToolCallResult(text=content)
 
     def is_available(self) -> bool:
         if not self.enabled:

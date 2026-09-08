@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 from backend.app.cognition.prompt_envelope import PromptEnvelope, PromptSegment
+from backend.app.runtimes.llm.base import ToolCall, ToolDefinition
 from backend.app.runtimes.llm.provider_runtime import (
     AnthropicMessagesLLM,
     OpenAICompatibleLLM,
@@ -137,3 +140,91 @@ def test_provider_timeout_is_eligible_but_safety_refusal_is_not():
     with pytest.raises(ProviderRequestError, match="safety refusal") as refusal:
         refusal_runtime.generate_envelope(_envelope())
     assert refusal.value.escalation_eligible is False
+
+
+_TOOLS = (ToolDefinition("search-public-web", "Search the web", {"type": "object"}),)
+
+
+def _tool_response(runtime_type, payload):
+    requests: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(200, json=payload)
+
+    result = _runtime(runtime_type, handler).generate_with_tools(_envelope(), _TOOLS)
+    return result, json.loads(requests[0].content)
+
+
+def test_openai_compatible_offers_tools_and_reads_a_tool_call():
+    result, body = _tool_response(OpenAICompatibleLLM, {
+        "choices": [{
+            "message": {
+                "content": None,
+                "tool_calls": [{
+                    "function": {"name": "search-public-web", "arguments": '{"topic":"tides"}'}
+                }],
+            },
+            "finish_reason": "tool_calls",
+        }]
+    })
+    assert body["tools"][0]["function"]["name"] == "search-public-web"
+    assert body["tool_choice"] == "auto"
+    assert result.call == ToolCall("search-public-web", {"topic": "tides"})
+    assert result.text == ""
+
+
+def test_openai_responses_offers_tools_and_reads_a_function_call():
+    result, body = _tool_response(OpenAIResponsesLLM, {
+        "output": [{"type": "function_call", "name": "search-public-web",
+                    "arguments": '{"topic":"tides"}'}]
+    })
+    assert body["tools"][0]["name"] == "search-public-web"
+    assert result.call == ToolCall("search-public-web", {"topic": "tides"})
+
+
+def test_anthropic_offers_tools_and_reads_a_tool_use_block():
+    # A tool-only reply has no text block; it must not trip the empty-response ladder.
+    result, body = _tool_response(AnthropicMessagesLLM, {
+        "content": [{"type": "tool_use", "name": "search-public-web", "input": {"topic": "tides"}}],
+        "stop_reason": "tool_use",
+    })
+    assert body["tools"][0]["input_schema"] == {"type": "object"}
+    assert result.call == ToolCall("search-public-web", {"topic": "tides"})
+
+
+@pytest.mark.parametrize(
+    ("runtime_type", "payload"),
+    [
+        (OpenAICompatibleLLM, {"choices": [{"message": {"content": "plain answer"}}]}),
+        (OpenAIResponsesLLM, {"output_text": "plain answer"}),
+        (AnthropicMessagesLLM, {"content": [{"type": "text", "text": "plain answer"}]}),
+    ],
+)
+def test_a_model_that_declines_every_tool_returns_plain_text(runtime_type, payload):
+    result, _ = _tool_response(runtime_type, payload)
+    assert result.call is None
+    assert result.text == "plain answer"
+
+
+def test_an_unparsable_tool_call_is_an_eligible_provider_failure():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"tool_calls": [{"function": {
+                "name": "search-public-web", "arguments": "{not json"}}]}}]
+        })
+
+    with pytest.raises(ProviderRequestError) as excinfo:
+        _runtime(OpenAICompatibleLLM, handler).generate_with_tools(_envelope(), _TOOLS)
+    assert excinfo.value.escalation_eligible is True
+
+
+def test_a_safety_refusal_on_the_tool_path_stays_ineligible():
+    def handler(_request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={
+            "choices": [{"message": {"content": "", "refusal": "no"}, "finish_reason": "stop"}]
+        })
+
+    with pytest.raises(ProviderRequestError) as excinfo:
+        _runtime(OpenAICompatibleLLM, handler).generate_with_tools(_envelope(), _TOOLS)
+    assert excinfo.value.escalation_eligible is False
