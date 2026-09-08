@@ -4,7 +4,8 @@ import json
 import re
 import threading
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -276,23 +277,33 @@ class ActionOperation:
         }
 
 
+@contextmanager
+def bounded_deadline(operation: ActionOperation) -> Iterator[None]:
+    """Arm the operation's deadline for the duration of the block.
+
+    A synchronous handler cannot be pre-empted in-process, so the deadline sets the same
+    cancel signal a caller would and enforcement is cooperative. Both the proposal path and
+    the direct operator path arm it, so a capability's declared timeout means one thing.
+    """
+    deadline = threading.Timer(operation.boundary.timeout_ms / 1000, operation.cancel.set)
+    deadline.daemon = True
+    operation.check()
+    deadline.start()
+    try:
+        yield
+    finally:
+        deadline.cancel()
+        operation.done.set()
+
+
 def run_bounded(
     operation: ActionOperation,
     handler: Callable[[ActionOperation], dict[str, Any]],
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     boundary = operation.boundary
     artifacts: dict[str, Any] = {}
-    # A synchronous handler cannot be pre-empted in-process, so the deadline sets the
-    # same cancel signal a caller would and enforcement is cooperative.
-    deadline = threading.Timer(boundary.timeout_ms / 1000, operation.cancel.set)
-    deadline.daemon = True
-    operation.check()
-    deadline.start()
-    try:
+    with bounded_deadline(operation):
         result = handler(operation)
-    finally:
-        deadline.cancel()
-        operation.done.set()
     operation.check()
     artifacts["duration_ms"] = round(operation.elapsed_ms(), 3)
     if operation.expired():

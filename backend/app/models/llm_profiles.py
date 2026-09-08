@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from urllib.parse import urlsplit, urlunsplit
+
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -195,6 +197,22 @@ def _repo_path(path: Path) -> Path:
     if path.is_absolute():
         return path
     return REPO_ROOT / path
+
+
+def openai_api_base(base_url: str) -> str:
+    """The base an OpenAI-compatible client calls: always ends in /v1."""
+    normalized = base_url.rstrip("/")
+    return normalized if normalized.endswith("/v1") else f"{normalized}/v1"
+
+
+def server_origin(base_url: str) -> str:
+    """The server root the /health and /v1/models probes call: never carries a path.
+
+    A configured endpoint is an API base and legitimately ends in /v1, so a probe that
+    appends its own /v1 to it asks for /v1/v1/models and is answered with a 404.
+    """
+    parsed = urlsplit(base_url)
+    return urlunsplit((parsed.scheme, parsed.netloc, "", "", "")).rstrip("/")
 
 
 def _base_url(serve_profile: dict[str, Any], settings: Settings) -> str:

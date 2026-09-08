@@ -4,13 +4,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from backend.app.agents.loader import load_agent_profile, load_agent_profiles
 from backend.app.agents.schema import (
-    APPROVAL_CLASSES,
-    AUTHORITY_FIELDS,
-    INVOCATION_MODES,
-    MEMORY_SCOPES,
     AgentProfile,
 )
 

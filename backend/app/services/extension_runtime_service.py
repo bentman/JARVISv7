@@ -16,7 +16,11 @@ from backend.app.actions.boundaries import (
     ProcessBoundary,
     bound_result,
 )
-from backend.app.actions.contracts import CapabilityDescriptor, validate_schema
+from backend.app.actions.contracts import (
+    CapabilityDescriptor,
+    default_authorization,
+    validate_schema,
+)
 from backend.app.actions.process import run_process
 from backend.app.core.paths import CONFIG_DIR, DATA_DIR
 from backend.app.extensions.discovery import (
@@ -30,14 +34,23 @@ from backend.app.extensions.skills import resolve_skill_script
 from backend.app.extensions.store import ExtensionOverlayStore
 from backend.app.services.capability_service import CapabilityService
 
+ENDPOINT_ONLY_CAPABILITIES = {
+    "extension-input-answer": "backend.app.api.routes.extensions.answer_extension_input",
+    "extension-credential-write": "backend.app.api.routes.extensions.write_extension_credential",
+}
+
 
 def operation_id(extension_id: str, name: str) -> str:
     digest = hashlib.sha256(f"{extension_id}:{name}".encode()).hexdigest()[:24]
     return f"extension-{digest}"
 
 
-def _endpoint_only(arguments: dict[str, Any], operation: ActionOperation) -> dict[str, Any]:
-    raise ValueError("This operation requires the extension credential or input endpoint.")
+def _authorization_for(family: str, effect_class: str) -> str:
+    # Installing a plugin only writes under data/, but it places new executable definitions on
+    # the host that then register privileged capabilities, which the effect class cannot express.
+    if family == "plugin":
+        return "requires_approval"
+    return default_authorization(effect_class)
 
 
 class ExtensionRuntimeService:
@@ -94,14 +107,16 @@ class ExtensionRuntimeService:
         bindings = []
         operations: dict[str, list[dict[str, Any]]] = {}
         errors = {}
-        for name in ("extension-input-answer", "extension-credential-write"):
+        # These two carry a live run's pending request or a secret value, so they are driven by
+        # their own route and never by a generic proposal; they register with no executor.
+        for name, owner in ENDPOINT_ONLY_CAPABILITIES.items():
             bindings.append((CapabilityDescriptor(
                 capability_id=name, source="backend.extension_runtime", provenance="application",
                 input_schema={"type": "object"}, effect_class="local_write", readiness="ready", availability="available",
-                authorization_rule="requires_approval", execution_owner="backend.extension_runtime",
+                authorization_rule=default_authorization("local_write"), execution_owner=owner,
                 timeout_policy={"timeout_ms": 30000}, cancellation_policy={"cancellable": False},
                 result_schema={"type": "object"}, artifact_evidence={"records": True}, unavailable_explanation="",
-            ), _endpoint_only))
+            ), None))
         for manifest in self.definitions():
             identifier = f"{manifest.family}:{manifest.local_id}"
             try:
@@ -122,7 +137,8 @@ class ExtensionRuntimeService:
                         capability_id=operation_id(identifier, name), source=manifest.source,
                         provenance=manifest.provenance, input_schema=schema,
                         effect_class=effect, readiness="ready", availability="available" if manifest.declared_enabled else "disabled",
-                        authorization_rule="requires_approval", execution_owner="backend.extension_runtime",
+                        authorization_rule=_authorization_for(manifest.family, effect),
+                        execution_owner="backend.extension_runtime",
                         timeout_policy={"timeout_ms": 60000}, cancellation_policy={"cancellable": True},
                         result_schema={"type": "object"}, artifact_evidence={"records": True},
                         unavailable_explanation="" if manifest.declared_enabled else "Extension is disabled.",

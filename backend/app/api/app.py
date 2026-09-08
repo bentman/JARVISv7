@@ -9,7 +9,7 @@ from backend.app.cognition.memory_extraction import MemoryCandidateExtractor
 from backend.app.conversation.engine import TurnEngine
 from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
-from backend.app.core.paths import DATA_DIR
+from backend.app.core.paths import CONFIG_DIR, DATA_DIR
 from backend.app.core.settings import SETTING_ENV_CLASSIFICATION, Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.memory.curation_reconciliation import (
@@ -35,7 +35,9 @@ from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.capability_service import (
     CapabilityService,
+    build_agent_handlers,
     build_capability_handlers,
+    build_extension_handlers,
     observe_capabilities,
 )
 from backend.app.services.daemon_registry import DaemonRegistry
@@ -169,7 +171,7 @@ def build_startup_state() -> ApiState:
     )
     memory_service: MemoryService | None = None
     operator_config = OperatorConfigService()
-    agent_registry = AgentRegistry()
+    agent_registry = AgentRegistry(CONFIG_DIR)
     capability_service = CapabilityService(
         observe=lambda: observe_capabilities(
             settings_provider=load_settings,
@@ -256,6 +258,17 @@ def build_startup_state() -> ApiState:
         semantic_memory=semantic_memory,
         memory_curation_service=memory_curation_service,
         llm_coordinator=llm_coordinator,
+    )
+    capability_service.bind_handler_provider(
+        lambda: {
+            # The session service swaps the engine per session, so an agent must run on the
+            # current one for the same reason resident voice does.
+            **build_agent_handlers(
+                agent_registry_provider=lambda: agent_registry,
+                engine_provider=lambda: session_service.engine(),
+            ),
+            **build_extension_handlers(extension_service_provider=lambda: extension_service),
+        }
     )
     resident_voice = ResidentVoiceInvocationService(
         session_service=session_service,
@@ -368,8 +381,8 @@ async def lifespan(app: FastAPI):
 
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
     from backend.app.api.routes import (
-        actions,
         acp_server,
+        actions,
         agents,
         config,
         daemon,

@@ -9,7 +9,12 @@ from backend.app.core.capabilities import CapabilityFlags, HardwareProfile
 from backend.app.core.settings import Settings, load_settings
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.models.catalog import ModelCatalogError
-from backend.app.models.llm_profiles import LLMServeProfileResolution, resolve_llm_serve_profile
+from backend.app.models.llm_profiles import (
+    LLMServeProfileResolution,
+    openai_api_base,
+    resolve_llm_serve_profile,
+    server_origin,
+)
 from backend.app.models.llm_selection import select_llm_model
 from backend.app.runtimes.llm.local_runtime import LlamaCppLLM
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarService, LocalLLMSidecarStatus
@@ -227,7 +232,7 @@ def wait_for_llama_cpp_ready(
             get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
             if not health_ready:
                 try:
-                    health = get_func(f"{url}/health", timeout=2.0)
+                    health = get_func(f"{server_origin(url)}/health", timeout=2.0)
                     health.raise_for_status()
                 except Exception as exc:
                     last_reason = str(exc)
@@ -237,7 +242,7 @@ def wait_for_llama_cpp_ready(
                 durations["health_readiness"] = _elapsed_ms(health_phase_started_at)
                 models_phase_started_at = time.monotonic()
             try:
-                models = get_func(f"{url}/v1/models", timeout=2.0)
+                models = get_func(f"{openai_api_base(url)}/models", timeout=2.0)
                 models.raise_for_status()
                 payload = models.json()
                 if isinstance(payload, dict) and isinstance(payload.get("data"), list):

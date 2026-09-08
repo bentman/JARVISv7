@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.agents.mcp_filter import AgentMcpPolicy, build_agent_mcp_policy
 from backend.app.agents.schema import AgentProfile
 from backend.app.extensions.mcp import McpConnectionDefinition

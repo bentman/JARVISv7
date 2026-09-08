@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 from backend.app.agents.registry import AgentRegistry
@@ -101,15 +100,21 @@ def invoke_agent(
         )
     except CapabilityServiceError as exc:
         raise HTTPException(status_code=exc.status_code, detail=exc.detail()) from exc
-    execution = view.execution or {}
-    result = execution.get("result", {}) if isinstance(execution, dict) else {}
+    execution = view.execution if isinstance(view.execution, dict) else {}
+    result = execution.get("result") if isinstance(execution.get("result"), dict) else {}
+    # A failed agent run is reported in the invocation result rather than raised, so the
+    # capability execution status is not the agent's outcome.
     return AgentInvokeResponse(
         agent_id=request.profile_id,
-        status=view.status,
-        output=result,
-        turn_id=execution.get("proposal_id", view.proposal_id) if isinstance(execution, dict) else view.proposal_id,
-        session_id="api",
-        error=execution.get("error") if isinstance(execution, dict) else None,
+        status=result.get("status", view.status),
+        output=result.get("output", result),
+        turn_id=result.get("turn_id") or execution.get("proposal_id") or view.proposal_id,
+        session_id=result.get("session_id", "api"),
+        # A denial has no execution record, so the authorization reason is the only account
+        # of why nothing ran.
+        error=result.get("error") or execution.get("error") or (
+            view.reason if view.outcome == "denied" else None
+        ),
     )
 
 

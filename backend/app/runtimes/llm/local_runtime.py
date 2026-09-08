@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from backend.app.cognition.prompt_chat_renderer import render_chat_prompt
 from backend.app.cognition.prompt_envelope import PromptEnvelope
 from backend.app.core.settings import load_settings
+from backend.app.models.llm_profiles import openai_api_base, server_origin
 from backend.app.runtimes.llm.base import LLMBase
 from backend.app.services.local_llm_sidecar import LocalLLMSidecarStatus
 
@@ -43,7 +43,7 @@ class LlamaCppLLM(LLMBase):
         settings = load_settings()
         self._explicit_base_url = base_url is not None
         self.base_url = (base_url or settings.llama_cpp_base_url or DEFAULT_LLAMA_CPP_BASE_URL).rstrip("/")
-        self.api_base_url = _openai_api_base(self.base_url)
+        self.api_base_url = openai_api_base(self.base_url)
         self.model = model or settings.llama_cpp_model_name or "local-llama-cpp"
         self.generation_defaults = generation_defaults or {}
         self.timeout = timeout if timeout is not None else settings.llama_cpp_timeout_seconds
@@ -136,7 +136,7 @@ class LlamaCppLLM(LLMBase):
     def _apply_sidecar_status(self, status: LocalLLMSidecarStatus) -> None:
         if status.base_url:
             self.base_url = status.base_url.rstrip("/")
-            self.api_base_url = _openai_api_base(self.base_url)
+            self.api_base_url = openai_api_base(self.base_url)
         if status.model_id:
             self.model = status.model_id
         if status.route:
@@ -187,7 +187,7 @@ class LlamaCppLLM(LLMBase):
         get_func = httpx.get if httpx.get is not _ORIGINAL_GET else self.client.get
         for path in _HEALTH_PATHS:
             try:
-                response = get_func(f"{_server_origin(self.base_url)}{path}", timeout=10.0)
+                response = get_func(f"{server_origin(self.base_url)}{path}", timeout=10.0)
                 response.raise_for_status()
             except Exception as exc:
                 last_reason = f"{path} unavailable: {exc}"
@@ -241,11 +241,4 @@ def _chat_completion_text(data: Any) -> str:
     raise RuntimeError("llama.cpp chat completion returned no text")
 
 
-def _openai_api_base(base_url: str) -> str:
-    normalized = base_url.rstrip("/")
-    return normalized if normalized.endswith("/v1") else f"{normalized}/v1"
 
-
-def _server_origin(base_url: str) -> str:
-    parsed = urlsplit(base_url)
-    return urlunsplit((parsed.scheme, parsed.netloc, "", "", "")).rstrip("/")

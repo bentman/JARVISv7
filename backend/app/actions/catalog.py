@@ -4,9 +4,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.app.actions.contracts import (
-    AuthorizationRule,
     CapabilityDescriptor,
     EffectClass,
+    default_authorization,
 )
 
 SEARCH_PUBLIC_WEB = "search-public-web"
@@ -30,7 +30,6 @@ SEARCH_UNAVAILABLE = (
 MEMORY_UNAVAILABLE = "Memory service is unavailable, so memory lifecycle actions cannot run."
 PROVIDER_LOCKED = "The provider secret store is locked; complete or roll back the key rotation."
 PROVIDER_STORE_UNAVAILABLE = "Provider profile storage is unavailable."
-PROVIDER_TEST_UNAVAILABLE = "No cloud-eligible provider profile is configured to test."
 EXTENSION_CATALOG_UNAVAILABLE = "The extension catalog is unavailable."
 OPERATOR_CONFIG_UNAVAILABLE = (
     "The .env file is missing; copy .env.example to .env before changing operator configuration."
@@ -68,15 +67,12 @@ class CapabilityObservation:
     operator_config_present: bool = False
     operator_config_keys: tuple[str, ...] = ()
     extension_catalog_present: bool = False
-    agents: tuple[tuple[str, str, str, str, str, int, bool], ...] = ()
+    agents: tuple[tuple[str, str, str, str, str, int, bool, str], ...] = ()
+    agent_errors: tuple[tuple[str, str], ...] = ()
 
     @property
     def enabled_search_providers(self) -> tuple[str, ...]:
         return tuple(name for name, available in self.search_providers if available)
-
-    @property
-    def cloud_profiles(self) -> tuple[ProviderObservation, ...]:
-        return tuple(provider for provider in self.providers if provider.cloud_eligible)
 
 
 def build_descriptors(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, ...]:
@@ -137,7 +133,7 @@ def _search(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
     return (
         CapabilityDescriptor(
             capability_id=SEARCH_PUBLIC_WEB,
-            authorization_rule="allow",
+            authorization_rule=default_authorization(common["effect_class"]),
             artifact_evidence={
                 "records": ["action_proposals", "authorization_decisions", "action_execution_results"]
             },
@@ -145,6 +141,8 @@ def _search(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
         ),
         CapabilityDescriptor(
             capability_id=SEARCH_PRIVATE_WEB,
+            # An outbound read alone does not need approval, but a private query carries the
+            # user's own context off the machine, which the effect class cannot express.
             authorization_rule="requires_approval",
             artifact_evidence={
                 "records": [
@@ -188,12 +186,11 @@ def _memory(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
     }
     lifecycle: dict[str, Any] = {**common, "input_schema": lifecycle_schema}
     return (
-        _capability(MEMORY_RECORD_CONFIRM, "local_write", "allow", **lifecycle),
-        _capability(MEMORY_RECORD_DISPUTE, "local_write", "allow", **lifecycle),
+        _capability(MEMORY_RECORD_CONFIRM, "local_write", **lifecycle),
+        _capability(MEMORY_RECORD_DISPUTE, "local_write", **lifecycle),
         _capability(
             MEMORY_RECORD_CORRECT,
             "local_write",
-            "allow",
             **{
                 **common,
                 "input_schema": {
@@ -213,7 +210,6 @@ def _memory(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
         _capability(
             MEMORY_RECORD_FORGET,
             "destructive_action",
-            "requires_approval",
             **{
                 **lifecycle,
                 "cancellation_policy": {"cancellable": True, "owner": "MemoryService"},
@@ -223,7 +219,6 @@ def _memory(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
         _capability(
             MEMORY_POLICY_UPDATE,
             "local_write",
-            "allow",
             **{
                 **common,
                 "input_schema": {
@@ -290,24 +285,20 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         "required": ["profile_id"],
         "additionalProperties": False,
     }
-    has_cloud = bool(observation.cloud_profiles)
     return (
         _capability(
             PROVIDER_PROFILE_WRITE,
             "local_write",
-            "allow",
             **{**common, "input_schema": profile_write_schema},
         ),
         _capability(
             PROVIDER_PROFILE_DELETE,
             "destructive_action",
-            "requires_approval",
             **{**destructive, "input_schema": profile_ref},
         ),
         _capability(
             PROVIDER_SELECTION_UPDATE,
             "local_write",
-            "allow",
             **{
                 **common,
                 "input_schema": {
@@ -326,7 +317,6 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         _capability(
             PROVIDER_SECRET_ROTATE,
             "destructive_action",
-            "requires_approval",
             **{
                 **destructive,
                 "input_schema": {"type": "object", "properties": {}, "additionalProperties": False},
@@ -335,13 +325,7 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         _capability(
             PROVIDER_CONNECTIVITY_TEST,
             "external_read",
-            "requires_approval",
-            **{
-                **common,
-                "input_schema": profile_ref,
-                "availability": common["availability"] if has_cloud else "disabled",
-                "unavailable_explanation": explanation if has_cloud else PROVIDER_TEST_UNAVAILABLE,
-            },
+            **{**common, "input_schema": profile_ref},
         ),
     )
 
@@ -351,7 +335,6 @@ def _operator(observation: CapabilityObservation) -> CapabilityDescriptor:
     return _capability(
         OPERATOR_CONFIG_WRITE,
         "local_write",
-        "requires_approval",
         source="builtin",
         provenance="backend.app.services.operator_config_service",
         # The allowlist is surfaced for discovery, not enforced here: the service rejects
@@ -381,7 +364,6 @@ def _extension(observation: CapabilityObservation) -> CapabilityDescriptor:
     return _capability(
         EXTENSION_STATE_UPDATE,
         "local_write",
-        "allow",
         source="builtin",
         provenance="backend.app.services.extension_service",
         input_schema={
@@ -389,6 +371,8 @@ def _extension(observation: CapabilityObservation) -> CapabilityDescriptor:
             "properties": {
                 "extension_id": {"type": "string", "minLength": 1, "maxLength": 128},
                 "state": {"type": "string", "enum": ["enabled", "disabled", "retired"]},
+                "expected_revision": _REVISION,
+                "reason": _REASON,
             },
             "required": ["extension_id", "state"],
             "additionalProperties": False,
@@ -409,11 +393,12 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
     for (
         capability_id,
         profile_id,
-        display_name,
+        _display_name,
         effect_class,
         auth_rule,
         timeout_ms,
         cancellable,
+        unsupported,
     ) in observation.agents:
         descriptors.append(
             CapabilityDescriptor(
@@ -429,8 +414,8 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
                     "additionalProperties": False,
                 },
                 effect_class=effect_class,
-                readiness="ready",
-                availability="available",
+                readiness="ready" if not unsupported else "unavailable",
+                availability="available" if not unsupported else "misconfigured",
                 authorization_rule=auth_rule,
                 execution_owner="backend.app.agents.invocation",
                 timeout_policy={"timeout_ms": timeout_ms},
@@ -450,8 +435,10 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
                         "delegated_runs",
                     ]
                 },
-                unavailable_explanation="",
-                approval_mode="turn_boundary" if auth_rule == "requires_approval" else "same_turn",
+                unavailable_explanation=unsupported,
+                # An agent invocation is requested through the API, not proposed inside a
+                # conversation turn, so its approval is decided on the operator surface.
+                approval_mode="same_turn",
                 metadata_claims={"agent_id": {"value": profile_id, "trusted": False}},
             )
         )
@@ -461,11 +448,11 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
 def _capability(
     capability_id: str,
     effect_class: EffectClass,
-    authorization_rule: AuthorizationRule,
     *,
     boundaries: dict[str, Any] | None = None,
     **fields: Any,
 ) -> CapabilityDescriptor:
+    authorization_rule = default_authorization(effect_class)
     records = ["action_proposals", "authorization_decisions", "action_execution_results"]
     if authorization_rule == "requires_approval":
         records.insert(2, "approval_records")

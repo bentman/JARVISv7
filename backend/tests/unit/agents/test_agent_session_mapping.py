@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from backend.app.agents.schema import AgentProfile
 from backend.app.agents.session_mapping import (
     AgentSessionEvent,

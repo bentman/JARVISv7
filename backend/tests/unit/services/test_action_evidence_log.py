@@ -9,7 +9,12 @@ from backend.app.actions.catalog import (
     PROVIDER_PROFILE_WRITE,
     CapabilityObservation,
 )
-from backend.app.artifacts.storage import ACTION_LOG_NAME, read_action_events
+from backend.app.artifacts import storage
+from backend.app.artifacts.storage import (
+    ACTION_LOG_ARCHIVE_NAME,
+    ACTION_LOG_NAME,
+    read_action_events,
+)
 from backend.app.services.capability_service import CapabilityService
 
 READY = CapabilityObservation(
@@ -170,3 +175,37 @@ def test_every_logged_entry_is_attributable(tmp_path: Path, kind: str) -> None:
     assert entry["proposal_id"]
     assert entry["recorded_at"]
     assert entry["capability_id"] == MEMORY_RECORD_CONFIRM
+
+
+def test_the_action_log_rotates_once_and_the_archive_stays_readable(
+    tmp_path: Path, monkeypatch
+) -> None:
+    # Every governed action appends several records, so the log must be bounded; rotating
+    # keeps the older evidence instead of truncating it.
+    monkeypatch.setattr(storage, "ACTION_LOG_MAX_BYTES", 4096)
+    instance = service(tmp_path, **{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})
+
+    for index in range(40):
+        instance.propose(
+            capability_id=MEMORY_RECORD_CONFIRM,
+            arguments={"fact_id": f"fact-{index}", "expected_revision": 1},
+            proposed_by="operator",
+            reason="operator confirmed the fact",
+        )
+
+    assert (tmp_path / ACTION_LOG_ARCHIVE_NAME).is_file()
+    assert (tmp_path / ACTION_LOG_NAME).stat().st_size <= storage.ACTION_LOG_MAX_BYTES
+    events = read_action_events(tmp_path)
+    # One archive is kept, so the reader still spans more than the live file alone and the
+    # newest evidence is always present.
+    assert len(events) > len(_read_log(tmp_path / ACTION_LOG_NAME))
+    assert events[-3]["record"]["arguments"]["fact_id"] == "fact-39"
+    assert [event["kind"] for event in events[-3:]] == [
+        "action_proposal",
+        "authorization_decision",
+        "execution_result",
+    ]
+
+
+def _read_log(path: Path) -> list[str]:
+    return [line for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]

@@ -159,9 +159,13 @@ def delete_llm_profile(
 
 
 @router.post("/config/llm/profiles/{profile_id}/test", response_model=LLMProviderTestResponse)
-def test_llm_profile(profile_id: str) -> LLMProviderTestResponse:
+def test_llm_profile(
+    profile_id: str,
+    actions: CapabilityService | None = Depends(get_optional_capability_service),
+) -> LLMProviderTestResponse:
     store = _store()
-    try:
+
+    def run() -> LLMProviderTestResponse:
         profile = store.get_profile(profile_id)
         if profile.kind == "managed_llama_cpp":
             return LLMProviderTestResponse(status="configured", reason="managed profile readiness is reported by /readiness")
@@ -170,6 +174,14 @@ def test_llm_profile(profile_id: str) -> LLMProviderTestResponse:
             status="ready",
             reason="provider models endpoint reachable",
             models=[LLMDiscoveredModel.model_validate(item) for item in models],
+        )
+
+    try:
+        return execute_operator_action(
+            actions,
+            catalog.PROVIDER_CONNECTIVITY_TEST,
+            {"profile_id": profile_id},
+            run,
         )
     except Exception as exc:
         message = str(exc)

@@ -66,7 +66,7 @@ class AgentSessionRecord:
 
     def append_event(self, event: AgentSessionEvent) -> AgentSessionRecord:
         """Return a new record with the event appended (frozen dataclass)."""
-        new_events = list(self.events) + [event]
+        new_events = [*self.events, event]
         return AgentSessionRecord(
             agent_id=self.agent_id,
             profile_id=self.profile_id,

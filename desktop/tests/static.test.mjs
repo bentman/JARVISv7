@@ -26,7 +26,11 @@ import {
 import {
   actionApprovalEnabled,
   capabilityActivityState,
+  capabilityArgumentFields,
+  coerceArguments,
+  createActionsPanel,
   createActionsPanelController,
+  proposeEnabled,
   executionActivityState,
   formatCapabilityApproval,
   formatCapabilityRisk,
@@ -728,6 +732,12 @@ function createElement(tagName) {
     append(...children) {
       for (const child of children) this.appendChild(child);
     },
+    replaceChildren(...children) {
+      this.children = [];
+      for (const child of children) this.appendChild(child);
+    },
+    setAttribute(name, value) { this[name] = value; },
+    focus() { this.focused = true; },
     querySelector(selector) {
       if (selector === "#startup-state") return findElement(this, (node) => node.id === "startup-state");
       if (selector === ".label") return findElement(this, (node) => String(node.className).split(" ").includes("label"));
@@ -823,6 +833,103 @@ assert.equal(
   "Turn Status must activate the mapped backend state label",
 );
 assert.equal(systemValue.textContent, "Backend unavailable", "System State must represent backend unavailable");
+
+{
+  const capabilities = [
+    {
+      capability_id: "memory-policy-update",
+      effect_class: "local_write",
+      readiness: "ready",
+      availability: "available",
+      authorization_rule: "allow",
+      approval_mode: "same_turn",
+      execution_owner: "backend.app.services.memory_service.MemoryService",
+      unavailable_explanation: "",
+      executable: true,
+      input_schema: {
+        type: "object",
+        properties: { automatic_curation_enabled: { type: "boolean" }, expected_revision: { type: "integer" } },
+        required: ["automatic_curation_enabled", "expected_revision"],
+      },
+    },
+    {
+      capability_id: "search-public-web",
+      effect_class: "external_read",
+      readiness: "ready",
+      availability: "available",
+      authorization_rule: "allow",
+      approval_mode: "turn_boundary",
+      execution_owner: "backend.app.services.search_service.SearchService",
+      unavailable_explanation: "",
+      executable: false,
+      input_schema: { type: "object", properties: {} },
+    },
+  ];
+  let proposed = null;
+  const container = createElement("div");
+  const panel = createActionsPanel(container, {
+    getActionCapabilities: async () => ({
+      capabilities,
+      problems: [{ capability_id: "agent-invoke-coder", reason: "privileged_execution capabilities must declare boundaries" }],
+    }),
+    getPendingActions: async () => ({ pending: [] }),
+    getActionAudit: async () => ({ records: [{ kind: "execution_result", capability_id: "memory-policy-update", proposal_id: "p3", recorded_at: "now" }] }),
+    getActionStatus: async () => ({ proposal_id: "p3", capability_id: "memory-policy-update", status: "success", outcome: "allowed", reason: "ok", arguments: {} }),
+    proposeAction: async (payload) => {
+      proposed = payload;
+      return { proposal_id: "p3", capability_id: "memory-policy-update", status: "success", outcome: "allowed", reason: "ok", arguments: {} };
+    },
+  });
+  await panel.open();
+
+  const buttons = findElements(container, (node) => node.tagName === "button");
+  const proposeTrigger = buttons.find((node) => node.textContent === "Propose");
+  assert.ok(proposeTrigger, "a drivable capability must offer a Propose control");
+  assert.equal(
+    buttons.filter((node) => node.textContent === "Propose").length,
+    1,
+    "a turn-boundary capability must not offer a Propose control",
+  );
+  assert.ok(
+    findElement(container, (node) => String(node.textContent).includes("agent-invoke-coder")),
+    "a descriptor the registry refused must be explained in the panel",
+  );
+  assert.ok(
+    findElement(container, (node) => String(node.textContent).includes("backend.app.services.search_service.SearchService")),
+    "a capability with no proposable executor must name its owner",
+  );
+
+  proposeTrigger.listeners.click();
+  const form = findElement(container, (node) => node.className === "actions-propose");
+  assert.ok(form, "the Propose control must open a form built from the declared input schema");
+  const controls = findElements(container, (node) => node.tagName === "input" || node.tagName === "textarea");
+  const byName = Object.fromEntries(controls.map((node) => [node.name, node]));
+  assert.deepEqual(
+    Object.keys(byName),
+    ["automatic_curation_enabled", "expected_revision", "reason"],
+    "the form must render one control per declared property plus the reason",
+  );
+  assert.equal(byName.automatic_curation_enabled.type, "checkbox");
+  assert.equal(byName.expected_revision.type, "number");
+  byName.automatic_curation_enabled.listeners.change({ target: { checked: true } });
+  byName.expected_revision.listeners.input({ target: { value: "4" } });
+  byName.reason.listeners.input({ target: { value: "operator enabled curation" } });
+  await form.listeners.submit({ preventDefault() {} });
+
+  assert.deepEqual(
+    proposed,
+    {
+      capabilityId: "memory-policy-update",
+      actionArguments: { automatic_curation_enabled: true, expected_revision: 4 },
+      reason: "operator enabled curation",
+    },
+    "the rendered form must originate the action with its typed arguments",
+  );
+  const auditStatus = findElements(container, (node) => node.tagName === "button" && node.textContent === "Status");
+  assert.ok(auditStatus.length >= 1, "an audit record must be inspectable from the rendered panel");
+  panel.close();
+}
+
 globalThis.document = previousDocument;
 
 const readyConditions = collectDegradedConditions({
@@ -1662,6 +1769,142 @@ assert.equal(
   "a turn-boundary capability must not look operator-drivable",
 );
 assert.equal(formatCapabilityApproval({ approval_mode: "same_turn" }), "approved here");
+
+// Only backend-reported facts may gate the propose control.
+assert.equal(
+  proposeEnabled({ executable: true, availability: "available", approval_mode: "same_turn" }, false),
+  true,
+);
+for (const capability of [
+  { executable: false, availability: "available", approval_mode: "same_turn" },
+  { executable: true, availability: "disabled", approval_mode: "same_turn" },
+  { executable: true, availability: "available", approval_mode: "turn_boundary" },
+]) {
+  assert.equal(proposeEnabled(capability, false), false, "an undrivable capability must not offer Propose");
+}
+assert.equal(
+  proposeEnabled({ executable: true, availability: "available", approval_mode: "same_turn" }, true),
+  false,
+  "an in-flight mutation must disable proposing",
+);
+
+{
+  const schema = {
+    type: "object",
+    properties: {
+      fact_id: { type: "string" },
+      expected_revision: { type: "integer" },
+      endpoint: { type: ["string", "null"] },
+      enabled: { type: "boolean" },
+      fields: { type: "object" },
+    },
+    required: ["fact_id", "expected_revision", "endpoint"],
+  };
+  const fields = capabilityArgumentFields(schema);
+  assert.deepEqual(
+    fields.map((field) => [field.name, field.type, field.nullable, field.required]),
+    [
+      ["fact_id", "string", false, true],
+      ["expected_revision", "integer", false, true],
+      ["endpoint", "string", true, true],
+      ["enabled", "boolean", false, false],
+      ["fields", "object", false, false],
+    ],
+  );
+  assert.deepEqual(
+    coerceArguments(fields, {
+      fact_id: "fact-1",
+      expected_revision: "3",
+      endpoint: "",
+      enabled: true,
+      fields: '{"USE_DDGS":"true"}',
+    }),
+    {
+      fact_id: "fact-1",
+      expected_revision: 3,
+      endpoint: null,
+      enabled: true,
+      fields: { USE_DDGS: "true" },
+    },
+    "typed arguments must reach the backend as their declared types",
+  );
+  assert.throws(
+    () => coerceArguments(fields, { fields: "not json" }),
+    /fields must be valid JSON/,
+    "a malformed structured argument must be reported before it is sent",
+  );
+}
+
+{
+  let sent = null;
+  const controller = createActionsPanelController({
+    getPendingActions: async () => ({ pending: [] }),
+    getActionAudit: async () => ({ records: [] }),
+    getActionStatus: async () => ({ proposal_id: "p9", status: "success" }),
+    proposeAction: async (payload) => {
+      sent = payload;
+      return { proposal_id: "p9", capability_id: "memory-policy-update", status: "success", outcome: "allowed" };
+    },
+  });
+  const capability = {
+    capability_id: "memory-policy-update",
+    executable: true,
+    availability: "available",
+    approval_mode: "same_turn",
+    input_schema: {
+      type: "object",
+      properties: { automatic_curation_enabled: { type: "boolean" }, expected_revision: { type: "integer" } },
+      required: ["automatic_curation_enabled", "expected_revision"],
+    },
+  };
+  controller.selectCapability(capability.capability_id);
+  assert.equal(controller.snapshot().proposeCapabilityId, "memory-policy-update");
+  controller.setProposeValue("automatic_curation_enabled", true);
+  controller.setProposeValue("expected_revision", "2");
+  controller.setProposeReason("operator enabled curation");
+  await controller.submitPropose(capability);
+  assert.deepEqual(
+    sent,
+    {
+      capabilityId: "memory-policy-update",
+      actionArguments: { automatic_curation_enabled: true, expected_revision: 2 },
+      reason: "operator enabled curation",
+    },
+    "the panel must originate an action with its typed arguments",
+  );
+  const snapshot = controller.snapshot();
+  assert.equal(snapshot.notice, "Action proposed.");
+  assert.equal(snapshot.proposeCapabilityId, "", "a proposed action must clear its draft");
+  assert.equal(snapshot.detail.proposal_id, "p9", "a proposed action must be inspectable straight away");
+}
+
+{
+  let sent = 0;
+  const controller = createActionsPanelController({
+    proposeAction: async () => { sent += 1; return { proposal_id: "p1" }; },
+  });
+  const capability = {
+    capability_id: "operator-config-write",
+    input_schema: { type: "object", properties: { fields: { type: "object" } }, required: ["fields"] },
+  };
+  controller.setProposeValue("fields", "{oops}");
+  await controller.submitPropose(capability);
+  assert.equal(sent, 0, "a malformed argument must never reach the backend");
+  assert.match(controller.snapshot().proposeError, /fields must be valid JSON/);
+}
+
+assert.ok(
+  actionsPanel.includes("problems"),
+  "the capability catalog must report descriptors it could not register",
+);
+assert.ok(
+  !actionsPanel.includes("No application-owned handler is wired."),
+  "a capability driven by its own operator surface must not read as broken",
+);
+assert.ok(
+  actionsPanel.includes("state.actions.selectProposal(record.proposal_id)"),
+  "an audit record must be inspectable",
+);
 
 for (const command of [
   "get_extensions",

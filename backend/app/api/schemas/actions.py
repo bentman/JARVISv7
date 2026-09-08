@@ -25,8 +25,14 @@ class CapabilityResponse(StrictActionModel):
     executable: bool
 
 
+class CapabilityProblemResponse(StrictActionModel):
+    capability_id: str
+    reason: str
+
+
 class CapabilityCatalogResponse(StrictActionModel):
     capabilities: list[CapabilityResponse]
+    problems: list[CapabilityProblemResponse] = Field(default_factory=list)
 
 
 class ActionProposalRequest(StrictActionModel):

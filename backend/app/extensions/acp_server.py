@@ -6,8 +6,9 @@ import logging
 import threading
 import uuid
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,7 @@ class AcpServerSession:
     session_id: str
     client_info: dict[str, Any]
     status: str = "active"
-    created_at: str = field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).isoformat())
     turn_ids: list[str] = field(default_factory=list)
 
 
@@ -80,10 +81,8 @@ class AcpServer:
                     error_holder.append(exc)
                     ready.set()
                 finally:
-                    try:
+                    with suppress(Exception):
                         loop.run_until_complete(loop.shutdown_asyncgens())
-                    except Exception:
-                        pass
                     loop.close()
 
             thread = threading.Thread(target=_run_loop, name="acp-server", daemon=True)
@@ -226,7 +225,7 @@ class AcpServer:
         }
 
     def _cleanup_expired(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         timeout_s = self._config.session_timeout_ms / 1000.0
         with self._lock:
             for session in list(self._sessions.values()):

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import yaml
-
 from backend.app.actions.catalog import CapabilityObservation, build_descriptors
 from backend.app.agents.registry import AgentRegistry
 from backend.app.agents.schema import AgentProfile
@@ -142,7 +140,7 @@ def test_to_capability_records_returns_correct_tuples(tmp_path: Path) -> None:
     records = registry.to_capability_records()
 
     assert len(records) == 1
-    cap_id, profile_id, display_name, effect, auth, timeout, cancellable = records[0]
+    cap_id, profile_id, display_name, effect, auth, timeout, cancellable, unsupported = records[0]
     assert cap_id == "agent-invoke-my-agent"
     assert profile_id == "my-agent"
     assert display_name == "My Agent"
@@ -150,6 +148,7 @@ def test_to_capability_records_returns_correct_tuples(tmp_path: Path) -> None:
     assert auth == "requires_approval"
     assert timeout == 30000
     assert cancellable is True
+    assert unsupported == ""
 
 
 def test_capability_records_map_approval_none_to_local_read_and_allow(tmp_path: Path) -> None:
@@ -158,36 +157,69 @@ def test_capability_records_map_approval_none_to_local_read_and_allow(tmp_path: 
     registry = AgentRegistry(config_dir=tmp_path)
     records = registry.to_capability_records()
 
-    _, _, _, effect, auth, _, _ = records[0]
+    _, _, _, effect, auth, _, _, _ = records[0]
     assert effect == "local_read"
     assert auth == "allow"
 
 
-def test_capability_records_map_approval_strict_to_privileged_and_requires_approval(
+def test_capability_records_map_approval_strict_to_an_approval_gated_local_write(
     tmp_path: Path,
 ) -> None:
+    # The effect class describes what the executor does. The current runtime invokes an agent
+    # in-process, so no approval class describes a privileged subprocess; ADR 0007 owns the
+    # process-isolated adapter that would.
     _write_agent(tmp_path, "strict-agent", approval_class="strict")
 
     registry = AgentRegistry(config_dir=tmp_path)
     records = registry.to_capability_records()
 
-    _, _, _, effect, auth, _, _ = records[0]
-    assert effect == "privileged_execution"
+    _, _, _, effect, auth, _, _, _ = records[0]
+    assert effect == "local_write"
     assert auth == "requires_approval"
+
+
+def test_a_profile_without_the_direct_mode_is_explained_instead_of_offered(
+    tmp_path: Path,
+) -> None:
+    _write_agent(tmp_path, "tool-only", invocation_modes=["as_tool"])
+
+    registry = AgentRegistry(config_dir=tmp_path)
+    descriptor = next(
+        item
+        for item in build_descriptors(
+            CapabilityObservation(agents=tuple(registry.to_capability_records()))
+        )
+        if item.capability_id == "agent-invoke-tool-only"
+    )
+
+    assert (descriptor.availability, descriptor.readiness) == ("misconfigured", "unavailable")
+    assert "'direct' invocation mode" in descriptor.unavailable_explanation
+
+
+def test_a_profile_that_cannot_be_loaded_is_reported_instead_of_raised(tmp_path: Path) -> None:
+    (tmp_path / "agents").mkdir(exist_ok=True)
+    (tmp_path / "agents" / "broken.yaml").write_text("profile_id: broken\n", encoding="utf-8")
+    _write_agent(tmp_path, "healthy")
+
+    registry = AgentRegistry(config_dir=tmp_path)
+
+    assert [p.profile_id for p in registry.profiles()] == ["healthy"]
+    assert [capability_id for capability_id, _ in registry.errors()] == ["agent-invoke-broken"]
 
 
 # --- refresh() ---
 
 
-def test_refresh_reloads_profiles(tmp_path: Path) -> None:
+def test_profiles_are_reobserved_when_the_directory_changes(tmp_path: Path) -> None:
+    # An operator edits these files while the backend runs, so the profile set is an
+    # observation. Nothing calls refresh() on the running service.
     _write_agent(tmp_path, "alpha-agent")
 
     registry = AgentRegistry(config_dir=tmp_path)
     assert len(registry.profiles()) == 1
 
     _write_agent(tmp_path, "beta-agent")
-    # Still cached
-    assert len(registry.profiles()) == 1
+    assert len(registry.profiles()) == 2
 
     registry.refresh()
     assert len(registry.profiles()) == 2
@@ -242,6 +274,8 @@ def test_agent_capability_descriptors_appear_in_build_descriptors(tmp_path: Path
     assert cap.availability == "available"
     assert cap.timeout_policy == {"timeout_ms": 45000}
     assert cap.cancellation_policy == {"cancellable": True}
-    assert cap.approval_mode == "turn_boundary"
+    # An agent invocation is requested through the API, so approval is decided on the
+    # operator surface rather than inside a conversation turn.
+    assert cap.approval_mode == "same_turn"
     assert cap.metadata_claims == {"agent_id": {"value": "worker-agent", "trusted": False}}
     assert cap.execution_owner == "backend.app.agents.invocation"

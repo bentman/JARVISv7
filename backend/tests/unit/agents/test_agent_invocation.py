@@ -4,7 +4,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 from backend.app.agents.invocation import AgentInvocationResult, AgentInvoker
 from backend.app.agents.registry import AgentRegistry
 from backend.app.agents.schema import AgentProfile
@@ -166,3 +165,92 @@ def test_invoke_as_tool_rejects_unknown_profile_id() -> None:
     invoker = AgentInvoker(registry)
     with pytest.raises(ValueError, match="unknown agent profile"):
         invoker.invoke_as_tool("nonexistent", "prompt", lambda: None)
+
+
+# --- POST /agents/invoke ---
+
+
+def _invoke_client(result: dict[str, Any], modes: tuple[str, ...] = ("direct",)):
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.api.routes.agents import router
+    from backend.app.services.capability_service import (
+        CapabilityService,
+        build_agent_handlers,
+    )
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    profile = _profile(profile_id="summarizer", approval_class="none", invocation_modes=modes)
+    registry = AgentRegistry()
+    registry._profiles = [profile]
+    engine = MagicMock()
+    engine.run_agent.return_value = AgentInvocationResult(**result)
+    service = CapabilityService(
+        observe=lambda: CapabilityObservation(
+            agents=(tuple(registry.to_capability_records()[0]),)
+        )
+    )
+    service.bind_handler_provider(
+        lambda: build_agent_handlers(
+            agent_registry_provider=lambda: registry, engine_provider=lambda: engine
+        )
+    )
+    app = FastAPI()
+    app.include_router(router)
+    app.state.jarvis_state = MagicMock(agent_registry=registry, capability_service=service)
+    return TestClient(app)
+
+
+def test_invoke_route_executes_the_bound_agent_capability() -> None:
+    client = _invoke_client(
+        {
+            "agent_id": "summarizer",
+            "status": "success",
+            "output": {"response": "a summary"},
+            "turn_id": "turn-9",
+            "session_id": "session-9",
+        }
+    )
+
+    response = client.post("/agents/invoke", json={"profile_id": "summarizer", "prompt": "notes"})
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "agent_id": "summarizer",
+        "status": "success",
+        "output": {"response": "a summary"},
+        "turn_id": "turn-9",
+        "session_id": "session-9",
+        "error": None,
+    }
+
+
+def test_invoke_route_reports_a_failed_agent_run_as_a_failure() -> None:
+    # The engine reports a failed run in its result instead of raising, so the capability
+    # execution succeeds; the route must not read that as the agent's outcome.
+    client = _invoke_client(
+        {
+            "agent_id": "summarizer",
+            "status": "failure",
+            "output": {},
+            "turn_id": "turn-9",
+            "session_id": "session-9",
+            "error": "provider unavailable",
+        }
+    )
+
+    body = client.post("/agents/invoke", json={"profile_id": "summarizer", "prompt": "notes"}).json()
+
+    assert (body["status"], body["error"]) == ("failure", "provider unavailable")
+
+
+def test_invoke_route_reports_why_a_denied_invocation_never_ran() -> None:
+    client = _invoke_client(
+        {"agent_id": "summarizer", "status": "success", "output": {}, "turn_id": "t", "session_id": "s"},
+        modes=("as_tool",),
+    )
+
+    body = client.post("/agents/invoke", json={"profile_id": "summarizer", "prompt": "notes"}).json()
+
+    assert body["status"] == "denied"
+    assert "'direct' invocation mode" in body["error"]

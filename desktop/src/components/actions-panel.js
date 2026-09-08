@@ -34,6 +34,60 @@ export function formatCapabilityRisk(capability) {
   return `${capability.effect_class} · ${rule}`;
 }
 
+export function proposeEnabled(capability, mutationPending) {
+  // Only backend-reported facts gate the control; the renderer never decides authorization.
+  return Boolean(
+    capability?.executable
+      && capability.availability === "available"
+      && capability.approval_mode !== "turn_boundary"
+      && !mutationPending,
+  );
+}
+
+export function capabilityArgumentFields(inputSchema) {
+  const properties = inputSchema?.properties || {};
+  const required = new Set(inputSchema?.required || []);
+  return Object.keys(properties).map((name) => {
+    const types = [].concat(properties[name]?.type ?? "string");
+    const type = types.find((item) => item !== "null") || "string";
+    return { name, type, nullable: types.includes("null"), required: required.has(name) };
+  });
+}
+
+export function coerceArguments(fields, values) {
+  const args = {};
+  for (const field of fields) {
+    const raw = values[field.name];
+    if (field.type === "boolean") {
+      if (raw === undefined && !field.required) continue;
+      args[field.name] = Boolean(raw);
+      continue;
+    }
+    const text = raw === undefined || raw === null ? "" : String(raw).trim();
+    if (text === "") {
+      if (field.nullable && field.required) args[field.name] = null;
+      else if (field.required) args[field.name] = "";
+      continue;
+    }
+    if (field.type === "integer" || field.type === "number") {
+      const parsed = Number(text);
+      if (!Number.isFinite(parsed)) throw new Error(`${field.name} must be a number.`);
+      args[field.name] = field.type === "integer" ? Math.trunc(parsed) : parsed;
+      continue;
+    }
+    if (field.type === "object" || field.type === "array") {
+      try {
+        args[field.name] = JSON.parse(text);
+      } catch {
+        throw new Error(`${field.name} must be valid JSON.`);
+      }
+      continue;
+    }
+    args[field.name] = text;
+  }
+  return args;
+}
+
 export function formatCapabilityApproval(capability) {
   if (!capability) return "";
   // A turn_boundary capability is proposed and executed inside a conversation turn, so the
@@ -48,6 +102,7 @@ function copyState(state) {
     ...state,
     capabilities: state.capabilities ? { ...state.capabilities, capabilities: [...(state.capabilities.capabilities || [])] } : null,
     pending: state.pending ? [...state.pending] : [],
+    proposeValues: { ...state.proposeValues },
     audit: state.audit ? { ...state.audit, records: [...(state.audit.records || [])] } : null,
     detail: state.detail ? { ...state.detail } : null,
   };
@@ -60,6 +115,10 @@ export function createActionsPanelController(handlers, render = () => undefined)
     audit: null,
     detail: null,
     selectedProposalId: "",
+    proposeCapabilityId: "",
+    proposeValues: {},
+    proposeReason: "",
+    proposeError: "",
     auditLimit: 20,
     capabilitiesLoading: false,
     pendingLoading: false,
@@ -223,12 +282,50 @@ export function createActionsPanelController(handlers, render = () => undefined)
     return mutate(proposalId, () => handlers.cancelAction(proposalId), "Action cancelled.");
   }
 
+  function selectCapability(capabilityId) {
+    const same = state.proposeCapabilityId === capabilityId;
+    state.proposeCapabilityId = same ? "" : capabilityId;
+    state.proposeValues = {};
+    state.proposeReason = "";
+    state.proposeError = "";
+    emit();
+  }
+
+  function setProposeValue(name, value) {
+    state.proposeValues[name] = value;
+  }
+
+  function setProposeReason(value) {
+    state.proposeReason = value;
+  }
+
   async function propose(capabilityId, actionArguments, reason) {
-    return mutate(
+    const payload = await mutate(
       "",
       () => handlers.proposeAction({ capabilityId, actionArguments, reason }),
       "Action proposed.",
     );
+    if (payload?.proposal_id) {
+      state.proposeCapabilityId = "";
+      state.proposeValues = {};
+      state.proposeReason = "";
+      await selectProposal(payload.proposal_id);
+    }
+    return payload;
+  }
+
+  function submitPropose(capability) {
+    const fields = capabilityArgumentFields(capability?.input_schema);
+    let actionArguments;
+    try {
+      actionArguments = coerceArguments(fields, state.proposeValues);
+    } catch (error) {
+      state.proposeError = error.message;
+      emit();
+      return null;
+    }
+    state.proposeError = "";
+    return propose(capability.capability_id, actionArguments, state.proposeReason);
   }
 
   async function load() {
@@ -256,6 +353,10 @@ export function createActionsPanelController(handlers, render = () => undefined)
     decide,
     cancel,
     propose,
+    selectCapability,
+    setProposeValue,
+    setProposeReason,
+    submitPropose,
     cancelPendingReads,
     snapshot: () => copyState(state),
   };
@@ -284,6 +385,62 @@ function labeledValue(parent, label, value) {
   return field;
 }
 
+function renderProposeForm(state, capability) {
+  const form = document.createElement("form");
+  form.className = "actions-propose";
+  const fields = capabilityArgumentFields(capability.input_schema);
+  for (const field of fields) {
+    const label = document.createElement("label");
+    appendText(label, field.required ? `${field.name} *` : field.name);
+    const structured = field.type === "object" || field.type === "array";
+    const control = document.createElement(structured ? "textarea" : "input");
+    control.name = field.name;
+    if (structured) {
+      control.placeholder = "JSON";
+      control.addEventListener("input", (event) => state.actions.setProposeValue(field.name, event.target.value));
+    } else if (field.type === "boolean") {
+      control.type = "checkbox";
+      control.addEventListener("change", (event) => state.actions.setProposeValue(field.name, event.target.checked));
+    } else {
+      control.type = field.type === "integer" || field.type === "number" ? "number" : "text";
+      control.addEventListener("input", (event) => state.actions.setProposeValue(field.name, event.target.value));
+    }
+    // Drafts live in controller state and are not re-emitted on input, so typing never
+    // re-renders the control out from under the caret.
+    const draft = state.proposeValues[field.name];
+    if (field.type === "boolean") control.checked = Boolean(draft);
+    else if (draft !== undefined) control.value = draft;
+    label.appendChild(control);
+    form.appendChild(label);
+  }
+
+  const reasonLabel = document.createElement("label");
+  appendText(reasonLabel, "Reason *");
+  const reason = document.createElement("input");
+  reason.type = "text";
+  reason.name = "reason";
+  reason.required = true;
+  reason.maxLength = 256;
+  reason.value = state.proposeReason;
+  reason.addEventListener("input", (event) => state.actions.setProposeReason(event.target.value));
+  reasonLabel.appendChild(reason);
+  form.appendChild(reasonLabel);
+
+  if (state.proposeError) appendText(form, state.proposeError, "p", "actions-error");
+
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Propose action";
+  submit.disabled = state.mutationPending;
+  form.appendChild(submit);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    if (!proposeEnabled(capability, state.mutationPending)) return;
+    state.actions.submitPropose(capability);
+  });
+  return form;
+}
+
 function renderCapabilities(state) {
   const section = document.createElement("section");
   section.className = "actions-section";
@@ -310,14 +467,30 @@ function renderCapabilities(state) {
     appendText(item, formatCapabilityRisk(capability), "span", "actions-row-meta");
     appendText(item, formatCapabilityApproval(capability), "span", "actions-row-meta");
     if (!capability.executable) {
-      appendText(item, "No application-owned handler is wired.", "span", "actions-row-meta");
+      appendText(item, `Driven by ${capability.execution_owner}`, "span", "actions-row-meta");
     }
     if (capability.availability !== "available" && capability.unavailable_explanation) {
       appendText(item, capability.unavailable_explanation, "p", "actions-help");
     }
+    if (proposeEnabled(capability, false)) {
+      const open = state.proposeCapabilityId === capability.capability_id;
+      const trigger = document.createElement("button");
+      trigger.type = "button";
+      trigger.textContent = open ? "Close" : "Propose";
+      trigger.setAttribute("aria-expanded", String(open));
+      trigger.disabled = state.mutationPending;
+      trigger.addEventListener("click", () => state.actions.selectCapability(capability.capability_id));
+      item.appendChild(trigger);
+      if (open) item.appendChild(renderProposeForm(state, capability));
+    }
     list.appendChild(item);
   }
   section.appendChild(list);
+
+  const problems = state.capabilities?.problems || [];
+  for (const problem of problems) {
+    appendText(section, `${problem.capability_id}: ${problem.reason}`, "p", "actions-error");
+  }
   return section;
 }
 
@@ -466,6 +639,14 @@ function renderAudit(state) {
     const item = document.createElement("li");
     appendText(item, `${record.kind} · ${record.capability_id}`, "strong");
     appendText(item, formatValue(record.recorded_at), "span", "actions-row-meta");
+    if (record.proposal_id) {
+      const inspect = document.createElement("button");
+      inspect.type = "button";
+      inspect.textContent = "Status";
+      inspect.disabled = state.mutationPending;
+      inspect.addEventListener("click", () => state.actions.selectProposal(record.proposal_id));
+      item.appendChild(inspect);
+    }
     list.appendChild(item);
   }
   section.appendChild(list);
@@ -507,6 +688,10 @@ export function createActionsPanel(container, handlers, options = {}) {
     selectProposal: (proposalId) => controller.selectProposal(proposalId),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
     cancel: (proposalId) => controller.cancel(proposalId, confirmCancel),
+    selectCapability: (capabilityId) => controller.selectCapability(capabilityId),
+    setProposeValue: (name, value) => controller.setProposeValue(name, value),
+    setProposeReason: (value) => controller.setProposeReason(value),
+    submitPropose: (capability) => controller.submitPropose(capability),
   };
   controller = createActionsPanelController(handlers, (state) => {
     if (open) renderPanel(container, state, actions);

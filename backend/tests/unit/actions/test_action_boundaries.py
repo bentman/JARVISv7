@@ -358,9 +358,8 @@ class TestResolveAgentWorkingDirectory:
         agent = _agent(process_boundary=pb)
         with patch.object(
             type(pb), "resolve_working_directory", return_value=Path("/etc/passwd"),
-        ):
-            with pytest.raises(BoundaryViolationError, match="escapes"):
-                agent.resolve_agent_working_directory()
+        ), pytest.raises(BoundaryViolationError, match="escapes"):
+            agent.resolve_agent_working_directory()
 
 
 class TestFromMapping:

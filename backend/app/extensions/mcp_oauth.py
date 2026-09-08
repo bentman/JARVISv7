@@ -123,7 +123,7 @@ class McpOAuthFlow:
         result: dict[str, str] = {}
 
         class Handler(BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802
+            def do_GET(self) -> None:
                 parsed = urllib.parse.urlparse(self.path)
                 params = urllib.parse.parse_qs(parsed.query)
                 code = params.get("code", [""])[0]

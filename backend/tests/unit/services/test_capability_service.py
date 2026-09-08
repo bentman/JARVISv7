@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import threading
+import time
+from types import SimpleNamespace
 
 import pytest
+from backend.app.actions import catalog
 from backend.app.actions.boundaries import ActionOperation
 from backend.app.actions.catalog import (
     MEMORY_RECORD_CONFIRM,
@@ -10,13 +13,18 @@ from backend.app.actions.catalog import (
     OPERATOR_CONFIG_WRITE,
     PROVIDER_PROFILE_WRITE,
     PROVIDER_SECRET_ROTATE,
+    SEARCH_PRIVATE_WEB,
     SEARCH_PUBLIC_WEB,
     CapabilityObservation,
     ProviderObservation,
+    build_descriptors,
 )
+from backend.app.actions.contracts import default_authorization
 from backend.app.services.capability_service import (
     CapabilityService,
     CapabilityServiceError,
+    build_agent_handlers,
+    build_extension_handlers,
     execute_operator_action,
     mask_arguments,
 )
@@ -82,10 +90,9 @@ def test_catalog_reports_provider_capabilities_misconfigured_when_the_secret_sto
     assert "secret store is locked" in entry.unavailable_explanation
 
 
-def test_provider_profile_write_is_a_direct_local_write_without_approval() -> None:
+def test_a_direct_operator_action_records_no_approval_for_an_allow_capability() -> None:
     instance = service()
 
-    entry = capability(instance.catalog(), PROVIDER_PROFILE_WRITE)
     result = instance.execute_operator_action(
         PROVIDER_PROFILE_WRITE,
         {
@@ -99,7 +106,6 @@ def test_provider_profile_write_is_a_direct_local_write_without_approval() -> No
         lambda: {"saved": True},
     )
 
-    assert entry.authorization_rule == "allow"
     assert result == {"saved": True}
     kinds = [record["kind"] for record in instance.audit(limit=100).records]
     assert kinds.count("approval_record") == 0
@@ -112,6 +118,144 @@ def test_catalog_reports_operator_config_misconfigured_without_an_env_file() -> 
 
     assert entry.availability == "misconfigured"
     assert ".env file is missing" in entry.unavailable_explanation
+
+
+# Approval interrupts only where the effect class says authority or reversibility changes.
+# The one exception a class cannot express is named here rather than asserted per capability.
+POSTURE_OVERRIDES = {SEARCH_PRIVATE_WEB: "requires_approval"}
+
+
+@pytest.mark.parametrize(
+    "descriptor", build_descriptors(READY), ids=lambda item: item.capability_id
+)
+def test_every_builtin_capability_follows_the_declared_approval_posture(descriptor) -> None:
+    expected = POSTURE_OVERRIDES.get(
+        descriptor.capability_id, default_authorization(descriptor.effect_class)
+    )
+
+    assert descriptor.authorization_rule == expected
+
+
+def test_every_operator_drivable_capability_has_an_executor_or_names_its_owner() -> None:
+    # A catalog entry the operator surface offers must be drivable; anything else must name a
+    # specific owner instead of a generic module, so the panel can say what drives it.
+    from backend.app.services.capability_service import build_capability_handlers
+
+    instance = service()
+    instance._handlers = build_capability_handlers(
+        memory_service_provider=lambda: object(),
+        operator_config=object(),
+        provider_store_factory=lambda: object(),
+        env_file=object(),
+    )
+    instance._handlers.update(build_extension_handlers(extension_service_provider=lambda: object()))
+
+    unwired = [
+        entry
+        for entry in instance.catalog().capabilities
+        if entry.approval_mode == "same_turn" and not entry.executable
+    ]
+
+    assert unwired == []
+
+
+def test_a_direct_operator_action_observes_its_declared_deadline(monkeypatch) -> None:
+    # The proposal path and the operator path must mean the same thing by `timeout_ms`.
+    monkeypatch.setattr(catalog, "MEMORY_TIMEOUT_MS", 50)
+    instance = service()
+    observed: dict[str, bool] = {}
+
+    def slow() -> dict[str, bool]:
+        for _ in range(200):
+            operation = next(iter(instance._active.values()), None)
+            if operation is not None and operation.cancel.is_set():
+                observed["cancelled"] = True
+                return {"stopped": True}
+            time.sleep(0.01)
+        return {"stopped": False}
+
+    result = instance.execute_operator_action(
+        MEMORY_RECORD_FORGET, {"fact_id": "fact-1", "expected_revision": 1}, slow
+    )
+
+    assert observed.get("cancelled") is True
+    assert result == {"stopped": True}
+
+
+def test_a_completed_proposal_does_not_retain_its_authorization_context() -> None:
+    # Only a parked proposal needs its context after the call returns; anything else would
+    # grow without bound for the life of the process.
+    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})
+
+    for index in range(5):
+        instance.propose(
+            capability_id=MEMORY_RECORD_CONFIRM,
+            arguments={"fact_id": f"fact-{index}", "expected_revision": 1},
+            proposed_by="operator",
+            reason="operator confirmed a fact",
+        )
+    instance.propose(
+        capability_id=MEMORY_RECORD_CONFIRM,
+        arguments={"fact_id": "fact-bad"},
+        proposed_by="operator",
+        reason="operator sent invalid arguments",
+    )
+    parked = instance.propose(
+        capability_id=MEMORY_RECORD_FORGET,
+        arguments={"fact_id": "fact-1", "expected_revision": 1},
+        proposed_by="operator",
+        reason="operator asked to forget",
+    )
+
+    assert list(instance._contexts) == [parked.proposal_id]
+
+
+def test_one_unregisterable_descriptor_is_reported_without_taking_the_catalog_offline() -> None:
+    # privileged_execution without boundaries is refused at registration; the rest must still serve.
+    broken = CapabilityObservation(
+        search_providers=READY.search_providers,
+        memory_service_present=True,
+        agents=(("agent-invoke-broken", "broken", "Broken", "privileged_execution", "requires_approval", 1000, True, ""),),
+    )
+    instance = service(broken)
+
+    catalog = instance.catalog()
+
+    assert [item["capability_id"] for item in catalog.problems] == ["agent-invoke-broken"]
+    assert "boundaries" in catalog.problems[0]["reason"]
+    assert capability(catalog, MEMORY_RECORD_CONFIRM).availability == "available"
+
+
+def test_an_agent_capability_is_served_with_its_executor_bound() -> None:
+    profile = SimpleNamespace(profile_id="summarizer")
+    registry = SimpleNamespace(profiles=lambda: [profile], get=lambda _id: profile)
+    engine = SimpleNamespace(
+        run_agent=lambda profile, prompt, mode="direct": SimpleNamespace(
+            to_dict=lambda: {"agent_id": profile.profile_id, "status": "success", "output": {"response": prompt}}
+        )
+    )
+    profile.invocation_modes = ("direct",)
+    instance = service(
+        CapabilityObservation(
+            agents=(("agent-invoke-summarizer", "summarizer", "Summarizer", "local_read", "allow", 1000, True, ""),)
+        )
+    )
+    instance.bind_handler_provider(
+        lambda: build_agent_handlers(
+            agent_registry_provider=lambda: registry, engine_provider=lambda: engine
+        )
+    )
+
+    assert capability(instance.catalog(), "agent-invoke-summarizer").executable is True
+    view = instance.propose(
+        capability_id="agent-invoke-summarizer",
+        arguments={"prompt": "summarize this"},
+        proposed_by="operator",
+        reason="operator asked for a summary",
+    )
+
+    assert view.status == "success"
+    assert view.execution["result"]["output"] == {"response": "summarize this"}
 
 
 def test_catalog_marks_capabilities_without_a_handler_as_not_executable() -> None:

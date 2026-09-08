@@ -5,6 +5,8 @@ from backend.app.actions.boundaries import ActionOperation
 from backend.app.actions.catalog import (
     MEMORY_RECORD_CONFIRM,
     MEMORY_RECORD_FORGET,
+    OPERATOR_CONFIG_WRITE,
+    PROVIDER_CONNECTIVITY_TEST,
     PROVIDER_PROFILE_WRITE,
     SEARCH_PUBLIC_WEB,
     CapabilityObservation,
@@ -62,6 +64,12 @@ def test_capability_catalog_reports_live_availability_and_never_privileged_execu
     }
     search = next(item for item in capabilities if item["capability_id"] == SEARCH_PUBLIC_WEB)
     assert (search["availability"], search["approval_mode"]) == ("available", "turn_boundary")
+    # Local config and health-check reads run directly; the catalog serves no registration problems.
+    rules = {item["capability_id"]: item["authorization_rule"] for item in capabilities}
+    assert rules[OPERATOR_CONFIG_WRITE] == "allow"
+    assert rules[PROVIDER_CONNECTIVITY_TEST] == "allow"
+    assert rules[MEMORY_RECORD_FORGET] == "requires_approval"
+    assert response.json()["problems"] == []
 
 
 def test_catalog_explains_a_disabled_capability_instead_of_hiding_it() -> None:

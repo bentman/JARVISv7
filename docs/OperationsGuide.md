@@ -107,6 +107,8 @@ Open **Settings -> Model Providers** in the desktop app.
 
 Provider credentials are encrypted in `data/operator.sqlite`. The first credential save generates `JARVIS_SECRET_STORE_KEY` in `.env`; do not replace it while encrypted credentials exist.
 
+`.env.example` ships `LLAMA_CPP_MANAGED` blank, which is not the same as `false`. Blank means the managed sidecar follows `USE_LOCAL_MODEL`, so a fresh clone serves its own model from `runtimes/llama.cpp` with no external process. An explicit `false` opts out of that and points the backend at `LLAMA_CPP_BASE_URL`, which reports the `llm` family unready if nothing is listening there.
+
 Before a Model Providers selection is saved, `.env` remains the compatibility authority. For an externally owned llama.cpp or Unsloth OpenAI-compatible server:
 
 ```dotenv

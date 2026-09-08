@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
+from functools import lru_cache
 from typing import Any, Literal
 
 from backend.app.actions.boundaries import require_boundaries
@@ -39,6 +41,17 @@ AUTHORIZATION_OUTCOMES = {"allowed", "approval_required", "denied"}
 APPROVAL_OUTCOMES = {"approved", "denied"}
 EXECUTION_STATUSES = {"success", "failure", "cancelled"}
 APPROVAL_MODES = {"turn_boundary", "same_turn"}
+
+# Approval interrupts the operator only where authority or reversibility actually changes:
+# outbound mutation, cloud transmission, privileged process execution, and hard-to-reverse work.
+# Local reads, local writes, and outbound reads record evidence and run directly.
+APPROVAL_EFFECT_CLASSES = frozenset(
+    {"external_write", "cloud_model", "privileged_execution", "destructive_action"}
+)
+
+
+def default_authorization(effect_class: EffectClass) -> AuthorizationRule:
+    return "requires_approval" if effect_class in APPROVAL_EFFECT_CLASSES else "allow"
 
 
 @dataclass(frozen=True, slots=True)
@@ -326,10 +339,18 @@ class CapabilityRegistry:
 
 
 def validate_schema(schema: dict[str, Any]) -> None:
-    from jsonschema.validators import validator_for
-
     if not isinstance(schema, dict):
         raise ValueError("input_schema must be a mapping")
+    _check_schema(json.dumps(schema, default=str, sort_keys=True))
+
+
+@lru_cache(maxsize=512)
+def _check_schema(encoded: str) -> None:
+    # Descriptors are rebuilt from live observation on every catalog read, proposal, and
+    # approval, but a schema's validity is a property of the schema, not of the observation.
+    from jsonschema.validators import validator_for
+
+    schema = json.loads(encoded)
     validator_for(schema).check_schema(schema)
 
 

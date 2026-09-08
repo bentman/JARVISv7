@@ -521,6 +521,9 @@ def test_env_example_covers_current_settings_env_variables():
     assert (RETIRED_SETTING_NAMES - ENV_EXAMPLE_UNIMPLEMENTED_NAMES).isdisjoint(values)
     assert values["SEARXNG_PORT"] == "8910"
     assert values["JARVIS_SECRET_STORE_KEY"] == ""
+    # Blank, not false: an explicit false routes a fresh install at an external llama.cpp
+    # server nobody is running, so the shipped default could not serve a turn.
+    assert values["LLAMA_CPP_MANAGED"] == ""
     assert values["USE_LOCAL_MODEL"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_OLLAMA"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}
     assert values["USE_SEARXNG"].lower() in {"0", "1", "false", "true", "no", "yes", "off", "on"}

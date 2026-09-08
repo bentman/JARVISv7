@@ -12,8 +12,6 @@ from typing import Any
 from uuid import uuid4
 
 import numpy as np
-from backend.app.agents.invocation import AgentInvocationResult
-from backend.app.agents.schema import AgentProfile
 from backend.app.actions.catalog import SEARCH_PRIVATE_WEB, SEARCH_PUBLIC_WEB
 from backend.app.actions.contracts import (
     ActionCancellationRecord,
@@ -24,6 +22,8 @@ from backend.app.actions.contracts import (
     ExecutionStatus,
     ModelActionProposal,
 )
+from backend.app.agents.invocation import AgentInvocationResult
+from backend.app.agents.schema import AgentProfile
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope

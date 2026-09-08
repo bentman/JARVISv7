@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import socket
 import time
@@ -10,7 +9,6 @@ from unittest.mock import MagicMock
 
 import pytest
 from backend.app.extensions.acp_server import AcpServer, AcpServerConfig, AcpServerSession
-
 
 # ── AcpServerConfig validation ──────────────────────────────────────
 

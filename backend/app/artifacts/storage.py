@@ -12,6 +12,8 @@ from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.core.paths import DATA_DIR
 
 ACTION_LOG_NAME = "action-log.jsonl"
+ACTION_LOG_ARCHIVE_NAME = "action-log.1.jsonl"
+ACTION_LOG_MAX_BYTES = 8 * 1024 * 1024
 _action_log_lock = threading.Lock()
 
 
@@ -79,15 +81,26 @@ def append_action_event(entry: dict[str, Any], base_dir: Path = DATA_DIR / "acti
     base_dir.mkdir(parents=True, exist_ok=True)
     log_path = base_dir / ACTION_LOG_NAME
     line = json.dumps(entry, default=str, sort_keys=True) + "\n"
-    with _action_log_lock, open(log_path, "a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    with _action_log_lock:
+        # Every governed action appends several records, so the log is bounded by rotating
+        # once. One archive is kept, so evidence survives the roll instead of being truncated.
+        if log_path.is_file() and log_path.stat().st_size + len(line.encode("utf-8")) > ACTION_LOG_MAX_BYTES:
+            os.replace(log_path, base_dir / ACTION_LOG_ARCHIVE_NAME)
+        with open(log_path, "a", encoding="utf-8") as handle:
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
     return log_path
 
 
 def read_action_events(base_dir: Path = DATA_DIR / "actions") -> list[dict[str, Any]]:
-    log_path = base_dir / ACTION_LOG_NAME
+    events: list[dict[str, Any]] = []
+    for path in (base_dir / ACTION_LOG_ARCHIVE_NAME, base_dir / ACTION_LOG_NAME):
+        events.extend(_read_action_log(path))
+    return events
+
+
+def _read_action_log(log_path: Path) -> list[dict[str, Any]]:
     if not log_path.is_file():
         return []
     events: list[dict[str, Any]] = []

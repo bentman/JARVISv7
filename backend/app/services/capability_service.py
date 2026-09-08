@@ -16,6 +16,7 @@ from backend.app.actions.boundaries import (
     ActionOperation,
     ExecutionBoundary,
     bound_result,
+    bounded_deadline,
     run_bounded,
 )
 from backend.app.actions.catalog import CapabilityObservation, build_descriptors
@@ -83,6 +84,7 @@ class CapabilityView:
 @dataclass(frozen=True, slots=True)
 class CapabilityCatalogView:
     capabilities: list[CapabilityView] = field(default_factory=list)
+    problems: list[dict[str, str]] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)
@@ -144,26 +146,57 @@ class CapabilityService:
         self._audit: deque[dict[str, Any]] = deque(maxlen=MAX_AUDIT_RECORDS)
         self._active: dict[str, ActionOperation] = {}
         self._extension_bindings: Callable[[], list[tuple[CapabilityDescriptor, CapabilityHandler]]] | None = None
+        self._handler_providers: list[Callable[[], dict[str, CapabilityHandler]]] = []
+        self._problems: list[dict[str, str]] = []
         self._contexts: dict[str, AuthorizationContext] = {}
         self.refresh()
 
     def bind_extensions(
-        self, provider: Callable[[], list[tuple[CapabilityDescriptor, CapabilityHandler]]]
+        self, provider: Callable[[], list[tuple[CapabilityDescriptor, CapabilityHandler | None]]]
     ) -> None:
         self._extension_bindings = provider
         self.refresh()
 
+    def bind_handler_provider(
+        self, provider: Callable[[], dict[str, CapabilityHandler]]
+    ) -> None:
+        """Bind executors for descriptors another source already owns.
+
+        The provider is re-read on every refresh, so a capability whose descriptor is rebuilt
+        from live observation cannot end up served without its executor.
+        """
+        self._handler_providers.append(provider)
+        self.refresh()
+
     def refresh(self) -> None:
         registry = CapabilityRegistry()
-        for descriptor in build_descriptors(self._observe()):
-            registry.register(descriptor)
+        observation = self._observe()
+        problems: list[dict[str, str]] = [
+            {"capability_id": capability_id, "reason": reason}
+            for capability_id, reason in observation.agent_errors
+        ]
         bindings = self._extension_bindings() if self._extension_bindings else []
-        for descriptor, _handler in bindings:
-            registry.register(descriptor)
+        descriptors = [*build_descriptors(observation), *(item for item, _ in bindings)]
+        for descriptor in descriptors:
+            # One malformed descriptor must not take the whole governed loop offline; it is
+            # reported in the catalog instead of hidden.
+            try:
+                registry.register(descriptor)
+            except Exception as exc:
+                problems.append(
+                    {"capability_id": descriptor.capability_id, "reason": handler_error(exc)}
+                )
+        provided: dict[str, CapabilityHandler] = {}
+        for provider in self._handler_providers:
+            with suppress(Exception):
+                provided.update(provider())
         with self._lock:
             for descriptor, handler in bindings:
-                self._handlers[descriptor.capability_id] = handler
+                if handler is not None:
+                    self._handlers[descriptor.capability_id] = handler
+            self._handlers.update(provided)
             self._registry = registry
+            self._problems = problems
             self._evict_expired()
 
     def descriptor(self, capability_id: str) -> CapabilityDescriptor | None:
@@ -174,8 +207,10 @@ class CapabilityService:
         self.refresh()
         with self._lock:
             descriptors = [self._registry.get(row["capability_id"]) for row in self._registry.snapshot()]
+            problems = sorted(self._problems, key=lambda item: item["capability_id"])
         return CapabilityCatalogView(
-            capabilities=[self._view(descriptor) for descriptor in descriptors if descriptor]
+            capabilities=[self._view(descriptor) for descriptor in descriptors if descriptor],
+            problems=problems,
         )
 
     def authorize_turn(
@@ -227,11 +262,16 @@ class CapabilityService:
         self._record("action_proposal", proposal, capability_id)
         self._record("authorization_decision", decision, capability_id)
 
-        if decision.outcome == "denied":
-            return self._view_proposal(proposal, decision, status="denied")
         if decision.outcome == "approval_required":
+            # Only a parked proposal needs its context later; eviction owns it from here.
             return self._park(proposal, decision)
-        return self._execute(proposal, descriptor, decision)
+        try:
+            if decision.outcome == "denied":
+                return self._view_proposal(proposal, decision, status="denied")
+            return self._execute(proposal, descriptor, decision)
+        finally:
+            with self._lock:
+                self._contexts.pop(proposal_id, None)
 
     def decide(
         self,
@@ -438,7 +478,8 @@ class CapabilityService:
         with self._lock:
             self._active[proposal_id] = action
         try:
-            value = operation()
+            with bounded_deadline(action):
+                value = operation()
         except Exception as exc:
             self._record(
                 "execution_result",
@@ -671,6 +712,10 @@ def _recordable(value: Any) -> dict[str, Any]:
         return asdict(value)
     if isinstance(value, dict):
         return value
+    dump = getattr(value, "model_dump", None)
+    if callable(dump):
+        with suppress(Exception):
+            return dump(mode="json")
     return {"value": str(value)[:256]}
 
 
@@ -791,12 +836,73 @@ def build_capability_handlers(
             provider_store_factory().rotate_key()
             return {"rotated": True}
 
+        def connectivity_test(
+            arguments: dict[str, Any], _operation: ActionOperation
+        ) -> dict[str, Any]:
+            from backend.app.services.llm_provider_service import provider_model_discovery
+
+            store = provider_store_factory()
+            profile = store.get_profile(arguments["profile_id"])
+            if profile.kind == "managed_llama_cpp":
+                return {"status": "configured", "models": []}
+            models = provider_model_discovery(store, profile)
+            return {"status": "ready", "models": [item.get("id") for item in models]}
+
         handlers[catalog.PROVIDER_PROFILE_WRITE] = profile_write
         handlers[catalog.PROVIDER_PROFILE_DELETE] = profile_delete
         handlers[catalog.PROVIDER_SELECTION_UPDATE] = selection_update
         handlers[catalog.PROVIDER_SECRET_ROTATE] = rotate_secret
+        handlers[catalog.PROVIDER_CONNECTIVITY_TEST] = connectivity_test
 
     return handlers
+
+
+def build_agent_handlers(
+    *,
+    agent_registry_provider: Callable[[], Any],
+    engine_provider: Callable[[], Any],
+) -> dict[str, CapabilityHandler]:
+    """Executors for the `agent-invoke-*` descriptors the catalog builds from the registry."""
+    from backend.app.agents.invocation import AgentInvoker
+
+    registry = agent_registry_provider()
+    if registry is None:
+        return {}
+    invoker = AgentInvoker(registry)
+
+    def invoke(profile_id: str) -> CapabilityHandler:
+        def handler(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+            return invoker.invoke_direct(profile_id, arguments["prompt"], engine_provider).to_dict()
+
+        return handler
+
+    return {
+        f"agent-invoke-{profile.profile_id}": invoke(profile.profile_id)
+        for profile in registry.profiles()
+    }
+
+
+def build_extension_handlers(
+    *,
+    extension_service_provider: Callable[[], Any],
+) -> dict[str, CapabilityHandler]:
+    """Executor for the extension-state descriptor the catalog builds from live observation."""
+    from backend.app.actions import catalog
+
+    def set_state(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        service = extension_service_provider()
+        if service is None:
+            raise CapabilityServiceError(503, "unavailable", "extension catalog is unavailable")
+        return asdict(
+            service.set_state(
+                extension_id=arguments["extension_id"],
+                state=arguments["state"],
+                expected_revision=arguments.get("expected_revision"),
+                reason=arguments.get("reason"),
+            )
+        )
+
+    return {catalog.EXTENSION_STATE_UPDATE: set_state}
 
 
 def observe_capabilities(
@@ -836,11 +942,13 @@ def observe_capabilities(
         except Exception:
             store_present = False
 
-    agent_capability_records: tuple[tuple[str, str, str, str, str, int, bool], ...] = ()
+    agent_capability_records: tuple[tuple[str, str, str, str, str, int, bool, str], ...] = ()
+    agent_errors: tuple[tuple[str, str], ...] = ()
     if agent_registry_provider is not None:
         registry = agent_registry_provider()
         if registry is not None:
             agent_capability_records = tuple(registry.to_capability_records())
+            agent_errors = tuple(registry.errors())
 
     return CapabilityObservation(
         search_providers=(
@@ -857,6 +965,7 @@ def observe_capabilities(
         operator_config_keys=operator_config_keys,
         extension_catalog_present=extension_catalog_present,
         agents=agent_capability_records,
+        agent_errors=agent_errors,
     )
 
 
@@ -869,7 +978,9 @@ __all__ = [
     "CapabilityServiceError",
     "CapabilityView",
     "PendingApprovalView",
+    "build_agent_handlers",
     "build_capability_handlers",
+    "build_extension_handlers",
     "execute_operator_action",
     "mask_arguments",
     "observe_capabilities",

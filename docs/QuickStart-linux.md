@@ -173,6 +173,21 @@ Desktop static check:
 npm --prefix desktop test
 ```
 
+Answering check - the one that proves the assistant actually serves, which a passing suite does not:
+
+```bash
+backend/.venv/bin/python scripts/run_backend.py --host 127.0.0.1 --port 8730
+# in a second shell
+curl -s http://127.0.0.1:8730/readiness            # families.llm.ready must be true
+curl -s -X POST http://127.0.0.1:8730/session/create -H 'content-type: application/json' -d '{}'
+curl -s -X POST http://127.0.0.1:8730/task/text -H 'content-type: application/json' \
+  -d '{"text":"Reply with one word: WORKING"}'     # response_text must come back
+```
+
+If `families.llm.ready` is false, read its `reason`. `LLAMA_CPP_MANAGED=false` in `.env` with no
+external server listening at `LLAMA_CPP_BASE_URL` is the usual cause; leave the key blank to use
+the managed sidecar.
+
 ## When You Need More
 
 - Model providers, Ollama, cloud escalation, and credentials: [OperationsGuide.md](OperationsGuide.md#model-providers)

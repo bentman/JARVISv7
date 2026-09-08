@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from backend.app.agents.registry import AgentRegistry
-from backend.app.agents.schema import AgentProfile
 
 
 @dataclass(frozen=True, slots=True)

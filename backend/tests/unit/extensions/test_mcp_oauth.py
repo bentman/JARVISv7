@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import tempfile
 from datetime import UTC, datetime, timedelta
@@ -268,7 +269,7 @@ class TestMcpConnectionDefinitionOAuth:
             "token_url": "https://auth.example.com/token",
             "client_id": "my-client",
         }
-        with pytest.raises(ValueError, match="oauth.authorization_url must be a valid HTTPS URL"):
+        with pytest.raises(ValueError, match=re.escape("oauth.authorization_url must be a valid HTTPS URL")):
             McpConnectionDefinition.from_mapping("test", self._valid_mapping(oauth=oauth))
 
     def test_oauth_empty_client_id(self) -> None:
@@ -277,7 +278,7 @@ class TestMcpConnectionDefinitionOAuth:
             "token_url": "https://auth.example.com/token",
             "client_id": "",
         }
-        with pytest.raises(ValueError, match="oauth.client_id must be a non-empty string"):
+        with pytest.raises(ValueError, match=re.escape("oauth.client_id must be a non-empty string")):
             McpConnectionDefinition.from_mapping("test", self._valid_mapping(oauth=oauth))
 
     def test_oauth_invalid_scopes(self) -> None:
@@ -287,7 +288,7 @@ class TestMcpConnectionDefinitionOAuth:
             "client_id": "my-client",
             "scopes": [""],
         }
-        with pytest.raises(ValueError, match="oauth.scopes must be a list of non-empty strings"):
+        with pytest.raises(ValueError, match=re.escape("oauth.scopes must be a list of non-empty strings")):
             McpConnectionDefinition.from_mapping("test", self._valid_mapping(oauth=oauth))
 
     def test_oauth_none_is_valid(self) -> None:

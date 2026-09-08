@@ -31,7 +31,6 @@ def _get_or_create_server(request: Request, state: ApiState) -> AcpServer:
     server = _get_server(request)
     if server is not None:
         return server
-    engine_ref = getattr(state, "engine", None)
     server = AcpServer(
         config=AcpServerConfig(),
         turn_engine_getter=lambda: getattr(request.app.state.jarvis_state, "engine", None),
@@ -76,7 +75,9 @@ def acp_server_start(
         session_timeout_ms=body.session_timeout_ms,
         allowed_tools=tuple(body.allowed_tools),
     )
-    engine_getter = lambda: getattr(request.app.state.jarvis_state, "engine", None)
+    def engine_getter() -> Any:
+        return getattr(request.app.state.jarvis_state, "engine", None)
+
     server = AcpServer(config=config, turn_engine_getter=engine_getter)
     setattr(request.app.state, _SERVER_KEY, server)
     try:

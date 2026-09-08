@@ -112,13 +112,20 @@ def _family_readiness(
     )
 
 
+REQUIRED_FAMILIES = ("llm", "stt", "tts")
+
+
 def build_readiness_response(state: ApiState) -> ReadinessResponse:
-    status = "ready" if not state.preflight.probe_errors else "degraded"
     services = collect_service_statuses()
     runtime_labels = _runtime_labels(state)
     llm_readiness, llm_trace = _llm_runtime_trace(state)
     readiness_values = dict(state.readiness)
     readiness_values["llm"] = llm_readiness
+    # Overall status must answer "can the assistant do its job", not only "did the hardware
+    # probes pass". A reported `ready` while a required family cannot serve is the operator
+    # surface disagreeing with the backend it is reporting on.
+    unready = sorted(name for name in REQUIRED_FAMILIES if not readiness_values.get(name, (None, False, None))[1])
+    status = "ready" if not state.preflight.probe_errors and not unready else "degraded"
     selection = getattr(state.llm, "selection", None)
     profiles = getattr(state.llm, "profiles", {})
     active_profile = profiles.get(getattr(selection, "primary_profile_id", ""))

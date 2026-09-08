@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import pytest
+from backend.app.actions.boundaries import ActionCancelledError
+from backend.app.actions.catalog import SEARCH_PUBLIC_WEB
+from backend.app.actions.contracts import AuthorizationContext
 from backend.app.cognition.prompt_assembler import assemble_prompt_envelope
 from backend.app.cognition.search_policy import (
     SearchIntentResolver,
@@ -15,6 +18,16 @@ from backend.app.runtimes.internetsearch.ddgs_runtime import DDGSRuntime
 from backend.app.runtimes.internetsearch.tavily_runtime import TavilyRuntime
 from backend.app.services.local_llm_startup import prepare_managed_local_llm
 from backend.app.services.search_service import SearchEvidence, SearchService, SearchSource
+from backend.tests.fixtures.action_governance import (
+    make_capability_service_with_mock_search,
+    make_search_proposal,
+)
+from backend.tests.fixtures.search_providers import (
+    SAMPLE_DDGS_RESPONSE,
+    SAMPLE_TAVILY_RESPONSE,
+    mock_ddgs_provider,
+    mock_tavily_provider,
+)
 
 pytestmark = [pytest.mark.live, pytest.mark.search]
 
@@ -118,19 +131,6 @@ def test_local_grounding_ignores_retrieved_instructions(search_model):
 # ---------------------------------------------------------------------------
 
 
-from backend.app.actions.catalog import SEARCH_PRIVATE_WEB, SEARCH_PUBLIC_WEB
-from backend.app.actions.contracts import AuthorizationContext
-from backend.tests.fixtures.action_governance import (
-    make_capability_service_with_mock_search,
-    make_search_proposal,
-)
-from backend.tests.fixtures.search_providers import (
-    SAMPLE_DDGS_RESPONSE,
-    SAMPLE_TAVILY_RESPONSE,
-    mock_ddgs_provider,
-    mock_tavily_provider,
-)
-
 
 def test_search_governed_action_evidence():
     """Verify that a search through the governed path produces correct action evidence."""
@@ -196,7 +196,7 @@ def test_search_cancellation_through_governed_path():
         assert search_svc.cancel("session", "turn")
         assert op.cancel.is_set()
         # After cancel: check() should raise
-        with pytest.raises(Exception):
+        with pytest.raises(ActionCancelledError):
             op.check()
         assert op.evidence.cancel_requested
         # Wrong session/turn should not cancel

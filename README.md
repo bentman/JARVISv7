@@ -115,7 +115,9 @@ Cloud behavior is explicit:
 * explicit requests such as `use cloud`, `escalate this`, or `ask Claude` require the configured cloud target and that authorization
 * authentication, invalid-request, context-limit, and safety failures do not trigger automatic escalation
 
-Before a profile selection has been saved, existing `.env` settings remain the bootstrap authority. An externally owned llama.cpp or Unsloth server can be selected through compatibility settings:
+By default JARVIS serves its own model: `.env.example` leaves `LLAMA_CPP_MANAGED` blank so the managed sidecar follows `USE_LOCAL_MODEL`, starting `runtimes/llama.cpp` against the model named by `LLM_MODEL_ID`. Nothing outside the app needs to be running.
+
+Before a profile selection has been saved, existing `.env` settings remain the bootstrap authority. Set `LLAMA_CPP_MANAGED=false` only when an externally owned llama.cpp or Unsloth server is actually listening at `LLAMA_CPP_BASE_URL`; it opts out of the managed sidecar:
 
 ```dotenv
 LLAMA_CPP_MANAGED=false

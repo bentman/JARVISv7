@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-
-from backend.app.agents.schema import AUTHORITY_FIELDS, AgentProfile
+from backend.app.agents.schema import AgentProfile
 
 
 def load_agent_profile(path: Path) -> AgentProfile:

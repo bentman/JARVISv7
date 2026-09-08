@@ -12,7 +12,11 @@ from urllib.parse import urlparse
 
 import httpx
 import psutil
-from backend.app.models.llm_profiles import LLMServeProfileResolution
+from backend.app.models.llm_profiles import (
+    LLMServeProfileResolution,
+    openai_api_base,
+    server_origin,
+)
 
 _ORIGINAL_GET = httpx.get
 _ENDPOINT_LISTENER_TIMEOUT_SECONDS = 0.1
@@ -389,7 +393,7 @@ def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -
             try:
                 # Must query /v1/models to verify the model ID matches
                 get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
-                models = get_func(f"{url}/v1/models", timeout=1.0)
+                models = get_func(f"{openai_api_base(url)}/models", timeout=1.0)
                 models.raise_for_status()
                 payload = models.json()
                 if isinstance(payload, dict) and isinstance(payload.get("data"), list):
@@ -431,7 +435,7 @@ def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -
         try:
             # Try /health first (quickest check)
             get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
-            health = get_func(f"{url}/health", timeout=1.0)
+            health = get_func(f"{server_origin(url)}/health", timeout=1.0)
             health.raise_for_status()
             return True, f"endpoint healthy at {base_url}"
         except Exception:
@@ -440,7 +444,7 @@ def _probe_endpoint_healthy(base_url: str, target_model_id: str | None = None) -
         try:
             # Try /v1/models as fallback
             get_func = httpx.get if httpx.get is not _ORIGINAL_GET else client.get
-            models = get_func(f"{url}/v1/models", timeout=1.0)
+            models = get_func(f"{openai_api_base(url)}/models", timeout=1.0)
             models.raise_for_status()
             payload = models.json()
             if isinstance(payload, dict) and isinstance(payload.get("data"), list):

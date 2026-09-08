@@ -88,9 +88,19 @@ Agent profiles are defined by `AgentProfile` in `backend/app/agents/schema.py`. 
 
 Invocation is implemented in `backend/app/agents/invocation.py`. `AgentInvoker.invoke_direct()` and `invoke_as_tool()` validate the profile exists and supports the requested mode, then delegate to `TurnEngine.run_agent()`. The engine method admits agent work through `_admit_turn()`, builds a prompt envelope with the agent's instructions as a trusted application segment, calls the LLM, and records a `TurnArtifact` with `delegated_runs`.
 
+`backend/app/api/app.py` constructs the registry with `CONFIG_DIR`, so the profiles under `config/agents/` are loaded. Without that argument `AgentRegistry.profiles()` returned an empty list, and `GET /agents`, the extension catalog's agent family, and every `agent-invoke-*` descriptor were empty regardless of what was on disk.
+
+`backend/app/api/app.py` binds that invoker to the governed loop. `build_agent_handlers` maps each `agent-invoke-{profile_id}` capability to `AgentInvoker.invoke_direct`, and `CapabilityService.bind_handler_provider` (ADR 0005) re-reads the mapping on every catalog refresh, so a profile the registry reports always has an executor behind its descriptor. Until this binding existed, `POST /agents/invoke` proposed the capability and then failed with `capability has no application-owned execution handler`.
+
+Agent capabilities are decided on the operator surface, not inside a conversation turn: `backend/app/actions/catalog.py` gives every agent descriptor `approval_mode="same_turn"`. `turn_boundary` means the proposal is raised and answered within a conversation turn, which is the search handshake; an API-initiated invocation is not that, and the previous value made every `standard` and `strict` profile permanently unreachable through `POST /agents/invoke`. A `standard` profile now parks for approval and is approved from the desktop Actions panel.
+
+The `approval_class` to effect-class mapping describes what the executor does, not what the label suggests. The current runtime invokes an agent in-process through `TurnEngine`, so `strict` maps to `local_write` with `requires_approval` rather than `privileged_execution`; a `privileged_execution` effect class belongs to the process-isolated runtime adapter named in Follow-up, and until it exists `strict` and `standard` differ only in intent. ADR 0005's registry still refuses a `privileged_execution` descriptor that declares no process boundaries, so that adapter cannot register without them.
+
+`AgentRegistry` re-reads `config/agents/` when its files change and reports a profile it cannot parse instead of raising, so editing a profile on a running backend takes effect without a restart and a malformed file does not take the action loop offline. A profile that does not declare `direct` is served as `misconfigured` with that explanation, because `direct` is the only mode the current runtime executes - `invoke_as_tool` and `AgentRouter` exist but are not reachable until the router and as-tool paths in Follow-up are built.
+
 `AgentRouter` in `backend/app/agents/router.py` provides heuristic router-selected invocation by matching keywords from the profile's purpose against the request text.
 
-Agent API routes exist at `backend/app/api/routes/agents.py`: `GET /agents` (list profiles), `GET /agents/{profile_id}` (detail), `POST /agents/invoke` (invoke through governed capability path), `GET /agents/runs` (list runs), `POST /agents/{profile_id}/cancel` (cancel). The desktop agent panel at `desktop/src/components/agents-panel.js` provides catalog display, invocation, run tracking, and cancellation through Tauri commands.
+Agent API routes exist at `backend/app/api/routes/agents.py`: `GET /agents` (list profiles), `GET /agents/{profile_id}` (detail), `POST /agents/invoke` (invoke through the ADR 0005 capability path; it reports the agent's own status and error, because a failed run is returned in the invocation result rather than raised, which would otherwise record a successful capability execution), `GET /agents/runs` (list runs), `POST /agents/{profile_id}/cancel` (cancel). The desktop agent panel at `desktop/src/components/agents-panel.js` provides catalog display, invocation, run tracking, and cancellation through Tauri commands.
 
 Agent profile authoring is not an operator UI workflow in the current codebase. Profiles are edited as YAML under `config/agents/`, then loaded and validated by `AgentRegistry`. The desktop should not expose add/remove/modify controls until backend-owned profile mutation routes exist.
 
@@ -104,6 +114,8 @@ Process isolation for agents is implemented in `AgentIsolation` in `backend/app/
 
 Implementation evidence:
 - `ProjectVision.md`
+- `backend/app/api/app.py`
+- `backend/app/services/capability_service.py`
 - `backend/app/conversation/engine.py`
 - `backend/app/conversation/realtime/session.py`
 - `backend/app/conversation/realtime/interruption.py`
@@ -179,19 +191,33 @@ Validation evidence:
 - `backend/tests/unit/agents/test_agent_router.py`
 - `backend/tests/unit/agents/test_agent_session_mapping.py`
 - `backend/tests/unit/agents/test_agent_mcp_filter.py`
+- `backend/tests/unit/services/test_capability_service.py`
 - `backend/tests/runtime/turn/test_turn_control_live.py`
 - `backend/tests/runtime/desktop/test_resident_voice_desktop_live.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1455 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1482 passed.
 - `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 17 passed, including actual local MCP and ACP SDK peers.
-- `npm --prefix desktop test`: PASS.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
+`build_agent_handlers` is bound through `session_service.engine()`, not the engine built at
+startup. `SessionService` replaces the engine for each session, so an agent bound to the
+startup instance ran against one whose `prepare_close` had already been called and failed with
+`session is closing`. This matches how `ResidentVoiceInvocationService` already reaches the
+engine.
+
+Driven against a live backend on `127.0.0.1` (`linux-amd64`): `GET /agents` returns the
+`summarizer` profile from `config/agents/summarizer.yaml`, `GET /actions/capabilities` lists
+`agent-invoke-summarizer` as `local_read`/`allow`/`same_turn` with `executable: true`, and
+`POST /agents/invoke` records a proposal, an authorization decision, and an execution result in
+`data/actions/action-log.jsonl`. `POST /agents/invoke` returns a real model-backed summary from
+the managed llama.cpp sidecar; the honest-failure path was confirmed separately by invoking a
+profile that declares no `direct` mode, which is denied with that reason.
+
 Protocol tests required execution outside the restricted runner because its asyncio
-subprocess/thread I/O stalled. Live native desktop behavior, remote deployment,
-and other host classes remain unverified. The declared process controls are not
-an OS sandbox.
+subprocess/thread I/O stalled. The declared process controls are not an OS sandbox. Remote
+deployment and other host classes are outside this ADR's Follow-up list below.
 
 ## Follow-up
 

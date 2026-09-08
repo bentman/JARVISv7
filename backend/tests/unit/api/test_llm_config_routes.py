@@ -94,6 +94,10 @@ def test_llm_profile_api_authorizes_full_profile_payload_with_capability_service
 
 def test_llm_profile_api_supports_secret_delete_discovery_and_rotation(tmp_path, monkeypatch):
     client, store = _client(tmp_path, monkeypatch)
+    capability_service = CapabilityService(
+        observe=lambda: CapabilityObservation(provider_store_present=True)
+    )
+    client.app.state.jarvis_state = SimpleNamespace(capability_service=capability_service)
     created = client.post(
         "/config/llm/profiles",
         json={
@@ -117,6 +121,15 @@ def test_llm_profile_api_supports_secret_delete_discovery_and_rotation(tmp_path,
     assert tested.json()["models"] == [
         {"id": "discovered", "display_name": None, "context_window": 32768}
     ]
+    # The connectivity test is an outbound read and leaves evidence like any other action.
+    executions = [
+        item
+        for item in capability_service.audit(limit=50).records
+        if item["capability_id"] == "provider-connectivity-test"
+        and item["kind"] == "execution_result"
+    ]
+    assert [item["record"]["status"] for item in executions] == ["success"]
+    assert executions[0]["record"]["result"]["status"] == "ready"
     updated = client.put(
         f"/config/llm/profiles/{created['profile_id']}",
         json={
