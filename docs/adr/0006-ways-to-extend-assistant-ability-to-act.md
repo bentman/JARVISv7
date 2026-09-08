@@ -163,15 +163,182 @@ operator skill is external-trust by design; trust does not indicate ownership.
 
 `extension-credential-write` already executes through its own dedicated route (`POST
 /extensions/{id}/credentials`) with no proposal or approval step at all, so operator-requested
-credential storage was never gated by the capability-console ceremony. `extension-definition-write`
-and `extension-definition-delete` have no dedicated route yet; ADR 0005's Actions panel is still the
-only way to reach them, but that panel no longer labels an `allow` capability `Propose` awaiting
-`approved here` - it now reads `Run`, with nothing implying a decision that never happens. That fixes
-the approval-prompt appearance this ADR's Follow-up calls out; the still-open work is the dedicated
-Add MCP Connection/Edit MCP Connection flow itself, so `extension-definition-write` has a home other
-than the shared Actions panel.
+credential storage was never gated by the capability-console ceremony.
+
+The Extensions panel now has its own Add MCP Connection flow, so `extension-definition-write` and
+`extension-definition-delete` are no longer reachable only through ADR 0005's Actions panel.
+`desktop/src/components/extensions-panel.js` renders an "Add MCP connection" form at the top of the
+catalog list - display name, connection ID, and URL - that proposes `extension-definition-write`
+with `family: "mcp"` and a `streamable_http` definition through the same governed capability path
+`saveSkill` already used for operator skills; `extensionLocalIdValid` rejects a malformed connection
+ID before it is proposed, matching the backend's `SAFE_LOCAL_ID` pattern. A connection whose
+provenance shows it is operator-owned (`isOperatorOwnedProvenance`) gets a "Remove connection"
+control next to its credential form, which proposes `extension-definition-delete`. This covers the
+common case; adding an operator-owned `stdio` connection still requires editing YAML, since a form
+for arbitrary local command execution needs its own careful design and is not part of this
+increment.
+
+`removeMcpConnection` and `removeSkill` both now check the resolved proposal's `status` before
+reporting success, matching `saveSkill`'s existing behavior: a governed capability can resolve with
+`{status: "failure", execution: {error}}` without throwing, and both removal paths previously
+treated any non-thrown resolution as a successful delete. `removeSkill` carried the same gap before
+this change; it is fixed alongside `removeMcpConnection` rather than left as a second copy of the
+same defect.
+
+The Extensions panel also has an Import Skill flow now, closing the last gap in the operator-owned
+skill lifecycle: `saveSkill` already covered editing an existing skill and `removeSkill` covered
+deletion, but creating a brand-new skill had no entry point other than hand-authoring a file under
+`data/extensions/skill`. `importSkill` proposes the same `extension-skill-write` capability
+`saveSkill` uses, through a dedicated form (skill ID, body) rendered at the top of the Extensions
+catalog next to Add MCP Connection, so its error and success messaging land next to the form the
+operator is using rather than in the (possibly unrelated) detail column `saveSkill`'s edit errors
+target. `extensionLocalIdValid` (renamed from the MCP-specific `mcpConnectionIdValid`, since the
+`SAFE_LOCAL_ID` pattern it checks is shared across every extension family) rejects a malformed skill
+ID before it is proposed.
+
+Discover Tools and Resources and Refresh Health are the same action for an MCP connection, not two
+separate ones: `_mcp` in `backend/app/services/extension_runtime_service.py` only refreshes a
+connection's cached health and discovered tool/resource/prompt list when the invoked operation name
+is `discover`, and `discover` is the one operation every MCP connection registers. The desktop
+previously rendered that operation with its raw name ("discover") and a generic "Invoke" button
+alongside every other schema-derived operation form, and after invoking it, the display of health and
+discovered operations stayed stale until the extension was deselected and reselected -
+`invoke()` refreshed the run list but never the runtime detail a successful "discover" had just
+changed. `operationDisplayName` and `operationSubmitLabel` now name that one operation "Discover
+tools and resources" / "Discover" instead of leaving it to read as an unlabeled schema form, and
+`invoke()` re-fetches `getExtensionRuntime` after any invocation that actually ran (not one still
+`awaiting_approval`) against the currently selected extension, so a successful discovery is visible
+immediately.
+
+Discovered tools, resources, and prompts now render as separate operator concepts instead of one
+flat "Operations" list. `_mcp` in `backend/app/services/extension_runtime_service.py` already names
+each discovered operation `tool:<name>`, `resource:<uri>`, or `prompt:<name>`; `operationKind` reads
+that prefix (checking the exact family word before the first colon, so a bare non-MCP operation
+name such as ACP's `prompt` or the tool family's `run` is never miscategorized) and
+`operationShortLabel` strips it for display, so a discovered `tool:get_forecast` reads as
+`get_forecast` under a "Tools" heading rather than as a raw capability-shaped string. `renderDetail`
+groups an extension's operations by kind and renders "Tools", "Resources", and "Prompts" sections in
+that order, each only when it has entries; `discover` keeps its own unlabeled "Discover tools and
+resources" control rather than sitting under a generic heading, and any operation that matches
+neither pattern (every non-MCP extension family) renders exactly as before, under "Operations".
+
+The catalog list and detail columns now keep their scroll position across a re-render.
+`renderPanel` rebuilds the whole panel through `container.replaceChildren` on every state change,
+including the run-poll tick that fires roughly once a second while the panel is open; nothing
+previously captured or restored `scrollTop`, so a scrolled catalog list snapped back to the top on
+every poll tick whenever a run was active. `listColumn` and `detailColumn` now carry a
+`data-scroll-key`, and `renderPanel` captures each keyed element's `scrollTop` from the outgoing
+tree and reapplies it to the incoming one, the same capture-then-restore shape the existing
+`data-draft-key` mechanism already uses for form values. The `window.setInterval` callback in
+`createExtensionsPanel`'s `show()` (not `renderPanel` itself) checks `document.activeElement` and
+returns before calling `controller.refreshRuns()` when focus is on an input, textarea, or select, so
+that specific trigger already cannot fire a poll re-render at all while a form field is focused.
+
+Focus on a non-form control - a catalog row, a state-transition button, "Show body", or "Remove
+connection" - is now preserved the same way: `renderPanel` reads `document.activeElement`'s
+`data-focus-key` before `replaceChildren` and refocuses the element carrying the same key afterward,
+searching the fresh tree with `querySelectorAll("[data-focus-key]")` rather than assuming the old node
+reference is still attached to anything. Catalog rows key on `row:<extension_id>`, state-transition
+buttons on `state:<extension_id>:<next>`, "Show body" on `show-body:<extension_id>`, and "Remove
+connection" on `remove-connection:<extension_id>`. This closes the case named in Follow-up as the
+narrower remainder: an operator who clicks a state-transition button triggers `setState` ->
+`refreshCatalog()`, the very re-render that would otherwise drop focus off the control they just
+used.
+
+`config/extensions/README.md` no longer says desktop/native OAuth is follow-up work: the Extensions
+panel has driven that flow (status, authorize, code exchange) since the OAuth work landed earlier in
+this ADR, and the note describing it as outstanding had gone stale. Checking that claim against the
+desktop's actual OAuth controls also surfaced that this ADR's own Follow-up overstated a different
+gap: "Connect, Reconnect, and Disconnect remain missing" was true for Disconnect (no backend concept
+exists for it) but not for Connect/Reconnect, which already exists as the OAuth authorize/reauthorize
+control for OAuth-configured connections. Both are corrected below rather than left as two more stale
+claims sitting next to the one just found.
+
+A resource is read and a prompt is fetched, not "invoked" the way a tool is - `operationSubmitLabel`
+now says "Read" for a `resource:` operation and "Get prompt" for a `prompt:` operation instead of the
+generic "Invoke" every operation used before, the same function already responsible for the
+"Discover" verb it gives `discover`. This is a labeling change only: a resource's operation schema
+was already empty (its identity is the URI already in its name, not a fillable argument) and a
+prompt's schema already renders as a small set of plain text fields from its declared arguments, so
+neither needed the open-JSON-form treatment the Follow-up's "not an open form"
+language was written to guard against - the generic form already behaved correctly for both, it just
+described every action with the same word regardless of what it actually did.
+
+A run's heading no longer shows its raw run id. `ExtensionRuns.create` in
+`backend/app/extensions/runs.py` names a run with `uuid4().hex` - a backend correlation identifier
+with no operator meaning - and `renderDetail`'s run list rendered `${run.status} · ${run.run_id}` as
+the primary heading for every run, the same pattern already fixed once for the extension-level facts
+block. `formatRunStarted` replaces the raw id with the run's `started_at` timestamp formatted through
+`toLocaleTimeString`, falling back to the raw value if it does not parse as a date rather than
+producing "Invalid Date". The run id and `proposal_id` (also backend-only; a run's payload carries no
+operator-facing operation name to show instead) now render inside a "Run details" disclosure per run,
+the same disclosure shape the extension-level Source/Revision fields already use, so they stay
+reachable for audit without sitting in the heading every run renders.
+
+Source and revision no longer sit in an extension's primary facts. `source` is a raw file or
+module path (`data/extensions/mcp/weather.yaml`, `backend/app/services/operator_config_service.py`)
+and `revision` is an optimistic-concurrency counter used only to detect a conflicting write - neither
+is operator-meaningful state, and both were rendered unconditionally in `renderDetail`'s main `<dl>`
+alongside identifier, family, provenance, trust, readiness, and availability. They now render inside
+a `<details>` labeled "Details" appended after the primary facts, the same disclosure shape this file
+already uses for a loaded extension body, so an operator reads identity and status at a glance and
+opens the same control to see the backend/audit-shaped fields underneath.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
+
+The Add MCP Connection form now accepts an allowed tools, resources, and prompts list for the
+connection being created, instead of leaving a `streamable_http` connection unrestricted until an
+operator edits its stored definition by hand. `backend/app/extensions/mcp.py`'s `_require_allowed`
+only rejects an operation when its allowlist is both present and non-empty (`if allowlist and value
+not in allowlist`), so an absent or empty list means unrestricted, not "deny all" - `parseAllowlist`
+splits each new field's comma-separated text into a trimmed, non-empty array, and `addMcpConnection`
+adds `tool_allowlist`/`resource_allowlist`/`prompt_allowlist` to the proposed definition only when
+that array is non-empty, so an operator who leaves a field blank still gets today's unrestricted
+connection rather than one that can reach nothing. Credential type and OAuth configuration remain
+out of the connection form, per Follow-up below.
+
+An operation's submit button, the Add MCP Connection and Import Skill forms' submit buttons, and the
+Store credential submit button now carry the same `data-focus-key` mechanism as the catalog row and
+state-transition controls, closing the remaining gap named in Follow-up: a click on one of these
+buttons is itself the action that triggers the re-render: a skill import, an add, or a credential save
+call back into `refreshCatalog()` or `selectExtension()`, while an operation invocation instead goes
+through `invoke()`, which refreshes runs and (for the selected extension) runtime detail directly and
+calls `emit()` - so without a focus key the click that starts the action was also the click that lost
+focus off it. Each button keys on its
+own stable identity - `add-mcp:submit`, `import-skill:submit`, `credential-submit:<extension_id>`, and
+`operation-submit:<extension_id>:<capability_id>` - rather than sharing one key across forms.
+
+A completed "Get prompt" run now renders its result as role-labeled message text instead of the same
+raw JSON block every other operation result falls back to. An MCP prompt result's shape
+(`{messages: [{role, content: {type: "text", text}}]}`) is structurally distinct from a tool result's
+shape (`{content: [...]}`), so `formatPromptMessages` detects it by structure rather than needing the
+run to carry which operation produced it, which the run record does not track today. Any message
+whose content is not plain text (image, audio, embedded resource) makes the whole result fall back to
+raw JSON rather than silently dropping that content.
+
+Add Local Tool exists for governed command tools, the same `extension-definition-write` capability
+path as Add MCP Connection rather than a direct write. `backend/app/services/extension_runtime_service.py`
+requires a `tool` definition's `command` (a fixed, non-empty argv list - a tool takes no
+operator-supplied arguments at invoke time, only the `run` operation with an empty schema) and a
+`process` mapping validated by `ProcessBoundary.from_mapping` (`subprocess`, a non-empty
+`argv_allowlist`, an explicit `env_passthrough` allowlist with no wildcard, and `working_root` from
+the fixed set `data`/`cache`/`reports`/`models`/`runtimes`); the form collects command as one argv
+token per line via the new `parseCommandLines`, `argv_allowlist` and `env_passthrough` as
+comma-separated lists via the existing `parseAllowlist`, and `working_root` as a constrained
+`<select>` - and nothing else, since the backend does not accept or use a per-tool timeout, output
+setting, or argument schema despite earlier Follow-up wording suggesting it might. `subprocess` is not
+a form field either, even though it is a required part of `process`: every tool registers with
+`effect_class` `privileged_execution` (`extension_runtime_service.py`'s `_operations_for`), and
+`boundaries.py`'s `require_boundaries` rejects a `privileged_execution` capability whose process
+boundary declares `subprocess: false` - so it is not an operator choice, only a fixed fact, and
+`addLocalTool` always sends `subprocess: true` regardless of any caller input. An earlier version of
+this form exposed a "Runs as a subprocess" checkbox; unchecking it produced an operator-visible
+failure on every submit, since the backend rejects `subprocess: false` unconditionally for this
+effect class - the checkbox has been removed rather than left offering a choice with only one
+non-failing answer. A "Remove tool" control exists in a tool's detail view, gated on
+`isOperatorOwnedProvenance` the same way "Remove connection" and skill removal are. Edit Local Tool is
+not implemented: like Edit MCP Connection, it has no backend route to read a stored definition back,
+only `body_available` for `prompt`/`skill` families.
 
 ## Confirmation
 
@@ -275,6 +442,34 @@ Validation results (linux-amd64):
 Validation results (windows-amd64):
 - `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the `Run`/`Propose` label split in `actions-panel.js` that removes the self-approval appearance from `allow` capabilities, including `extension-definition-write`.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `addMcpConnection` proposing `extension-definition-write` with a `streamable_http` definition, `removeMcpConnection` proposing `extension-definition-delete`, `extensionLocalIdValid` refusing a malformed connection ID before it reaches the backend, a refused add and a refused delete each surfacing the backend's reason (for both the connection and the pre-existing skill-delete path), the "Remove connection" control gating on `isOperatorOwnedProvenance`, and a DOM-level render of the Add MCP Connection form asserting its human labels (`Display name`, `Connection ID`, `Add connection`) and that submitting it reaches `extension-definition-write` with typed arguments.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `importSkill` proposing `extension-skill-write` with a fresh skill ID and body, a malformed skill ID refused before it reaches the backend, a refused import surfacing the backend's reason, and a DOM-level render of the Import Skill form asserting its `Skill ID (e.g. changelog-writer)` label and body placeholder, and that submitting it reaches `extension-skill-write` with typed arguments.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers a completed invocation on the selected extension refreshing its runtime detail, an `awaiting_approval` invocation leaving the runtime untouched, and `operationDisplayName`/`operationSubmitLabel` naming the `discover` operation "Discover tools and resources" / "Discover" while leaving every other operation's raw name and "Invoke" label unchanged.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `operationKind` grouping `tool:`/`resource:`/`prompt:`-prefixed operations correctly while refusing to miscategorize a bare non-MCP operation name such as ACP's `prompt` or the tool family's `run`, `operationShortLabel` stripping the group prefix for display, and a DOM-level render of a discovered connection's detail asserting three separate "Tools"/"Resources"/"Prompts" headings with short (unprefixed) operation labels underneath each.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the catalog list and detail columns keeping a manually-set `scrollTop` across a `refreshRuns()`-triggered re-render, the same trigger run polling uses every second while the panel is open.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers a rendered extension detail's raw source path and revision counter being absent from the primary facts block and present only inside a "Details" disclosure.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `operationSubmitLabel` returning "Read" for a `resource:` operation, "Get prompt" for a `prompt:` operation, "Discover" for `discover`, and "Invoke" for a `tool:` or non-MCP operation, and a DOM-level render asserting all four submit verbs appear in the correct order alongside their grouped headings.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers a focused catalog row, and separately a state-transition button, "Show body", and "Remove connection", each regaining focus on a freshly rendered element (not the stale reference) after a `refreshCatalog()`-triggered re-render - four distinct rendering branches proven individually rather than inferred from the row case alone.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `formatRunStarted` producing a locale time string, falling back to the raw value for an unparseable timestamp, and returning "—" for a missing one; and a DOM-level render asserting a run's raw id is absent from its status-led heading and reachable only behind a "Run details" disclosure alongside its proposal id.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `parseAllowlist` trimming and dropping empty comma-separated items, `addMcpConnection` adding `tool_allowlist`/`resource_allowlist`/`prompt_allowlist` to the proposed definition only for fields with a non-empty value, and a DOM-level render of the Add MCP Connection form asserting the three new allowlist inputs' placeholders and that filling in one of them reaches `extension-definition-write` with that allowlist in the definition.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the Add MCP Connection submit button, the Import Skill submit button, the Store credential submit button, and an operation's submit button each regaining focus on a freshly rendered element after a `refreshCatalog()`-triggered re-render, extending the earlier catalog-row/state-button/Show-body/Remove-connection proof to the four submit buttons named in Follow-up as the remaining gap.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `formatPromptMessages` extracting role/text pairs from a prompt-shaped result, refusing to misread a tool-shaped `{content: [...]}` result as a prompt result, returning null for an empty messages array, falling back to null for non-text prompt content, and a DOM-level render asserting a prompt run's result appears as role-labeled message text while a tool run's result in the same run list still falls back to its raw JSON block.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `parseCommandLines` splitting one argv token per line and dropping blank lines, `addLocalTool` proposing `extension-definition-write` with a `tool` definition shaped as `{command, process: {subprocess, argv_allowlist, env_passthrough, working_root}}`, a malformed tool ID refused before it reaches the backend, a refused add and a refused delete each surfacing the backend's reason, "Remove tool" gating on `isOperatorOwnedProvenance`, and a DOM-level render of the Add Local Tool form asserting its command/argv-allowlist/working-root controls and that submitting it reaches `extension-definition-write` with typed, argv-shaped arguments. Separately confirmed by direct backend parsing (`parse_definition_manifest` and `ProcessBoundary.from_mapping(...).validate_argv(...)`) that the desktop's produced payload shape is accepted, not just internally self-consistent.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `addLocalTool` sending `process.subprocess: true` even when a caller passes `subprocess: false`, since it is a fixed fact about every tool's `privileged_execution` effect class rather than a value the function reads from its argument at all - a correction after the form's now-removed "Runs as a subprocess" checkbox was found to offer an unchecked state that boundaries.py unconditionally rejects.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
 
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. Live native desktop behavior, remote deployment,
@@ -285,18 +480,18 @@ an OS sandbox.
 
 Human-familiar extension surfaces:
 - Replace the generic capability-console path with family-specific Advanced Controls sections. Operators should see Add, Edit, Connect, Discover, Run, Disable, Remove, and Retire workflows, not capability IDs such as `extension-definition-write` or raw JSON definition forms.
-- Keep proposal, authorization, revision, fingerprint, and execution records as backend/audit internals. Surface them only in an explicit detail/audit view.
-- Preserve scroll position, selection, focus, and draft form values across refreshes and run polling.
+- Source and revision sit behind a "Details" disclosure in the extension detail view, and a run's id/proposal id sit behind a "Run details" disclosure with its heading now showing a start time instead - both instead of the primary facts/heading. What remains: authorization decisions and fingerprint values still have no rendering at all in the desktop (not even behind a disclosure), and a run's own status/events/result are not yet reorganized beyond the heading and disclosure split just made.
+- Scroll position (catalog list and detail columns), draft form values, and focus on a non-form control are all preserved across refreshes and run polling; selection was already preserved because `selectedExtensionId` only changes on an explicit user action. The non-form controls covered now include a catalog row, a state-transition button, "Show body", "Remove connection", and the four submit buttons that themselves trigger the re-render that would otherwise unfocus them (an operation's submit button, and the Add MCP Connection, Import Skill, and Store credential forms' own submit buttons).
 
 MCP connections:
-- Provide Add MCP Connection and Edit MCP Connection flows with fields for display name, transport, command or URL, allowed tools/resources/prompts, credential type, OAuth configuration, and test/discovery behavior.
-- Show Connect, Reconnect, Disconnect, Discover Tools and Resources, Refresh Health, and Remove as explicit actions on a selected MCP connection.
-- Present discovered tools, resources, and prompts as separate operator concepts. Resources and prompts should be attachable or inspectable; tools should render operation forms from schema with human labels and validation errors.
-- Credential storage already runs with no approval prompt (`POST /extensions/{id}/credentials`), and ADR 0005's Actions panel no longer labels `extension-definition-write`/`extension-definition-delete` as a self-approval ritual. What remains is giving those two capabilities a dedicated Add/Edit MCP Connection home so the Actions panel is no longer the only way to reach them.
+- Add MCP Connection exists for `streamable_http` connections (display name, connection ID, URL). Extend it to `stdio` connections (command, argv allowlist, environment passthrough, working root) and add an Edit MCP Connection flow so an existing connection's fields can change without deleting and re-adding it.
+- Allowed tools/resources/prompts are now fields on the connection form itself, sent only when non-empty so a blank field still means unrestricted rather than deny-all. Credential type and OAuth configuration remain out of the form; they are configured only after the connection exists, through the separate credential form and OAuth flow already in the detail view.
+- Discover Tools and Resources / Refresh Health exists as the "Discover" control on a selected connection's `discover` operation, and a completed invocation now refreshes the displayed health and discovered list immediately. Connect / Reconnect already exists, but only for OAuth-configured connections, where it is the authorize/reauthorize control; a non-OAuth connection has no explicit connect step because invoking any operation against it connects implicitly. Disconnect has no backend concept to attach to yet: a connection is not held open between operations (each invocation opens and closes its own peer), and there is no revoke/clear-authorization route for an OAuth connection either. Remove already exists as "Remove connection", gated on operator provenance the same way skill removal is.
+- Discovered tools, resources, and prompts render under separate "Tools"/"Resources"/"Prompts" headings with the internal `tool:`/`resource:`/`prompt:` prefix stripped from their display label. Tools render operation forms from schema with per-field inputs and a JSON-parse validation error; resources submit as "Read" and prompts as "Get prompt" instead of the generic "Invoke", matching what each operation's already-correct schema (empty for a resource, a small fixed field set for a prompt) actually does. A "Get prompt" result now renders as role-labeled message text instead of raw JSON, detected by its distinct `{messages: [...]}` shape rather than needing the run to record which operation produced it. What remains is presentational only: a resource still renders as a bare submit button rather than a URI/content-preview view.
 
 Skills and tools:
-- Provide Import Skill, Edit Skill, Remove Skill, Show Instructions, and Requested Capabilities flows for operator-owned skills. Application-owned skills remain read-only.
-- Provide Add Local Tool and Edit Local Tool flows for governed command tools with labeled command, argument, environment, root, timeout, schema, and output settings. Keep scripts executable only through a registered governed tool.
+- Import Skill, Edit Skill, and Remove Skill exist for operator-owned skills; application-owned skills remain read-only. Show Instructions is covered by the existing generic "Show body" control; Requested Capabilities already renders as its own detail block.
+- Add Local Tool and Remove Local Tool exist, the latter gated on operator provenance like MCP connection and skill removal. The add form's labeled command (one argv token per line), argv allowlist, environment passthrough, and working root fields match what the backend actually validates for a `tool` definition. A per-tool timeout, output setting, and argument schema are not form fields because the backend does not accept or use them today: `run` always executes with a fixed 60-second timeout and an empty input schema, regardless of the definition. `subprocess` is also not a form field, even though it is a required part of the `process` mapping: every tool registers as `privileged_execution`, and the backend unconditionally rejects `subprocess: false` for that effect class, so it is sent as a fixed `true` rather than offered as a choice with only one non-failing answer. Edit Local Tool does not exist, for the same reason Edit MCP Connection does not: there is no backend route to read a stored definition back for editing.
 
 Hooks and plugins:
 - Provide Add Hook and Edit Hook flows organized by event, matcher, handler type, and effect. Show last run, failure, and disable controls in the hook detail view.
@@ -304,5 +499,4 @@ Hooks and plugins:
 
 Assistant integration and validation:
 - Keep model-selected extension use behind the same backend capability selection and evidence path, but display results to the operator as the named tool/resource/prompt that ran.
-- Update `config/extensions/README.md` so it no longer says desktop/native OAuth is follow-up once the operator flow is actually usable.
 - Validate the revised surfaces with focused backend tests, `npm --prefix desktop test`, `cargo check --manifest-path desktop/src-tauri/Cargo.toml`, and a native visible `windows-amd64` desktop run that exercises the MCP, skill, tool, hook, and plugin workflows.

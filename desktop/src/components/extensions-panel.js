@@ -31,6 +31,88 @@ export function requestedCapabilities(extension) {
   return Array.isArray(claims?.ids) ? claims.ids : [];
 }
 
+const SAFE_LOCAL_ID = /^[a-z0-9][a-z0-9_.-]*$/;
+
+export function extensionLocalIdValid(localId) {
+  return SAFE_LOCAL_ID.test(String(localId || ""));
+}
+
+export function isOperatorOwnedProvenance(extension) {
+  return String(extension?.provenance || "").startsWith("data/extensions");
+}
+
+export function parseAllowlist(text) {
+  return String(text || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+// A tool's command is a fixed argv list - each token is its own line so an argument containing
+// a comma or space is not mistaken for a separator the way a comma-separated allowlist would.
+export function parseCommandLines(text) {
+  return String(text || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
+// An MCP "get prompt" result is a list of role-tagged messages, not the tool-shaped
+// {content: [...]} result every other operation produces - render it as the message text an
+// operator actually wants to read rather than the raw JSON block generic results fall back to.
+// Any message whose content is not plain text (image, audio, embedded resource) returns null so
+// the caller falls back to raw JSON instead of silently dropping that content.
+export function formatPromptMessages(result) {
+  const messages = result?.messages;
+  if (!Array.isArray(messages) || !messages.length) return null;
+  const formatted = [];
+  for (const message of messages) {
+    const text = message?.content?.text;
+    if (typeof text !== "string") return null;
+    formatted.push({ role: message.role, text });
+  }
+  return formatted;
+}
+
+// "discover" is the one operation name every MCP connection registers, and it is what
+// actually contacts the server to refresh health and the discovered tool/resource/prompt
+// list - naming it plainly avoids showing a bare, unlabeled schema-derived form for it.
+export function operationDisplayName(operation) {
+  return operation?.name === "discover" ? "Discover tools and resources" : operation?.name || "";
+}
+
+// A discovered MCP operation is named "tool:<name>", "resource:<uri>", or "prompt:<name>" -
+// grouping on that prefix is what lets the desktop present them as the separate operator
+// concepts they are, instead of one flat list of internal capability names.
+const OPERATION_GROUP_PREFIXES = ["tool", "resource", "prompt"];
+
+export function operationKind(operation) {
+  const name = String(operation?.name || "");
+  if (name === "discover") return "discover";
+  const colon = name.indexOf(":");
+  if (colon <= 0) return "other";
+  const prefix = name.slice(0, colon);
+  return OPERATION_GROUP_PREFIXES.includes(prefix) ? prefix : "other";
+}
+
+// A tool is invoked, a resource is read (it has no meaningful arguments beyond the URI
+// already in its name), and a prompt is fetched with its declared arguments filled in - the
+// submit verb should say which of those the operator is about to do, not one generic "Invoke".
+export function operationSubmitLabel(operation) {
+  const kind = operationKind(operation);
+  if (kind === "discover") return "Discover";
+  if (kind === "resource") return "Read";
+  if (kind === "prompt") return "Get prompt";
+  return "Invoke";
+}
+
+export function operationShortLabel(operation) {
+  const kind = operationKind(operation);
+  return OPERATION_GROUP_PREFIXES.includes(kind)
+    ? String(operation.name).slice(kind.length + 1)
+    : operationDisplayName(operation);
+}
+
 function copyState(state) {
   return {
     ...state,
@@ -63,6 +145,12 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     runs: [],
     oauth: null,
     oauthStatus: null,
+    addConnectionPending: false,
+    addConnectionError: "",
+    importSkillPending: false,
+    importSkillError: "",
+    addToolPending: false,
+    addToolError: "",
   };
   let catalogSequence = 0;
   let errorsSequence = 0;
@@ -155,6 +243,16 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       const result = await handlers.invokeExtension(extensionId, capabilityId, argumentsValue);
       state.notice = result?.status === "awaiting_approval" ? "Awaiting approval." : "Extension invoked.";
       if (handlers.getExtensionRuns) state.runs = (await handlers.getExtensionRuns())?.runs || [];
+      // An operation such as MCP "discover" changes the extension's own runtime detail -
+      // health, discovered tools/resources/prompts - so a completed invocation must refresh
+      // it rather than leave the operator staring at what was true before they clicked.
+      if (
+        result?.status !== "awaiting_approval"
+        && handlers.getExtensionRuntime
+        && state.selectedExtensionId === extensionId
+      ) {
+        try { state.runtime = await handlers.getExtensionRuntime(extensionId); } catch { /* keep the prior runtime display */ }
+      }
       emit();
       return result;
     } catch (error) { state.detailError = errorMessage(error, "Extension invocation failed."); emit(); return null; }
@@ -209,6 +307,39 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  async function importSkill(localId, body) {
+    if (!handlers.proposeAction || state.importSkillPending) return null;
+    if (!extensionLocalIdValid(localId)) {
+      state.importSkillError = "Skill ID must start with a letter or digit and use only lowercase letters, digits, '_', '.', or '-'.";
+      emit();
+      return null;
+    }
+    state.importSkillPending = true;
+    state.importSkillError = "";
+    emit();
+    try {
+      const result = await handlers.proposeAction({
+        capabilityId: "extension-skill-write",
+        actionArguments: { local_id: localId, body },
+        reason: `Import operator skill ${localId}`,
+        proposedBy: "operator",
+      });
+      if (result?.status !== "success") {
+        state.importSkillError = result?.execution?.error || "The skill was not imported.";
+        return null;
+      }
+      state.notice = "Skill imported.";
+      await refreshCatalog();
+      return true;
+    } catch (error) {
+      state.importSkillError = errorMessage(error, "The skill was not imported.");
+      return null;
+    } finally {
+      state.importSkillPending = false;
+      emit();
+    }
+  }
+
   async function saveSkill(localId, body) {
     if (!handlers.proposeAction) return;
     try {
@@ -235,8 +366,9 @@ export function createExtensionsPanelController(handlers, render = () => undefin
 
   async function removeSkill(localId) {
     if (!handlers.proposeAction) return;
+    let result;
     try {
-      await handlers.proposeAction({
+      result = await handlers.proposeAction({
         capabilityId: "extension-skill-delete",
         actionArguments: { local_id: localId },
         reason: `Remove operator skill ${localId}`,
@@ -247,7 +379,166 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       emit();
       return;
     }
+    if (result?.status !== "success") {
+      state.detailError = result?.execution?.error || "The skill was not removed.";
+      emit();
+      return;
+    }
     state.notice = "Skill removed.";
+    state.detail = null;
+    state.selectedExtensionId = "";
+    await refreshCatalog();
+    emit();
+  }
+
+  async function addMcpConnection({ localId, name, url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
+    if (!handlers.proposeAction || state.addConnectionPending) return null;
+    if (!extensionLocalIdValid(localId)) {
+      state.addConnectionError = "Connection ID must start with a letter or digit and use only lowercase letters, digits, '_', '.', or '-'.";
+      emit();
+      return null;
+    }
+    state.addConnectionPending = true;
+    state.addConnectionError = "";
+    emit();
+    try {
+      const definition = { transport: "streamable_http", url };
+      const tools = parseAllowlist(toolAllowlist);
+      const resources = parseAllowlist(resourceAllowlist);
+      const prompts = parseAllowlist(promptAllowlist);
+      // An empty allowlist means "no restriction" on the backend, so it is omitted rather
+      // than sent as [] - an operator who leaves these blank gets today's unrestricted
+      // connection, not a connection that can reach nothing.
+      if (tools.length) definition.tool_allowlist = tools;
+      if (resources.length) definition.resource_allowlist = resources;
+      if (prompts.length) definition.prompt_allowlist = prompts;
+      const result = await handlers.proposeAction({
+        capabilityId: "extension-definition-write",
+        actionArguments: {
+          family: "mcp",
+          local_id: localId,
+          name,
+          version: "1.0.0",
+          definition,
+        },
+        reason: `Add MCP connection ${name}`,
+        proposedBy: "operator",
+      });
+      if (result?.status !== "success") {
+        state.addConnectionError = result?.execution?.error || "The connection was not added.";
+        return null;
+      }
+      state.notice = "MCP connection added.";
+      await refreshCatalog();
+      return true;
+    } catch (error) {
+      state.addConnectionError = errorMessage(error, "The connection was not added.");
+      return null;
+    } finally {
+      state.addConnectionPending = false;
+      emit();
+    }
+  }
+
+  async function removeMcpConnection(localId) {
+    if (!handlers.proposeAction) return;
+    let result;
+    try {
+      result = await handlers.proposeAction({
+        capabilityId: "extension-definition-delete",
+        actionArguments: { family: "mcp", local_id: localId },
+        reason: `Remove MCP connection ${localId}`,
+        proposedBy: "operator",
+      });
+    } catch (error) {
+      state.detailError = errorMessage(error, "The connection was not removed.");
+      emit();
+      return;
+    }
+    if (result?.status !== "success") {
+      state.detailError = result?.execution?.error || "The connection was not removed.";
+      emit();
+      return;
+    }
+    state.notice = "MCP connection removed.";
+    state.detail = null;
+    state.selectedExtensionId = "";
+    await refreshCatalog();
+    emit();
+  }
+
+  async function addLocalTool({ localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
+    if (!handlers.proposeAction || state.addToolPending) return null;
+    if (!extensionLocalIdValid(localId)) {
+      state.addToolError = "Tool ID must start with a letter or digit and use only lowercase letters, digits, '_', '.', or '-'.";
+      emit();
+      return null;
+    }
+    state.addToolPending = true;
+    state.addToolError = "";
+    emit();
+    try {
+      const result = await handlers.proposeAction({
+        capabilityId: "extension-definition-write",
+        actionArguments: {
+          family: "tool",
+          local_id: localId,
+          name,
+          version: "1.0.0",
+          definition: {
+            command: parseCommandLines(command),
+            process: {
+              // A tool always registers with effect_class "privileged_execution"
+              // (backend/app/services/extension_runtime_service.py), and boundaries.py
+              // rejects a privileged_execution capability whose process boundary declares
+              // subprocess: false - so this is not an operator choice, only a fixed fact.
+              subprocess: true,
+              argv_allowlist: parseAllowlist(argvAllowlist),
+              env_passthrough: parseAllowlist(envPassthrough),
+              working_root: workingRoot,
+            },
+          },
+        },
+        reason: `Add local tool ${name}`,
+        proposedBy: "operator",
+      });
+      if (result?.status !== "success") {
+        state.addToolError = result?.execution?.error || "The tool was not added.";
+        return null;
+      }
+      state.notice = "Local tool added.";
+      await refreshCatalog();
+      return true;
+    } catch (error) {
+      state.addToolError = errorMessage(error, "The tool was not added.");
+      return null;
+    } finally {
+      state.addToolPending = false;
+      emit();
+    }
+  }
+
+  async function removeLocalTool(localId) {
+    if (!handlers.proposeAction) return;
+    let result;
+    try {
+      result = await handlers.proposeAction({
+        capabilityId: "extension-definition-delete",
+        actionArguments: { family: "tool", local_id: localId },
+        reason: `Remove local tool ${localId}`,
+        proposedBy: "operator",
+      });
+    } catch (error) {
+      state.detailError = errorMessage(error, "The tool was not removed.");
+      emit();
+      return;
+    }
+    if (result?.status !== "success") {
+      state.detailError = result?.execution?.error || "The tool was not removed.";
+      emit();
+      return;
+    }
+    state.notice = "Local tool removed.";
     state.detail = null;
     state.selectedExtensionId = "";
     await refreshCatalog();
@@ -355,8 +646,13 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     invoke,
     answer,
     credential,
+    importSkill,
     saveSkill,
     removeSkill,
+    addMcpConnection,
+    removeMcpConnection,
+    addLocalTool,
+    removeLocalTool,
     startOauth,
     completeOauth,
     refreshRuns,
@@ -382,6 +678,12 @@ function formatValue(value) {
   return String(value);
 }
 
+export function formatRunStarted(startedAt) {
+  if (!startedAt) return "—";
+  const date = new Date(startedAt);
+  return Number.isNaN(date.getTime()) ? String(startedAt) : date.toLocaleTimeString();
+}
+
 function labeledValue(parent, label, value) {
   const field = document.createElement("div");
   field.className = "extensions-field";
@@ -391,10 +693,140 @@ function labeledValue(parent, label, value) {
   return field;
 }
 
+function renderAddMcpConnection(state) {
+  const form = document.createElement("form");
+  form.className = "extensions-add-connection";
+  appendText(form, "Add MCP connection", "strong");
+  const name = document.createElement("input");
+  name.placeholder = "Display name";
+  name.required = true;
+  name.dataset.draftKey = "add-mcp:name";
+  const localId = document.createElement("input");
+  localId.placeholder = "Connection ID (e.g. weather)";
+  localId.required = true;
+  localId.dataset.draftKey = "add-mcp:local-id";
+  const url = document.createElement("input");
+  url.type = "url";
+  url.placeholder = "https://server.example/mcp";
+  url.required = true;
+  url.dataset.draftKey = "add-mcp:url";
+  const toolAllowlist = document.createElement("input");
+  toolAllowlist.placeholder = "Allowed tools (comma-separated, optional)";
+  toolAllowlist.dataset.draftKey = "add-mcp:tool-allowlist";
+  const resourceAllowlist = document.createElement("input");
+  resourceAllowlist.placeholder = "Allowed resources (comma-separated, optional)";
+  resourceAllowlist.dataset.draftKey = "add-mcp:resource-allowlist";
+  const promptAllowlist = document.createElement("input");
+  promptAllowlist.placeholder = "Allowed prompts (comma-separated, optional)";
+  promptAllowlist.dataset.draftKey = "add-mcp:prompt-allowlist";
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Add connection";
+  submit.disabled = state.addConnectionPending;
+  submit.dataset.focusKey = "add-mcp:submit";
+  form.append(name, localId, url, toolAllowlist, resourceAllowlist, promptAllowlist, submit);
+  if (state.addConnectionError) appendText(form, state.addConnectionError, "p", "extensions-error");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.actions.addMcpConnection({
+      localId: localId.value.trim(),
+      name: name.value.trim(),
+      url: url.value.trim(),
+      toolAllowlist: toolAllowlist.value,
+      resourceAllowlist: resourceAllowlist.value,
+      promptAllowlist: promptAllowlist.value,
+    });
+  });
+  return form;
+}
+
+function renderImportSkill(state) {
+  const form = document.createElement("form");
+  form.className = "extensions-import-skill";
+  appendText(form, "Import skill", "strong");
+  const localId = document.createElement("input");
+  localId.placeholder = "Skill ID (e.g. changelog-writer)";
+  localId.required = true;
+  localId.dataset.draftKey = "import-skill:local-id";
+  const body = document.createElement("textarea");
+  body.placeholder = "---\nname: Changelog Writer\n---\nInstructions go here.";
+  body.required = true;
+  body.dataset.draftKey = "import-skill:body";
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Import skill";
+  submit.disabled = state.importSkillPending;
+  submit.dataset.focusKey = "import-skill:submit";
+  form.append(localId, body, submit);
+  if (state.importSkillError) appendText(form, state.importSkillError, "p", "extensions-error");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.actions.importSkill(localId.value.trim(), body.value);
+  });
+  return form;
+}
+
+const STORAGE_ROOTS = ["data", "cache", "reports", "models", "runtimes"];
+
+function renderAddLocalTool(state) {
+  const form = document.createElement("form");
+  form.className = "extensions-add-tool";
+  appendText(form, "Add local tool", "strong");
+  const name = document.createElement("input");
+  name.placeholder = "Display name";
+  name.required = true;
+  name.dataset.draftKey = "add-tool:name";
+  const localId = document.createElement("input");
+  localId.placeholder = "Tool ID (e.g. changelog-writer)";
+  localId.required = true;
+  localId.dataset.draftKey = "add-tool:local-id";
+  const command = document.createElement("textarea");
+  command.placeholder = "Command, one argv token per line, e.g.\npython3\n-m\nscripts.changelog";
+  command.required = true;
+  command.dataset.draftKey = "add-tool:command";
+  const argvAllowlist = document.createElement("input");
+  argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+  argvAllowlist.required = true;
+  argvAllowlist.dataset.draftKey = "add-tool:argv-allowlist";
+  const envPassthrough = document.createElement("input");
+  envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+  envPassthrough.dataset.draftKey = "add-tool:env-passthrough";
+  const workingRoot = document.createElement("select");
+  workingRoot.dataset.draftKey = "add-tool:working-root";
+  for (const root of STORAGE_ROOTS) {
+    const option = document.createElement("option");
+    option.value = root;
+    option.textContent = root;
+    workingRoot.appendChild(option);
+  }
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Add tool";
+  submit.disabled = state.addToolPending;
+  submit.dataset.focusKey = "add-tool:submit";
+  form.append(name, localId, command, argvAllowlist, envPassthrough, workingRoot, submit);
+  if (state.addToolError) appendText(form, state.addToolError, "p", "extensions-error");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.actions.addLocalTool({
+      localId: localId.value.trim(),
+      name: name.value.trim(),
+      command: command.value,
+      argvAllowlist: argvAllowlist.value,
+      envPassthrough: envPassthrough.value,
+      workingRoot: workingRoot.value,
+    });
+  });
+  return form;
+}
+
 function renderCatalog(state) {
   const section = document.createElement("section");
   section.className = "extensions-section";
   appendText(section, "Installed extensions", "h3");
+  section.appendChild(renderAddMcpConnection(state));
+  section.appendChild(renderImportSkill(state));
+  section.appendChild(renderAddLocalTool(state));
   if (state.catalogLoading) {
     appendText(section, "Loading extensions…", "p", "extensions-help");
     return section;
@@ -432,6 +864,7 @@ function renderCatalog(state) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "extensions-row";
+    row.dataset.focusKey = `row:${extension.extension_id}`;
     row.dataset.state = extensionActivityState(extension);
     row.setAttribute("aria-pressed", String(state.selectedExtensionId === extension.extension_id));
     appendText(row, extension.display_name, "strong");
@@ -476,13 +909,25 @@ function renderDetail(state) {
   labeledValue(facts, "Identifier", detail.extension_id);
   labeledValue(facts, "Family", detail.family);
   labeledValue(facts, "Version", detail.version);
-  labeledValue(facts, "Source", detail.source);
   labeledValue(facts, "Provenance", detail.provenance);
   labeledValue(facts, "Trust", detail.trust);
   labeledValue(facts, "Readiness", detail.readiness);
   labeledValue(facts, "Availability", detail.availability);
-  labeledValue(facts, "Revision", detail.revision);
   section.appendChild(facts);
+
+  // Source (a raw file/module path) and revision (an optimistic-concurrency counter) are
+  // backend/audit internals, not operator-meaningful state - they belong in an explicit
+  // detail disclosure, not the primary facts an operator reads at a glance.
+  const advanced = document.createElement("details");
+  const advancedSummary = document.createElement("summary");
+  advancedSummary.textContent = "Details";
+  advanced.appendChild(advancedSummary);
+  const advancedFacts = document.createElement("dl");
+  advancedFacts.className = "extensions-facts";
+  labeledValue(advancedFacts, "Source", detail.source);
+  labeledValue(advancedFacts, "Revision", detail.revision);
+  advanced.appendChild(advancedFacts);
+  section.appendChild(advanced);
 
   const requested = requestedCapabilities(detail);
   if (requested.length) {
@@ -513,6 +958,7 @@ function renderDetail(state) {
     if (next === detail.state) continue;
     const button = document.createElement("button");
     button.type = "button";
+    button.dataset.focusKey = `state:${detail.extension_id}:${next}`;
     button.textContent = next === "retired" ? "Retire" : `Set ${next}`;
     button.disabled = !enabled;
     button.addEventListener("click", () => state.actions.setState(detail.extension_id, next));
@@ -521,6 +967,7 @@ function renderDetail(state) {
   if (detail.body_available) {
     const body = document.createElement("button");
     body.type = "button";
+    body.dataset.focusKey = `show-body:${detail.extension_id}`;
     body.textContent = "Show body";
     body.disabled = state.mutationPending;
     body.addEventListener("click", () => state.actions.loadBody(detail.extension_id));
@@ -531,49 +978,61 @@ function renderDetail(state) {
   const runtime = document.createElement("div");
   runtime.className = "extensions-requested";
   if (state.runtime?.operations?.length) {
-    appendText(runtime, "Operations", "h4");
+    const groups = new Map();
     for (const operation of state.runtime.operations) {
-      const form = document.createElement("form");
-      appendText(form, operation.name, "strong");
-      const fields = operation.input_schema?.properties || {};
-      const complex = Object.values(fields).some((schema) => ["object", "array"].includes(schema.type));
-      const inputs = [];
-      if (complex) {
-        const json = document.createElement("textarea");
-        json.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:$json`;
-        json.placeholder = "Advanced JSON arguments";
-        json.required = true;
-        form.appendChild(json);
-        inputs.push(["$json", json, { type: "json" }]);
-      }
-      for (const [name, schema] of complex ? [] : Object.entries(fields)) {
-        const input = document.createElement("input");
-        input.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:${name}`;
-        input.name = name;
-        input.required = (operation.input_schema?.required || []).includes(name);
-        if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(select); continue; }
-        input.type = schema.type === "boolean" ? "checkbox" : schema.type === "number" || schema.type === "integer" ? "number" : "text";
-        input.placeholder = name;
-        form.appendChild(input);
-        inputs.push([name, input, schema]);
-      }
-      const submit = document.createElement("button");
-      submit.type = "submit";
-      submit.textContent = "Invoke";
-      submit.disabled = !operation.available;
-      form.appendChild(submit);
-      form.addEventListener("submit", (event) => {
-        event.preventDefault();
-        let argumentsValue;
-        try {
-          argumentsValue = inputs[0]?.[0] === "$json" ? JSON.parse(inputs[0][1].value) : Object.fromEntries(inputs.map(([name, input, schema]) => [name, schema.type === "boolean" ? input.checked : schema.type === "number" || schema.type === "integer" ? Number(input.value) : input.value]));
-        } catch {
-          state.actions.notice("Arguments must be valid JSON.");
-          return;
+      const kind = operationKind(operation);
+      if (!groups.has(kind)) groups.set(kind, []);
+      groups.get(kind).push(operation);
+    }
+    const groupHeadings = { tool: "Tools", resource: "Resources", prompt: "Prompts", other: "Operations" };
+    for (const kind of ["discover", "tool", "resource", "prompt", "other"]) {
+      const operations = groups.get(kind);
+      if (!operations?.length) continue;
+      if (groupHeadings[kind]) appendText(runtime, groupHeadings[kind], "h4");
+      for (const operation of operations) {
+        const form = document.createElement("form");
+        appendText(form, kind === "discover" ? operationDisplayName(operation) : operationShortLabel(operation), "strong");
+        const fields = operation.input_schema?.properties || {};
+        const complex = Object.values(fields).some((schema) => ["object", "array"].includes(schema.type));
+        const inputs = [];
+        if (complex) {
+          const json = document.createElement("textarea");
+          json.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:$json`;
+          json.placeholder = "Advanced JSON arguments";
+          json.required = true;
+          form.appendChild(json);
+          inputs.push(["$json", json, { type: "json" }]);
         }
-        state.actions.invoke(detail.extension_id, operation.capability_id, argumentsValue);
-      });
-      runtime.appendChild(form);
+        for (const [name, schema] of complex ? [] : Object.entries(fields)) {
+          const input = document.createElement("input");
+          input.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:${name}`;
+          input.name = name;
+          input.required = (operation.input_schema?.required || []).includes(name);
+          if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(select); continue; }
+          input.type = schema.type === "boolean" ? "checkbox" : schema.type === "number" || schema.type === "integer" ? "number" : "text";
+          input.placeholder = name;
+          form.appendChild(input);
+          inputs.push([name, input, schema]);
+        }
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.textContent = operationSubmitLabel(operation);
+        submit.disabled = !operation.available;
+        submit.dataset.focusKey = `operation-submit:${detail.extension_id}:${operation.capability_id}`;
+        form.appendChild(submit);
+        form.addEventListener("submit", (event) => {
+          event.preventDefault();
+          let argumentsValue;
+          try {
+            argumentsValue = inputs[0]?.[0] === "$json" ? JSON.parse(inputs[0][1].value) : Object.fromEntries(inputs.map(([name, input, schema]) => [name, schema.type === "boolean" ? input.checked : schema.type === "number" || schema.type === "integer" ? Number(input.value) : input.value]));
+          } catch {
+            state.actions.notice("Arguments must be valid JSON.");
+            return;
+          }
+          state.actions.invoke(detail.extension_id, operation.capability_id, argumentsValue);
+        });
+        runtime.appendChild(form);
+      }
     }
   }
   if (detail.family === "mcp") {
@@ -592,6 +1051,7 @@ function renderDetail(state) {
     const save = document.createElement("button");
     save.type = "submit";
     save.textContent = "Store credential";
+    save.dataset.focusKey = `credential-submit:${detail.extension_id}`;
     credential.append(name, secret, save);
     credential.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -599,6 +1059,15 @@ function renderDetail(state) {
       secret.value = "";
     });
     runtime.appendChild(credential);
+    if (isOperatorOwnedProvenance(detail)) {
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.dataset.focusKey = `remove-connection:${detail.extension_id}`;
+      remove.textContent = "Remove connection";
+      remove.disabled = state.mutationPending;
+      remove.addEventListener("click", () => state.actions.removeMcpConnection(detail.local_id));
+      runtime.appendChild(remove);
+    }
     const health = state.runtime?.snapshot?.health;
     if (health) {
       appendText(runtime, `Connection health: ${health}`, "p");
@@ -643,6 +1112,15 @@ function renderDetail(state) {
       runtime.appendChild(oauth);
     }
   }
+  if (detail.family === "tool" && isOperatorOwnedProvenance(detail)) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.dataset.focusKey = `remove-tool:${detail.extension_id}`;
+    remove.textContent = "Remove tool";
+    remove.disabled = state.mutationPending;
+    remove.addEventListener("click", () => state.actions.removeLocalTool(detail.local_id));
+    runtime.appendChild(remove);
+  }
   if (detail.family === "skill" && String(detail.provenance || "").startsWith("data/extensions")) {
     // Operator-authored skills live under data/extensions and carry external trust;
     // application skills stay read-only. Provenance, not trust, is the ownership test.
@@ -676,7 +1154,20 @@ function renderDetail(state) {
     const block = document.createElement("div"); block.className = "extensions-requested";
     appendText(block, "Runs", "h4");
     for (const run of runs) {
-      appendText(block, `${run.status} · ${run.run_id}`, "strong");
+      appendText(block, `${run.status} · ${formatRunStarted(run.started_at)}`, "strong");
+      // A run's id and proposal id are backend correlation identifiers, not something an
+      // operator reads to understand what happened - they stay reachable for audit, behind
+      // the same kind of disclosure the extension-level Source/Revision fields already use.
+      const runDetails = document.createElement("details");
+      const runSummary = document.createElement("summary");
+      runSummary.textContent = "Run details";
+      runDetails.appendChild(runSummary);
+      const runFacts = document.createElement("dl");
+      runFacts.className = "extensions-facts";
+      labeledValue(runFacts, "Run ID", run.run_id);
+      labeledValue(runFacts, "Proposal", run.proposal_id);
+      runDetails.appendChild(runFacts);
+      block.appendChild(runDetails);
       if (run.request) {
         const form = document.createElement("form");
         const request = run.request;
@@ -709,7 +1200,14 @@ function renderDetail(state) {
       }
       if (["running", "awaiting_input", "awaiting_approval"].includes(run.status) && run.proposal_id) { const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel"; cancel.addEventListener("click", () => state.actions.cancel(run.proposal_id)); block.appendChild(cancel); }
       if (run.events?.length) appendText(block, JSON.stringify(run.events.at(-1)), "p", "extensions-row-meta");
-      if (run.result) appendText(block, JSON.stringify(run.result), "p", "extensions-row-meta");
+      if (run.result) {
+        const messages = formatPromptMessages(run.result);
+        if (messages) {
+          for (const message of messages) appendText(block, `${message.role}: ${message.text}`, "p", "extensions-row-meta");
+        } else {
+          appendText(block, JSON.stringify(run.result), "p", "extensions-row-meta");
+        }
+      }
     }
     section.appendChild(block);
   }
@@ -753,7 +1251,16 @@ function renderErrors(state) {
 }
 
 function renderPanel(container, state, actions) {
+  // Run polling re-renders this panel roughly once a second while it is open, and every
+  // render fully replaces the DOM - so scroll position, like draft values, must be captured
+  // from the outgoing tree and reapplied to the incoming one, or a scrolled list snaps back
+  // to the top on every poll tick.
   const drafts = new Map([...container.querySelectorAll("[data-draft-key]")].map((field) => [field.dataset.draftKey, { value: field.value, checked: field.checked, focused: document.activeElement === field }]));
+  const scrollPositions = new Map([...container.querySelectorAll("[data-scroll-key]")].map((node) => [node.dataset.scrollKey, node.scrollTop]));
+  // A focused non-form control (a catalog row, or the very state/action button an operator
+  // just clicked, since clicking it is what triggers the refreshCatalog() re-render that would
+  // otherwise unfocus it) needs the same capture-then-restore treatment as scroll and drafts.
+  const focusedKey = document.activeElement?.dataset?.focusKey;
   const view = { ...state, actions };
   const header = document.createElement("div");
   header.className = "extensions-panel-header";
@@ -776,9 +1283,11 @@ function renderPanel(container, state, actions) {
   layout.className = "extensions-panel-layout";
   const listColumn = document.createElement("div");
   listColumn.className = "extensions-panel-list";
+  listColumn.dataset.scrollKey = "list";
   listColumn.append(renderCatalog(view), renderErrors(view));
   const detailColumn = document.createElement("div");
   detailColumn.className = "extensions-panel-detail";
+  detailColumn.dataset.scrollKey = "detail";
   detailColumn.appendChild(renderDetail(view));
   layout.append(listColumn, detailColumn);
 
@@ -793,6 +1302,18 @@ function renderPanel(container, state, actions) {
     field.value = draft.value;
     if (field.type === "checkbox") field.checked = draft.checked;
     if (draft.focused) field.focus();
+  }
+  if (focusedKey) {
+    for (const node of container.querySelectorAll("[data-focus-key]")) {
+      if (node.dataset.focusKey === focusedKey) {
+        node.focus();
+        break;
+      }
+    }
+  }
+  for (const node of container.querySelectorAll("[data-scroll-key]")) {
+    const saved = scrollPositions.get(node.dataset.scrollKey);
+    if (saved !== undefined) node.scrollTop = saved;
   }
 }
 
@@ -809,8 +1330,13 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),
     answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
     credential: (extensionId, name, secret) => controller.credential(extensionId, name, secret),
+    importSkill: (localId, body) => controller.importSkill(localId, body),
     saveSkill: (localId, body) => controller.saveSkill(localId, body),
     removeSkill: (localId) => controller.removeSkill(localId),
+    addMcpConnection: (payload) => controller.addMcpConnection(payload),
+    removeMcpConnection: (localId) => controller.removeMcpConnection(localId),
+    addLocalTool: (payload) => controller.addLocalTool(payload),
+    removeLocalTool: (localId) => controller.removeLocalTool(localId),
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),

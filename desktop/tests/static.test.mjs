@@ -37,10 +37,19 @@ import {
   formatCapabilityRisk,
 } from "../src/components/actions-panel.js";
 import {
+  createExtensionsPanel,
   createExtensionsPanelController,
   extensionActivityState,
   extensionStateEnabled,
   formatExtensionOrigin,
+  formatPromptMessages,
+  formatRunStarted,
+  operationDisplayName,
+  operationKind,
+  operationShortLabel,
+  operationSubmitLabel,
+  parseAllowlist,
+  parseCommandLines,
   requestedCapabilities,
 } from "../src/components/extensions-panel.js";
 import {
@@ -97,6 +106,378 @@ const failingExtensionController = createExtensionsPanelController({
 await failingExtensionController.invoke("mcp:server", "capability", {});
 assert.equal(failingExtensionController.snapshot().detailError, "blocked");
 assert.ok(extensionsPanel.includes("data-draft-key"), "extension forms must retain drafts across run refreshes");
+
+{
+  // Invoking an operation such as MCP "discover" changes the extension's own runtime
+  // detail (health, discovered tools/resources/prompts), so a completed invocation must
+  // refresh what is displayed instead of leaving stale health on screen.
+  let runtimeFetches = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp" }),
+    getExtensionRuntime: async () => { runtimeFetches += 1; return { operations: [], snapshot: { health: "ready" } }; },
+    invokeExtension: async () => ({ status: "success" }),
+    getExtensionRuns: async () => ({ runs: [] }),
+  });
+  await controller.selectExtension("mcp:weather");
+  assert.equal(runtimeFetches, 1, "selecting an extension must load its runtime once");
+  await controller.invoke("mcp:weather", "extension-abc123", {});
+  assert.equal(runtimeFetches, 2, "a completed invocation on the selected extension must refresh its runtime");
+  assert.equal(controller.snapshot().runtime.snapshot.health, "ready");
+}
+
+{
+  // An approval-gated invocation has not run yet, so there is nothing new to refresh.
+  let runtimeFetches = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({ extension_id: "tool:writer", family: "tool" }),
+    getExtensionRuntime: async () => { runtimeFetches += 1; return { operations: [] }; },
+    invokeExtension: async () => ({ status: "awaiting_approval" }),
+    getExtensionRuns: async () => ({ runs: [] }),
+  });
+  await controller.selectExtension("tool:writer");
+  assert.equal(runtimeFetches, 1);
+  await controller.invoke("tool:writer", "extension-def456", {});
+  assert.equal(runtimeFetches, 1, "an awaiting-approval invocation must not trigger a runtime refresh");
+}
+
+assert.equal(operationDisplayName({ name: "discover" }), "Discover tools and resources");
+assert.equal(operationDisplayName({ name: "tool:get_forecast" }), "tool:get_forecast");
+assert.equal(operationSubmitLabel({ name: "discover" }), "Discover");
+assert.equal(operationSubmitLabel({ name: "tool:get_forecast" }), "Invoke");
+assert.equal(operationSubmitLabel({ name: "resource:file:///notes.txt" }), "Read", "a resource has no arguments to fill in, so it is read, not invoked");
+assert.equal(operationSubmitLabel({ name: "prompt:summarize" }), "Get prompt");
+assert.equal(operationSubmitLabel({ name: "run" }), "Invoke", "a non-MCP operation keeps the generic verb");
+
+assert.equal(formatRunStarted(null), "—");
+assert.equal(formatRunStarted("not a date"), "not a date", "an unparseable timestamp must still display something rather than \"Invalid Date\"");
+assert.equal(
+  formatRunStarted("2026-09-08T10:32:00.000Z"),
+  new Date("2026-09-08T10:32:00.000Z").toLocaleTimeString(),
+);
+
+assert.equal(operationKind({ name: "discover" }), "discover");
+assert.equal(operationKind({ name: "tool:get_forecast" }), "tool");
+assert.equal(operationKind({ name: "resource:file:///notes.txt" }), "resource");
+assert.equal(operationKind({ name: "prompt:summarize" }), "prompt");
+assert.equal(operationKind({ name: "run" }), "other", "a non-MCP operation must not be miscategorized");
+assert.equal(operationKind({ name: "prompt" }), "other", "an ACP operation literally named prompt must not collide with the MCP prompt group");
+
+assert.equal(operationShortLabel({ name: "tool:get_forecast" }), "get_forecast");
+assert.equal(operationShortLabel({ name: "resource:file:///notes.txt" }), "file:///notes.txt", "only the first colon marks the group prefix");
+assert.equal(operationShortLabel({ name: "prompt:summarize" }), "summarize");
+assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operation keeps its plain display name");
+
+{
+  // Discovered tools, resources, and prompts must render as separate labeled groups, not
+  // one flat "Operations" list mixing internal capability shapes together.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({
+      operations: [
+        { name: "discover", capability_id: "extension-discover", input_schema: { type: "object", properties: {} }, available: true },
+        { name: "tool:get_forecast", capability_id: "extension-tool1", input_schema: { type: "object", properties: {} }, available: true },
+        { name: "resource:file:///notes.txt", capability_id: "extension-res1", input_schema: { type: "object", properties: {} }, available: true },
+        { name: "prompt:summarize", capability_id: "extension-prompt1", input_schema: { type: "object", properties: {} }, available: true },
+      ],
+      snapshot: {},
+    }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  const headings = findElements(container, (node) => node.tagName === "h4").map((node) => node.textContent);
+  assert.deepEqual(headings, ["Tools", "Resources", "Prompts"], "discovered kinds must render as their own labeled groups, with no generic Operations heading when every operation is already grouped");
+  const strongLabels = findElements(container, (node) => node.tagName === "strong").map((node) => node.textContent);
+  assert.ok(strongLabels.includes("Discover tools and resources"));
+  assert.ok(strongLabels.includes("get_forecast"), "a grouped operation must render its short name, not the internal tool: prefix");
+  assert.ok(strongLabels.includes("file:///notes.txt"));
+  assert.ok(strongLabels.includes("summarize"));
+  const toolsHeading = findElement(container, (node) => node.tagName === "h4" && node.textContent === "Tools");
+  const operationsGroup = toolsHeading.parentElement;
+  const submitLabels = findElements(operationsGroup, (node) => node.tagName === "button" && node.type === "submit").map((node) => node.textContent);
+  assert.deepEqual(
+    submitLabels,
+    ["Discover", "Invoke", "Read", "Get prompt", "Store credential"],
+    "each operation kind must submit with its own verb, in the same order as its group",
+  );
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Source (a raw file/module path) and revision (a concurrency counter) are backend/audit
+  // internals; they must sit behind an explicit "Details" disclosure, not the primary facts.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather",
+      family: "mcp",
+      version: "1.0.0",
+      source: "data/extensions/mcp/weather.yaml",
+      provenance: "data/extensions",
+      trust: "operator",
+      readiness: "ready",
+      availability: "available",
+      revision: 3,
+      state: "enabled",
+    }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  // Assert by field label (the <dt>), not by scanning rendered text for the raw value: a
+  // value like a low revision number can coincidentally appear elsewhere (a version string,
+  // an id) and would make a substring check pass or fail for the wrong reason.
+  const primaryFacts = findElement(container, (node) => node.tagName === "dl" && node.className === "extensions-facts");
+  const primaryLabels = findElements(primaryFacts, (node) => node.tagName === "dt").map((node) => node.textContent);
+  assert.ok(!primaryLabels.includes("Source"), "source must not appear in the primary facts");
+  assert.ok(!primaryLabels.includes("Revision"), "revision must not appear in the primary facts");
+
+  const details = findElement(container, (node) => node.tagName === "details" && findElement(node, (n) => n.tagName === "summary" && n.textContent === "Details"));
+  assert.ok(details, "source and revision must be reachable behind a Details disclosure");
+  const detailLabels = findElements(details, (node) => node.tagName === "dt").map((node) => node.textContent);
+  assert.ok(detailLabels.includes("Source"));
+  assert.ok(detailLabels.includes("Revision"));
+  const sourceField = findElement(details, (node) => node.tagName === "dt" && node.textContent === "Source").parentElement;
+  assert.equal(findElement(sourceField, (node) => node.tagName === "dd").textContent, "data/extensions/mcp/weather.yaml");
+  const revisionField = findElement(details, (node) => node.tagName === "dt" && node.textContent === "Revision").parentElement;
+  assert.equal(findElement(revisionField, (node) => node.tagName === "dd").textContent, "3");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Run polling re-renders this panel roughly once a second while it is open; a scrolled
+  // list must not snap back to the top on every poll tick.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionRuns: async () => ({ runs: [] }),
+  });
+  await panel.open();
+
+  const listColumn = findElement(container, (node) => node.dataset?.scrollKey === "list");
+  const detailColumn = findElement(container, (node) => node.dataset?.scrollKey === "detail");
+  assert.ok(listColumn, "the catalog list column must carry a stable scroll key");
+  assert.ok(detailColumn, "the detail column must carry a stable scroll key");
+  listColumn.scrollTop = 240;
+  detailColumn.scrollTop = 80;
+
+  await panel.controller.refreshRuns();
+
+  const rerenderedList = findElement(container, (node) => node.dataset?.scrollKey === "list");
+  const rerenderedDetail = findElement(container, (node) => node.dataset?.scrollKey === "detail");
+  assert.equal(rerenderedList.scrollTop, 240, "the catalog list must keep its scroll position across a run-poll re-render");
+  assert.equal(rerenderedDetail.scrollTop, 80, "the detail column must keep its scroll position across a run-poll re-render");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // A focused catalog row must keep focus across a re-render it did not itself invalidate
+  // (an unrelated action calling refreshCatalog(), the same call a save/remove/add mutation
+  // triggers), rather than silently dropping focus back to nothing.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+  });
+  await panel.open();
+
+  const row = findElement(container, (node) => node.dataset?.focusKey === "row:mcp:weather");
+  assert.ok(row, "a catalog row must carry a stable focus key");
+  row.focus();
+  assert.equal(globalThis.document.activeElement, row);
+
+  await panel.controller.refreshCatalog();
+
+  const rerenderedRow = findElement(container, (node) => node.dataset?.focusKey === "row:mcp:weather");
+  assert.notEqual(rerenderedRow, row, "the re-render must have produced a fresh element, not reused the old one");
+  assert.equal(globalThis.document.activeElement, rerenderedRow, "the same row must regain focus after the re-render");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Focus restoration is a generic mechanism, but each tagged control is its own rendering
+  // branch - a state-transition button, "Show body", and "Remove connection" each need their
+  // own proof that the focus key is actually wired, not just that the mechanism works once.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather",
+      family: "mcp",
+      provenance: "data/extensions",
+      state: "enabled",
+      body_available: true,
+    }),
+    getExtensionRuntime: async () => ({
+      operations: [{ capability_id: "tool:get_forecast", input_schema: {} }],
+    }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  async function assertFocusSurvives(focusKey, describeControl) {
+    const before = findElement(container, (node) => node.dataset?.focusKey === focusKey);
+    assert.ok(before, `${describeControl} must carry focus key ${focusKey}`);
+    before.focus();
+    await panel.controller.refreshCatalog();
+    const after = findElement(container, (node) => node.dataset?.focusKey === focusKey);
+    assert.notEqual(after, before, `${describeControl} re-render must produce a fresh element`);
+    assert.equal(globalThis.document.activeElement, after, `${describeControl} must regain focus after the re-render`);
+  }
+
+  await assertFocusSurvives("state:mcp:weather:disabled", "the Set disabled button");
+  await assertFocusSurvives("show-body:mcp:weather", "the Show body button");
+  await assertFocusSurvives("remove-connection:mcp:weather", "the Remove connection button");
+  await assertFocusSurvives("add-mcp:submit", "the Add connection submit button");
+  await assertFocusSurvives("import-skill:submit", "the Import skill submit button");
+  await assertFocusSurvives("credential-submit:mcp:weather", "the Store credential submit button");
+  await assertFocusSurvives("operation-submit:mcp:weather:tool:get_forecast", "an operation's submit button");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // A run's id and proposal id are backend correlation identifiers; they must not appear in
+  // the run's primary heading, only behind an explicit "Run details" disclosure.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionRuns: async () => ({
+      runs: [{
+        run_id: "extension-deadbeefcafef00d",
+        extension_id: "mcp:weather",
+        proposal_id: "prop-123",
+        status: "success",
+        started_at: "2026-09-08T10:32:00.000Z",
+      }],
+    }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  const headings = findElements(container, (node) => node.tagName === "strong");
+  const runHeading = headings.find((node) => node.textContent.startsWith("success"));
+  assert.ok(runHeading, "the run must render a status-led heading");
+  assert.ok(!runHeading.textContent.includes("extension-deadbeefcafef00d"), "the raw run id must not appear in the run heading");
+
+  const runDetails = findElement(container, (node) => node.tagName === "details" && findElement(node, (n) => n.tagName === "summary" && n.textContent === "Run details"));
+  assert.ok(runDetails, "the run id and proposal id must be reachable behind a Run details disclosure");
+  const runIdField = findElement(runDetails, (node) => node.tagName === "dt" && node.textContent === "Run ID").parentElement;
+  assert.equal(findElement(runIdField, (node) => node.tagName === "dd").textContent, "extension-deadbeefcafef00d");
+  const proposalField = findElement(runDetails, (node) => node.tagName === "dt" && node.textContent === "Proposal").parentElement;
+  assert.equal(findElement(proposalField, (node) => node.tagName === "dd").textContent, "prop-123");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // A "get prompt" result is a list of role-tagged messages, not the tool-shaped result every
+  // other operation produces - it must render as readable message text, not the same raw JSON
+  // block a tool result falls back to.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionRuns: async () => ({
+      runs: [
+        {
+          run_id: "run-prompt", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:32:00.000Z",
+          result: { messages: [{ role: "user", content: { type: "text", text: "Summarize today." } }] },
+        },
+        {
+          run_id: "run-tool", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:33:00.000Z",
+          result: { content: [{ type: "text", text: "72F and sunny" }] },
+        },
+      ],
+    }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  const promptText = findElement(container, (node) => node.tagName === "p" && node.textContent === "user: Summarize today.");
+  assert.ok(promptText, "a prompt result must render as role-labeled message text");
+
+  const rawFallback = findElement(container, (node) => node.tagName === "p" && node.textContent.includes("72F and sunny"));
+  assert.ok(rawFallback, "a tool-shaped result must still fall back to the raw JSON block");
+  assert.ok(rawFallback.textContent.startsWith("{"), "the fallback must be the raw JSON result, not reformatted as a message");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
 
 const agentProfile = {
   profile_id: "researcher",
@@ -738,7 +1119,8 @@ function createElement(tagName) {
       for (const child of children) this.appendChild(child);
     },
     setAttribute(name, value) { this[name] = value; },
-    focus() { this.focused = true; },
+    scrollTop: 0,
+    focus() { this.focused = true; if (globalThis.document) globalThis.document.activeElement = this; },
     querySelector(selector) {
       if (selector === "#startup-state") return findElement(this, (node) => node.id === "startup-state");
       if (selector === ".label") return findElement(this, (node) => String(node.className).split(" ").includes("label"));
@@ -749,9 +1131,15 @@ function createElement(tagName) {
       if (selector === ".turn-status-label") {
         return findElements(this, (node) => String(node.className).split(" ").includes("turn-status-label"));
       }
+      const dataAttr = /^\[data-([\w-]+)\]$/.exec(selector);
+      if (dataAttr) {
+        const key = dataAttr[1].replace(/-([a-z])/g, (_, letter) => letter.toUpperCase());
+        return findElements(this, (node) => node.dataset && Object.prototype.hasOwnProperty.call(node.dataset, key));
+      }
       return [];
     },
   };
+  Object.defineProperty(element, "childNodes", { get() { return this.children; } });
   element.classList = {
     toggle(className, enabled) {
       const classes = new Set(String(element.className).split(" ").filter(Boolean));
@@ -2260,6 +2648,21 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
 }
 
 {
+  // A refused delete must surface the backend's reason too, not just a thrown error.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async () => ({
+      status: "failure",
+      execution: { error: "skill is referenced by an enabled agent" },
+    }),
+  });
+  await controller.removeSkill("notes");
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.detailError.includes("referenced by an enabled agent"));
+  assert.notEqual(snapshot.notice, "Skill removed.");
+}
+
+{
   // Operator-skill ownership is decided by provenance: these skills carry external trust.
   const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
   const editorAt = panel.indexOf('appendText(editor, "Edit skill"');
@@ -2267,4 +2670,419 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
   const guard = panel.slice(panel.lastIndexOf("if (detail.family === \"skill\"", editorAt), editorAt);
   assert.ok(guard.includes("provenance"), "skill editing must gate on provenance");
   assert.ok(!guard.includes('trust === "operator"'), "operator skills do not carry operator trust");
+}
+
+{
+  // An operator can add an MCP connection without hand-editing YAML: the same governed
+  // capability path as skills, not a direct write.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => {
+      proposals.push(request);
+      return { status: "success" };
+    },
+  });
+  await controller.addMcpConnection({ localId: "weather", name: "Weather", url: "https://weather.example.test/mcp" });
+  assert.equal(proposals[0].capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    family: "mcp",
+    local_id: "weather",
+    name: "Weather",
+    version: "1.0.0",
+    definition: { transport: "streamable_http", url: "https://weather.example.test/mcp" },
+  });
+  assert.equal(controller.snapshot().notice, "MCP connection added.");
+
+  await controller.removeMcpConnection("weather");
+  assert.equal(proposals[1].capabilityId, "extension-definition-delete");
+  assert.deepEqual(proposals[1].actionArguments, { family: "mcp", local_id: "weather" });
+  assert.equal(controller.snapshot().selectedExtensionId, "");
+}
+
+{
+  // An operator can scope a new connection to specific tools/resources/prompts without
+  // sending an empty allowlist, which the backend would treat as "allow nothing" rather
+  // than "no restriction".
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addMcpConnection({
+    localId: "weather",
+    name: "Weather",
+    url: "https://weather.example.test/mcp",
+    toolAllowlist: "get_forecast, get_alerts ,",
+    resourceAllowlist: "",
+    promptAllowlist: "summarize",
+  });
+  assert.deepEqual(proposals[0].actionArguments.definition, {
+    transport: "streamable_http",
+    url: "https://weather.example.test/mcp",
+    tool_allowlist: ["get_forecast", "get_alerts"],
+    prompt_allowlist: ["summarize"],
+  }, "a blank allowlist field must be omitted, not sent as an empty array");
+}
+
+assert.deepEqual(parseAllowlist("a, b ,  c"), ["a", "b", "c"]);
+assert.deepEqual(parseAllowlist(""), []);
+assert.deepEqual(parseAllowlist(null), []);
+assert.deepEqual(parseAllowlist("a,,b"), ["a", "b"], "an empty item between commas must be dropped");
+
+assert.deepEqual(parseCommandLines("python3\n-m\nscripts.changelog"), ["python3", "-m", "scripts.changelog"]);
+assert.deepEqual(parseCommandLines(""), []);
+assert.deepEqual(parseCommandLines(null), []);
+assert.deepEqual(parseCommandLines("python3\n\n-m\n"), ["python3", "-m"], "a blank line between tokens must be dropped");
+
+{
+  // An operator can add a governed local tool without hand-editing YAML, the same governed
+  // capability path already used for MCP connections and skills.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addLocalTool({
+    localId: "changelog-writer",
+    name: "Changelog writer",
+    command: "python3\n-m\nscripts.changelog",
+    argvAllowlist: "python3",
+    envPassthrough: "",
+    workingRoot: "data",
+  });
+  assert.equal(proposals[0].capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    family: "tool",
+    local_id: "changelog-writer",
+    name: "Changelog writer",
+    version: "1.0.0",
+    definition: {
+      command: ["python3", "-m", "scripts.changelog"],
+      process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
+    },
+  });
+  assert.equal(controller.snapshot().notice, "Local tool added.");
+
+  await controller.removeLocalTool("changelog-writer");
+  assert.equal(proposals[1].capabilityId, "extension-definition-delete");
+  assert.deepEqual(proposals[1].actionArguments, { family: "tool", local_id: "changelog-writer" });
+  assert.equal(controller.snapshot().selectedExtensionId, "");
+}
+
+{
+  // A tool always registers as privileged_execution, and boundaries.py refuses a
+  // privileged_execution capability whose process boundary declares subprocess: false - so
+  // subprocess is not an operator choice offered by the form, and a caller cannot flip it to
+  // false either, since addLocalTool never reads a subprocess argument at all.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addLocalTool({
+    localId: "changelog-writer", name: "Changelog writer", command: "python3",
+    argvAllowlist: "python3", workingRoot: "data", subprocess: false,
+  });
+  assert.equal(proposals[0].actionArguments.definition.process.subprocess, true, "subprocess must always be true regardless of caller input");
+}
+
+{
+  // A malformed tool ID must never reach the backend.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addLocalTool({ localId: "Not A Valid Id!", name: "Bad", command: "python3", argvAllowlist: "python3", workingRoot: "data" });
+  assert.equal(proposals.length, 0, "a malformed tool ID must not reach the backend");
+  assert.ok(controller.snapshot().addToolError.includes("Tool ID"));
+}
+
+{
+  // A refused tool delete must surface the backend's reason, not claim success.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async () => ({ status: "failure", execution: { error: "tool is referenced by an enabled agent" } }),
+  });
+  await controller.removeLocalTool("changelog-writer");
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.detailError.includes("referenced by an enabled agent"));
+  assert.notEqual(snapshot.notice, "Local tool removed.");
+}
+
+assert.deepEqual(
+  formatPromptMessages({
+    messages: [
+      { role: "user", content: { type: "text", text: "What changed?" } },
+      { role: "assistant", content: { type: "text", text: "Nothing yet." } },
+    ],
+  }),
+  [{ role: "user", text: "What changed?" }, { role: "assistant", text: "Nothing yet." }],
+);
+assert.equal(formatPromptMessages({ content: [{ type: "text", text: "tool output" }] }), null, "a tool-shaped result has no messages array and must not be misread as a prompt result");
+assert.equal(formatPromptMessages({ messages: [] }), null, "an empty messages array is not a usable prompt result");
+assert.equal(formatPromptMessages({ messages: [{ role: "user", content: { type: "image", data: "..." } }] }), null, "non-text prompt content must fall back to raw JSON rather than being silently dropped");
+assert.equal(formatPromptMessages(null), null);
+
+{
+  // A refused connection delete must surface the backend's reason, not claim success.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async () => ({
+      status: "failure",
+      execution: { error: "connection is referenced by an enabled agent" },
+    }),
+  });
+  await controller.removeMcpConnection("weather");
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.detailError.includes("referenced by an enabled agent"));
+  assert.notEqual(snapshot.notice, "MCP connection removed.");
+}
+
+{
+  // A malformed connection ID must never reach the backend.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addMcpConnection({ localId: "Not A Valid Id!", name: "Bad", url: "https://x.test/mcp" });
+  assert.equal(proposals.length, 0, "an invalid connection id must not be proposed");
+  assert.match(controller.snapshot().addConnectionError, /Connection ID/);
+}
+
+{
+  // A refused add must surface the backend's reason, not claim success.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async () => ({
+      status: "failure",
+      execution: { error: "MCP definition has unknown fields: bogus" },
+    }),
+  });
+  await controller.addMcpConnection({ localId: "bad", name: "Bad", url: "https://x.test/mcp" });
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.addConnectionError.includes("unknown fields"));
+  assert.notEqual(snapshot.notice, "MCP connection added.");
+}
+
+{
+  // MCP connection ownership is decided by provenance, the same rule as skills.
+  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+  const removeAt = panel.indexOf('remove.textContent = "Remove connection"');
+  assert.ok(removeAt > 0, "the remove-connection control must exist");
+  const guard = panel.slice(panel.lastIndexOf("if (isOperatorOwnedProvenance(detail))", removeAt), removeAt);
+  assert.ok(guard.includes("isOperatorOwnedProvenance"), "connection removal must gate on provenance");
+}
+
+{
+  // Local tool ownership is decided by provenance, the same rule as MCP connections and skills.
+  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+  const removeAt = panel.indexOf('remove.textContent = "Remove tool"');
+  assert.ok(removeAt > 0, "the remove-tool control must exist");
+  const guard = panel.slice(panel.lastIndexOf('if (detail.family === "tool"', removeAt), removeAt);
+  assert.ok(guard.includes("isOperatorOwnedProvenance"), "tool removal must gate on provenance");
+}
+
+{
+  // The Add MCP Connection control must render as a real, human-labeled form, not raw
+  // JSON, and its submit must reach the governed capability with typed arguments.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    proposeAction: async (request) => {
+      proposals.push(request);
+      return { status: "success" };
+    },
+  });
+  await panel.open();
+
+  const form = findElement(container, (node) => node.className === "extensions-add-connection");
+  assert.ok(form, "the Add MCP connection form must render");
+  const [name, localId, url, toolAllowlist, resourceAllowlist, promptAllowlist] = findElements(
+    form,
+    (node) => node.tagName === "input",
+  );
+  assert.equal(name.placeholder, "Display name");
+  assert.equal(localId.placeholder, "Connection ID (e.g. weather)");
+  assert.equal(url.placeholder, "https://server.example/mcp");
+  assert.equal(toolAllowlist.placeholder, "Allowed tools (comma-separated, optional)");
+  assert.equal(resourceAllowlist.placeholder, "Allowed resources (comma-separated, optional)");
+  assert.equal(promptAllowlist.placeholder, "Allowed prompts (comma-separated, optional)");
+  const submit = findElement(form, (node) => node.tagName === "button" && node.textContent === "Add connection");
+  assert.ok(submit, "the form must offer an Add connection control");
+
+  name.value = "Weather";
+  localId.value = "weather";
+  url.value = "https://weather.example.test/mcp";
+  toolAllowlist.value = "get_forecast";
+  await form.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0]?.actionArguments, {
+    family: "mcp",
+    local_id: "weather",
+    name: "Weather",
+    version: "1.0.0",
+    definition: {
+      transport: "streamable_http",
+      url: "https://weather.example.test/mcp",
+      tool_allowlist: ["get_forecast"],
+    },
+  });
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // The Add Local Tool control must render as a real, human-labeled form, not raw JSON,
+  // and its submit must reach the governed capability with typed, argv-shaped arguments.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    proposeAction: async (request) => {
+      proposals.push(request);
+      return { status: "success" };
+    },
+  });
+  await panel.open();
+
+  const form = findElement(container, (node) => node.className === "extensions-add-tool");
+  assert.ok(form, "the Add Local Tool form must render");
+  const name = findElement(form, (node) => node.placeholder === "Display name");
+  const localId = findElement(form, (node) => node.placeholder === "Tool ID (e.g. changelog-writer)");
+  const command = findElement(form, (node) => node.tagName === "textarea");
+  const argvAllowlist = findElement(form, (node) => node.placeholder === "Allowed executable (comma-separated, e.g. python3)");
+  const workingRoot = findElement(form, (node) => node.tagName === "select");
+  assert.ok(name && localId && command && argvAllowlist && workingRoot, "the form must expose command, argv allowlist, and working root controls");
+  const submit = findElement(form, (node) => node.tagName === "button" && node.textContent === "Add tool");
+  assert.ok(submit, "the form must offer an Add tool control");
+
+  name.value = "Changelog writer";
+  localId.value = "changelog-writer";
+  command.value = "python3\n-m\nscripts.changelog";
+  argvAllowlist.value = "python3";
+  workingRoot.value = "data";
+  await form.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0]?.actionArguments, {
+    family: "tool",
+    local_id: "changelog-writer",
+    name: "Changelog writer",
+    version: "1.0.0",
+    definition: {
+      command: ["python3", "-m", "scripts.changelog"],
+      process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
+    },
+  });
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // An operator can import a brand-new skill without hand-editing YAML, distinct from
+  // saveSkill's edit-existing path so its error/notice do not land in the wrong place.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => {
+      proposals.push(request);
+      return { status: "success" };
+    },
+  });
+  await controller.importSkill("changelog-writer", "---\nname: Changelog Writer\n---\nbody");
+  assert.equal(proposals[0].capabilityId, "extension-skill-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    local_id: "changelog-writer",
+    body: "---\nname: Changelog Writer\n---\nbody",
+  });
+  assert.equal(controller.snapshot().notice, "Skill imported.");
+}
+
+{
+  // A malformed skill ID must never reach the backend.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.importSkill("Not A Valid Id!", "---\nname: Bad\n---\nbody");
+  assert.equal(proposals.length, 0, "an invalid skill id must not be proposed");
+  assert.match(controller.snapshot().importSkillError, /Skill ID/);
+}
+
+{
+  // A refused import must surface the backend's reason, not claim success.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async () => ({
+      status: "failure",
+      execution: { error: "skill declares an authority-bearing field" },
+    }),
+  });
+  await controller.importSkill("rogue", "---\nname: rogue\n---\nbody");
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.importSkillError.includes("authority-bearing"));
+  assert.notEqual(snapshot.notice, "Skill imported.");
+}
+
+{
+  // The Import Skill control must render as a real form, not raw JSON, and its submit
+  // must reach the governed capability with typed arguments.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    proposeAction: async (request) => {
+      proposals.push(request);
+      return { status: "success" };
+    },
+  });
+  await panel.open();
+
+  const form = findElement(container, (node) => node.className === "extensions-import-skill");
+  assert.ok(form, "the Import skill form must render");
+  const localId = findElement(form, (node) => node.tagName === "input");
+  const body = findElement(form, (node) => node.tagName === "textarea");
+  assert.equal(localId.placeholder, "Skill ID (e.g. changelog-writer)");
+  assert.ok(body.placeholder.includes("name:"));
+  const submit = findElement(form, (node) => node.tagName === "button" && node.textContent === "Import skill");
+  assert.ok(submit, "the form must offer an Import skill control");
+
+  localId.value = "changelog-writer";
+  body.value = "---\nname: Changelog Writer\n---\nbody";
+  await form.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.capabilityId, "extension-skill-write");
+  assert.deepEqual(proposals[0]?.actionArguments, {
+    local_id: "changelog-writer",
+    body: "---\nname: Changelog Writer\n---\nbody",
+  });
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
 }

@@ -33,5 +33,6 @@ MCP definitions may use stdio (with `command` and `process`) or streamable HTTP
 (with `url`). `credential_ref` resolves an application-owned credential: HTTP
 uses a bearer authorization header, while stdio uses an explicit environment
 variable mapping through `env_passthrough`. MCP definitions may declare OAuth
-authorization-code configuration; desktop/native OAuth connection flow remains
-ADR 0006 follow-up work.
+authorization-code configuration; the Extensions panel drives the desktop/native
+authorization flow (status, authorize, code exchange) without ever handling the
+secret directly.
