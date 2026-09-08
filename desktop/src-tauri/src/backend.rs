@@ -1087,6 +1087,28 @@ pub fn write_extension_credential(client: &Client, base_url: &str, extension_id:
     memory_response(operation, response)
 }
 
+pub fn get_extension_oauth(client: &Client, base_url: &str, extension_id: &str) -> Result<String, String> {
+    let operation = "GET /extensions/{extension_id}/oauth";
+    let response = client.get(format!("{base_url}/extensions/{extension_id}/oauth")).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn start_extension_oauth(client: &Client, base_url: &str, extension_id: &str) -> Result<String, String> {
+    let operation = "POST /extensions/{extension_id}/oauth/authorize";
+    let response = client.post(format!("{base_url}/extensions/{extension_id}/oauth/authorize")).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn complete_extension_oauth(client: &Client, base_url: &str, extension_id: &str, code: &str, state: &str) -> Result<String, String> {
+    let operation = "POST /extensions/{extension_id}/oauth/complete";
+    let response = client.post(format!("{base_url}/extensions/{extension_id}/oauth/complete"))
+        .json(&json!({"code": code, "state": state})).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
     let response = client
         .post(format!("{base_url}/session/close"))

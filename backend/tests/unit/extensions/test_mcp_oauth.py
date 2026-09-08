@@ -10,6 +10,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 from backend.app.extensions.mcp import McpConnectionDefinition
 from backend.app.extensions.mcp_oauth import (
     McpOAuthConfig,
@@ -513,3 +514,40 @@ class TestMcpCredentialResolution:
         })
         resolved = self._service(store).mcp_credentials(definition, "conn")
         assert resolved == {"Authorization": "Bearer test-access-token"}
+
+
+class TestOAuthDefinitionsAreLoadable:
+    """An oauth block must survive the definition parser, or the field is unusable."""
+
+    def _manifest(self, oauth: dict[str, Any]) -> Any:
+        from backend.app.extensions.discovery import parse_definition_manifest
+
+        document = yaml.safe_dump({
+            "id": "conn",
+            "name": "Connection",
+            "version": "1.0.0",
+            "definition": {
+                "transport": "streamable_http",
+                "url": "https://mcp.example.test/mcp",
+                "oauth": oauth,
+            },
+        })
+        return parse_definition_manifest("mcp", document, "s", "data/extensions", "operator")
+
+    def test_endpoint_urls_are_not_treated_as_secrets(self) -> None:
+        manifest = self._manifest({
+            "client_id": "c",
+            "authorization_url": "https://auth.example.test/authorize",
+            "token_url": "https://auth.example.test/token",
+        })
+        assert manifest.definition["oauth"]["token_url"] == "https://auth.example.test/token"
+        McpConnectionDefinition.from_mapping("conn", manifest.definition)
+
+    def test_an_inline_client_secret_is_still_refused(self) -> None:
+        with pytest.raises(ValueError, match="secret-bearing field"):
+            self._manifest({
+                "client_id": "c",
+                "client_secret": "hunter2",
+                "authorization_url": "https://auth.example.test/authorize",
+                "token_url": "https://auth.example.test/token",
+            })

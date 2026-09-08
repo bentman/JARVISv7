@@ -140,6 +140,19 @@ which capability was parked. One capability runs per turn; a second round is an 
 ADR 0007 owns. An extension that blocks for operator input is refused inside a turn and directed to
 the Extensions panel rather than stalling the turn until its deadline.
 
+The desktop drives the OAuth connection flow without ever handling a secret. `GET`, `authorize`,
+and `complete` routes under `/extensions/{id}/oauth` report configuration and authorization state,
+return the authorization URL, and exchange the code. The verifier and state stay on the backend, and
+a completion whose state does not match the request it answers is refused. The Extensions panel
+shows authorization state, opens the authorization page, and accepts the returned code. The MCP
+credential form no longer sits behind discovered operations, so a server that demands authorization
+before it will answer discovery can still be credentialed. Cancelling a run is confirmed.
+
+An OAuth block could not previously be declared at all: the definition parser's secret-key heuristic
+rejected `authorization_url` and `token_url`. Keys ending in `_url` name a public endpoint and are
+no longer treated as secret-bearing, while an inline `client_secret` is still refused and must use a
+credential reference.
+
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
 ## Confirmation
@@ -236,7 +249,7 @@ Validation evidence:
 - `backend/tests/integration/test_mcp_http_auth.py`
 
 Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1521 passed.
+- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1523 passed.
 - `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 25 passed, including actual local MCP and ACP SDK peers and a bearer-protected streamable-HTTP MCP server.
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
@@ -253,6 +266,6 @@ an OS sandbox.
 - Skills and tools: keep skills as procedural knowledge, not authority. Desktop must support skill discovery, body inspection, requested-capability visibility, enable/disable/retire state, import/edit of operator-owned skills, and clear validation errors. Skill scripts may execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
 - Hooks and plugins: keep hooks deterministic and event-scoped with visible enablement, errors, and run evidence. Plugin installation remains local-bundle installation unless a later ADR approves remote plugin sources or arbitrary install scripts.
 - Assistant integration: implemented. The turn engine selects eligible extension operations natively, requests conversational approval, executes, cancels, and returns proposal, decision, approval, execution, and cancellation evidence into the same turn artifacts. Mid-turn structured elicitation stays bounded out: its answer path is HTTP-only and cannot reach a voice turn, so an extension needing operator input is refused in-turn and directed to the Extensions panel.
-- Desktop acceptance: the Extensions panel must work as a control surface, not only a catalog. Required behavior includes list/detail split, per-extension runtime detail, operation forms from schemas, run progress, approval/input handling, cancellation, credential/OAuth flow, load errors, and stable behavior in the native desktop on `windows-amd64`.
+- Desktop acceptance: list/detail split, per-extension runtime detail, schema operation forms, run progress, approval and elicitation handling, confirmed cancellation, credential entry, the OAuth connect flow, and load errors are implemented and covered by `desktop/tests/static.test.mjs`. Native desktop behavior on `windows-amd64` remains unverified; `docs/helpers/extensions-desktop-acceptance.md` is the operator checklist that produces that evidence.
 - Agent and ACP agent interoperability: do not define a separate extension-owned agent protocol. ADR 0007 owns agent profiles, external-agent defaults, and Agent Client Protocol v2 inbound/outbound behavior.
 - Validation: add mocked SDK tests, local stdio MCP tests, streamable-HTTP MCP tests with auth, extension-runtime tests, and native desktop checks before marking the ADR implemented. Unit and integration tests prove local contracts; they do not prove each external provider or executable works on an operator machine.

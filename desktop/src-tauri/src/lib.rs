@@ -23,6 +23,9 @@ use backend::{
     invoke_extension as backend_invoke_extension,
     answer_extension_input as backend_answer_extension_input,
     write_extension_credential as backend_write_extension_credential,
+    get_extension_oauth as backend_get_extension_oauth,
+    start_extension_oauth as backend_start_extension_oauth,
+    complete_extension_oauth as backend_complete_extension_oauth,
     list_agents as backend_list_agents,
     get_agent as backend_get_agent,
     invoke_agent as backend_invoke_agent,
@@ -745,6 +748,24 @@ fn write_extension_credential(extension_id: String, name: String, secret: String
 }
 
 #[tauri::command]
+fn get_extension_oauth(extension_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_get_extension_oauth(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?)
+}
+
+#[tauri::command]
+fn start_extension_oauth(extension_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_start_extension_oauth(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?)
+}
+
+#[tauri::command]
+fn complete_extension_oauth(extension_id: String, code: String, oauth_state: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    if code.trim().is_empty() || oauth_state.trim().is_empty() {
+        return Err("authorization code and state are required".to_string());
+    }
+    backend_complete_extension_oauth(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?, code.trim(), oauth_state.trim())
+}
+
+#[tauri::command]
 fn list_agents(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_list_agents(&state.http_client, &base_url)
@@ -957,6 +978,9 @@ pub fn run() {
             invoke_extension,
             answer_extension_input,
             write_extension_credential,
+            get_extension_oauth,
+            start_extension_oauth,
+            complete_extension_oauth,
             list_agents,
             get_agent,
             invoke_agent,

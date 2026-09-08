@@ -61,6 +61,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     notice: "",
     runtime: null,
     runs: [],
+    oauth: null,
+    oauthStatus: null,
   };
   let catalogSequence = 0;
   let errorsSequence = 0;
@@ -130,6 +132,11 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       state.detail = payload;
       if (handlers.getExtensionRuntime) state.runtime = await handlers.getExtensionRuntime(extensionId);
       if (handlers.getExtensionRuns) state.runs = (await handlers.getExtensionRuns())?.runs || [];
+      state.oauth = null;
+      state.oauthStatus = null;
+      if (handlers.getExtensionOauth && payload?.family === "mcp") {
+        try { state.oauthStatus = await handlers.getExtensionOauth(extensionId); } catch { state.oauthStatus = null; }
+      }
       return payload;
     } catch (error) {
       if (request !== detailSequence) return null;
@@ -167,6 +174,41 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  async function startOauth(extensionId) {
+    if (!handlers.startExtensionOauth) return;
+    try {
+      const started = await handlers.startExtensionOauth(extensionId);
+      state.oauth = { extensionId, state: started?.state || "", url: started?.authorization_url || "" };
+      state.notice = "Open the authorization URL, then paste the code below.";
+    } catch (error) {
+      state.detailError = errorMessage(error, "Authorization could not be started.");
+    }
+    emit();
+  }
+
+  async function completeOauth(extensionId, code) {
+    if (!handlers.completeExtensionOauth) return;
+    const pending = state.oauth;
+    if (!pending || pending.extensionId !== extensionId) {
+      state.detailError = "No authorization is in progress for this connection.";
+      emit();
+      return;
+    }
+    try {
+      await handlers.completeExtensionOauth(extensionId, code, pending.state);
+    } catch (error) {
+      state.detailError = errorMessage(error, "Authorization was not completed.");
+      emit();
+      return;
+    }
+    state.oauth = null;
+    state.notice = "Connection authorized.";
+    if (handlers.getExtensionOauth) {
+      try { state.oauthStatus = await handlers.getExtensionOauth(extensionId); } catch { state.oauthStatus = null; }
+    }
+    emit();
+  }
+
   async function refreshRuns() {
     if (!handlers.getExtensionRuns) return;
     state.runs = (await handlers.getExtensionRuns())?.runs || [];
@@ -178,7 +220,11 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     await refreshRuns();
   }
 
-  async function cancel(proposalId) {
+  async function cancel(proposalId, confirmCancel) {
+    // Cancelling a run is not reversible, so it is confirmed the way the actions panel
+    // confirms its own cancellations.
+    const confirmed = confirmCancel ? await confirmCancel(`Cancel run ${proposalId}?`) : true;
+    if (!confirmed) return;
     await handlers.cancelAction(proposalId);
     await refreshRuns();
   }
@@ -264,6 +310,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     invoke,
     answer,
     credential,
+    startOauth,
+    completeOauth,
     refreshRuns,
     decide,
     cancel,
@@ -433,9 +481,9 @@ function renderDetail(state) {
   }
   section.appendChild(buttons);
 
+  const runtime = document.createElement("div");
+  runtime.className = "extensions-requested";
   if (state.runtime?.operations?.length) {
-    const runtime = document.createElement("div");
-    runtime.className = "extensions-requested";
     appendText(runtime, "Operations", "h4");
     for (const operation of state.runtime.operations) {
       const form = document.createElement("form");
@@ -480,16 +528,75 @@ function renderDetail(state) {
       });
       runtime.appendChild(form);
     }
-    if (detail.family === "mcp") {
-      const credential = document.createElement("form");
-      appendText(credential, "Credential", "strong");
-      const name = document.createElement("input"); name.placeholder = "name"; name.required = true;
-      const secret = document.createElement("input"); secret.type = "password"; secret.placeholder = "secret"; secret.required = true;
-      const save = document.createElement("button"); save.type = "submit"; save.textContent = "Store credential";
-      credential.append(name, secret, save);
-      credential.addEventListener("submit", (event) => { event.preventDefault(); state.actions.credential(detail.extension_id, name.value, secret.value); secret.value = ""; });
-      runtime.appendChild(credential);
+  }
+  if (detail.family === "mcp") {
+    // A server that demands authorization before it will answer discovery has no
+    // operations yet, so the credential form must not depend on having any.
+    const credential = document.createElement("form");
+    appendText(credential, "Credential", "strong");
+    const name = document.createElement("input");
+    name.placeholder = "name";
+    name.required = true;
+    name.dataset.draftKey = `${detail.extension_id}:credential:name`;
+    const secret = document.createElement("input");
+    secret.type = "password";
+    secret.placeholder = "secret";
+    secret.required = true;
+    const save = document.createElement("button");
+    save.type = "submit";
+    save.textContent = "Store credential";
+    credential.append(name, secret, save);
+    credential.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.actions.credential(detail.extension_id, name.value, secret.value);
+      secret.value = "";
+    });
+    runtime.appendChild(credential);
+    const health = state.runtime?.snapshot?.health;
+    if (health) {
+      appendText(runtime, `Connection health: ${health}`, "p");
     }
+    if (state.oauthStatus?.configured) {
+      const oauth = document.createElement("div");
+      appendText(oauth, "OAuth", "strong");
+      appendText(
+        oauth,
+        state.oauthStatus.authorized ? "Authorized." : "Not authorized.",
+        "p",
+      );
+      if (state.oauth?.extensionId === detail.extension_id) {
+        // The backend holds the verifier and state; the operator only carries the code back.
+        const link = document.createElement("a");
+        link.href = state.oauth.url;
+        link.textContent = "Open authorization page";
+        link.target = "_blank";
+        link.rel = "noreferrer noopener";
+        oauth.appendChild(link);
+        const finish = document.createElement("form");
+        const code = document.createElement("input");
+        code.placeholder = "authorization code";
+        code.required = true;
+        const submit = document.createElement("button");
+        submit.type = "submit";
+        submit.textContent = "Complete authorization";
+        finish.append(code, submit);
+        finish.addEventListener("submit", (event) => {
+          event.preventDefault();
+          state.actions.completeOauth(detail.extension_id, code.value);
+        });
+        oauth.appendChild(finish);
+      } else {
+        const connect = document.createElement("button");
+        connect.type = "button";
+        connect.textContent = state.oauthStatus.authorized ? "Reconnect" : "Connect";
+        connect.disabled = state.mutationPending;
+        connect.addEventListener("click", () => state.actions.startOauth(detail.extension_id));
+        oauth.appendChild(connect);
+      }
+      runtime.appendChild(oauth);
+    }
+  }
+  if (runtime.childNodes.length) {
     section.appendChild(runtime);
   }
   const runs = state.runs.filter((run) => run.extension_id === detail.extension_id);
@@ -620,6 +727,7 @@ function renderPanel(container, state, actions) {
 export function createExtensionsPanel(container, handlers, options = {}) {
   let open = false;
   let controller;
+  const confirmCancel = options.confirmCancel || ((message) => window.confirm(message));
   const actions = {
     close: () => close(),
     selectExtension: (extensionId) => controller.selectExtension(extensionId),
@@ -629,8 +737,10 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),
     answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
     credential: (extensionId, name, secret) => controller.credential(extensionId, name, secret),
+    startOauth: (extensionId) => controller.startOauth(extensionId),
+    completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
-    cancel: (proposalId) => controller.cancel(proposalId),
+    cancel: (proposalId) => controller.cancel(proposalId, confirmCancel),
     notice: (message) => controller.notice(message),
   };
   controller = createExtensionsPanelController(handlers, (state) => {

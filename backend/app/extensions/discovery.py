@@ -199,7 +199,10 @@ def _reject_secret_keys(value: Any) -> None:
         for key, child in value.items():
             if not isinstance(key, str):
                 raise ValueError("definition keys must be strings")
-            if _SECRET_KEY.search(key) and not key.endswith("_ref"):
+            # A "_url" names a public endpoint and a "_ref" names a stored secret by
+            # reference; neither carries the secret itself. Without this, an OAuth block
+            # could never declare authorization_url or token_url.
+            if _SECRET_KEY.search(key) and not key.endswith(("_ref", "_url")):
                 raise ValueError(f"secret-bearing field is not allowed: {key}")
             _reject_secret_keys(child)
     elif isinstance(value, list):

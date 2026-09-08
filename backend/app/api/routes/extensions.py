@@ -44,6 +44,12 @@ class ExtensionCredential(BaseModel):
     secret: str = Field(min_length=1, max_length=8000)
 
 
+class ExtensionOAuthCompletion(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    code: str = Field(min_length=1, max_length=4000)
+    state: str = Field(min_length=1, max_length=512)
+
+
 def get_runtime(request: Request):
     service = getattr(request.app.state.jarvis_state, "extension_runtime", None)
     if service is None:
@@ -85,6 +91,32 @@ def write_extension_credential(extension_id: str, payload: ExtensionCredential, 
         return {"stored": True}
     except ValueError as exc:
         raise HTTPException(422, "invalid extension credential") from exc
+
+
+@router.get("/{extension_id}/oauth")
+def read_extension_oauth(extension_id: str, service=Depends(get_runtime)):
+    try:
+        return service.oauth_status(extension_id)
+    except ValueError as exc:
+        raise HTTPException(404, "unknown MCP connection") from exc
+
+
+@router.post("/{extension_id}/oauth/authorize")
+def start_extension_oauth(extension_id: str, service=Depends(get_runtime)):
+    try:
+        return service.oauth_authorize(extension_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/{extension_id}/oauth/complete")
+def complete_extension_oauth(
+    extension_id: str, payload: ExtensionOAuthCompletion, service=Depends(get_runtime)
+):
+    try:
+        return service.oauth_complete(extension_id, payload.code, payload.state)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 def _execute(operation: Callable[[], T]) -> T:

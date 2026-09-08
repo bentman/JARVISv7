@@ -148,6 +148,11 @@ export function createApiClient(invoke) {
       invokeMemory(invoke, "answer_extension_input", { runId, requestId, answer }),
     writeExtensionCredential: (extensionId, name, secret) =>
       invokeMemory(invoke, "write_extension_credential", { extensionId, name, secret }),
+    getExtensionOauth: (extensionId) => invokeMemory(invoke, "get_extension_oauth", { extensionId }),
+    startExtensionOauth: (extensionId) =>
+      invokeMemory(invoke, "start_extension_oauth", { extensionId }),
+    completeExtensionOauth: (extensionId, code, oauthState) =>
+      invokeMemory(invoke, "complete_extension_oauth", { extensionId, code, oauthState }),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
     cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
     openSearchSource: (url) => invoke("open_search_source", { url }),

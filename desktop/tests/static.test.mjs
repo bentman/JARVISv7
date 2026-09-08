@@ -2104,3 +2104,91 @@ assert.ok(!extensionsPanel.includes('textContent = "Close"'), "advanced Extensio
 assert.ok(!agentsPanel.includes('textContent = "Close"'), "advanced Agents must rely on the dialog Close button");
 
 console.log("desktop static, advanced-control, memory, action, extension, and agent behavior checks passed");
+
+{
+  // OAuth: the backend holds the verifier and state; the desktop carries only the code back.
+  const calls = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
+    getExtensionRuns: async () => ({ runs: [] }),
+    getExtensionOauth: async () => ({ configured: true, authorized: false }),
+    startExtensionOauth: async (extensionId) => {
+      calls.push(["start", extensionId]);
+      return { authorization_url: "https://auth.test/authorize?x=1", state: "server-state" };
+    },
+    completeExtensionOauth: async (extensionId, code, oauthState) => {
+      calls.push(["complete", extensionId, code, oauthState]);
+      return { authorized: true };
+    },
+  });
+  await controller.selectExtension("mcp:probe");
+  assert.equal(controller.snapshot().oauthStatus.configured, true);
+
+  await controller.startOauth("mcp:probe");
+  const pending = controller.snapshot().oauth;
+  assert.equal(pending.url, "https://auth.test/authorize?x=1");
+  assert.equal(pending.state, "server-state");
+
+  await controller.completeOauth("mcp:probe", "the-code");
+  assert.deepEqual(calls, [
+    ["start", "mcp:probe"],
+    ["complete", "mcp:probe", "the-code", "server-state"],
+  ]);
+  assert.equal(controller.snapshot().oauth, null);
+}
+
+{
+  // Completing without a started flow must not invent a state value.
+  let completed = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    completeExtensionOauth: async () => {
+      completed += 1;
+      return { authorized: true };
+    },
+  });
+  await controller.completeOauth("mcp:probe", "the-code");
+  assert.equal(completed, 0, "no authorization in progress must not reach the backend");
+  assert.ok(controller.snapshot().detailError.includes("No authorization"));
+}
+
+{
+  // Cancelling a run is confirmed, and declining leaves the run alone.
+  let cancelled = 0;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionRuns: async () => ({ runs: [] }),
+    cancelAction: async () => {
+      cancelled += 1;
+    },
+  });
+  await controller.cancel("proposal-1", async () => false);
+  assert.equal(cancelled, 0, "a declined confirmation must not cancel the run");
+  await controller.cancel("proposal-1", async () => true);
+  assert.equal(cancelled, 1);
+}
+
+{
+  // The MCP credential form must not depend on discovered operations: a server that
+  // demands authorization before discovery has none yet.
+  const source = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+  const credentialAt = source.indexOf('appendText(credential, "Credential"');
+  const guardAt = source.indexOf("if (state.runtime?.operations?.length)");
+  assert.ok(credentialAt > 0 && guardAt > 0);
+  const between = source.slice(guardAt, credentialAt);
+  assert.ok(
+    between.includes('if (detail.family === "mcp")'),
+    "the credential form must sit outside the operations guard",
+  );
+}
+
+{
+  const client = readFileSync(new URL("../src/api-client.js", import.meta.url), "utf8");
+  for (const command of ["get_extension_oauth", "start_extension_oauth", "complete_extension_oauth"]) {
+    assert.ok(client.includes(command), `api-client must expose ${command}`);
+  }
+  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+  assert.ok(!panel.includes("code_verifier"), "the desktop must never handle a PKCE verifier");
+}

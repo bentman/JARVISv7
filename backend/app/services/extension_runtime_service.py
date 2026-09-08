@@ -74,6 +74,7 @@ class ExtensionRuntimeService:
         self._operations: dict[str, list[dict[str, Any]]] = {}
         self._errors: dict[str, str] = {}
         self._load_errors: dict[str, str] = {}
+        self._oauth_flows: dict[str, tuple[Any, str]] = {}
         self._lock = threading.RLock()
         self.session_executor: Callable[..., dict[str, Any]] | None = None
         actions.bind_extensions(self.bindings)
@@ -368,6 +369,69 @@ class ExtensionRuntimeService:
             # tool, hook, and plugin contracts are enforced when their operations are built.
             for _ in self._operations_for(manifest):
                 break
+
+    def oauth_status(self, extension_id: str) -> dict[str, Any]:
+        """Report whether an MCP connection is OAuth-configured and currently authorized."""
+        from backend.app.extensions.mcp import McpConnectionDefinition
+        from backend.app.extensions.mcp_oauth import load_oauth_token
+
+        manifest = next(
+            (item for item in self.definitions()
+             if f"{item.family}:{item.local_id}" == extension_id and item.family == "mcp"),
+            None,
+        )
+        if manifest is None:
+            raise ValueError("unknown MCP connection")
+        definition = McpConnectionDefinition.from_mapping(manifest.local_id, manifest.definition)
+        if definition.oauth is None:
+            return {"extension_id": extension_id, "configured": False, "authorized": False}
+        token = load_oauth_token(self.runs.store, manifest.local_id)
+        return {
+            "extension_id": extension_id,
+            "configured": True,
+            "authorized": token is not None and not token.is_expired(),
+            "expires_at": token.expires_at if token else None,
+        }
+
+    def oauth_authorize(self, extension_id: str) -> dict[str, Any]:
+        """Begin an OAuth authorization and return the URL the operator must visit.
+
+        The verifier and state stay on the backend; the desktop only ever sees the URL.
+        """
+        from backend.app.extensions.mcp import McpConnectionDefinition
+        from backend.app.extensions.mcp_oauth import McpOAuthFlow, config_from_definition
+
+        manifest = next(
+            (item for item in self.definitions()
+             if f"{item.family}:{item.local_id}" == extension_id and item.family == "mcp"),
+            None,
+        )
+        if manifest is None:
+            raise ValueError("unknown MCP connection")
+        definition = McpConnectionDefinition.from_mapping(manifest.local_id, manifest.definition)
+        if definition.oauth is None:
+            raise ValueError("this MCP connection is not configured for OAuth")
+        config = config_from_definition(definition.oauth, resource_url=definition.url)
+        flow = McpOAuthFlow(config)
+        url, state = flow.start_authorization()
+        with self._lock:
+            self._oauth_flows[extension_id] = (flow, state)
+        return {"extension_id": extension_id, "authorization_url": url, "state": state}
+
+    def oauth_complete(self, extension_id: str, code: str, state: str) -> dict[str, Any]:
+        """Exchange an authorization code and store the token in the secret store."""
+        from backend.app.extensions.mcp_oauth import save_oauth_token
+
+        with self._lock:
+            pending = self._oauth_flows.pop(extension_id, None)
+        if pending is None:
+            raise ValueError("no authorization is in progress for this connection")
+        flow, expected_state = pending
+        if state != expected_state:
+            raise ValueError("authorization state does not match the request")
+        token = flow.exchange_code(code, state)
+        save_oauth_token(self.runs.store, extension_id.split(":", 1)[1], token)
+        return {"extension_id": extension_id, "authorized": True}
 
     def mcp_credentials(self, definition: Any, local_id: str) -> dict[str, str]:
         """Resolve host-owned credentials for one MCP connection."""
