@@ -17,6 +17,15 @@ class HookRunner:
         self.definitions = definitions
         self._active = threading.local()
 
+    def _append_evidence(self, entry: dict[str, Any]) -> None:
+        # Hook evidence follows the capability service's configured sink, so a host that
+        # redirects action evidence cannot leave hook events writing somewhere else.
+        evidence_dir = getattr(self.actions, "_evidence_dir", None)
+        if evidence_dir is None:
+            append_action_event(entry)
+            return
+        append_action_event(entry, evidence_dir)
+
     def emit(self, event: str, context: dict[str, Any]) -> list[dict[str, Any]]:
         if event not in HOOK_EVENTS:
             raise ValueError("unknown hook event")
@@ -55,7 +64,7 @@ class HookRunner:
                 except Exception:
                     results.append({"hook_id": manifest.local_id, "event": event, "status": "failure"})
             for record in results:
-                append_action_event({"kind": "hook_event", "record": record, **context})
+                self._append_evidence({"kind": "hook_event", "record": record, **context})
             return results
         finally:
             self._active.running = False
