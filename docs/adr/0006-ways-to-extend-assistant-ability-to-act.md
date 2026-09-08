@@ -233,10 +233,11 @@ Validation evidence:
 - `backend/tests/unit/extensions/test_acp_server.py`
 - `backend/tests/unit/extensions/test_mcp_oauth.py`
 - `backend/tests/integration/test_extension_runtime.py`
+- `backend/tests/integration/test_mcp_http_auth.py`
 
 Validation results (linux-amd64):
 - `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1521 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 22 passed, including actual local MCP and ACP SDK peers.
+- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 25 passed, including actual local MCP and ACP SDK peers and a bearer-protected streamable-HTTP MCP server.
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
@@ -248,7 +249,7 @@ an OS sandbox.
 ## Follow-up
 
 - MCP operations: the backend surface is complete. An operator can add, edit, delete, enable, disable, retire, credential, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML, and discovery survives restart. What remains is the desktop control surface for these operations and the interactive OAuth connect flow, which has no route or UI above the flow module.
-- MCP protocol/auth alignment: protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are implemented. What remains is transport-level validation: a streamable-HTTP MCP connection exercised against a live authorization challenge, which no current test covers.
+- MCP protocol/auth alignment: implemented and validated. Protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are covered, including a streamable-HTTP connection exercised against a live bearer-protected server and its 401 challenge.
 - Skills and tools: keep skills as procedural knowledge, not authority. Desktop must support skill discovery, body inspection, requested-capability visibility, enable/disable/retire state, import/edit of operator-owned skills, and clear validation errors. Skill scripts may execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
 - Hooks and plugins: keep hooks deterministic and event-scoped with visible enablement, errors, and run evidence. Plugin installation remains local-bundle installation unless a later ADR approves remote plugin sources or arbitrary install scripts.
 - Assistant integration: implemented. The turn engine selects eligible extension operations natively, requests conversational approval, executes, cancels, and returns proposal, decision, approval, execution, and cancellation evidence into the same turn artifacts. Mid-turn structured elicitation stays bounded out: its answer path is HTTP-only and cannot reach a voice turn, so an extension needing operator input is refused in-turn and directed to the Extensions panel.
