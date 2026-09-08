@@ -38,6 +38,7 @@ The desktop operator layout changes as follows:
 - Resident Voice and Wake remain visible in the right operator sidebar.
 - The existing right-side Memory, Actions, Extensions, and Settings button row is removed.
 - The advanced-control button opens one larger control panel with a left category rail and right detail pane.
+- Each Advanced Controls category presents operator-familiar workflows for its family. Internal registry words such as capability ID, proposal, authorization rule, fingerprint, local ID, and raw definition are hidden by default and appear only in explicit detail/audit views.
 
 The advanced-control panel contains categories for:
 
@@ -121,3 +122,6 @@ Validated on `windows-amd64`:
 
 - Validate the operator desktop in a native visible session on `windows-amd64`: right sidebar startup fit, selector font size, compact Personality metadata, advanced dialog sizing, Extensions list/detail split, single Close control, Escape, backdrop click, and focus return. Report the exact command or manual run path and observable result.
 - Run a native desktop provider-profile smoke test against the running backend: create an editable `openai_compatible` profile with endpoint, model, context window, timeout, and credential; verify save succeeds, the created profile remains selected, and backend validation or storage failures surface as specific operator-readable errors.
+- Operator usability pass: revise Advanced Controls so each category uses familiar task names and controls. Providers use profile and credential language; Memory uses review/confirm/correct/forget language; Actions is an audit/debug view; Extensions owns MCP, skills, tools, hooks, and plugins; Agents owns internal and ACP external agents.
+- Category sequencing: implement one capability family at a time rather than merging all controls into a generic schema renderer. Start with MCP Connections, then Skills, Tools, Hooks, Plugins, and Agents, validating each family before broadening the next.
+- Refresh behavior: preserve scroll position, selected category, selected item, focused field, and draft values across polling, refresh, and operation completion.

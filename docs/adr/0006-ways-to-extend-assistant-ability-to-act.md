@@ -54,11 +54,10 @@ Negative:
 
 ## Implementation
 
-The decision is implemented across the extension catalog, the governed runtime, the MCP
-authorization path, the turn engine's capability selection, and the desktop control surface. The
-ADR stays `Accepted` rather than `Implemented` because its own desktop-acceptance bar names
-`windows-amd64`, and this repository's evidence was produced on `linux-amd64`. Live external-server
-deployment on operator machines is likewise unproven by a local suite.
+This ADR is partially implemented. The backend extension catalog, governed runtime, MCP
+authorization path, turn-engine capability selection, and raw desktop surfaces exist. The operator
+experience is not complete because extension families are still exposed through internal capability
+names and schema forms instead of human-familiar workflows.
 
 Implemented foundations:
 - Operator settings are scoped and classified through `backend/app/core/settings.py`. `backend/app/services/operator_config_service.py` owns the operator field allowlist and secret masking; `backend/app/api/routes/config.py` and `backend/app/api/schemas/config.py` are the route surface over it. Operator writes are allowlisted, and secrets are masked.
@@ -83,7 +82,7 @@ Implemented foundations:
 - Backend API and desktop surfaces exist through `backend/app/api/routes/extensions.py` and `desktop/src/components/extensions-panel.js`, covering catalog discovery, load errors, detail, progressive body disclosure, and state changes.
 
 - `ExtensionRuntimeService` registers extension operations with the shared capability service. Approvals bind a definition fingerprint; changed definitions require a new proposal. `ExtensionRuns` persists run state and marks interrupted work after restart without replaying effects.
-- The desktop exposes invocation, approvals, run progress, cancellation, credentials, and structured elicitation. Approval requests run off the native UI thread so nested input remains usable.
+- The current desktop exposes invocation, approvals, run progress, cancellation, credentials, and structured elicitation through raw extension detail surfaces. Approval requests run off the native UI thread so nested input remains usable, but these controls are implementation-facing and need the operator-familiar follow-up below.
 
 Declarative definitions and their initial tracked defaults are documented in
 `config/extensions/README.md`. The disabled application hook default records
@@ -161,6 +160,16 @@ Operator-owned skills are imported, edited, and removed through `extension-skill
 authority-bearing field is refused with its reason rather than landing on disk, and an application
 skill of the same id is never overwritten. The desktop gates skill editing on provenance, because an
 operator skill is external-trust by design; trust does not indicate ownership.
+
+`extension-credential-write` already executes through its own dedicated route (`POST
+/extensions/{id}/credentials`) with no proposal or approval step at all, so operator-requested
+credential storage was never gated by the capability-console ceremony. `extension-definition-write`
+and `extension-definition-delete` have no dedicated route yet; ADR 0005's Actions panel is still the
+only way to reach them, but that panel no longer labels an `allow` capability `Propose` awaiting
+`approved here` - it now reads `Run`, with nothing implying a decision that never happens. That fixes
+the approval-prompt appearance this ADR's Follow-up calls out; the still-open work is the dedicated
+Add MCP Connection/Edit MCP Connection flow itself, so `extension-definition-write` has a home other
+than the shared Actions panel.
 
 Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
@@ -263,6 +272,10 @@ Validation results (linux-amd64):
 - `npm --prefix desktop test`: PASS.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
 
+Validation results (windows-amd64):
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the `Run`/`Propose` label split in `actions-panel.js` that removes the self-approval appearance from `allow` capabilities, including `extension-definition-write`.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change.
+
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. Live native desktop behavior, remote deployment,
 and other host classes remain unverified. The declared process controls are not
@@ -270,10 +283,26 @@ an OS sandbox.
 
 ## Follow-up
 
-- MCP operations: implemented. An operator can add, edit, delete, enable, disable, retire, credential, OAuth-connect, discover, refresh, inspect health, and invoke MCP resources, prompts, and tools without editing YAML. Discovery stays explicit and governed, discovered items become capability-backed operations only through the shared registry, results remain untrusted context, and tool calls stay approval-gated by effect class.
-- MCP protocol/auth alignment: implemented and validated. Protected-resource metadata discovery, resource-bound tokens, PKCE, encrypted token storage, refresh, and the no-passthrough boundary are covered, including a streamable-HTTP connection exercised against a live bearer-protected server and its 401 challenge.
-- Skills and tools: implemented. Skills remain procedural knowledge; `requested_tools` stays an untrusted claim and an authority-bearing field is refused. The desktop supports discovery, body inspection, enable/disable/retire, import and edit of operator-owned skills, and reports validation errors with their reason. Skill scripts execute only through a tool definition that registers a governed capability with process boundaries, schema, cancellation, and evidence.
-- Hooks and plugins: implemented. Hook events are a closed set, effect classes are matched against the capability a hook invokes, and hook evidence follows the capability service's configured sink. Plugin installation remains local-bundle installation; remote plugin sources and arbitrary install scripts would need a new ADR.
-- Assistant integration: implemented. The turn engine selects eligible extension operations natively, requests conversational approval, executes, cancels, and returns proposal, decision, approval, execution, and cancellation evidence into the same turn artifacts. Mid-turn structured elicitation stays bounded out: its answer path is HTTP-only and cannot reach a voice turn, so an extension needing operator input is refused in-turn and directed to the Extensions panel.
-- Desktop acceptance: list/detail split, per-extension runtime detail, schema operation forms, run progress, approval and elicitation handling, confirmed cancellation, credential entry, the OAuth connect flow, and load errors are implemented and covered by `desktop/tests/static.test.mjs`. Native desktop behavior on `windows-amd64` remains unverified; `docs/helpers/extensions-desktop-acceptance.md` is the operator checklist that produces that evidence.
-- Validation: mocked SDK tests, local stdio MCP tests, streamable-HTTP MCP tests with authorization, and extension-runtime tests all exist and pass. The remaining gap is native desktop behavior on `windows-amd64`, which this host class cannot produce; `docs/helpers/extensions-desktop-acceptance.md` is the operator checklist for it. Unit and integration tests prove local contracts; they do not prove each external provider or executable works on an operator machine.
+Human-familiar extension surfaces:
+- Replace the generic capability-console path with family-specific Advanced Controls sections. Operators should see Add, Edit, Connect, Discover, Run, Disable, Remove, and Retire workflows, not capability IDs such as `extension-definition-write` or raw JSON definition forms.
+- Keep proposal, authorization, revision, fingerprint, and execution records as backend/audit internals. Surface them only in an explicit detail/audit view.
+- Preserve scroll position, selection, focus, and draft form values across refreshes and run polling.
+
+MCP connections:
+- Provide Add MCP Connection and Edit MCP Connection flows with fields for display name, transport, command or URL, allowed tools/resources/prompts, credential type, OAuth configuration, and test/discovery behavior.
+- Show Connect, Reconnect, Disconnect, Discover Tools and Resources, Refresh Health, and Remove as explicit actions on a selected MCP connection.
+- Present discovered tools, resources, and prompts as separate operator concepts. Resources and prompts should be attachable or inspectable; tools should render operation forms from schema with human labels and validation errors.
+- Credential storage already runs with no approval prompt (`POST /extensions/{id}/credentials`), and ADR 0005's Actions panel no longer labels `extension-definition-write`/`extension-definition-delete` as a self-approval ritual. What remains is giving those two capabilities a dedicated Add/Edit MCP Connection home so the Actions panel is no longer the only way to reach them.
+
+Skills and tools:
+- Provide Import Skill, Edit Skill, Remove Skill, Show Instructions, and Requested Capabilities flows for operator-owned skills. Application-owned skills remain read-only.
+- Provide Add Local Tool and Edit Local Tool flows for governed command tools with labeled command, argument, environment, root, timeout, schema, and output settings. Keep scripts executable only through a registered governed tool.
+
+Hooks and plugins:
+- Provide Add Hook and Edit Hook flows organized by event, matcher, handler type, and effect. Show last run, failure, and disable controls in the hook detail view.
+- Provide Install Local Plugin, Inspect Plugin Contents, Enable/Disable, Remove, and Retire flows. Remote plugin sources and arbitrary install scripts remain out of scope unless a later ADR approves them.
+
+Assistant integration and validation:
+- Keep model-selected extension use behind the same backend capability selection and evidence path, but display results to the operator as the named tool/resource/prompt that ran.
+- Update `config/extensions/README.md` so it no longer says desktop/native OAuth is follow-up once the operator flow is actually usable.
+- Validate the revised surfaces with focused backend tests, `npm --prefix desktop test`, `cargo check --manifest-path desktop/src-tauri/Cargo.toml`, and a native visible `windows-amd64` desktop run that exercises the MCP, skill, tool, hook, and plugin workflows.

@@ -1,7 +1,7 @@
 # 0005 - Governed Ability to Act
 
 Date: 2026-09-01
-Status: Implemented
+Status: Accepted
 Related: 0002, 0003, 0004, 0006, 0007
 
 ## Context and Problem Statement
@@ -33,6 +33,8 @@ Risk determines friction:
 
 Low-risk local reads and already-confirmed user commands can run directly. Private outbound requests, writes, privileged execution, destructive operations, broad delegation, and cloud transmission require confirmation, approval, or a deliberate scoped policy setting.
 
+Operator-initiated UI workflows are already user requests. Adding a local MCP connection, storing a credential in the local operator secret store, importing an operator skill, changing an extension state, or editing a local profile should not ask the operator to approve their own request when the effect is local and non-destructive. The application still records proposal, authorization, and execution evidence internally. User-visible approval appears only when the requested operation crosses a risk boundary: external write, destructive local change, privileged process execution, private-context transmission, delegated external agent authority, cloud transmission, purchase, publication, or another hard-to-reverse effect.
+
 ## Consequences
 
 Positive:
@@ -51,7 +53,7 @@ Negative:
 
 ## Implementation
 
-This ADR is implemented. The shared action mechanics are in place and the reclassification pass is complete: approval is derived from effect, not restated per call site.
+This ADR is partially implemented. The shared action mechanics are in place and the approval-posture reclassification described in the Decision Outcome is complete for every capability the catalog currently declares. What remains is giving `extension-definition-write`, `extension-definition-delete`, `extension-skill-write`, and `extension-skill-delete` a dedicated operator-facing home (ADR 0006) so the Actions panel stops being their only reachable surface.
 
 `backend/app/actions/contracts.py` owns the posture. `APPROVAL_EFFECT_CLASSES` names the classes that require an interrupting decision - `external_write`, `cloud_model`, `privileged_execution`, and `destructive_action` - and `default_authorization` maps an effect class to its rule. `backend/app/actions/catalog.py` and `backend/app/services/extension_runtime_service.py` both derive their descriptors from it, so the built-in catalog and extension bindings cannot drift apart. Exactly two capabilities override it, each because the effect class alone cannot express the reason: `search-private-web` is an outbound read that carries the user's own context off the machine, and plugin installation writes only under `data/` but places new executable definitions on the host that then register privileged capabilities.
 
@@ -97,9 +99,13 @@ Every capability the operator surface offers is drivable. `build_capability_hand
 
 Action evidence is durable. `backend/app/artifacts/storage.py` appends each record to `data/actions/action-log.jsonl` and fsyncs it, independent of any conversation session; the bounded in-memory audit remains only as the read path for `GET /actions/audit`. API-initiated actions can occur without an active session, so the action log is the durable evidence record for direct operator actions.
 
-The desktop exposes the governed action loop. `desktop/src/components/actions-panel.js` renders capability discovery with live availability and its unavailable explanation, pending approvals with approve, deny, and cancel controls, execution status, the audit list, and the catalog's registration problems. An operator can also originate an action: a capability the backend reports as `executable`, `available`, and not `turn_boundary` offers a Propose control that builds one typed input per declared `input_schema` property, sends the coerced arguments through `POST /actions/propose`, and selects the resulting proposal so its outcome is visible immediately. Audit rows select their proposal, so a completed action stays inspectable after it leaves the pending list. A capability with no proposable executor names its `execution_owner` instead of reading as broken. It proxies through `desktop/src-tauri/src/backend.rs` and `lib.rs` commands, builds DOM without `innerHTML`, never calls the backend directly, and never infers whether a proposal can be approved from its status string — it submits and renders the backend's answer.
+The desktop exposes the governed action loop. `desktop/src/components/actions-panel.js` renders capability discovery with live availability and its unavailable explanation, pending approvals with approve, deny, and cancel controls, execution status, the audit list, and the catalog's registration problems. An operator can also originate an action: a capability the backend reports as `executable`, `available`, and not `turn_boundary` offers a control that builds one typed input per declared `input_schema` property and sends the coerced arguments through `POST /actions/propose`. `proposeTriggerLabel` names that control `Run` for an `allow` capability and `Propose` only for one whose `authorization_rule` is `requires_approval`, since an `allow` capability executes immediately and has no decision to name as a proposal; either way, submitting selects the resulting record so its outcome is visible immediately. Audit rows select their proposal, so a completed action stays inspectable after it leaves the pending list. A capability with no proposable executor names its `execution_owner` instead of reading as broken. It proxies through `desktop/src-tauri/src/backend.rs` and `lib.rs` commands, builds DOM without `innerHTML`, never calls the backend directly, and never infers whether a proposal can be approved from its status string — it submits and renders the backend's answer.
 
 Explicit ACP sessions produce `delegated_runs` through `TurnEngine.run_extension`. Agent invocation uses this loop through `agent-invoke-{profile_id}` descriptors; ADR 0007 owns that path.
+
+`desktop/src/components/actions-panel.js` no longer presents an `allow` capability as if it needed a decision. `formatCapabilityApproval` previously returned `"approved here"` for every `same_turn` capability regardless of `authorization_rule`, and the trigger button always read `"Propose"`; both implied a self-approval ritual for capabilities that never required one. `formatCapabilityApproval` now returns nothing for an `allow` capability and `"requires approval"` for one whose `authorization_rule` is `requires_approval`, and `proposeTriggerLabel` names the control `Run` for the former and keeps `Propose` for the latter. No capability's classification changed by this: `memory-policy-update`, `extension-state-update`, `extension-credential-write`, and `extension-definition-write` were already `allow`; the panel simply stopped describing that as governance theater. This directly narrows the "Actions panel required path" problem in Follow-up, though `extension-definition-write`/`extension-definition-delete` remain reachable only through this panel until ADR 0006's dedicated MCP connection flow exists.
+
+`backend/tests/unit/actions/test_action_catalog.py` proves the reclassification directly against `build_descriptors` rather than against individual routes: every capability whose effect class is `local_read`, `local_write`, or `external_read` is `allow` except the one named override (`search-private-web`), and the destructive/private-context capabilities that must still gate stay `requires_approval`. This is a regression guard - a future capability added to `catalog.py` with a local/read effect class fails the test unless its authorization is explicitly overridden with a stated reason, the same way `search-private-web` and plugin installation already are.
 
 Runtime test infrastructure validates the governed action path without live external services. `backend/tests/fixtures/search_providers.py` provides mock DDGS, SearXNG, and Tavily responses with configurable failure modes. `backend/tests/fixtures/action_governance.py` provides helpers for testing the full governed path (proposal, authorization, execution) with mock providers. `scripts/validate_backend.py` gained a `--mock` flag for the `runtime` subcommand to run mock-based tests alongside live ones.
 
@@ -150,6 +156,7 @@ Implementation files:
 - `desktop/src-tauri/src/backend.rs`
 
 Test coverage:
+- `backend/tests/unit/actions/test_action_catalog.py`
 - `backend/tests/unit/actions/test_action_contracts.py`
 - `backend/tests/unit/actions/test_action_boundaries.py`
 - `backend/tests/unit/services/test_capability_service.py`
@@ -192,11 +199,14 @@ Validation results (linux-amd64):
 - `npm --prefix desktop run tauri build -- --no-bundle`: PASS. `Built application at: desktop/src-tauri/target/release/jarvisv7-desktop`; the binary launches a WebKitGTK window under WSLg.
 
 Validation results (windows-amd64):
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `formatCapabilityApproval` and `proposeTriggerLabel` for both `allow` and `requires_approval` capabilities, and the rendered `Run`/`Propose` control split in `actions-panel.js`.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
 - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_capability_service.py backend\tests\unit\api\test_llm_config_routes.py backend\tests\unit\services\test_llm_provider_profiles.py`: PASS, 51 passed. Covers provider profile write authorization, LLM config routes, and provider profile storage.
 - `backend\.venv\Scripts\python -m pytest backend\tests\unit\actions\test_action_contracts.py backend\tests\unit\services\test_capability_service.py backend\tests\unit\services\test_extension_service.py backend\tests\unit\api\test_extension_routes.py backend\tests\unit\services\test_memory_service.py backend\tests\unit\api\test_memory_routes.py backend\tests\unit\api\test_action_routes.py`: PASS, 113 passed. Covers the `memory-policy-update` and `extension-state-update` reclassification to `allow`.
-- `backend\.venv\Scripts\python scripts\validate_backend.py unit`: PASS, 1474 passed, 8 skipped. `backend/tests/unit/extensions/test_mcp_oauth.py::TestMcpOAuthTokenStore::test_file_permissions` is skipped on `os.name == "nt"`, matching the existing Linux/POSIX-only skip convention used elsewhere in this suite; it asserts POSIX `0600` file-mode bits that Windows does not report the same way.
+- `backend\.venv\Scripts\python -m pytest backend\tests\unit\actions backend\tests\unit\services\test_capability_service.py backend\tests\unit\services\test_extension_service.py backend\tests\unit\api\test_action_routes.py backend\tests\unit\api\test_extension_routes.py backend\tests\integration\test_extension_runtime.py`: PASS, 195 passed, 1 skipped. Covers `test_action_catalog.py`'s reclassification proof for `extension-definition-write`, `extension-definition-delete`, `extension-skill-write`, and `extension-skill-delete`, and the existing operator-owned MCP/skill create-remove integration flows.
+- `backend\.venv\Scripts\python scripts\validate_backend.py unit`: PASS, 1521 passed, 7 skipped.
 
-The posture was driven end to end against a live backend on `127.0.0.1` (`linux-amd64`):
+The posture was driven end to end against a live backend on `127.0.0.1:8765` (`linux-amd64`):
 
 - `GET /actions/capabilities`: 17 capabilities, `problems` empty; `operator-config-write`,
   `provider-connectivity-test`, `extension-state-update`, and `agent-invoke-summarizer` report
@@ -246,9 +256,13 @@ a `strict` profile registered as an approval-gated local write, parked, and appe
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. The desktop binary was launched but its window was not driven
 or captured from this host; the panel's rendered DOM and the propose interaction are covered
-by `desktop/tests/static.test.mjs` instead. The `windows-amd64` results above predate this
-change. The declared process controls are not an OS sandbox.
+by `desktop/tests/static.test.mjs` instead. Completion handoff for this increment included
+validation before reporting, and the `windows-amd64` results above record the local re-run.
+Native visible desktop validation remains the open evidence gap. The declared process controls
+are not an OS sandbox.
 
 ## Follow-up
 
-None.
+- The approval-posture reclassification itself is done and proven by `test_action_catalog.py`: every capability with a `local_read`, `local_write`, or `external_read` effect class is `allow` except the one named exception (`search-private-web`), including `extension-definition-write`, `extension-definition-delete`, `extension-skill-write`, and `extension-skill-delete`.
+- What remains is not a reclassification gap but a desktop-surface gap owned by ADR 0006: `extension-definition-write`/`-delete` and `extension-skill-write`/`-delete` are correctly `allow`, but the Actions panel is still their only reachable surface, since no dedicated Add/Edit MCP Connection or skill-import UI exists yet. Keep raw proposal, authorization, and capability records available there for audit/debug inspection regardless; retire it as their *required* path only as each dedicated workflow lands in ADR 0006.
+- Mark this ADR implemented once that desktop-surface gap closes and the posture has been validated through a native visible desktop session, not only through capability-service and integration tests.

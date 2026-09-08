@@ -92,9 +92,14 @@ export function formatCapabilityApproval(capability) {
   if (!capability) return "";
   // A turn_boundary capability is proposed and executed inside a conversation turn, so the
   // operator surface can only report it, never drive it.
-  return capability.approval_mode === "turn_boundary"
-    ? "approved in conversation"
-    : "approved here";
+  if (capability.approval_mode === "turn_boundary") return "approved in conversation";
+  // An "allow" capability runs immediately with no decision to describe; labeling it as if it
+  // were approved would misrepresent a plain local action as a self-approval ritual.
+  return capability.authorization_rule === "requires_approval" ? "requires approval" : "";
+}
+
+export function proposeTriggerLabel(capability) {
+  return capability?.authorization_rule === "requires_approval" ? "Propose" : "Run";
 }
 
 function copyState(state) {
@@ -430,7 +435,7 @@ function renderProposeForm(state, capability) {
 
   const submit = document.createElement("button");
   submit.type = "submit";
-  submit.textContent = "Propose action";
+  submit.textContent = proposeTriggerLabel(capability) === "Propose" ? "Propose action" : "Run action";
   submit.disabled = state.mutationPending;
   form.appendChild(submit);
   form.addEventListener("submit", (event) => {
@@ -465,7 +470,8 @@ function renderCapabilities(state) {
     const status = appendText(item, capability.capability_id, "span", "actions-status");
     status.dataset.state = capabilityActivityState(capability);
     appendText(item, formatCapabilityRisk(capability), "span", "actions-row-meta");
-    appendText(item, formatCapabilityApproval(capability), "span", "actions-row-meta");
+    const approvalText = formatCapabilityApproval(capability);
+    if (approvalText) appendText(item, approvalText, "span", "actions-row-meta");
     if (!capability.executable) {
       appendText(item, `Driven by ${capability.execution_owner}`, "span", "actions-row-meta");
     }
@@ -476,7 +482,7 @@ function renderCapabilities(state) {
       const open = state.proposeCapabilityId === capability.capability_id;
       const trigger = document.createElement("button");
       trigger.type = "button";
-      trigger.textContent = open ? "Close" : "Propose";
+      trigger.textContent = open ? "Close" : proposeTriggerLabel(capability);
       trigger.setAttribute("aria-expanded", String(open));
       trigger.disabled = state.mutationPending;
       trigger.addEventListener("click", () => state.actions.selectCapability(capability.capability_id));

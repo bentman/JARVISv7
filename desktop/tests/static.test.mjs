@@ -31,6 +31,7 @@ import {
   createActionsPanel,
   createActionsPanelController,
   proposeEnabled,
+  proposeTriggerLabel,
   executionActivityState,
   formatCapabilityApproval,
   formatCapabilityRisk,
@@ -853,6 +854,18 @@ assert.equal(systemValue.textContent, "Backend unavailable", "System State must 
       },
     },
     {
+      capability_id: "provider-secret-rotate",
+      effect_class: "destructive_action",
+      readiness: "ready",
+      availability: "available",
+      authorization_rule: "requires_approval",
+      approval_mode: "same_turn",
+      execution_owner: "backend.app.services.llm_provider_profiles.LLMProviderProfileStore",
+      unavailable_explanation: "",
+      executable: true,
+      input_schema: { type: "object", properties: {} },
+    },
+    {
       capability_id: "search-public-web",
       effect_class: "external_read",
       readiness: "ready",
@@ -883,12 +896,14 @@ assert.equal(systemValue.textContent, "Backend unavailable", "System State must 
   await panel.open();
 
   const buttons = findElements(container, (node) => node.tagName === "button");
+  const runTrigger = buttons.find((node) => node.textContent === "Run");
+  assert.ok(runTrigger, "an allow capability must offer a Run control, not a self-approval Propose control");
   const proposeTrigger = buttons.find((node) => node.textContent === "Propose");
-  assert.ok(proposeTrigger, "a drivable capability must offer a Propose control");
+  assert.ok(proposeTrigger, "a capability that genuinely requires approval must still offer a Propose control");
   assert.equal(
-    buttons.filter((node) => node.textContent === "Propose").length,
-    1,
-    "a turn-boundary capability must not offer a Propose control",
+    buttons.filter((node) => node.textContent === "Run" || node.textContent === "Propose").length,
+    2,
+    "a turn-boundary capability must not offer a drivable control",
   );
   assert.ok(
     findElement(container, (node) => String(node.textContent).includes("agent-invoke-coder")),
@@ -899,9 +914,11 @@ assert.equal(systemValue.textContent, "Backend unavailable", "System State must 
     "a capability with no proposable executor must name its owner",
   );
 
-  proposeTrigger.listeners.click();
+  runTrigger.listeners.click();
   const form = findElement(container, (node) => node.className === "actions-propose");
-  assert.ok(form, "the Propose control must open a form built from the declared input schema");
+  assert.ok(form, "the Run control must open a form built from the declared input schema");
+  const runSubmit = findElement(form, (node) => node.tagName === "button" && node.type === "submit");
+  assert.equal(runSubmit.textContent, "Run action", "an allow capability's form must not be labeled as a proposal");
   const controls = findElements(container, (node) => node.tagName === "input" || node.tagName === "textarea");
   const byName = Object.fromEntries(controls.map((node) => [node.name, node]));
   assert.deepEqual(
@@ -1768,7 +1785,18 @@ assert.equal(
   "approved in conversation",
   "a turn-boundary capability must not look operator-drivable",
 );
-assert.equal(formatCapabilityApproval({ approval_mode: "same_turn" }), "approved here");
+assert.equal(
+  formatCapabilityApproval({ approval_mode: "same_turn", authorization_rule: "requires_approval" }),
+  "requires approval",
+);
+assert.equal(
+  formatCapabilityApproval({ approval_mode: "same_turn", authorization_rule: "allow" }),
+  "",
+  "an allow capability has no decision to describe, so it must not read as a self-approval ritual",
+);
+
+assert.equal(proposeTriggerLabel({ authorization_rule: "requires_approval" }), "Propose");
+assert.equal(proposeTriggerLabel({ authorization_rule: "allow" }), "Run");
 
 // Only backend-reported facts may gate the propose control.
 assert.equal(
