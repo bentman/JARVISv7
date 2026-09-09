@@ -2916,9 +2916,11 @@ assert.deepEqual(parseCommandLines("python3\n\n-m\n"), ["python3", "-m"], "a bla
 }
 
 {
-  // A saved edit must preserve fields the edit form does not expose - credential_ref and oauth
-  // configuration - rather than rebuilding the definition from only the fields the form knows
-  // about. A display-name-only edit must not silently detach a connection's authentication.
+  // Add and Edit MCP Connection both expose credential_ref and OAuth fields directly, so
+  // saving carries whatever the caller passes for them - explicit values set them, and
+  // explicitly empty values clear them, the same set-or-delete contract the allowlists already
+  // use. The DOM-level tests below prove the Edit form actually prefills these from the loaded
+  // definition, which is what makes an untouched field round-trip rather than silently clear.
   const proposals = [];
   const controller = createExtensionsPanelController({
     getExtensions: async () => ({ extensions: [], families: {} }),
@@ -2944,12 +2946,72 @@ assert.deepEqual(parseCommandLines("python3\n\n-m\n"), ["python3", "-m"], "a bla
   await controller.updateMcpConnection({
     localId: "weather", name: "Weather HQ", url: "https://weather.example.test/mcp",
     toolAllowlist: "", resourceAllowlist: "", promptAllowlist: "",
+    credentialRef: "weather-api-key",
+    oauth: { clientId: "abc", authorizationUrl: "https://a.test", tokenUrl: "https://t.test" },
   });
 
   assert.equal(proposals[0].actionArguments.definition.credential_ref, "weather-api-key");
   assert.deepEqual(proposals[0].actionArguments.definition.oauth, {
     client_id: "abc", authorization_url: "https://a.test", token_url: "https://t.test",
   });
+}
+
+{
+  // Explicitly clearing credential_ref/oauth on an edit must actually clear them, not leave the
+  // base value in place - the same explicit set-or-delete contract the allowlists already use.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: [], metadata: {},
+      definition: {
+        transport: "streamable_http", url: "https://weather.example.test/mcp",
+        credential_ref: "weather-api-key",
+        oauth: { client_id: "abc" },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("mcp:weather");
+  await controller.loadDefinition("mcp:weather");
+
+  await controller.updateMcpConnection({
+    localId: "weather", name: "Weather", url: "https://weather.example.test/mcp",
+    toolAllowlist: "", resourceAllowlist: "", promptAllowlist: "",
+    credentialRef: "", oauth: {},
+  });
+
+  assert.equal("credential_ref" in proposals[0].actionArguments.definition, false);
+  assert.equal("oauth" in proposals[0].actionArguments.definition, false);
+}
+
+{
+  // OAuth requires at minimum a client_id; every other field is optional and the backend
+  // discovers authorization_url/token_url from the server when both are blank, so the desktop
+  // must not require them either. Leaving client_id blank must omit oauth entirely, not send an
+  // incomplete block.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addMcpConnection({
+    localId: "weather", name: "Weather", url: "https://weather.example.test/mcp",
+    oauth: { clientId: "abc" },
+  });
+  assert.deepEqual(proposals[0].actionArguments.definition.oauth, { client_id: "abc" });
+
+  await controller.addMcpConnection({
+    localId: "weather2", name: "Weather 2", url: "https://weather2.example.test/mcp",
+    oauth: { authorizationUrl: "https://a.test", tokenUrl: "https://t.test" },
+  });
+  assert.equal("oauth" in proposals[1].actionArguments.definition, false, "no client_id means no OAuth configured at all");
 }
 
 {
@@ -3167,10 +3229,12 @@ assert.equal(formatPromptMessages(null), null);
 
   const form = findElement(container, (node) => node.className === "extensions-add-connection");
   assert.ok(form, "the Add MCP connection form must render");
-  const [name, localId, url, toolAllowlist, resourceAllowlist, promptAllowlist] = findElements(
-    form,
-    (node) => node.tagName === "input",
-  );
+  const name = findElement(form, (node) => node.placeholder === "Display name");
+  const localId = findElement(form, (node) => node.placeholder === "Connection ID (e.g. weather)");
+  const url = findElement(form, (node) => node.placeholder === "https://server.example/mcp");
+  const toolAllowlist = findElement(form, (node) => node.placeholder === "Allowed tools (comma-separated, optional)");
+  const resourceAllowlist = findElement(form, (node) => node.placeholder === "Allowed resources (comma-separated, optional)");
+  const promptAllowlist = findElement(form, (node) => node.placeholder === "Allowed prompts (comma-separated, optional)");
   assert.equal(name.placeholder, "Display name");
   assert.equal(localId.placeholder, "Connection ID (e.g. weather)");
   assert.equal(url.placeholder, "https://server.example/mcp");
@@ -3253,6 +3317,332 @@ assert.equal(formatPromptMessages(null), null);
   assert.equal(proposals[0]?.capabilityId, "extension-definition-write");
   assert.equal(proposals[0]?.actionArguments.expected_fingerprint, "fingerprint-1");
   assert.equal(proposals[0]?.actionArguments.definition.url, "https://weather.example.test/mcp/v2");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Edit MCP Connection must prefill credential reference and OAuth fields from the loaded
+  // definition, and an unrelated field edit (display name) must leave an untouched
+  // credential/OAuth configuration intact - the round trip that makes these fields safe to
+  // expose without an operator accidentally erasing authentication on every save.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", provenance: "data/extensions", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: [], metadata: {},
+      definition: {
+        transport: "streamable_http", url: "https://weather.example.test/mcp",
+        credential_ref: "weather-api-key",
+        oauth: { client_id: "abc", authorization_url: "https://a.test", token_url: "https://t.test", scopes: ["read"] },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+  const editButton = findElement(container, (node) => node.tagName === "button" && node.textContent === "Edit connection");
+  await editButton.listeners.click();
+
+  const editForm = findElement(container, (node) => node.className === "extensions-edit-connection");
+  const credentialRefField = findElement(editForm, (node) => node.placeholder?.startsWith("Credential reference"));
+  const oauthClientIdField = findElement(editForm, (node) => node.placeholder === "OAuth client ID (optional)");
+  const oauthScopesField = findElement(editForm, (node) => node.placeholder === "OAuth scopes (comma-separated, optional)");
+  assert.equal(credentialRefField.value, "weather-api-key", "credential reference must be prefilled from the loaded definition");
+  assert.equal(oauthClientIdField.value, "abc", "OAuth client ID must be prefilled from the loaded definition");
+  assert.equal(oauthScopesField.value, "read", "OAuth scopes must be prefilled from the loaded definition");
+
+  const nameField = findElement(editForm, (node) => node.placeholder === "Display name");
+  nameField.value = "Weather HQ";
+  await editForm.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0].actionArguments.definition.credential_ref, "weather-api-key", "an unrelated edit must not clear credential_ref");
+  assert.deepEqual(proposals[0].actionArguments.definition.oauth, {
+    client_id: "abc", authorization_url: "https://a.test", token_url: "https://t.test", scopes: ["read"],
+  }, "an unrelated edit must not clear the OAuth configuration");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Add MCP Connection must also expose credential reference and OAuth fields, so a new
+  // connection can be fully configured without a follow-up edit.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await panel.open();
+
+  const form = findElement(container, (node) => node.className === "extensions-add-connection");
+  const credentialRefField = findElement(form, (node) => node.placeholder?.startsWith("Credential reference"));
+  const oauthClientIdField = findElement(form, (node) => node.placeholder === "OAuth client ID (optional)");
+  assert.ok(credentialRefField, "the Add form must offer a credential reference field");
+  assert.ok(oauthClientIdField, "the Add form must offer an OAuth client ID field");
+
+  const [name, localId, url] = findElements(form, (node) => node.tagName === "input");
+  name.value = "Weather";
+  localId.value = "weather";
+  url.value = "https://weather.example.test/mcp";
+  credentialRefField.value = "weather-api-key";
+  oauthClientIdField.value = "abc";
+  await form.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.actionArguments.definition.credential_ref, "weather-api-key");
+  assert.deepEqual(proposals[0]?.actionArguments.definition.oauth, { client_id: "abc" });
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Add MCP Connection for a stdio transport must build the same command/process shape Add
+  // Local Tool already establishes, with a credential reference automatically folded into
+  // env_passthrough - ProcessBoundary.scrub_environment is an allowlist, so a credential the
+  // connection does not pass through would otherwise start the server unauthenticated.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.addMcpConnection({
+    localId: "local-tool-server", name: "Local tool server", transport: "stdio",
+    command: "python3\n-m\nmymcp.server",
+    argvAllowlist: "python3", envPassthrough: "", workingRoot: "data",
+    credentialRef: "MY_API_KEY",
+  });
+
+  assert.equal(proposals[0].capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    family: "mcp", local_id: "local-tool-server", name: "Local tool server", version: "1.0.0",
+    definition: {
+      transport: "stdio",
+      command: ["python3", "-m", "mymcp.server"],
+      credential_ref: "MY_API_KEY",
+      process: {
+        subprocess: true, argv_allowlist: ["python3"],
+        env_passthrough: ["MY_API_KEY"], working_root: "data",
+      },
+    },
+  });
+}
+
+{
+  // Editing a stdio connection must preserve its transport (not switch it), and an edit that
+  // changes the command must not silently drop the allowlists or credential reference already
+  // configured - the same base-preserving contract streamable_http editing already has.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:local-tool-server", family: "mcp", local_id: "local-tool-server",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:local-tool-server", family: "mcp", local_id: "local-tool-server",
+      name: "Local tool server", version: "1", enabled: true, dependencies: [], metadata: {},
+      definition: {
+        transport: "stdio",
+        command: ["python3", "-m", "mymcp.server"],
+        credential_ref: "MY_API_KEY",
+        tool_allowlist: ["get_forecast"],
+        process: {
+          subprocess: true, argv_allowlist: ["python3"],
+          env_passthrough: ["MY_API_KEY"], working_root: "data",
+        },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("mcp:local-tool-server");
+  await controller.loadDefinition("mcp:local-tool-server");
+
+  await controller.updateMcpConnection({
+    localId: "local-tool-server", name: "Local tool server",
+    command: "python3\n-m\nmymcp.server\n--verbose",
+    argvAllowlist: "python3", envPassthrough: "MY_API_KEY", workingRoot: "data",
+    toolAllowlist: "get_forecast", resourceAllowlist: "", promptAllowlist: "",
+    credentialRef: "MY_API_KEY",
+  });
+
+  assert.equal(proposals[0].actionArguments.definition.transport, "stdio", "transport must not change on an edit");
+  assert.deepEqual(proposals[0].actionArguments.definition.command, ["python3", "-m", "mymcp.server", "--verbose"]);
+  assert.deepEqual(proposals[0].actionArguments.definition.tool_allowlist, ["get_forecast"], "an untouched allowlist must survive the edit");
+  assert.equal(proposals[0].actionArguments.definition.credential_ref, "MY_API_KEY");
+  assert.equal(proposals[0].actionArguments.expected_fingerprint, "fingerprint-1");
+}
+
+{
+  // The Add MCP Connection form's transport select must toggle between the streamable_http and
+  // stdio field sets, and submitting with stdio selected must reach the governed capability
+  // with the argv-shaped definition instead of the URL-shaped one.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await panel.open();
+
+  function currentForm() {
+    return findElement(container, (node) => node.className === "extensions-add-connection");
+  }
+  function urlField(form) {
+    return findElement(form, (node) => node.placeholder === "https://server.example/mcp");
+  }
+  function commandField(form) {
+    return findElement(form, (node) => node.tagName === "textarea");
+  }
+
+  let form = currentForm();
+  let url = urlField(form);
+  let command = commandField(form);
+  assert.equal(url.parentElement.hidden, false, "streamable_http fields must be visible by default");
+  assert.equal(url.required, true, "url must be required by default");
+  assert.equal(command.parentElement.hidden, true, "stdio fields must be hidden by default");
+  assert.equal(command.required, false, "command must not be required by default");
+
+  const transport = findElement(form, (node) => node.tagName === "select" && findElement(node, (opt) => opt.value === "stdio"));
+  assert.ok(transport, "the Add form must offer a transport select with a stdio option");
+  transport.value = "stdio";
+  transport.listeners.change();
+
+  // Selecting stdio goes through real controller state (setAddConnectionTransport), not a
+  // DOM-only toggle, so the whole panel re-renders here - stale references to the pre-change
+  // form must not be reused.
+  form = currentForm();
+  url = urlField(form);
+  command = commandField(form);
+  const argvAllowlist = findElement(form, (node) => node.placeholder === "Allowed executable (comma-separated, e.g. python3)");
+  assert.equal(url.parentElement.hidden, true, "streamable_http fields must hide once stdio is selected");
+  assert.equal(url.required, false, "url must not be required once stdio is selected");
+  assert.equal(command.parentElement.hidden, false, "stdio fields must become visible once stdio is selected");
+  assert.equal(command.required, true, "command must be required once stdio is selected");
+
+  // A re-render this form did not cause - the exact class of bug reported: a poll tick or an
+  // unrelated pending/error state emit rebuilds the form from scratch, and the transport
+  // <select>'s value is restored by the generic draft mechanism without dispatching a change
+  // event, so anything relying on that event to toggle visibility would revert to the
+  // streamable_http defaults here even though "stdio" is still the selected transport.
+  await panel.controller.refreshCatalog();
+  form = currentForm();
+  url = urlField(form);
+  command = commandField(form);
+  const transportAfterRefresh = findElement(form, (node) => node.tagName === "select" && findElement(node, (opt) => opt.value === "stdio"));
+  assert.equal(transportAfterRefresh.value, "stdio", "the transport selection must survive an unrelated re-render");
+  assert.equal(url.parentElement.hidden, true, "streamable_http fields must stay hidden after an unrelated re-render");
+  assert.equal(url.required, false, "url must stay non-required after an unrelated re-render");
+  assert.equal(command.parentElement.hidden, false, "stdio fields must stay visible after an unrelated re-render");
+  assert.equal(command.required, true, "command must stay required after an unrelated re-render");
+
+  const name = findElement(form, (node) => node.placeholder === "Display name");
+  const localId = findElement(form, (node) => node.placeholder === "Connection ID (e.g. weather)");
+  const argvAllowlistFinal = findElement(form, (node) => node.placeholder === "Allowed executable (comma-separated, e.g. python3)");
+  name.value = "Local tool server";
+  localId.value = "local-tool-server";
+  command.value = "python3\n-m\nmymcp.server";
+  argvAllowlistFinal.value = "python3";
+  await form.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.actionArguments.definition.transport, "stdio");
+  assert.deepEqual(proposals[0]?.actionArguments.definition.command, ["python3", "-m", "mymcp.server"]);
+  assert.equal(proposals[0]?.actionArguments.definition.url, undefined, "a stdio connection must not carry a url");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Edit MCP Connection for a stdio connection must render the stdio field set (command, argv
+  // allowlist, environment passthrough, working root), not the streamable_http url field.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:local-tool-server", display_name: "Local tool server", family: "mcp", trust: "operator", provenance: "data/extensions", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:local-tool-server", family: "mcp", local_id: "local-tool-server",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:local-tool-server", family: "mcp", local_id: "local-tool-server",
+      name: "Local tool server", version: "1", enabled: true, dependencies: [], metadata: {},
+      definition: {
+        transport: "stdio",
+        command: ["python3", "-m", "mymcp.server"],
+        credential_ref: "MY_API_KEY",
+        process: {
+          subprocess: true, argv_allowlist: ["python3"],
+          env_passthrough: ["MY_API_KEY"], working_root: "data",
+        },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:local-tool-server");
+
+  const editButton = findElement(container, (node) => node.tagName === "button" && node.textContent === "Edit connection");
+  await editButton.listeners.click();
+
+  const editForm = findElement(container, (node) => node.className === "extensions-edit-connection");
+  assert.ok(editForm, "editing a stdio connection must render the edit form, not a fallback notice");
+  const commandField = findElement(editForm, (node) => node.tagName === "textarea");
+  const urlField = findElement(editForm, (node) => node.placeholder === "https://server.example/mcp");
+  const oauthField = findElement(editForm, (node) => node.placeholder === "OAuth client ID (optional)");
+  assert.equal(commandField.value, "python3\n-m\nmymcp.server", "the form must be prefilled from the loaded stdio definition");
+  assert.equal(urlField, null, "a stdio connection's edit form must not offer a url field");
+  assert.equal(oauthField, null, "a stdio connection's edit form must not offer OAuth fields");
+
+  commandField.value = "python3\n-m\nmymcp.server\n--verbose";
+  await editForm.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.actionArguments.definition.transport, "stdio");
+  assert.deepEqual(proposals[0]?.actionArguments.definition.command, ["python3", "-m", "mymcp.server", "--verbose"]);
+  assert.equal(proposals[0]?.actionArguments.definition.credential_ref, "MY_API_KEY", "an unrelated field edit must not clear credential_ref");
 
   panel.close();
   globalThis.document = previousDocument;

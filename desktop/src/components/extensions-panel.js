@@ -147,6 +147,14 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     oauthStatus: null,
     addConnectionPending: false,
     addConnectionError: "",
+    // Read directly by renderAddMcpConnection to decide which field set is visible/required, so
+    // a re-render this component did not cause (pending/error state, run polling) reflects the
+    // operator's transport choice correctly. A DOM-only toggle driven solely by the <select>'s
+    // own "change" listener cannot do this: renderPanel's capture-then-restore mechanism
+    // restores a draft-keyed field's .value without dispatching a change event, so a fresh
+    // render's hidden/required defaults would never get corrected back after the very re-render
+    // that restores the selected transport.
+    addConnectionTransport: "streamable_http",
     importSkillPending: false,
     importSkillError: "",
     addToolPending: false,
@@ -399,26 +407,108 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
-  // `base` carries forward any field the add/edit form does not know about - `credential_ref`
-  // and `oauth`, configured only through the separate credential form and OAuth flow - so
-  // saving a display-name or allowlist change cannot silently erase them. Add passes an empty
-  // base (nothing to preserve yet); an edit passes the just-loaded definition.
-  function streamableHttpDefinition(base, { url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
-    const definition = { ...base, transport: "streamable_http", url };
+  // `base` carries forward any field the add/edit form does not know about - so saving a
+  // display-name or allowlist change cannot silently erase something the form does not expose.
+  // Add passes an empty base (nothing to preserve yet); an edit passes the just-loaded
+  // definition. An empty allowlist/reference means "no restriction"/"none configured" on the
+  // backend, so it is omitted rather than sent as an empty value - an operator who leaves these
+  // blank gets an unrestricted connection, not one that can reach nothing. Explicit delete (not
+  // skip) so clearing a previously-set value on an edit actually clears it instead of leaving
+  // the preserved base value in place.
+  function applyMcpAllowlists(definition, { toolAllowlist, resourceAllowlist, promptAllowlist }) {
     const tools = parseAllowlist(toolAllowlist);
     const resources = parseAllowlist(resourceAllowlist);
     const prompts = parseAllowlist(promptAllowlist);
-    // An empty allowlist means "no restriction" on the backend, so it is omitted rather than
-    // sent as [] - an operator who leaves these blank gets an unrestricted connection, not one
-    // that can reach nothing. Explicit delete (not skip) so clearing a previously-set allowlist
-    // on an edit actually clears it instead of leaving the preserved base value in place.
     if (tools.length) definition.tool_allowlist = tools; else delete definition.tool_allowlist;
     if (resources.length) definition.resource_allowlist = resources; else delete definition.resource_allowlist;
     if (prompts.length) definition.prompt_allowlist = prompts; else delete definition.prompt_allowlist;
+  }
+
+  // credential_ref is a reference name into the operator secret store, never the secret itself -
+  // the secret is stored only through the dedicated Store credential route. Returns the trimmed
+  // reference so stdioDefinition can also fold it into env_passthrough.
+  function applyMcpCredentialRef(definition, credentialRef) {
+    const ref = String(credentialRef || "").trim();
+    if (ref) definition.credential_ref = ref; else delete definition.credential_ref;
+    return ref;
+  }
+
+  function streamableHttpDefinition(base, {
+    url, toolAllowlist, resourceAllowlist, promptAllowlist, credentialRef, oauth,
+  }) {
+    const definition = { ...base, transport: "streamable_http", url };
+    delete definition.command;
+    delete definition.process;
+    applyMcpAllowlists(definition, { toolAllowlist, resourceAllowlist, promptAllowlist });
+    applyMcpCredentialRef(definition, credentialRef);
+    const oauthConfig = buildOauthConfig(oauth);
+    if (oauthConfig) definition.oauth = oauthConfig; else delete definition.oauth;
     return definition;
   }
 
-  async function addMcpConnection({ localId, name, url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
+  // A stdio connection's credential_ref only reaches the child process if it is also
+  // allowlisted in env_passthrough (ProcessBoundary.scrub_environment is an allowlist, not a
+  // wildcard) - McpConnectionRuntime's mcp_credentials() refuses the connection otherwise, so
+  // the reference is added to env_passthrough automatically rather than leaving the operator to
+  // discover that coupling from a runtime refusal. OAuth is not a stdio field: MCP's OAuth
+  // authorization-code flow targets an HTTP-reachable server, and McpConnectionDefinition
+  // itself forbids a stdio connection from declaring a url for OAuth to discover endpoints
+  // against, so transport is not switchable in place - it is fixed at create time.
+  function stdioDefinition(base, {
+    command, argvAllowlist, envPassthrough, workingRoot, toolAllowlist, resourceAllowlist, promptAllowlist, credentialRef,
+  }) {
+    const definition = { ...base, transport: "stdio", command: parseCommandLines(command) };
+    delete definition.url;
+    delete definition.oauth;
+    applyMcpAllowlists(definition, { toolAllowlist, resourceAllowlist, promptAllowlist });
+    const ref = applyMcpCredentialRef(definition, credentialRef);
+    const envList = parseAllowlist(envPassthrough);
+    if (ref && !envList.includes(ref)) envList.push(ref);
+    definition.process = {
+      // Every stdio MCP connection registers with effect_class "privileged_execution"
+      // (extension_runtime_service.py's _operations_for), and boundaries.py rejects a
+      // privileged_execution capability whose process boundary declares subprocess: false -
+      // the same fixed fact Add/Edit Local Tool already established for its own process field.
+      subprocess: true,
+      argv_allowlist: parseAllowlist(argvAllowlist),
+      env_passthrough: envList,
+      working_root: workingRoot,
+    };
+    return definition;
+  }
+
+  // Only client_id is required to configure OAuth at all; authorization_url and token_url are
+  // optional together (McpConnectionDefinition discovers them from the server's
+  // protected-resource metadata when both are omitted) but the backend refuses one without the
+  // other, so this leaves that pairing to the backend's own refusal rather than duplicating the
+  // rule client-side. Leaving client_id blank means "no OAuth configured," matching an absent
+  // oauth block; client_secret is never a form field, since an inline secret is refused by
+  // discovery.py's secret-key check and must go through the credential-reference/store path.
+  function buildOauthConfig({ clientId, authorizationUrl, tokenUrl, scopes, redirectPort, resource } = {}) {
+    const client = String(clientId || "").trim();
+    if (!client) return null;
+    const config = { client_id: client };
+    const authorization = String(authorizationUrl || "").trim();
+    const token = String(tokenUrl || "").trim();
+    if (authorization) config.authorization_url = authorization;
+    if (token) config.token_url = token;
+    const scopeList = parseAllowlist(scopes);
+    if (scopeList.length) config.scopes = scopeList;
+    const port = Number(redirectPort);
+    if (String(redirectPort || "").trim() && Number.isFinite(port)) config.redirect_port = port;
+    const resourceUrl = String(resource || "").trim();
+    if (resourceUrl) config.resource = resourceUrl;
+    return config;
+  }
+
+  function buildMcpDefinition(base, transport, fields) {
+    return transport === "stdio" ? stdioDefinition(base, fields) : streamableHttpDefinition(base, fields);
+  }
+
+  async function addMcpConnection({
+    localId, name, transport, url, toolAllowlist, resourceAllowlist, promptAllowlist, credentialRef, oauth,
+    command, argvAllowlist, envPassthrough, workingRoot,
+  }) {
     if (!handlers.proposeAction || state.addConnectionPending) return null;
     if (!extensionLocalIdValid(localId)) {
       state.addConnectionError = "Connection ID must start with a letter or digit and use only lowercase letters, digits, '_', '.', or '-'.";
@@ -436,7 +526,10 @@ export function createExtensionsPanelController(handlers, render = () => undefin
           local_id: localId,
           name,
           version: "1.0.0",
-          definition: streamableHttpDefinition({}, { url, toolAllowlist, resourceAllowlist, promptAllowlist }),
+          definition: buildMcpDefinition({}, transport, {
+            url, toolAllowlist, resourceAllowlist, promptAllowlist, credentialRef, oauth,
+            command, argvAllowlist, envPassthrough, workingRoot,
+          }),
         },
         reason: `Add MCP connection ${name}`,
         proposedBy: "operator",
@@ -457,12 +550,18 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     }
   }
 
-  async function updateMcpConnection({ localId, name, url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
+  async function updateMcpConnection({
+    localId, name, url, toolAllowlist, resourceAllowlist, promptAllowlist, credentialRef, oauth,
+    command, argvAllowlist, envPassthrough, workingRoot,
+  }) {
     if (!handlers.proposeAction || state.editConnectionPending || !state.definition) return null;
     state.editConnectionPending = true;
     state.editConnectionError = "";
     emit();
     try {
+      // Transport is not an edit-form field - it is fixed to whatever the loaded definition
+      // already declares, since switching transport in place is not a supported edit.
+      const transport = state.definition.definition.transport;
       const result = await handlers.proposeAction({
         capabilityId: "extension-definition-write",
         actionArguments: {
@@ -470,7 +569,10 @@ export function createExtensionsPanelController(handlers, render = () => undefin
           local_id: localId,
           name,
           version: state.definition.version,
-          definition: streamableHttpDefinition(state.definition.definition, { url, toolAllowlist, resourceAllowlist, promptAllowlist }),
+          definition: buildMcpDefinition(state.definition.definition, transport, {
+            url, toolAllowlist, resourceAllowlist, promptAllowlist, credentialRef, oauth,
+            command, argvAllowlist, envPassthrough, workingRoot,
+          }),
           dependencies: state.definition.dependencies,
           metadata: state.definition.metadata,
           enabled: state.definition.enabled,
@@ -695,6 +797,11 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  function setAddConnectionTransport(transport) {
+    state.addConnectionTransport = transport === "stdio" ? "stdio" : "streamable_http";
+    emit();
+  }
+
   async function loadDefinition(extensionId) {
     if (!handlers.getExtensionDefinition) return null;
     const request = detailSequence;
@@ -773,6 +880,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     loadBody,
     loadDefinition,
     cancelDefinitionEdit,
+    setAddConnectionTransport,
     setState,
     filterFamily,
     invoke,
@@ -827,6 +935,77 @@ function labeledValue(parent, label, value) {
   return field;
 }
 
+// Shared by every MCP connection field set (Add/Edit, streamable_http/stdio) so `credential_ref`
+// - a plain reference name into the operator secret store, never the secret itself, which is
+// stored only through the separate Store credential form - is declared once.
+function appendCredentialRefField(form, prefix, value = "") {
+  const credentialRef = document.createElement("input");
+  credentialRef.placeholder = "Credential reference (optional, e.g. weather-api-key)";
+  credentialRef.dataset.draftKey = `${prefix}:credential-ref`;
+  credentialRef.value = value || "";
+  form.appendChild(credentialRef);
+  return credentialRef;
+}
+
+// OAuth is a streamable_http-only field set: MCP's OAuth authorization-code flow targets an
+// HTTP-reachable server, and McpConnectionDefinition itself forbids a stdio connection from
+// declaring the url an OAuth flow would discover endpoints against. Fields match
+// McpConnectionDefinition._validate_oauth's contract exactly - client_id is the only required
+// field, authorization_url/token_url are optional together (the backend discovers them from the
+// server when both are blank), and client_secret is deliberately not a field here since an
+// inline secret is refused before it reaches disk.
+function appendOauthFieldset(form, prefix, oauth = {}) {
+  const oauthClientId = document.createElement("input");
+  oauthClientId.placeholder = "OAuth client ID (optional)";
+  oauthClientId.dataset.draftKey = `${prefix}:oauth-client-id`;
+  oauthClientId.value = oauth.client_id || "";
+  const oauthAuthorizationUrl = document.createElement("input");
+  oauthAuthorizationUrl.type = "url";
+  oauthAuthorizationUrl.placeholder = "OAuth authorization URL (optional, discovered if blank)";
+  oauthAuthorizationUrl.dataset.draftKey = `${prefix}:oauth-authorization-url`;
+  oauthAuthorizationUrl.value = oauth.authorization_url || "";
+  const oauthTokenUrl = document.createElement("input");
+  oauthTokenUrl.type = "url";
+  oauthTokenUrl.placeholder = "OAuth token URL (optional, discovered if blank)";
+  oauthTokenUrl.dataset.draftKey = `${prefix}:oauth-token-url`;
+  oauthTokenUrl.value = oauth.token_url || "";
+  const oauthScopes = document.createElement("input");
+  oauthScopes.placeholder = "OAuth scopes (comma-separated, optional)";
+  oauthScopes.dataset.draftKey = `${prefix}:oauth-scopes`;
+  oauthScopes.value = (oauth.scopes || []).join(", ");
+  const oauthRedirectPort = document.createElement("input");
+  oauthRedirectPort.type = "number";
+  oauthRedirectPort.placeholder = "OAuth redirect port (optional, default 19823)";
+  oauthRedirectPort.dataset.draftKey = `${prefix}:oauth-redirect-port`;
+  oauthRedirectPort.value = oauth.redirect_port != null ? String(oauth.redirect_port) : "";
+  const oauthResource = document.createElement("input");
+  oauthResource.type = "url";
+  oauthResource.placeholder = "OAuth resource URL (optional)";
+  oauthResource.dataset.draftKey = `${prefix}:oauth-resource`;
+  oauthResource.value = oauth.resource || "";
+  const oauthFields = document.createElement("fieldset");
+  appendText(oauthFields, "OAuth (optional)", "legend");
+  oauthFields.append(
+    oauthClientId, oauthAuthorizationUrl, oauthTokenUrl, oauthScopes, oauthRedirectPort, oauthResource,
+  );
+  form.appendChild(oauthFields);
+  return {
+    oauthClientId, oauthAuthorizationUrl, oauthTokenUrl,
+    oauthScopes, oauthRedirectPort, oauthResource,
+  };
+}
+
+function collectOauthFromFields(fields) {
+  return {
+    clientId: fields.oauthClientId.value.trim(),
+    authorizationUrl: fields.oauthAuthorizationUrl.value.trim(),
+    tokenUrl: fields.oauthTokenUrl.value.trim(),
+    scopes: fields.oauthScopes.value,
+    redirectPort: fields.oauthRedirectPort.value.trim(),
+    resource: fields.oauthResource.value.trim(),
+  };
+}
+
 function renderAddMcpConnection(state) {
   const form = document.createElement("form");
   form.className = "extensions-add-connection";
@@ -839,11 +1018,62 @@ function renderAddMcpConnection(state) {
   localId.placeholder = "Connection ID (e.g. weather)";
   localId.required = true;
   localId.dataset.draftKey = "add-mcp:local-id";
+  // Visibility/required state is derived from state.addConnectionTransport, not from the
+  // <select>'s own live value, and the change listener below writes to that state (through
+  // setAddConnectionTransport) rather than toggling the DOM directly. A re-render this form did
+  // not cause - pending/error state, run polling - rebuilds these elements from scratch with
+  // fresh hidden/required defaults; renderPanel's capture-then-restore mechanism would then
+  // restore the <select>'s .value to the operator's chosen transport without dispatching a
+  // change event, so a DOM-only toggle would leave the wrong field set visible and required
+  // after every such render. Deriving from real controller state instead means the correct
+  // field set is right the first time, on every render, with nothing to resynchronize.
+  const isStdio = state.addConnectionTransport === "stdio";
+  const transport = document.createElement("select");
+  for (const value of ["streamable_http", "stdio"]) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = value;
+    transport.appendChild(option);
+  }
+  transport.value = state.addConnectionTransport;
+  transport.addEventListener("change", () => state.actions.setAddConnectionTransport(transport.value));
+  form.append(name, localId, transport);
+
+  const httpFields = document.createElement("div");
+  httpFields.hidden = isStdio;
   const url = document.createElement("input");
   url.type = "url";
   url.placeholder = "https://server.example/mcp";
-  url.required = true;
+  url.required = !isStdio;
   url.dataset.draftKey = "add-mcp:url";
+  httpFields.appendChild(url);
+  const oauthFields = appendOauthFieldset(httpFields, "add-mcp");
+  form.appendChild(httpFields);
+
+  const stdioFields = document.createElement("div");
+  stdioFields.hidden = !isStdio;
+  const command = document.createElement("textarea");
+  command.placeholder = "Command, one argv token per line, e.g.\npython3\n-m\nmymcp.server";
+  command.required = isStdio;
+  command.dataset.draftKey = "add-mcp:command";
+  const argvAllowlist = document.createElement("input");
+  argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+  argvAllowlist.required = isStdio;
+  argvAllowlist.dataset.draftKey = "add-mcp:argv-allowlist";
+  const envPassthrough = document.createElement("input");
+  envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+  envPassthrough.dataset.draftKey = "add-mcp:env-passthrough";
+  const workingRoot = document.createElement("select");
+  workingRoot.dataset.draftKey = "add-mcp:working-root";
+  for (const root of STORAGE_ROOTS) {
+    const option = document.createElement("option");
+    option.value = root;
+    option.textContent = root;
+    workingRoot.appendChild(option);
+  }
+  stdioFields.append(command, argvAllowlist, envPassthrough, workingRoot);
+  form.appendChild(stdioFields);
+
   const toolAllowlist = document.createElement("input");
   toolAllowlist.placeholder = "Allowed tools (comma-separated, optional)";
   toolAllowlist.dataset.draftKey = "add-mcp:tool-allowlist";
@@ -853,23 +1083,42 @@ function renderAddMcpConnection(state) {
   const promptAllowlist = document.createElement("input");
   promptAllowlist.placeholder = "Allowed prompts (comma-separated, optional)";
   promptAllowlist.dataset.draftKey = "add-mcp:prompt-allowlist";
+  form.append(toolAllowlist, resourceAllowlist, promptAllowlist);
+  const credentialRef = appendCredentialRefField(form, "add-mcp");
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.textContent = "Add connection";
   submit.disabled = state.addConnectionPending;
   submit.dataset.focusKey = "add-mcp:submit";
-  form.append(name, localId, url, toolAllowlist, resourceAllowlist, promptAllowlist, submit);
+  form.appendChild(submit);
   if (state.addConnectionError) appendText(form, state.addConnectionError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    state.actions.addMcpConnection({
+    const shared = {
       localId: localId.value.trim(),
       name: name.value.trim(),
-      url: url.value.trim(),
       toolAllowlist: toolAllowlist.value,
       resourceAllowlist: resourceAllowlist.value,
       promptAllowlist: promptAllowlist.value,
-    });
+      credentialRef: credentialRef.value.trim(),
+    };
+    if (isStdio) {
+      state.actions.addMcpConnection({
+        ...shared,
+        transport: "stdio",
+        command: command.value,
+        argvAllowlist: argvAllowlist.value,
+        envPassthrough: envPassthrough.value,
+        workingRoot: workingRoot.value,
+      });
+    } else {
+      state.actions.addMcpConnection({
+        ...shared,
+        transport: "streamable_http",
+        url: url.value.trim(),
+        oauth: collectOauthFromFields(oauthFields),
+      });
+    }
   });
   return form;
 }
@@ -969,6 +1218,7 @@ function renderCancelEdit(state, focusKey) {
 // values - the same hazard fixed in the Edit skill editor does not apply here.
 function renderEditMcpConnection(state) {
   const info = state.definition;
+  const isStdio = info.definition.transport === "stdio";
   const form = document.createElement("form");
   form.className = "extensions-edit-connection";
   appendText(form, "Edit MCP connection", "strong");
@@ -977,12 +1227,49 @@ function renderEditMcpConnection(state) {
   name.required = true;
   name.dataset.draftKey = `edit-mcp:${info.extension_id}:name`;
   name.value = info.name;
-  const url = document.createElement("input");
-  url.type = "url";
-  url.placeholder = "https://server.example/mcp";
-  url.required = true;
-  url.dataset.draftKey = `edit-mcp:${info.extension_id}:url`;
-  url.value = info.definition.url || "";
+  form.appendChild(name);
+
+  let url = null;
+  let oauthFields = null;
+  let command = null;
+  let argvAllowlist = null;
+  let envPassthrough = null;
+  let workingRoot = null;
+  if (isStdio) {
+    command = document.createElement("textarea");
+    command.placeholder = "Command, one argv token per line";
+    command.required = true;
+    command.dataset.draftKey = `edit-mcp:${info.extension_id}:command`;
+    command.value = (info.definition.command || []).join("\n");
+    argvAllowlist = document.createElement("input");
+    argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+    argvAllowlist.required = true;
+    argvAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:argv-allowlist`;
+    argvAllowlist.value = (info.definition.process?.argv_allowlist || []).join(", ");
+    envPassthrough = document.createElement("input");
+    envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+    envPassthrough.dataset.draftKey = `edit-mcp:${info.extension_id}:env-passthrough`;
+    envPassthrough.value = (info.definition.process?.env_passthrough || []).join(", ");
+    workingRoot = document.createElement("select");
+    workingRoot.dataset.draftKey = `edit-mcp:${info.extension_id}:working-root`;
+    for (const root of STORAGE_ROOTS) {
+      const option = document.createElement("option");
+      option.value = root;
+      option.textContent = root;
+      workingRoot.appendChild(option);
+    }
+    workingRoot.value = info.definition.process?.working_root || STORAGE_ROOTS[0];
+    form.append(command, argvAllowlist, envPassthrough, workingRoot);
+  } else {
+    url = document.createElement("input");
+    url.type = "url";
+    url.placeholder = "https://server.example/mcp";
+    url.required = true;
+    url.dataset.draftKey = `edit-mcp:${info.extension_id}:url`;
+    url.value = info.definition.url || "";
+    form.appendChild(url);
+  }
+
   const toolAllowlist = document.createElement("input");
   toolAllowlist.placeholder = "Allowed tools (comma-separated, optional)";
   toolAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:tool-allowlist`;
@@ -995,26 +1282,41 @@ function renderEditMcpConnection(state) {
   promptAllowlist.placeholder = "Allowed prompts (comma-separated, optional)";
   promptAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:prompt-allowlist`;
   promptAllowlist.value = (info.definition.prompt_allowlist || []).join(", ");
+  form.append(toolAllowlist, resourceAllowlist, promptAllowlist);
+  const credentialRef = appendCredentialRefField(form, `edit-mcp:${info.extension_id}`, info.definition.credential_ref);
+  if (!isStdio) oauthFields = appendOauthFieldset(form, `edit-mcp:${info.extension_id}`, info.definition.oauth);
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.textContent = "Save connection";
   submit.disabled = state.editConnectionPending;
   submit.dataset.focusKey = `edit-mcp-submit:${info.extension_id}`;
-  form.append(
-    name, url, toolAllowlist, resourceAllowlist, promptAllowlist, submit,
-    renderCancelEdit(state, `edit-mcp-cancel:${info.extension_id}`),
-  );
+  form.append(submit, renderCancelEdit(state, `edit-mcp-cancel:${info.extension_id}`));
   if (state.editConnectionError) appendText(form, state.editConnectionError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
-    state.actions.updateMcpConnection({
+    const shared = {
       localId: info.local_id,
       name: name.value.trim(),
-      url: url.value.trim(),
       toolAllowlist: toolAllowlist.value,
       resourceAllowlist: resourceAllowlist.value,
       promptAllowlist: promptAllowlist.value,
-    });
+      credentialRef: credentialRef.value.trim(),
+    };
+    if (isStdio) {
+      state.actions.updateMcpConnection({
+        ...shared,
+        command: command.value,
+        argvAllowlist: argvAllowlist.value,
+        envPassthrough: envPassthrough.value,
+        workingRoot: workingRoot.value,
+      });
+    } else {
+      state.actions.updateMcpConnection({
+        ...shared,
+        url: url.value.trim(),
+        oauth: collectOauthFromFields(oauthFields),
+      });
+    }
   });
   return form;
 }
@@ -1317,16 +1619,7 @@ function renderDetail(state) {
     runtime.appendChild(credential);
     if (detail.definition_available) {
       if (state.definition?.extension_id === detail.extension_id) {
-        if (state.definition.definition?.transport === "streamable_http") {
-          runtime.appendChild(renderEditMcpConnection(state));
-        } else {
-          appendText(
-            runtime,
-            "Editing is only supported for streamable_http connections; edit the YAML directly for other transports.",
-            "p",
-            "extensions-help",
-          );
-        }
+        runtime.appendChild(renderEditMcpConnection(state));
       } else {
         const edit = document.createElement("button");
         edit.type = "button";
@@ -1624,6 +1917,7 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     loadBody: (extensionId) => controller.loadBody(extensionId),
     loadDefinition: (extensionId) => controller.loadDefinition(extensionId),
     cancelDefinitionEdit: () => controller.cancelDefinitionEdit(),
+    setAddConnectionTransport: (transport) => controller.setAddConnectionTransport(transport),
     setState: (extensionId, next) => controller.setState(extensionId, next),
     filterFamily: (family) => controller.filterFamily(family),
     invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),

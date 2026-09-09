@@ -57,15 +57,16 @@ Negative:
 ## Implementation
 
 This ADR is partially implemented. The backend extension catalog, governed runtime, MCP
-authorization path, turn-engine capability selection, and desktop extension surface exist. Skills
-and local tools have complete human-familiar Add/Edit/Remove workflows. MCP connections have
-Add/Edit/Remove too, backed by the same read/edit contract for operator-owned declarative
-definitions, but only for `streamable_http` transport with display-name/URL/allowlist fields;
-`stdio` connections and credential/OAuth configuration remain outside both forms. The operator
-experience is not complete because hooks and plugins still have no workflow of their own - the
-generic capability-console path remains their only reachable surface - and some other operations
-(extension run display, resource content, `stdio` MCP connections, MCP credential/OAuth fields)
-still show internal capability names or raw JSON instead of complete human-familiar treatment.
+authorization path, turn-engine capability selection, and desktop extension surface exist. Skills,
+local tools, and MCP connections all have complete human-familiar Add/Edit/Remove workflows,
+backed by the same read/edit contract for operator-owned declarative definitions - MCP connections
+covering both `streamable_http` (URL, allowlists, credential reference, OAuth configuration) and
+`stdio` (command, argv allowlist, environment passthrough, working root, credential reference)
+transport. The operator experience is not complete because hooks and plugins still have no
+workflow of their own - the generic capability-console path remains their only reachable surface -
+and some other operations (extension run display, resource content, MCP Disconnect) still show
+internal capability names, raw JSON, or no route at all instead of complete human-familiar
+treatment.
 
 Implemented foundations:
 - Operator settings are scoped and classified through `backend/app/core/settings.py`. `backend/app/services/operator_config_service.py` owns the operator field allowlist and secret masking; `backend/app/api/routes/config.py` and `backend/app/api/schemas/config.py` are the route surface over it. Operator writes are allowlisted, and secrets are masked.
@@ -172,14 +173,13 @@ credential storage was never gated by the capability-console ceremony.
 The Extensions panel has its own Add MCP Connection flow for `extension-definition-write` and
 `extension-definition-delete`.
 `desktop/src/components/extensions-panel.js` renders an "Add MCP connection" form at the top of the
-catalog list - display name, connection ID, and URL - that proposes `extension-definition-write`
-with `family: "mcp"` and a `streamable_http` definition through the same governed capability path
-`saveSkill` already used for operator skills; `extensionLocalIdValid` rejects a malformed connection
-ID before it is proposed, matching the backend's `SAFE_LOCAL_ID` pattern. A connection whose
-provenance shows it is operator-owned (`isOperatorOwnedProvenance`) gets a "Remove connection"
-control next to its credential form, which proposes `extension-definition-delete`. This covers the
-common case; adding an operator-owned `stdio` connection still requires editing YAML, since a form
-for arbitrary local command execution needs its own careful design.
+catalog list - display name, connection ID, and a transport-dependent field set covering both
+`streamable_http` and `stdio` (detailed further below) - that proposes `extension-definition-write`
+with `family: "mcp"` through the same governed capability path `saveSkill` already used for operator
+skills; `extensionLocalIdValid` rejects a malformed connection ID before it is proposed, matching the
+backend's `SAFE_LOCAL_ID` pattern. A connection whose provenance shows it is operator-owned
+(`isOperatorOwnedProvenance`) gets a "Remove connection" control next to its credential form, which
+proposes `extension-definition-delete`.
 
 `removeMcpConnection` and `removeSkill` both check the resolved proposal's `status` before
 reporting success, matching `saveSkill`'s behavior. A governed capability can resolve with
@@ -393,6 +393,61 @@ of the write - `dependencies`/`metadata`/`enabled` carried from the loaded defin
 before. "Cancel edit" and a successful save both close the form and, on success, reselect the
 extension so its detail reflects the saved value.
 
+Add and Edit MCP Connection both carry a credential-reference field and an OAuth fieldset,
+requiring no backend change: `McpConnectionDefinition` (`backend/app/extensions/mcp.py`) already
+accepted `credential_ref` and `oauth` in a definition's mapping, and the governed write capability's
+`definition` property is an open `{"type": "object"}`, so the existing contract needed no schema
+change to carry them. `credential_ref` is a plain reference name into the operator secret store,
+never the secret itself - the secret is stored only through the existing dedicated `POST
+/extensions/{id}/credentials` route, unchanged by this work. The OAuth fieldset matches
+`McpConnectionDefinition._validate_oauth`'s actual contract: `client_id` is the only required
+field, `authorization_url`/`token_url` are optional together (the backend discovers them from the
+server's protected-resource metadata when both are blank, so leaving them blank is a normal,
+supported configuration rather than an incomplete one), and `scopes`/`redirect_port`/`resource`
+are also optional. `client_secret` is deliberately not a form field: `discovery.py`'s secret-key
+check refuses an inline `oauth.client_secret` before a definition ever reaches disk, confirmed
+directly against that check rather than assumed, so a form field for it would only ever produce a
+refusal. On Edit, both fields are prefilled from the loaded definition and round-trip through the
+form like every other field now - an operator who edits only the display name resubmits the same
+credential/OAuth values the form loaded, rather than the base-object preservation `skill_id`/
+`script` still need because tools have no such field to prefill from.
+
+Add and Edit MCP Connection both support `stdio` transport now, also requiring no backend change:
+`McpSdkPeer.open()` already branches on `definition.transport == "stdio"` to launch the server
+through `StdioServerParameters`, and `_operations_for` already classifies a stdio connection's
+operations as `privileged_execution` rather than `external_read` - confirmed by writing a stdio
+definition through a real `ExtensionRuntimeService` and observing it discover and register its
+`discover` operation with no code change, the same proof already used for the credential/OAuth
+fields above. A transport `<select>` on the Add form toggles between the existing
+`streamable_http` field set (URL, OAuth) and a new `stdio` field set - command as one argv token
+per line via the existing `parseCommandLines`, `argv_allowlist`/`env_passthrough` via the existing
+`parseAllowlist`, and `working_root` as the same constrained `<select>` Add Local Tool already
+uses - while `subprocess: true` is fixed for the same reason Local Tool's is: every stdio MCP
+connection registers as `privileged_execution`, and `boundaries.py` rejects that effect class
+declaring `subprocess: false`. `stdioDefinition` and `streamableHttpDefinition` share
+`applyMcpAllowlists`/`applyMcpCredentialRef` so the tool/resource/prompt allowlists and the
+credential-reference field behave identically - set or explicitly deleted - regardless of
+transport. Transport is fixed at create time and is not an Edit field: `renderEditMcpConnection`
+branches on the loaded definition's own `transport` to render the matching field set (`stdio`
+never shows a URL or OAuth fields, since MCP's OAuth authorization-code flow targets an
+HTTP-reachable server and `McpConnectionDefinition` itself forbids a stdio connection from
+declaring a `url`), and `updateMcpConnection` reads `state.definition.definition.transport`
+rather than accepting it as a field, so an edit cannot silently switch a connection's transport.
+`mcp_credentials()` requires a stdio connection's `credential_ref` to also appear in
+`process.env_passthrough` (`ProcessBoundary.scrub_environment` is an allowlist, not a wildcard) -
+`stdioDefinition` folds the reference into `env_passthrough` automatically rather than leaving the
+operator to discover that coupling from a runtime refusal.
+
+`renderAddMcpConnection` derives the transport-dependent field set's `hidden`/`required` state from
+`state.addConnectionTransport`, read at construction time, rather than from the `<select>`
+element's own value inside its `change` listener. `setAddConnectionTransport` is the only writer of
+that state field, called from the `<select>`'s `change` handler. `renderPanel`'s
+capture-then-restore mechanism restores a draft-keyed field's `.value` without dispatching a
+`change` event, so a re-render this form does not itself cause - a pending/error state emit, or run
+polling - would rebuild the field set from an event-driven toggle's fixed defaults regardless of
+which transport is selected; reading `state.addConnectionTransport` directly instead means the
+field set is correct on every render, independent of what triggered it.
+
 ## Confirmation
 
 Implementation evidence:
@@ -501,11 +556,16 @@ Validation results (windows-amd64):
 - Direct backend parsing check: PASS. `parse_definition_manifest` and `ProcessBoundary.from_mapping(...).validate_argv(...)` accept the Local Tool payload shape produced by the desktop form.
 - `backend/.venv/Scripts/python.exe scripts/validate_backend.py unit`: PASS, 1527 passed, 7 skipped. Covers `definition_available` excluding an application-owned definition, a non-`DEFINITION_FAMILIES` family, and a plugin-installed child (same `data/extensions` provenance as a standalone operator definition, but `external` trust); `ExtensionService.definition` round-tripping `enabled`/`dependencies`/`metadata`/`definition`/`fingerprint` for an `mcp` definition and separately confirming a `tool` definition reads through the same contract; and the `GET /extensions/{extension_id}/definition` route serving that full shape.
 - `backend/.venv/Scripts/python.exe scripts/validate_backend.py integration`: PASS, 32 passed. Covers an edit clearing a connection's stale MCP discovery snapshot the same way removal already does, a stale `expected_fingerprint` refusing to overwrite a definition changed by another write, a matching `expected_fingerprint` succeeding, and a write leaving no `.tmp` file behind.
-- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the Edit skill body-prefill fix with a regression test that fails against the prior unconditional draft key and passes with the conditional one, confirmed by reverting the fix locally and observing the new test fail before restoring it.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the Edit skill textarea showing a loaded body rather than the empty value captured before `state.body` populated.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. Covers the new `get_extension_definition` Tauri command.
 - `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `updateMcpConnection`/`updateLocalTool` proposing `extension-definition-write` with `dependencies`/`metadata`/`enabled`/`expected_fingerprint` carried from the loaded definition, a backend fingerprint-conflict refusal keeping the edit form open instead of claiming success, `cancelDefinitionEdit` closing the form without proposing anything, and a DOM-level render of both "Edit connection" and "Edit tool" asserting the click-to-load flow renders a distinct prefilled form (not the empty Add form) and that submitting an edited field reaches `extension-definition-write` with the change and the fingerprint.
 - `backend/.venv/Scripts/python.exe scripts/validate_backend.py integration`: PASS, 33 passed. Covers a create (no `expected_fingerprint`) reusing an id refused with "already exists" rather than silently replacing the existing operator definition, confirmed against the actual file's untouched content afterward.
 - `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers source-level checks that `main.js` wires each named handler used by `extensions-panel.js`, including `getExtensionDefinition`; controller tests that MCP `credential_ref`/`oauth` and tool `skill_id`/`script` survive edits; and Add requests omitting `expected_fingerprint`. These checks establish desktop source and component contracts; native desktop interaction remains unverified.
+- Direct backend inspection: PASS. `parse_definition_manifest` and `McpConnectionDefinition.from_mapping` accept a definition carrying `credential_ref` and a full `oauth` block (`client_id`, `authorization_url`, `token_url`, `scopes`) produced by the desktop form, confirming no backend change was needed; separately confirmed `parse_definition_manifest` refuses an inline `oauth.client_secret` with "secret-bearing field is not allowed," justifying why that field is not in the form.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers Add and Edit MCP Connection both carrying `credential_ref`/OAuth fields with explicit set-or-clear semantics matching the allowlists (a value sets the field, an empty value deletes it rather than leaving a preserved base value in place); OAuth requiring only `client_id`, with a blank `client_id` omitting `oauth` entirely rather than sending an incomplete block; and a DOM-level render of the Edit form proving `credential_ref` and OAuth fields (including `scopes`) are prefilled from the loaded definition and survive an edit to an unrelated field (display name) unchanged. Desktop source and component contracts only; native desktop interaction remains unverified.
+- Direct backend inspection: PASS. Wrote a `stdio` MCP definition (matching the exact shape `addMcpConnection({transport: "stdio", ...})` now produces) through a real `ExtensionRuntimeService.write_definition`, confirmed it discovers and registers its `discover` operation, then edited only its `command` through the same instance with `expected_fingerprint`, confirming both the create and the fingerprint-guarded update paths accept the desktop's stdio payload shape unchanged.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `addMcpConnection`/`updateMcpConnection` building the stdio `command`/`process` shape with a `credential_ref` automatically folded into `env_passthrough`; an edit that changes only the command preserving `tool_allowlist`, `credential_ref`, `transport`, and `expected_fingerprint`; a DOM-level render of the Add form's transport `<select>` toggling from the `streamable_http` field set to command/argv-allowlist/working-root fields and submitting a `url`-free stdio definition; and a DOM-level render of the Edit form for an already-stdio connection showing the stdio field set with neither a URL nor OAuth fields, prefilled from the loaded definition, surviving an edit to the command unchanged for `credential_ref`. Desktop source and component contracts only; native desktop interaction and a live stdio MCP server remain unverified.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the Add form's transport field set: `hidden`/`required` state matches the selected transport immediately after selecting stdio, and continues to match it after an intervening re-render this form does not itself cause (`refreshCatalog()`, the same trigger run polling uses).
 
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. Native operator layout and interaction validation
@@ -519,9 +579,7 @@ Human-familiar extension surfaces:
 - Rework extension run display so each run has an operator-readable identity, status, requested input, event/failure summary, result summary, and artifacts for the extension operation that ran. Raw action evidence, authorization records, and definition fingerprints remain ADR 0005 audit/detail evidence.
 
 MCP connections:
-- Extend Add/Edit MCP Connection to `stdio` connections with command, argv allowlist, environment passthrough, working root, and credential-reference handling that matches the existing process-boundary contract.
-- Add credential reference and OAuth configuration fields to the create/edit flow. Secret values still belong to the dedicated credential route; definition forms should store only references and OAuth metadata.
-- Define MCP Disconnect semantics. Non-OAuth connections currently connect only for the duration of an operation, and OAuth connections have authorize/reauthorize but no backend revoke or clear-authorization route.
+- Define MCP Disconnect semantics against the current MCP specification's own authorization/token-revocation guidance rather than an ad hoc application choice. Non-OAuth connections currently connect only for the duration of an operation; OAuth connections have authorize/reauthorize but no backend route to clear or revoke a stored token. "Disable use" already exists through the generic `extension-state-update` capability - what remains is whether clearing local authorization requires only local secret-store deletion (`local_write`) or also calling the authorization server's revocation endpoint (`external_write`, per ADR 0005's risk table), which the spec research should settle before a route is built.
 - Render resource reads as a content-preview view instead of only a bare submit/result path.
 
 Hooks and plugins:
