@@ -12,6 +12,7 @@ from backend.app.api.dependencies import (
 from backend.app.api.schemas.extensions import (
     ExtensionBodyResponse,
     ExtensionCatalogResponse,
+    ExtensionDefinitionResponse,
     ExtensionErrorListResponse,
     ExtensionResponse,
     ExtensionStateRequest,
@@ -159,6 +160,16 @@ def read_extension_body(
     service: ExtensionService = Depends(get_extension_service),
 ) -> ExtensionBodyResponse:
     return ExtensionBodyResponse.model_validate(asdict(_execute(lambda: service.body(extension_id))))
+
+
+@router.get("/{extension_id}/definition", response_model=ExtensionDefinitionResponse)
+def read_extension_definition(
+    extension_id: str = Path(min_length=1, max_length=128),
+    service: ExtensionService = Depends(get_extension_service),
+) -> ExtensionDefinitionResponse:
+    return ExtensionDefinitionResponse.model_validate(
+        asdict(_execute(lambda: service.definition(extension_id)))
+    )
 
 
 @router.post("/{extension_id}/state", response_model=ExtensionResponse)

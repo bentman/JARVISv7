@@ -2,13 +2,13 @@
 
 Date: 2026-09-07
 Status: Accepted
-Related: 0002, 0004, 0005, 0006, 0007
+Related: 0005, 0006, 0007
 
 ## Context and Problem Statement
 
 The backend, Tauri, and desktop component surfaces for agents, actions, extensions, memory, settings, provider profiles, readiness, and diagnostics exist. The desktop operator layout must expose them clearly without changing backend ownership.
 
-Before this ADR, `desktop/src/index.html` used a three-column layout: a left status sidebar, the conversation panel, and a right operator sidebar. The left sidebar showed durable status information: Backend, Readiness, Services, and Personality. The right sidebar showed Resident Voice, Wake, and a row of single-letter/operator buttons for Memory, Actions, Extensions, and Settings.
+The layout decision starts from `desktop/src/index.html`'s three-column shell: a left status sidebar, the conversation panel, and a right operator sidebar. Backend, Readiness, and Services are durable status information; Personality, Resident Voice, Wake, Memory, Actions, Extensions, and Settings are operator controls with different frequency and space needs.
 
 At decision time, the desktop defects were:
 
@@ -100,8 +100,8 @@ Agents:
 - Governed outcomes are reported honestly: an `awaiting_approval` invocation is not shown as success, a refused cancel is reported as refused, and the Cancel control is gated on the profile's `cancellable` flag.
 
 Provider and settings state:
-- `desktop/src/components/llm-provider-settings.js` gains the `openProviderSettings` / `closeProviderSettings` mount for the Providers & Models category, so provider controls no longer live inside the operator settings form. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
-- `desktop/src/components/settings-panel.js` replaces its boolean `restartRequired` with a `restartScopes` set of `operator` and `provider`. The badge, restart notice, and Restart button reflect the union; operator fields are disabled only by the operator scope and provider controls only by the provider scope. The blanket `querySelectorAll("input, select, button")` disable is removed, so an unrelated operator-config save no longer disables Providers & Models. Both mounts carry a generation guard so a resolved load cannot repopulate a container that was switched away.
+- `desktop/src/components/llm-provider-settings.js` exposes the `openProviderSettings` / `closeProviderSettings` mount for the Providers & Models category. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
+- `desktop/src/components/settings-panel.js` replaces its boolean `restartRequired` with a `restartScopes` set of `operator` and `provider`. The badge, restart notice, and Restart button reflect the union; operator fields are disabled only by the operator scope and provider controls only by the provider scope. Provider controls remain enabled after unrelated operator-config saves. Both mounts carry a generation guard so a resolved load cannot repopulate a container that was switched away.
 
 No backend route, Tauri command, or API-client route change was made. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
 
@@ -122,6 +122,5 @@ Validated on `windows-amd64`:
 
 - Validate the operator desktop in a native visible session on `windows-amd64`: right sidebar startup fit, selector font size, compact Personality metadata, advanced dialog sizing, Extensions list/detail split, single Close control, Escape, backdrop click, and focus return. Report the exact command or manual run path and observable result.
 - Run a native desktop provider-profile smoke test against the running backend: create an editable `openai_compatible` profile with endpoint, model, context window, timeout, and credential; verify save succeeds, the created profile remains selected, and backend validation or storage failures surface as specific operator-readable errors.
-- Operator usability pass: revise Advanced Controls so each category uses familiar task names and controls. Providers use profile and credential language; Memory uses review/confirm/correct/forget language; Actions is an audit/debug view; Extensions owns MCP, skills, tools, hooks, and plugins; Agents owns internal and ACP external agents.
-- Category sequencing: implement one capability family at a time rather than merging all controls into a generic schema renderer. Start with MCP Connections, then Skills, Tools, Hooks, Plugins, and Agents, validating each family before broadening the next.
-- Refresh behavior: preserve scroll position, selected category, selected item, focused field, and draft values across polling, refresh, and operation completion.
+- Keep Advanced Controls organized as an operator-facing shell. Providers use profile and credential language; Memory uses review, confirm, correct, and forget language; Actions is an audit/debug view; Extensions uses ADR 0006 family workflows; Agents uses ADR 0007 internal-agent and ACP workflows.
+- Validate category switching, mount/unmount behavior, selected category retention, focus return, and draft/scroll preservation at the shared Advanced Controls shell level. Family-specific workflow behavior belongs to the owning ADR.

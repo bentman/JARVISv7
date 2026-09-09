@@ -102,6 +102,7 @@ const extensionsPanel = createExtensionsPanel(
     getExtensionErrors: (...args) => api.getExtensionErrors(...args),
     getExtensionDetail: (...args) => api.getExtensionDetail(...args),
     getExtensionBody: (...args) => api.getExtensionBody(...args),
+    getExtensionDefinition: (...args) => api.getExtensionDefinition(...args),
     setExtensionState: (...args) => api.setExtensionState(...args),
     getExtensionRuntime: (...args) => api.getExtensionRuntime(...args),
     getExtensionRuns: (...args) => api.getExtensionRuns(...args),

@@ -2673,6 +2673,47 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
 }
 
 {
+  // A loaded skill body must actually appear in the Edit skill textarea. The editor renders
+  // unconditionally (before any body is loaded) with an empty draft-keyed value, so the
+  // capture-then-restore re-render mechanism must not stomp the freshly loaded body back to
+  // that pre-load empty value on the very re-render that first populates it.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "skill:notes", display_name: "Notes", family: "skill", trust: "operator", provenance: "data/extensions", version: "1" }],
+      families: { skill: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "skill:notes", family: "skill", provenance: "data/extensions", body_available: true }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionBody: async () => ({ extension_id: "skill:notes", body: "the loaded body" }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("skill:notes");
+
+  function editorTextarea() {
+    const heading = findElement(container, (node) => node.tagName === "strong" && node.textContent === "Edit skill");
+    return findElement(heading.parentElement, (node) => node.tagName === "textarea");
+  }
+
+  const before = editorTextarea();
+  assert.equal(before.value, "", "the editor must start empty before a body is loaded");
+
+  await panel.controller.loadBody("skill:notes");
+
+  const after = editorTextarea();
+  assert.equal(after.value, "the loaded body", "the editor must show the loaded body, not the stale pre-load draft");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
   // An operator can add an MCP connection without hand-editing YAML: the same governed
   // capability path as skills, not a direct write.
   const proposals = [];
@@ -2768,6 +2809,226 @@ assert.deepEqual(parseCommandLines("python3\n\n-m\n"), ["python3", "-m"], "a bla
   assert.equal(proposals[1].capabilityId, "extension-definition-delete");
   assert.deepEqual(proposals[1].actionArguments, { family: "tool", local_id: "changelog-writer" });
   assert.equal(controller.snapshot().selectedExtensionId, "");
+}
+
+{
+  // Editing an MCP connection reuses the same write capability Add uses, but must carry the
+  // fingerprint the definition was read with, plus its enabled/dependencies/metadata, so a
+  // save cannot silently drop fields a hand-authored YAML file declared or overwrite a
+  // concurrent change.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: ["search-public-web"], metadata: { owner: "ops" },
+      definition: { transport: "streamable_http", url: "https://weather.example.test/mcp" },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("mcp:weather");
+  await controller.loadDefinition("mcp:weather");
+  assert.equal(controller.snapshot().definition.fingerprint, "fingerprint-1");
+
+  await controller.updateMcpConnection({
+    localId: "weather", name: "Weather HQ", url: "https://weather.example.test/mcp/v2",
+    toolAllowlist: "get_forecast", resourceAllowlist: "", promptAllowlist: "",
+  });
+
+  assert.equal(proposals[0].capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    family: "mcp", local_id: "weather", name: "Weather HQ", version: "1",
+    definition: {
+      transport: "streamable_http", url: "https://weather.example.test/mcp/v2",
+      tool_allowlist: ["get_forecast"],
+    },
+    dependencies: ["search-public-web"], metadata: { owner: "ops" }, enabled: true,
+    expected_fingerprint: "fingerprint-1",
+  });
+  assert.equal(controller.snapshot().notice, "MCP connection saved.");
+  assert.equal(controller.snapshot().definition, null, "the edit form must close after a successful save");
+}
+
+{
+  // A stale editor's conflict must surface as the backend's reason, keep the form open for
+  // retry, and never claim success.
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: [], metadata: {},
+      definition: { transport: "streamable_http", url: "https://weather.example.test/mcp" },
+      fingerprint: "stale",
+    }),
+    proposeAction: async () => ({
+      status: "failure",
+      execution: { error: "the definition changed since it was read; reload before saving" },
+    }),
+  });
+  await controller.selectExtension("mcp:weather");
+  await controller.loadDefinition("mcp:weather");
+
+  await controller.updateMcpConnection({
+    localId: "weather", name: "Weather", url: "https://weather.example.test/mcp",
+    toolAllowlist: "", resourceAllowlist: "", promptAllowlist: "",
+  });
+
+  const snapshot = controller.snapshot();
+  assert.ok(snapshot.editConnectionError.includes("changed since it was read"));
+  assert.notEqual(snapshot.notice, "MCP connection saved.");
+  assert.ok(snapshot.definition, "the edit form must stay open so the operator can reload and retry");
+}
+
+{
+  // Cancelling an edit closes the form without proposing anything.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: [], metadata: {},
+      definition: { transport: "streamable_http", url: "https://weather.example.test/mcp" },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("mcp:weather");
+  await controller.loadDefinition("mcp:weather");
+  assert.ok(controller.snapshot().definition);
+
+  controller.cancelDefinitionEdit();
+
+  assert.equal(controller.snapshot().definition, null);
+  assert.equal(proposals.length, 0);
+}
+
+{
+  // A saved edit must preserve fields the edit form does not expose - credential_ref and oauth
+  // configuration - rather than rebuilding the definition from only the fields the form knows
+  // about. A display-name-only edit must not silently detach a connection's authentication.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: [], metadata: {},
+      definition: {
+        transport: "streamable_http", url: "https://weather.example.test/mcp",
+        credential_ref: "weather-api-key",
+        oauth: { client_id: "abc", authorization_url: "https://a.test", token_url: "https://t.test" },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("mcp:weather");
+  await controller.loadDefinition("mcp:weather");
+
+  await controller.updateMcpConnection({
+    localId: "weather", name: "Weather HQ", url: "https://weather.example.test/mcp",
+    toolAllowlist: "", resourceAllowlist: "", promptAllowlist: "",
+  });
+
+  assert.equal(proposals[0].actionArguments.definition.credential_ref, "weather-api-key");
+  assert.deepEqual(proposals[0].actionArguments.definition.oauth, {
+    client_id: "abc", authorization_url: "https://a.test", token_url: "https://t.test",
+  });
+}
+
+{
+  // Editing a local tool follows the same contract as editing an MCP connection.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
+      name: "Changelog writer", version: "1", enabled: true, dependencies: [], metadata: {},
+      definition: {
+        command: ["python3", "-m", "scripts.changelog"],
+        process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("tool:changelog-writer");
+  await controller.loadDefinition("tool:changelog-writer");
+
+  await controller.updateLocalTool({
+    localId: "changelog-writer", name: "Changelog writer v2",
+    command: "python3\n-m\nscripts.changelog\n--verbose",
+    argvAllowlist: "python3", envPassthrough: "", workingRoot: "data",
+  });
+
+  assert.equal(proposals[0].capabilityId, "extension-definition-write");
+  assert.deepEqual(proposals[0].actionArguments, {
+    family: "tool", local_id: "changelog-writer", name: "Changelog writer v2", version: "1",
+    definition: {
+      command: ["python3", "-m", "scripts.changelog", "--verbose"],
+      process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
+    },
+    dependencies: [], metadata: {}, enabled: true, expected_fingerprint: "fingerprint-1",
+  });
+  assert.equal(controller.snapshot().notice, "Local tool saved.");
+  assert.equal(controller.snapshot().definition, null);
+}
+
+{
+  // A saved edit must preserve skill_id/script - what makes a tool run a skill's declared
+  // script rather than an arbitrary command - rather than rebuilding the definition from only
+  // command/process. A command or allowlist edit must not silently detach it from its skill.
+  const proposals = [];
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({
+      extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionDefinition: async () => ({
+      extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
+      name: "Changelog writer", version: "1", enabled: true, dependencies: [], metadata: {},
+      definition: {
+        command: ["python3", "-m", "scripts.changelog"],
+        process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
+        skill_id: "changelog-writer-skill",
+        script: "run.py",
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await controller.selectExtension("tool:changelog-writer");
+  await controller.loadDefinition("tool:changelog-writer");
+
+  await controller.updateLocalTool({
+    localId: "changelog-writer", name: "Changelog writer",
+    command: "python3\n-m\nscripts.changelog",
+    argvAllowlist: "python3", envPassthrough: "", workingRoot: "data",
+  });
+
+  assert.equal(proposals[0].actionArguments.definition.skill_id, "changelog-writer-skill");
+  assert.equal(proposals[0].actionArguments.definition.script, "run.py");
 }
 
 {
@@ -2944,6 +3205,61 @@ assert.equal(formatPromptMessages(null), null);
 }
 
 {
+  // Edit MCP Connection: clicking "Edit connection" loads the stored definition and renders a
+  // form prefilled from it (not the empty Add form), and submitting reaches the governed
+  // capability carrying the fingerprint the definition was read with.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", provenance: "data/extensions", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionDefinition: async () => ({
+      extension_id: "mcp:weather", family: "mcp", local_id: "weather", name: "Weather", version: "1",
+      enabled: true, dependencies: [], metadata: {},
+      definition: { transport: "streamable_http", url: "https://weather.example.test/mcp" },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  const editButton = findElement(container, (node) => node.tagName === "button" && node.textContent === "Edit connection");
+  assert.ok(editButton, "an operator-owned connection with a readable definition must offer Edit connection");
+  await editButton.listeners.click();
+
+  const editForm = findElement(container, (node) => node.className === "extensions-edit-connection");
+  assert.ok(editForm, "editing must render a distinct form, not reuse the empty Add form");
+  const nameField = findElement(editForm, (node) => node.placeholder === "Display name");
+  const urlField = findElement(editForm, (node) => node.placeholder === "https://server.example/mcp");
+  assert.equal(nameField.value, "Weather", "the form must be prefilled from the loaded definition");
+  assert.equal(urlField.value, "https://weather.example.test/mcp");
+
+  urlField.value = "https://weather.example.test/mcp/v2";
+  await editForm.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.capabilityId, "extension-definition-write");
+  assert.equal(proposals[0]?.actionArguments.expected_fingerprint, "fingerprint-1");
+  assert.equal(proposals[0]?.actionArguments.definition.url, "https://weather.example.test/mcp/v2");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
   // The Add Local Tool control must render as a real, human-labeled form, not raw JSON,
   // and its submit must reach the governed capability with typed, argv-shaped arguments.
   const previousDocument = globalThis.document;
@@ -2991,6 +3307,61 @@ assert.equal(formatPromptMessages(null), null);
       process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
     },
   });
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // Edit Local Tool: clicking "Edit tool" loads the stored definition and renders a form
+  // prefilled from it, and submitting reaches the governed capability with the fingerprint.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const proposals = [];
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "tool:changelog-writer", display_name: "Changelog writer", family: "tool", trust: "operator", provenance: "data/extensions", version: "1" }],
+      families: { tool: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({
+      extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
+      provenance: "data/extensions", definition_available: true, state: "enabled",
+    }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionDefinition: async () => ({
+      extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
+      name: "Changelog writer", version: "1", enabled: true, dependencies: [], metadata: {},
+      definition: {
+        command: ["python3", "-m", "scripts.changelog"],
+        process: { subprocess: true, argv_allowlist: ["python3"], env_passthrough: [], working_root: "data" },
+      },
+      fingerprint: "fingerprint-1",
+    }),
+    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+  });
+  await panel.open();
+  await panel.controller.selectExtension("tool:changelog-writer");
+
+  const editButton = findElement(container, (node) => node.tagName === "button" && node.textContent === "Edit tool");
+  assert.ok(editButton, "an operator-owned tool with a readable definition must offer Edit tool");
+  await editButton.listeners.click();
+
+  const editForm = findElement(container, (node) => node.className === "extensions-edit-tool");
+  assert.ok(editForm, "editing must render a distinct form, not reuse the empty Add form");
+  const commandField = findElement(editForm, (node) => node.tagName === "textarea");
+  assert.equal(commandField.value, "python3\n-m\nscripts.changelog", "the form must be prefilled from the loaded definition");
+
+  commandField.value = "python3\n-m\nscripts.changelog\n--verbose";
+  await editForm.listeners.submit({ preventDefault() {} });
+
+  assert.equal(proposals[0]?.capabilityId, "extension-definition-write");
+  assert.equal(proposals[0]?.actionArguments.expected_fingerprint, "fingerprint-1");
+  assert.deepEqual(proposals[0]?.actionArguments.definition.command, ["python3", "-m", "scripts.changelog", "--verbose"]);
 
   panel.close();
   globalThis.document = previousDocument;
@@ -3085,4 +3456,22 @@ assert.equal(formatPromptMessages(null), null);
   panel.close();
   globalThis.document = previousDocument;
   globalThis.window = previousWindow;
+}
+
+{
+  // main.js must wire every handler extensions-panel.js actually calls. getExtensionDefinition
+  // was missing this way once: loadDefinition() returned immediately because
+  // handlers.getExtensionDefinition was undefined in the real mounted app, yet every isolated
+  // controller/DOM test in this file passed anyway because each one supplies its own mock
+  // handlers directly - only the real wiring in main.js could go silently stale like this.
+  const panelSource = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
+  const mainSource = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
+  const usedHandlers = new Set([...panelSource.matchAll(/handlers\.([a-zA-Z]+)/g)].map((match) => match[1]));
+  assert.ok(usedHandlers.size > 10, "sanity check: the extraction must find the panel's known handler calls");
+  const callStart = mainSource.indexOf("createExtensionsPanel(");
+  assert.ok(callStart > 0, "main.js must mount the extensions panel");
+  const callEnd = mainSource.indexOf("\n);", callStart);
+  const wired = mainSource.slice(callStart, callEnd);
+  const missing = [...usedHandlers].filter((name) => !wired.includes(`${name}:`));
+  assert.deepEqual(missing, [], `main.js must wire every handler extensions-panel.js calls; missing: ${missing.join(", ")}`);
 }

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,6 +43,36 @@ class DefinitionManifest:
     dependencies: tuple[str, ...] = ()
     metadata_claims: dict[str, Any] = field(default_factory=dict)
     definition: dict[str, Any] = field(default_factory=dict)
+
+
+def manifest_metadata(manifest: DefinitionManifest) -> dict[str, Any]:
+    """Return the raw operator-declared metadata a manifest's YAML `metadata` key held.
+
+    `metadata_claims` wraps this in a trust envelope for model-facing consumers; an editor
+    reading a definition back needs the declared values themselves, not the envelope.
+    """
+    return dict(manifest.metadata_claims.get("declaration", {}).get("values", {}))
+
+
+def definition_fingerprint(manifest: DefinitionManifest) -> str:
+    """Hash the full editable content of a definition, not just its `definition` mapping.
+
+    Used as a concurrency guard: a write that names an `expected_fingerprint` is refused if the
+    stored manifest no longer matches it, so a stale editor cannot silently overwrite a
+    definition (including its enabled/dependencies/metadata fields, not just the nested
+    `definition` payload) that changed since it was read. A sorted-JSON hash over parsed content
+    is used rather than hashing the raw YAML text so that reformatting alone - whitespace, key
+    order - never produces a false conflict.
+    """
+    payload = {
+        "name": manifest.display_name,
+        "version": manifest.version,
+        "enabled": manifest.declared_enabled,
+        "dependencies": list(manifest.dependencies),
+        "metadata": manifest_metadata(manifest),
+        "definition": manifest.definition,
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -217,6 +249,7 @@ def _require_family(family: str) -> None:
 
 __all__ = [
     "DEFINITION_DIRECTORIES", "DEFINITION_FAMILIES", "DefinitionError", "DefinitionFamily",
-    "DefinitionList", "DefinitionManifest", "DefinitionRuntime", "definitions_directory",
-    "discover_definition_manifests", "parse_definition_manifest",
+    "DefinitionList", "DefinitionManifest", "DefinitionRuntime", "definition_fingerprint",
+    "definitions_directory", "discover_definition_manifests", "manifest_metadata",
+    "parse_definition_manifest",
 ]

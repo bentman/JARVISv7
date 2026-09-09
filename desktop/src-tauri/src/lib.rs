@@ -11,6 +11,7 @@ use backend::{
     forget_memory as backend_forget_memory,
     get_action_audit as backend_action_audit,
     get_extension_body as backend_extension_body,
+    get_extension_definition as backend_extension_definition,
     get_extension_detail as backend_extension_detail,
     get_extension_errors as backend_extension_errors,
     get_extension_runtime as backend_extension_runtime,
@@ -700,6 +701,19 @@ fn get_extension_body(
 }
 
 #[tauri::command]
+fn get_extension_definition(
+    extension_id: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_extension_definition(
+        &state.http_client,
+        &base_url,
+        &required_extension_id(extension_id)?,
+    )
+}
+
+#[tauri::command]
 fn set_extension_state(
     extension_id: String,
     extension_state: String,
@@ -972,6 +986,7 @@ pub fn run() {
             get_extension_errors,
             get_extension_detail,
             get_extension_body,
+            get_extension_definition,
             set_extension_state,
             get_extension_runtime,
             get_extension_runs,

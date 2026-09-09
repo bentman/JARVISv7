@@ -87,6 +87,41 @@ def test_bodies_are_served_only_on_request(tmp_path: Path) -> None:
     assert client.get("/extensions/search_provider:ddgs/body").status_code == 404
 
 
+def test_an_operator_owned_definition_is_readable_for_editing(tmp_path: Path) -> None:
+    from backend.app.extensions.discovery import definition_fingerprint, parse_definition_manifest
+
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    definition_dir = data / "extensions" / "mcp"
+    definition_dir.mkdir(parents=True)
+    text = (
+        "id: weather\nname: Weather\nversion: '1'\ndefinition:\n"
+        "  transport: streamable_http\n  url: https://weather.example.test/mcp\n"
+    )
+    (definition_dir / "weather.yaml").write_text(text, encoding="utf-8")
+    manifest = parse_definition_manifest(
+        "mcp", text, "data/extensions/mcp/weather.yaml", "data/extensions", "operator"
+    )
+    service = ExtensionService(
+        observe=lambda: ExtensionObservation(definitions=(manifest,)),
+        store=ExtensionOverlayStore(db_path=tmp_path / "operator.sqlite"),
+        config_dir=config,
+        data_dir=data,
+    )
+    client = _client(service)
+
+    assert client.get("/extensions/mcp:weather").json()["definition_available"] is True
+
+    response = client.get("/extensions/mcp:weather/definition")
+    assert response.status_code == 200
+    assert response.json() == {
+        "extension_id": "mcp:weather", "family": "mcp", "local_id": "weather",
+        "name": "Weather", "version": "1", "enabled": True, "dependencies": [], "metadata": {},
+        "definition": {"transport": "streamable_http", "url": "https://weather.example.test/mcp"},
+        "fingerprint": definition_fingerprint(manifest),
+    }
+
+
 def test_state_changes_round_trip_and_conflict_on_a_stale_revision(tmp_path: Path) -> None:
     client = _client(_service(tmp_path))
 

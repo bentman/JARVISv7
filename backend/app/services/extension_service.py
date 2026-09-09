@@ -11,7 +11,12 @@ from backend.app.extensions.catalog import (
     build_extension_descriptors,
 )
 from backend.app.extensions.contracts import ExtensionCatalog, ExtensionError
-from backend.app.extensions.discovery import DEFINITION_FAMILIES, discover_definition_manifests
+from backend.app.extensions.discovery import (
+    DEFINITION_FAMILIES,
+    definition_fingerprint,
+    discover_definition_manifests,
+    manifest_metadata,
+)
 from backend.app.extensions.prompts import list_prompt_templates_with_errors, load_prompt_template
 from backend.app.extensions.skills import list_skills_with_errors, load_skill_body
 from backend.app.extensions.store import ExtensionOverlayConflictError, ExtensionOverlayStore
@@ -52,6 +57,7 @@ class ExtensionView:
     metadata_claims: dict[str, Any]
     revision: int | None = None
     body_available: bool = False
+    definition_available: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -76,6 +82,20 @@ class ExtensionErrorListView:
 class ExtensionBodyView:
     extension_id: str
     body: str
+
+
+@dataclass(frozen=True, slots=True)
+class ExtensionDefinitionView:
+    extension_id: str
+    family: str
+    local_id: str
+    name: str
+    version: str
+    enabled: bool
+    dependencies: list[str]
+    metadata: dict[str, Any]
+    definition: dict[str, Any]
+    fingerprint: str
 
 
 class ExtensionService:
@@ -180,6 +200,31 @@ class ExtensionService:
             raise ExtensionServiceError(422, "invalid", str(exc)) from exc
         return ExtensionBodyView(extension_id=extension_id, body=body)
 
+    def definition(self, extension_id: str) -> ExtensionDefinitionView:
+        descriptor_view = self.read(extension_id)
+        if not descriptor_view.definition_available:
+            raise ExtensionServiceError(
+                404, "no_definition", "this extension has no editable definition"
+            )
+        manifests = discover_definition_manifests(
+            descriptor_view.family, config_root=self._config_dir, data_root=self._data_dir
+        )
+        for manifest in manifests.manifests:
+            if manifest.local_id == descriptor_view.local_id:
+                return ExtensionDefinitionView(
+                    extension_id=extension_id,
+                    family=descriptor_view.family,
+                    local_id=descriptor_view.local_id,
+                    name=descriptor_view.display_name,
+                    version=descriptor_view.version,
+                    enabled=manifest.declared_enabled,
+                    dependencies=list(manifest.dependencies),
+                    metadata=manifest_metadata(manifest),
+                    definition=dict(manifest.definition),
+                    fingerprint=definition_fingerprint(manifest),
+                )
+        raise ExtensionServiceError(404, "not_found", "extension definition is unavailable")
+
     def _view(self, row: dict[str, Any]) -> ExtensionView:
         overlay = self._store.read(row["extension_id"])
         return ExtensionView(
@@ -200,6 +245,17 @@ class ExtensionService:
             metadata_claims=row["metadata_claims"],
             revision=overlay.revision if overlay else None,
             body_available=row["family"] in {"prompt", "skill"},
+            # A plugin-installed child carries the same "data/extensions" provenance as a
+            # standalone operator definition, but its manifest lives inside the plugin bundle
+            # directory, not the flat family directory discover_definition_manifests scans - so
+            # it must be excluded here by its distinct "external" trust rather than by provenance
+            # alone, or definition_available would advertise a definition this reader can never
+            # actually retrieve.
+            definition_available=(
+                row["family"] in DEFINITION_FAMILIES
+                and row["provenance"] == "data/extensions"
+                and row["trust"] == "operator"
+            ),
         )
 
 

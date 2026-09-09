@@ -2,7 +2,7 @@
 
 Date: 2026-09-01
 Status: Accepted
-Related: 0002, 0003, 0004, 0006, 0007
+Related: 0002, 0003, 0004, 0006, 0007, 0008
 
 ## Context and Problem Statement
 
@@ -18,6 +18,7 @@ The architecture needs one governable action loop. A capability must have a stab
 - Model output can request or propose an action, but application code must validate, authorize, execute, and record it.
 - Action results and external content must return as untrusted context.
 - Tools, search, provider configuration, memory lifecycle, MCP, skills, plugins, and agents need one evidence model.
+- Preserve ADR 0002's turn ownership, ADR 0003's model/application authority boundary, and ADR 0004's memory lifecycle while action capability grows.
 
 ## Decision Outcome
 
@@ -53,7 +54,7 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented. The shared action mechanics are in place and the approval-posture reclassification described in the Decision Outcome is complete for every capability the catalog currently declares. What remains is giving `extension-definition-write`, `extension-definition-delete`, `extension-skill-write`, and `extension-skill-delete` a dedicated operator-facing home (ADR 0006) so the Actions panel stops being their only reachable surface.
+This ADR is partially implemented. The shared action mechanics are in place and the approval-posture reclassification described in the Decision Outcome is complete for every capability the catalog currently declares. What remains is the operator/audit presentation that keeps governed-action records inspectable while dedicated extension and agent workflows use the same action service instead of making the raw Actions panel the normal user path.
 
 `backend/app/actions/contracts.py` owns the posture. `APPROVAL_EFFECT_CLASSES` names the classes that require an interrupting decision - `external_write`, `cloud_model`, `privileged_execution`, and `destructive_action` - and `default_authorization` maps an effect class to its rule. `backend/app/actions/catalog.py` and `backend/app/services/extension_runtime_service.py` both derive their descriptors from it, so the built-in catalog and extension bindings cannot drift apart. Exactly two capabilities override it, each because the effect class alone cannot express the reason: `search-private-web` is an outbound read that carries the user's own context off the machine, and plugin installation writes only under `data/` but places new executable definitions on the host that then register privileged capabilities.
 
@@ -77,25 +78,25 @@ The shared action contract is wired. `backend/app/actions/contracts.py` defines 
 
 `TurnEngine` expresses the search confirmation handshake in this vocabulary. A search plan becomes a `ModelActionProposal` against `search-public-web` or `search-private-web`; a private plan produces an `approval_required` decision carrying an approval ID, and the user's confirmation, refusal, or silence on the next turn becomes an approval record, a denial, or a cancellation. `TurnContext.action_evidence` carries the records, and `_persist_artifact` writes proposals, authorization decisions, approval records, execution results, and cancellations into the turn artifact. Conversational behavior, prompts, and outcome strings are unchanged.
 
-`backend/app/actions/boundaries.py` also declares the process and root isolation rules that file, workspace, shell, MCP, plugin, skill-script, and agent capabilities must satisfy before they can be registered. `ProcessBoundary` requires an explicit argv allowlist, an explicit environment allowlist rather than a wildcard, and a working root drawn from the declared storage roots, and it scrubs every environment key it did not allowlist so a parent-process secret cannot reach a child. The registry refuses a `privileged_execution` descriptor that omits these, and refuses any process-bearing capability that is not cancellable. Extension tool, skill-script, stdio MCP, and ACP capabilities now register these boundaries and execute through the shared action service.
+`backend/app/actions/boundaries.py` also declares the process and root isolation rules that file, workspace, shell, MCP, plugin, skill-script, and agent capabilities must satisfy before they can be registered. `ProcessBoundary` requires an explicit argv allowlist, an explicit environment allowlist rather than a wildcard, and a working root drawn from the declared storage roots, and it scrubs every environment key it did not allowlist so a parent-process secret cannot reach a child. The registry refuses a `privileged_execution` descriptor that omits these, and refuses any process-bearing capability that is not cancellable. Extension tool, skill-script, stdio MCP, and ACP capabilities register these boundaries and execute through the shared action service.
 
-The `/memory`, `/config/llm`, and `/config/operator` mutation routes now authorize and execute on one path. `CapabilityService.execute_operator_action` mints the proposal, authorizes it with `caller="operator_api"`, records an approval record only for approval-gated direct requests, records the execution result, and re-raises the owning service's typed error so route status codes and conflict payloads are unchanged. An operator request carries its own authority, so availability and readiness are recorded but do not gate: the owning service reports those conditions with more fidelity than a descriptor explanation can. Operator-configuration keys are surfaced for discovery rather than enforced in the input schema, because the service rejects unknown keys per field and reports them. Local reads, local writes, and outbound reads run directly and record evidence: provider profile writes, provider selection, memory confirm/dispute/correct, `memory-policy-update`, `extension-state-update`, `extension-credential-write`, `extension-input-answer`, remote MCP discovery, and `operator-config-write`. `operator-config-write` writes `.env` at the repo root rather than under `data/`, but it accepts only the allowlisted `OPERATOR_FIELD_SPECS` keys, rejects the rest per field with a reason, masks secret values at record time, and is reversible; an interrupting approval added no evidence the recorded local write does not already carry. Approval still gates memory forget, provider profile deletion, credential-store key rotation, remote MCP tool calls, plugin installation, and every `privileged_execution` capability.
+The `/memory`, `/config/llm`, and `/config/operator` mutation routes authorize and execute on one path. `CapabilityService.execute_operator_action` mints the proposal, authorizes it with `caller="operator_api"`, records an approval record only for approval-gated direct requests, records the execution result, and re-raises the owning service's typed error so route status codes and conflict payloads are unchanged. An operator request carries its own authority, so availability and readiness are recorded but do not gate: the owning service reports those conditions with more fidelity than a descriptor explanation can. Operator-configuration keys are surfaced for discovery rather than enforced in the input schema, because the service rejects unknown keys per field and reports them. Local reads, local writes, and outbound reads run directly and record evidence: provider profile writes, provider selection, memory confirm/dispute/correct, `memory-policy-update`, `extension-state-update`, `extension-credential-write`, `extension-input-answer`, remote MCP discovery, and `operator-config-write`. `operator-config-write` writes `.env` at the repo root rather than under `data/`, but it accepts only the allowlisted `OPERATOR_FIELD_SPECS` keys, rejects the rest per field with a reason, masks secret values at record time, and is reversible; an interrupting approval adds no evidence the recorded local write does not already carry. Approval still gates memory forget, provider profile deletion, credential-store key rotation, remote MCP tool calls, plugin installation, and every `privileged_execution` capability.
 
-`provider-connectivity-test` is now a governed action rather than a declared one. `POST /config/llm/profiles/{profile_id}/test` executes through `execute_operator_action`, so a provider health check leaves the same proposal, decision, and execution record as any other action; its availability follows provider-store presence rather than the presence of a cloud profile, because a local-only host can test a local endpoint.
+`provider-connectivity-test` is a governed action rather than a declared-only descriptor. `POST /config/llm/profiles/{profile_id}/test` executes through `execute_operator_action`, so a provider health check leaves the same proposal, decision, and execution record as any other action; its availability follows provider-store presence rather than the presence of a cloud profile, because a local-only host can test a local endpoint.
 
-Re-observation is cheap enough to stay on the hot path. `refresh` runs on every catalog read, proposal, approval, and direct operator action, and it re-meta-validated every descriptor's JSON Schema each time. A schema's validity is a property of the schema, not of the observation, so `validate_schema` now memoizes that check on the encoded schema: `refresh` fell from 12.8 ms to 0.98 ms and `catalog` from 14.5 ms to 1.52 ms per call, while readiness and availability stay freshly observed.
+Re-observation is cheap enough to stay on the hot path. `refresh` runs on every catalog read, proposal, approval, and direct operator action. A schema's validity is a property of the schema, not of the observation, so `validate_schema` memoizes that check on the encoded schema: `refresh` measures 0.98 ms and `catalog` 1.52 ms per call, while readiness and availability stay freshly observed.
 
-The declared timeout means one thing on both paths. `bounded_deadline` in `backend/app/actions/boundaries.py` arms an operation's deadline, `run_bounded` uses it for proposals, and `CapabilityService.execute_operator_action` now arms it too; a direct operator action previously recorded `timeout_exceeded` after the fact without ever setting the cancel signal.
+The declared timeout means one thing on both paths. `bounded_deadline` in `backend/app/actions/boundaries.py` arms an operation's deadline, `run_bounded` uses it for proposals, and `CapabilityService.execute_operator_action` arms it for direct operator actions too, so timeout evidence comes from the shared cancellation signal.
 
 Action evidence is bounded as well as durable. `append_action_event` rotates `data/actions/action-log.jsonl` to `action-log.1.jsonl` past `ACTION_LOG_MAX_BYTES`, and `read_action_events` reads the archive before the live file, so the log cannot grow without limit and a roll keeps the older evidence instead of truncating it.
 
-One malformed descriptor no longer takes the governed loop offline. `CapabilityService.refresh` registers descriptors individually, records the ones the registry refuses as `{capability_id, reason}` problems, and serves the rest; `GET /actions/capabilities` returns those problems beside the catalog so a refused capability is explained rather than hidden. Before this, a single descriptor that failed `require_boundaries` raised out of every catalog read, proposal, and operator write route.
+One malformed descriptor does not take the governed loop offline. `CapabilityService.refresh` registers descriptors individually, records the ones the registry refuses as `{capability_id, reason}` problems, and serves the rest; `GET /actions/capabilities` returns those problems beside the catalog so a refused capability is explained rather than hidden.
 
 Agent profiles are an observation, not a startup snapshot. `AgentRegistry` re-reads `config/agents/` when the directory's file set or mtimes change, loads each profile independently, and reports the ones it cannot parse through `errors()`; `observe_capabilities` carries those into `CapabilityObservation.agent_errors` and `refresh` merges them into the catalog's `problems`. A profile that does not declare the `direct` invocation mode - the only mode the current runtime executes - is served as `misconfigured` with that explanation instead of as a capability that always fails.
 
 `CapabilityService.bind_handler_provider` binds executors for descriptors another source already owns, re-read on every refresh. It exists so a capability whose descriptor is rebuilt from live observation cannot be served without its executor; `backend/app/agents/registry.py` builds the `agent-invoke-*` descriptors and ADR 0007 owns what they execute, and `build_extension_handlers` binds `extension-state-update` to `ExtensionService.set_state` with the optional `expected_revision` and `reason` the route already accepted.
 
-Every capability the operator surface offers is drivable. `build_capability_handlers` now also binds `provider-connectivity-test`, which had a descriptor but neither an executor nor a caller. The two exceptions are declared as exceptions rather than left to look broken: `extension-input-answer` and `extension-credential-write` register with no executor, because one needs a live run's pending request and the other carries a secret value that must not travel through a generic proposal's arguments, and their `execution_owner` names the route that drives them.
+Every capability the operator surface offers is drivable through either a bound handler or a named route owner. `build_capability_handlers` binds `provider-connectivity-test`. The two route-owned exceptions are declared explicitly: `extension-input-answer` and `extension-credential-write` register with no generic executor, because one needs a live run's pending request and the other carries a secret value that must not travel through generic proposal arguments; their `execution_owner` names the route that drives them.
 
 Action evidence is durable. `backend/app/artifacts/storage.py` appends each record to `data/actions/action-log.jsonl` and fsyncs it, independent of any conversation session; the bounded in-memory audit remains only as the read path for `GET /actions/audit`. API-initiated actions can occur without an active session, so the action log is the durable evidence record for direct operator actions.
 
@@ -103,7 +104,7 @@ The desktop exposes the governed action loop. `desktop/src/components/actions-pa
 
 Explicit ACP sessions produce `delegated_runs` through `TurnEngine.run_extension`. Agent invocation uses this loop through `agent-invoke-{profile_id}` descriptors; ADR 0007 owns that path.
 
-`desktop/src/components/actions-panel.js` no longer presents an `allow` capability as if it needed a decision. `formatCapabilityApproval` previously returned `"approved here"` for every `same_turn` capability regardless of `authorization_rule`, and the trigger button always read `"Propose"`; both implied a self-approval ritual for capabilities that never required one. `formatCapabilityApproval` now returns nothing for an `allow` capability and `"requires approval"` for one whose `authorization_rule` is `requires_approval`, and `proposeTriggerLabel` names the control `Run` for the former and keeps `Propose` for the latter. No capability's classification changed by this: `memory-policy-update`, `extension-state-update`, `extension-credential-write`, and `extension-definition-write` were already `allow`; the panel simply stopped describing that as governance theater. This directly narrows the "Actions panel required path" problem in Follow-up, though `extension-definition-write`/`extension-definition-delete` remain reachable only through this panel until ADR 0006's dedicated MCP connection flow exists.
+`desktop/src/components/actions-panel.js` presents `allow` and `requires_approval` capabilities differently. `formatCapabilityApproval` returns no approval text for an `allow` capability and `"requires approval"` for one whose `authorization_rule` is `requires_approval`, and `proposeTriggerLabel` names the control `Run` for the former and `Propose` for the latter. Capability classification remains backend-owned: `memory-policy-update`, `extension-state-update`, `extension-credential-write`, and `extension-definition-write` are `allow`. Dedicated workflows in ADR 0006 and ADR 0007 may originate those same capabilities without making the Actions panel the normal operator path.
 
 `backend/tests/unit/actions/test_action_catalog.py` proves the reclassification directly against `build_descriptors` rather than against individual routes: every capability whose effect class is `local_read`, `local_write`, or `external_read` is `allow` except the one named override (`search-private-web`), and the destructive/private-context capabilities that must still gate stay `requires_approval`. This is a regression guard - a future capability added to `catalog.py` with a local/read effect class fails the test unless its authorization is explicitly overridden with a stated reason, the same way `search-private-web` and plugin installation already are.
 
@@ -200,7 +201,7 @@ Validation results (linux-amd64):
 
 Validation results (windows-amd64):
 - `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `formatCapabilityApproval` and `proposeTriggerLabel` for both `allow` and `requires_approval` capabilities, and the rendered `Run`/`Propose` control split in `actions-panel.js`.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side change; this increment is desktop-JS only.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. No Tauri-side source changed for this validation scope.
 - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_capability_service.py backend\tests\unit\api\test_llm_config_routes.py backend\tests\unit\services\test_llm_provider_profiles.py`: PASS, 51 passed. Covers provider profile write authorization, LLM config routes, and provider profile storage.
 - `backend\.venv\Scripts\python -m pytest backend\tests\unit\actions\test_action_contracts.py backend\tests\unit\services\test_capability_service.py backend\tests\unit\services\test_extension_service.py backend\tests\unit\api\test_extension_routes.py backend\tests\unit\services\test_memory_service.py backend\tests\unit\api\test_memory_routes.py backend\tests\unit\api\test_action_routes.py`: PASS, 113 passed. Covers the `memory-policy-update` and `extension-state-update` reclassification to `allow`.
 - `backend\.venv\Scripts\python -m pytest backend\tests\unit\actions backend\tests\unit\services\test_capability_service.py backend\tests\unit\services\test_extension_service.py backend\tests\unit\api\test_action_routes.py backend\tests\unit\api\test_extension_routes.py backend\tests\integration\test_extension_runtime.py`: PASS, 195 passed, 1 skipped. Covers `test_action_catalog.py`'s reclassification proof for `extension-definition-write`, `extension-definition-delete`, `extension-skill-write`, and `extension-skill-delete`, and the existing operator-owned MCP/skill create-remove integration flows.
@@ -219,30 +220,23 @@ The posture was driven end to end against a live backend on `127.0.0.1:8765` (`l
   in `GET /actions/pending`, executed on `POST /actions/{id}/decision`, and a second decision
   on the same proposal returned `409`.
 - `POST /actions/propose` for `provider-connectivity-test` and `extension-state-update`: both
-  executed, closing the two capabilities that were previously advertised without an executor.
+  executed through application-owned executors.
 - `POST /config/llm/profiles/{id}/test`: recorded a proposal, decision, and execution result.
 - A secret submitted as `TAVILY_API_KEY` appears zero times in `data/actions/action-log.jsonl`
   and zero times in `GET /actions/audit`.
 
-The governed loop was exercised on an assistant that actually serves. Three defects kept the
-application from answering at all, and each one is fixed here because a loop that governs
-actions no capability can complete is not implemented:
+The governed loop was exercised on an assistant that actually serves. The default startup path
+depends on these readiness guarantees:
 
-- `.env.example` shipped `LLAMA_CPP_MANAGED=false`, which overrode
-  `Settings.effective_llama_cpp_managed`'s fallback to `use_local_model` and pointed a fresh
-  install at an external llama.cpp server nothing starts. The key is now present but blank in
-  `.env.example`, and `backend/tests/unit/core/test_settings.py` asserts that.
-- `LLAMA_CPP_BASE_URL` is an OpenAI API base and correctly ends in `/v1`, but the sidecar and
-  startup health probes treated it as a server root and asked for `/v1/v1/models`. The
-  managed sidecar loaded the model, bound its port, was answered `404`, and was torn down as
-  unreachable. `backend/app/models/llm_profiles.py` now owns `server_origin` and
-  `openai_api_base`, which `local_llm_startup.py`, `local_llm_sidecar.py`, and
-  `backend/app/runtimes/llm/local_runtime.py` all use, so a probe cannot rebuild the wrong URL.
-- `GET /readiness` derived `status` only from hardware probe errors, so it reported `ready`
-  while the `llm` family could not serve a single turn. It now degrades when any of
-  `REQUIRED_FAMILIES` is unready.
+- `.env.example` keeps `LLAMA_CPP_MANAGED` present but blank, preserving
+  `Settings.effective_llama_cpp_managed`'s fallback to `use_local_model`.
+- `backend/app/models/llm_profiles.py` owns `server_origin` and `openai_api_base`, which
+  `local_llm_startup.py`, `local_llm_sidecar.py`, and
+  `backend/app/runtimes/llm/local_runtime.py` all use, so sidecar probes do not rebuild an
+  OpenAI API base as a server root.
+- `GET /readiness` degrades when any of `REQUIRED_FAMILIES` is unready.
 
-With those fixed, `backend/.venv/bin/python scripts/run_backend.py` on shipped defaults
+With shipped defaults, `backend/.venv/bin/python scripts/run_backend.py`
 reports `status: ready` with `builtin:managed-llama-cpp` on `gpu.cuda`, `POST /task/text`
 returns real model output, `POST /agents/invoke` returns a real agent response, and
 `GET /actions/capabilities` serves 17 capabilities with no problems.
@@ -256,13 +250,13 @@ a `strict` profile registered as an approval-gated local write, parked, and appe
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. The desktop binary was launched but its window was not driven
 or captured from this host; the panel's rendered DOM and the propose interaction are covered
-by `desktop/tests/static.test.mjs` instead. Completion handoff for this increment included
-validation before reporting, and the `windows-amd64` results above record the local re-run.
+by `desktop/tests/static.test.mjs` instead. The `windows-amd64` results above record the local
+re-run.
 Native visible desktop validation remains the open evidence gap. The declared process controls
 are not an OS sandbox.
 
 ## Follow-up
 
-- The approval-posture reclassification itself is done and proven by `test_action_catalog.py`: every capability with a `local_read`, `local_write`, or `external_read` effect class is `allow` except the one named exception (`search-private-web`), including `extension-definition-write`, `extension-definition-delete`, `extension-skill-write`, and `extension-skill-delete`.
-- What remains is not a reclassification gap but a desktop-surface gap owned by ADR 0006: `extension-definition-write`/`-delete` and `extension-skill-write`/`-delete` are correctly `allow`, but the Actions panel is still their only reachable surface, since no dedicated Add/Edit MCP Connection or skill-import UI exists yet. Keep raw proposal, authorization, and capability records available there for audit/debug inspection regardless; retire it as their *required* path only as each dedicated workflow lands in ADR 0006.
-- Mark this ADR implemented once that desktop-surface gap closes and the posture has been validated through a native visible desktop session, not only through capability-service and integration tests.
+- Complete the governed-action audit/debug presentation in the Actions surface. Proposal, authorization decision, approval record, execution result, cancellation, descriptor problem, unavailable-state, and definition-fingerprint evidence must remain inspectable without becoming the primary operator workflow for extension or agent families. Raw IDs and backend record fields should sit behind explicit detail/audit controls with operator-readable summaries.
+- Keep the generic schema-driven action runner as an audit/debug and fallback surface only. Dedicated extension workflows belong to ADR 0006, and dedicated agent/ACP workflows belong to ADR 0007; those workflows must call the same ADR 0005 capability records instead of bypassing the action service.
+- Mark this ADR implemented once current backend closeout evidence and desktop action tests prove direct `allow` actions run without self-approval, approval-required actions park, approve, deny, and cancel correctly, and action evidence remains available while dedicated extension and agent workflows provide the normal operator path. Native operator layout and interaction validation belongs to ADR 0008.

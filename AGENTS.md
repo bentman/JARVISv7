@@ -106,16 +106,17 @@ If answers are not concrete, do not add the test. When scope exposes obsolete or
 - Honor `.agentignore` as a contract for files agents should not read, index, embed, or transmit unless explicit task instructions and repo policy permit it.
 - Do not commit generated artifacts unless the task requires it. Ensure `.gitignore` covers new generated output.
 - Model artifacts live in `models/`; runtime sidecars live in `runtimes/`; package/dependency metadata lives in `pyproject.toml`.
-- Source code and tests describe the system as it exists. Development narration belongs in chat, commits, or pull requests; durable ADRs hold architecture decisions and rationale.
+- Source code and tests describe the system as it exists. Development narration does not belong in durable source artifacts; durable ADRs hold architecture decisions and rationale.
 - ADR rules:
   - One ADR owns one architecture decision.
-  - Do not restate another ADR's work; reference the owning ADR by ID.
+  - Cross-reference another ADR only for ownership boundaries, required dependencies, supersession, or implementation/validation evidence. Use the ADR ID plus the shortest needed boundary statement; do not restate the other ADR's work.
+  - `Related:` lists ADRs directly named for ownership, dependency, supersession, or evidence; do not list merely adjacent topics.
   - `Accepted` means chosen but not fully implemented or validated.
   - `Implemented` means code matches the decision and evidence exists.
   - `Follow-up` is only unfinished work required to complete that ADR.
   - If follow-up changes the decision, create or supersede an ADR.
   - Keep UI/layout redesign ADRs separate from behavior-defect fixes unless the defect is caused by the redesign.
-  - ADRs must not include screenshots or sister-project references.
+  - ADRs must be standalone repo-internal records; cite only repository files, code paths, validation evidence, and ADR IDs.
 - When a change materially implements, removes, or changes behavior described by an accepted ADR, update the affected ADR `Status`, `Implementation`, `Confirmation`, and `Follow-up` sections in the same change.
 - Default to no comment. Keep a comment only when it explains a non-obvious invariant, constraint, workaround, or public contract.
 - Source artifacts contain no conversation/session residue, authoring-agent reports or references, phase notes, temporary planning references, or self-justifying completed-work narration.

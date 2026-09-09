@@ -23,12 +23,14 @@ from backend.app.actions.contracts import (
     validate_schema,
 )
 from backend.app.actions.process import run_process
+from backend.app.artifacts.storage import write_text_atomic
 from backend.app.core.paths import CONFIG_DIR, DATA_DIR
 from backend.app.extensions.contracts import SAFE_LOCAL_ID
 from backend.app.extensions.discovery import (
     DEFINITION_FAMILIES,
     DefinitionFamily,
     DefinitionManifest,
+    definition_fingerprint,
     definitions_directory,
     discover_definition_manifests,
     parse_definition_manifest,
@@ -318,30 +320,73 @@ class ExtensionRuntimeService:
         )
         return data_dir / f"{local_id}.yaml"
 
-    def write_definition(self, family: str, local_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def write_definition(
+        self,
+        family: str,
+        local_id: str,
+        payload: dict[str, Any],
+        *,
+        expected_fingerprint: str | None = None,
+    ) -> dict[str, Any]:
         """Create or replace an operator-owned declarative definition.
 
         The definition is parsed and family-validated before it is written, so a malformed
         connection is refused with its reason instead of persisted and failing later.
         An application definition of the same family and id keeps precedence and is never
-        overwritten, so this cannot shadow a tracked default.
+        overwritten, so this cannot shadow a tracked default. `expected_fingerprint` distinguishes
+        create from update: a create (no prior read) omits it and is refused if an operator
+        definition with this id already exists, since silently replacing it would not be a create
+        at all; an edit of a definition already read back through `ExtensionService.definition`
+        supplies it, and the write is refused if the stored definition no longer matches - has
+        changed, or has disappeared - so a stale editor cannot silently overwrite either a
+        concurrent change or nothing at all.
         """
+        definition_family = self._definition_family(family)
         path = self._definition_path(family, local_id)
         document = {**payload, "id": local_id}
         text = yaml.safe_dump(document, sort_keys=False, allow_unicode=True)
         manifest = parse_definition_manifest(
-            self._definition_family(family), text, str(path), "data/extensions", "operator"
+            definition_family, text, str(path), "data/extensions", "operator"
         )
         self._validate_family_definition(manifest)
         config_dir, _ = definitions_directory(
-            self._definition_family(family), config_root=self.config_dir, data_root=self.data_dir
+            definition_family, config_root=self.config_dir, data_root=self.data_dir
         )
         if (config_dir / f"{local_id}.yaml").is_file():
             raise ValueError("an application definition owns this family and id")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text, encoding="utf-8")
+        with self._lock:
+            exists = path.is_file()
+            if expected_fingerprint is not None:
+                if not exists:
+                    raise ValueError("the definition being edited no longer exists; reload before saving")
+                current = parse_definition_manifest(
+                    definition_family, path.read_text(encoding="utf-8"), str(path),
+                    "data/extensions", "operator",
+                )
+                if definition_fingerprint(current) != expected_fingerprint:
+                    raise ValueError(
+                        "the definition changed since it was read; reload before saving"
+                    )
+            elif exists:
+                raise ValueError(
+                    f"an operator {family} definition with id '{local_id}' already exists; edit it instead of creating a new one"
+                )
+            path.parent.mkdir(parents=True, exist_ok=True)
+            write_text_atomic(path, text)
+            identifier = f"{family}:{local_id}"
+            if family == "mcp":
+                # A connection's shape (transport, url, allowlists) may have just changed, so a
+                # cached discovery snapshot from the old definition must not be served as if it
+                # still describes the current one - the same clearing delete_definition already
+                # does, applied here because an edit can invalidate discovery just as removal does.
+                self.snapshots.delete(identifier)
+                self._snapshots.pop(identifier, None)
         self.actions.refresh()
-        return {"extension_id": f"{family}:{local_id}", "source": str(path)}
+        return {
+            "extension_id": f"{family}:{local_id}",
+            "source": str(path),
+            "fingerprint": definition_fingerprint(manifest),
+        }
 
     def delete_definition(self, family: str, local_id: str) -> dict[str, Any]:
         path = self._definition_path(family, local_id)

@@ -5,7 +5,11 @@ from types import SimpleNamespace
 
 import pytest
 from backend.app.extensions.catalog import ExtensionObservation
-from backend.app.extensions.discovery import DefinitionError
+from backend.app.extensions.discovery import (
+    DefinitionError,
+    definition_fingerprint,
+    parse_definition_manifest,
+)
 from backend.app.extensions.prompts import list_prompt_templates_with_errors
 from backend.app.extensions.skills import list_skills_with_errors
 from backend.app.extensions.store import ExtensionOverlayStore
@@ -157,6 +161,131 @@ def test_definition_load_errors_are_exposed_without_breaking_other_families(tmp_
     assert [(item.family, item.source, item.reason) for item in instance.errors().errors] == [
         ("mcp", "data/extensions/mcp/bad.yaml", "bad yaml"),
     ]
+
+
+def test_operator_owned_definitions_expose_their_definition_for_editing(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    definition_dir = data / "extensions" / "mcp"
+    definition_dir.mkdir(parents=True)
+    text = (
+        "id: weather\nname: Weather\nversion: '1'\nenabled: false\n"
+        "dependencies: [search-public-web]\nmetadata: {owner: ops}\ndefinition:\n"
+        "  transport: streamable_http\n  url: https://weather.example.test/mcp\n"
+    )
+    (definition_dir / "weather.yaml").write_text(text, encoding="utf-8")
+    manifest = parse_definition_manifest(
+        "mcp", text, "data/extensions/mcp/weather.yaml", "data/extensions", "operator"
+    )
+    instance = ExtensionService(
+        observe=lambda: ExtensionObservation(definitions=(manifest,)),
+        store=ExtensionOverlayStore(db_path=tmp_path / "operator.sqlite"),
+        config_dir=config,
+        data_dir=data,
+    )
+
+    assert instance.read("mcp:weather").definition_available is True
+
+    view = instance.definition("mcp:weather")
+    assert view.family == "mcp"
+    assert view.local_id == "weather"
+    assert view.name == "Weather"
+    # enabled, dependencies, and metadata must round-trip too, not just the nested
+    # definition mapping - a lossy read cannot back a save that preserves the full manifest.
+    assert view.enabled is False
+    assert view.dependencies == ["search-public-web"]
+    assert view.metadata == {"owner": "ops"}
+    assert view.definition == {
+        "transport": "streamable_http", "url": "https://weather.example.test/mcp",
+    }
+    assert view.fingerprint == definition_fingerprint(manifest)
+
+
+def test_a_second_declarative_family_also_exposes_its_definition(tmp_path: Path) -> None:
+    # The read contract must not be an MCP-only special case: a tool definition, the other
+    # named consumer of this contract, must round-trip the same way.
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    definition_dir = data / "extensions" / "tools"
+    definition_dir.mkdir(parents=True)
+    text = (
+        "id: changelog-writer\nname: Changelog writer\nversion: '1'\ndefinition:\n"
+        "  command: [python3, -m, scripts.changelog]\n  process:\n"
+        "    subprocess: true\n    argv_allowlist: [python3]\n    env_passthrough: []\n"
+        "    working_root: data\n"
+    )
+    (definition_dir / "changelog-writer.yaml").write_text(text, encoding="utf-8")
+    manifest = parse_definition_manifest(
+        "tool", text, "data/extensions/tool/changelog-writer.yaml", "data/extensions", "operator"
+    )
+    instance = ExtensionService(
+        observe=lambda: ExtensionObservation(definitions=(manifest,)),
+        store=ExtensionOverlayStore(db_path=tmp_path / "operator.sqlite"),
+        config_dir=config,
+        data_dir=data,
+    )
+
+    assert instance.read("tool:changelog-writer").definition_available is True
+    view = instance.definition("tool:changelog-writer")
+    assert view.definition["command"] == ["python3", "-m", "scripts.changelog"]
+
+
+def test_a_plugin_installed_child_is_not_editable_through_this_contract(tmp_path: Path) -> None:
+    # A plugin child carries the same "data/extensions" provenance as a standalone operator
+    # definition (backend/app/services/extension_runtime_service.py's definitions()), but its
+    # manifest lives inside the plugin bundle directory, not the flat family directory this
+    # contract's discover_definition_manifests call scans - so it must never claim
+    # definition_available, or a client would be told a definition exists that this reader can
+    # never actually retrieve.
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    text = "id: bundled\nname: Bundled\nversion: '1'\ndefinition:\n  transport: stdio\n"
+    manifest = parse_definition_manifest(
+        "mcp", text, "data/extensions/plugins/writer-bundle/bundled.yaml", "data/extensions", "external"
+    )
+    instance = ExtensionService(
+        observe=lambda: ExtensionObservation(definitions=(manifest,)),
+        store=ExtensionOverlayStore(db_path=tmp_path / "operator.sqlite"),
+        config_dir=config,
+        data_dir=data,
+    )
+
+    assert instance.read("mcp:bundled").definition_available is False
+    with pytest.raises(ExtensionServiceError) as excinfo:
+        instance.definition("mcp:bundled")
+    assert excinfo.value.error == "no_definition"
+
+
+def test_application_owned_definitions_have_no_editable_definition(tmp_path: Path) -> None:
+    config = tmp_path / "config"
+    data = tmp_path / "data"
+    definition_dir = config / "extensions" / "mcp"
+    definition_dir.mkdir(parents=True)
+    text = "id: docs\nname: Docs\nversion: '1'\ndefinition:\n  transport: stdio\n"
+    (definition_dir / "docs.yaml").write_text(text, encoding="utf-8")
+    manifest = parse_definition_manifest(
+        "mcp", text, "config/extensions/mcp/docs.yaml", "config/extensions", "application"
+    )
+    instance = ExtensionService(
+        observe=lambda: ExtensionObservation(definitions=(manifest,)),
+        store=ExtensionOverlayStore(db_path=tmp_path / "operator.sqlite"),
+        config_dir=config,
+        data_dir=data,
+    )
+
+    assert instance.read("mcp:docs").definition_available is False
+    with pytest.raises(ExtensionServiceError) as excinfo:
+        instance.definition("mcp:docs")
+    assert excinfo.value.error == "no_definition"
+
+
+def test_families_without_a_definition_contract_are_never_editable(tmp_path: Path) -> None:
+    instance = service(tmp_path)
+
+    assert instance.read("skill:notes").definition_available is False
+    with pytest.raises(ExtensionServiceError) as excinfo:
+        instance.definition("skill:notes")
+    assert excinfo.value.error == "no_definition"
 
 
 def test_observation_discovers_application_definitions(tmp_path: Path) -> None:

@@ -27,6 +27,7 @@ class ExtensionResponse(StrictExtensionModel):
     metadata_claims: dict[str, Any]
     revision: int | None = None
     body_available: bool = False
+    definition_available: bool = False
 
 
 class ExtensionCatalogResponse(StrictExtensionModel):
@@ -53,3 +54,16 @@ class ExtensionStateRequest(StrictExtensionModel):
 class ExtensionBodyResponse(StrictExtensionModel):
     extension_id: str
     body: str
+
+
+class ExtensionDefinitionResponse(StrictExtensionModel):
+    extension_id: str
+    family: str
+    local_id: str
+    name: str
+    version: str
+    enabled: bool
+    dependencies: list[str]
+    metadata: dict[str, Any]
+    definition: dict[str, Any]
+    fingerprint: str

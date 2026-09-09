@@ -978,10 +978,12 @@ def build_extension_handlers(
             "version": arguments["version"],
             "definition": arguments["definition"],
         }
-        if "enabled" in arguments:
-            payload["enabled"] = arguments["enabled"]
+        for key in ("enabled", "dependencies", "metadata"):
+            if key in arguments:
+                payload[key] = arguments[key]
         return _runtime().write_definition(
-            arguments["family"], arguments["local_id"], payload
+            arguments["family"], arguments["local_id"], payload,
+            expected_fingerprint=arguments.get("expected_fingerprint"),
         )
 
     def delete_definition(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:

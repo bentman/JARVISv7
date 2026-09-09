@@ -133,6 +133,8 @@ export function createApiClient(invoke) {
     getExtensionErrors: () => invokeMemory(invoke, "get_extension_errors"),
     getExtensionDetail: (extensionId) => invokeMemory(invoke, "get_extension_detail", { extensionId }),
     getExtensionBody: (extensionId) => invokeMemory(invoke, "get_extension_body", { extensionId }),
+    getExtensionDefinition: (extensionId) =>
+      invokeMemory(invoke, "get_extension_definition", { extensionId }),
     setExtensionState: (extensionId, extensionState, expectedRevision = null, reason = null) =>
       invokeMemory(invoke, "set_extension_state", {
         extensionId,

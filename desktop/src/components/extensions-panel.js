@@ -151,6 +151,11 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     importSkillError: "",
     addToolPending: false,
     addToolError: "",
+    definition: null,
+    editConnectionPending: false,
+    editConnectionError: "",
+    editToolPending: false,
+    editToolError: "",
   };
   let catalogSequence = 0;
   let errorsSequence = 0;
@@ -213,6 +218,9 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     state.detailLoading = true;
     state.detailError = "";
     state.body = "";
+    state.definition = null;
+    state.editConnectionError = "";
+    state.editToolError = "";
     emit();
     try {
       const payload = await handlers.getExtensionDetail(extensionId);
@@ -391,6 +399,25 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  // `base` carries forward any field the add/edit form does not know about - `credential_ref`
+  // and `oauth`, configured only through the separate credential form and OAuth flow - so
+  // saving a display-name or allowlist change cannot silently erase them. Add passes an empty
+  // base (nothing to preserve yet); an edit passes the just-loaded definition.
+  function streamableHttpDefinition(base, { url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
+    const definition = { ...base, transport: "streamable_http", url };
+    const tools = parseAllowlist(toolAllowlist);
+    const resources = parseAllowlist(resourceAllowlist);
+    const prompts = parseAllowlist(promptAllowlist);
+    // An empty allowlist means "no restriction" on the backend, so it is omitted rather than
+    // sent as [] - an operator who leaves these blank gets an unrestricted connection, not one
+    // that can reach nothing. Explicit delete (not skip) so clearing a previously-set allowlist
+    // on an edit actually clears it instead of leaving the preserved base value in place.
+    if (tools.length) definition.tool_allowlist = tools; else delete definition.tool_allowlist;
+    if (resources.length) definition.resource_allowlist = resources; else delete definition.resource_allowlist;
+    if (prompts.length) definition.prompt_allowlist = prompts; else delete definition.prompt_allowlist;
+    return definition;
+  }
+
   async function addMcpConnection({ localId, name, url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
     if (!handlers.proposeAction || state.addConnectionPending) return null;
     if (!extensionLocalIdValid(localId)) {
@@ -402,16 +429,6 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     state.addConnectionError = "";
     emit();
     try {
-      const definition = { transport: "streamable_http", url };
-      const tools = parseAllowlist(toolAllowlist);
-      const resources = parseAllowlist(resourceAllowlist);
-      const prompts = parseAllowlist(promptAllowlist);
-      // An empty allowlist means "no restriction" on the backend, so it is omitted rather
-      // than sent as [] - an operator who leaves these blank gets today's unrestricted
-      // connection, not a connection that can reach nothing.
-      if (tools.length) definition.tool_allowlist = tools;
-      if (resources.length) definition.resource_allowlist = resources;
-      if (prompts.length) definition.prompt_allowlist = prompts;
       const result = await handlers.proposeAction({
         capabilityId: "extension-definition-write",
         actionArguments: {
@@ -419,7 +436,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
           local_id: localId,
           name,
           version: "1.0.0",
-          definition,
+          definition: streamableHttpDefinition({}, { url, toolAllowlist, resourceAllowlist, promptAllowlist }),
         },
         reason: `Add MCP connection ${name}`,
         proposedBy: "operator",
@@ -436,6 +453,46 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       return null;
     } finally {
       state.addConnectionPending = false;
+      emit();
+    }
+  }
+
+  async function updateMcpConnection({ localId, name, url, toolAllowlist, resourceAllowlist, promptAllowlist }) {
+    if (!handlers.proposeAction || state.editConnectionPending || !state.definition) return null;
+    state.editConnectionPending = true;
+    state.editConnectionError = "";
+    emit();
+    try {
+      const result = await handlers.proposeAction({
+        capabilityId: "extension-definition-write",
+        actionArguments: {
+          family: "mcp",
+          local_id: localId,
+          name,
+          version: state.definition.version,
+          definition: streamableHttpDefinition(state.definition.definition, { url, toolAllowlist, resourceAllowlist, promptAllowlist }),
+          dependencies: state.definition.dependencies,
+          metadata: state.definition.metadata,
+          enabled: state.definition.enabled,
+          expected_fingerprint: state.definition.fingerprint,
+        },
+        reason: `Update MCP connection ${name}`,
+        proposedBy: "operator",
+      });
+      if (result?.status !== "success") {
+        state.editConnectionError = result?.execution?.error || "The connection was not saved.";
+        return null;
+      }
+      state.notice = "MCP connection saved.";
+      state.definition = null;
+      await refreshCatalog();
+      await selectExtension(`mcp:${localId}`);
+      return true;
+    } catch (error) {
+      state.editConnectionError = errorMessage(error, "The connection was not saved.");
+      return null;
+    } finally {
+      state.editConnectionPending = false;
       emit();
     }
   }
@@ -467,6 +524,27 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  // `base` carries forward any field the add/edit form does not know about - `skill_id` and
+  // `script`, which make a tool run a skill's declared script rather than an arbitrary command
+  // - so saving a command or allowlist change cannot silently detach it from its skill. Add
+  // passes an empty base (nothing to preserve yet); an edit passes the just-loaded definition.
+  function toolDefinition(base, { command, argvAllowlist, envPassthrough, workingRoot }) {
+    return {
+      ...base,
+      command: parseCommandLines(command),
+      process: {
+        // A tool always registers with effect_class "privileged_execution"
+        // (backend/app/services/extension_runtime_service.py), and boundaries.py
+        // rejects a privileged_execution capability whose process boundary declares
+        // subprocess: false - so this is not an operator choice, only a fixed fact.
+        subprocess: true,
+        argv_allowlist: parseAllowlist(argvAllowlist),
+        env_passthrough: parseAllowlist(envPassthrough),
+        working_root: workingRoot,
+      },
+    };
+  }
+
   async function addLocalTool({ localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
     if (!handlers.proposeAction || state.addToolPending) return null;
     if (!extensionLocalIdValid(localId)) {
@@ -485,19 +563,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
           local_id: localId,
           name,
           version: "1.0.0",
-          definition: {
-            command: parseCommandLines(command),
-            process: {
-              // A tool always registers with effect_class "privileged_execution"
-              // (backend/app/services/extension_runtime_service.py), and boundaries.py
-              // rejects a privileged_execution capability whose process boundary declares
-              // subprocess: false - so this is not an operator choice, only a fixed fact.
-              subprocess: true,
-              argv_allowlist: parseAllowlist(argvAllowlist),
-              env_passthrough: parseAllowlist(envPassthrough),
-              working_root: workingRoot,
-            },
-          },
+          definition: toolDefinition({}, { command, argvAllowlist, envPassthrough, workingRoot }),
         },
         reason: `Add local tool ${name}`,
         proposedBy: "operator",
@@ -514,6 +580,46 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       return null;
     } finally {
       state.addToolPending = false;
+      emit();
+    }
+  }
+
+  async function updateLocalTool({ localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
+    if (!handlers.proposeAction || state.editToolPending || !state.definition) return null;
+    state.editToolPending = true;
+    state.editToolError = "";
+    emit();
+    try {
+      const result = await handlers.proposeAction({
+        capabilityId: "extension-definition-write",
+        actionArguments: {
+          family: "tool",
+          local_id: localId,
+          name,
+          version: state.definition.version,
+          definition: toolDefinition(state.definition.definition, { command, argvAllowlist, envPassthrough, workingRoot }),
+          dependencies: state.definition.dependencies,
+          metadata: state.definition.metadata,
+          enabled: state.definition.enabled,
+          expected_fingerprint: state.definition.fingerprint,
+        },
+        reason: `Update local tool ${name}`,
+        proposedBy: "operator",
+      });
+      if (result?.status !== "success") {
+        state.editToolError = result?.execution?.error || "The tool was not saved.";
+        return null;
+      }
+      state.notice = "Local tool saved.";
+      state.definition = null;
+      await refreshCatalog();
+      await selectExtension(`tool:${localId}`);
+      return true;
+    } catch (error) {
+      state.editToolError = errorMessage(error, "The tool was not saved.");
+      return null;
+    } finally {
+      state.editToolPending = false;
       emit();
     }
   }
@@ -582,6 +688,30 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     }
   }
 
+  function cancelDefinitionEdit() {
+    state.definition = null;
+    state.editConnectionError = "";
+    state.editToolError = "";
+    emit();
+  }
+
+  async function loadDefinition(extensionId) {
+    if (!handlers.getExtensionDefinition) return null;
+    const request = detailSequence;
+    try {
+      const payload = await handlers.getExtensionDefinition(extensionId);
+      if (request !== detailSequence) return null;
+      state.definition = payload;
+      return payload;
+    } catch (error) {
+      if (request !== detailSequence) return null;
+      state.detailError = errorMessage(error, "That definition is not readable.");
+      return null;
+    } finally {
+      if (request === detailSequence) emit();
+    }
+  }
+
   async function setState(extensionId, nextState, reason = null) {
     if (state.mutationPending) return null;
     state.mutationPending = true;
@@ -641,6 +771,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     refreshErrors,
     selectExtension,
     loadBody,
+    loadDefinition,
+    cancelDefinitionEdit,
     setState,
     filterFamily,
     invoke,
@@ -650,8 +782,10 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     saveSkill,
     removeSkill,
     addMcpConnection,
+    updateMcpConnection,
     removeMcpConnection,
     addLocalTool,
+    updateLocalTool,
     removeLocalTool,
     startOauth,
     completeOauth,
@@ -810,6 +944,128 @@ function renderAddLocalTool(state) {
     event.preventDefault();
     state.actions.addLocalTool({
       localId: localId.value.trim(),
+      name: name.value.trim(),
+      command: command.value,
+      argvAllowlist: argvAllowlist.value,
+      envPassthrough: envPassthrough.value,
+      workingRoot: workingRoot.value,
+    });
+  });
+  return form;
+}
+
+function renderCancelEdit(state, focusKey) {
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.dataset.focusKey = focusKey;
+  cancel.textContent = "Cancel edit";
+  cancel.addEventListener("click", () => state.actions.cancelDefinitionEdit());
+  return cancel;
+}
+
+// Rendered only once a definition has actually loaded, so unlike a form that renders
+// unconditionally before its content exists, there is no stale draft-key entry from a prior
+// (empty) render for the capture-then-restore mechanism to reapply over the freshly seeded
+// values - the same hazard fixed in the Edit skill editor does not apply here.
+function renderEditMcpConnection(state) {
+  const info = state.definition;
+  const form = document.createElement("form");
+  form.className = "extensions-edit-connection";
+  appendText(form, "Edit MCP connection", "strong");
+  const name = document.createElement("input");
+  name.placeholder = "Display name";
+  name.required = true;
+  name.dataset.draftKey = `edit-mcp:${info.extension_id}:name`;
+  name.value = info.name;
+  const url = document.createElement("input");
+  url.type = "url";
+  url.placeholder = "https://server.example/mcp";
+  url.required = true;
+  url.dataset.draftKey = `edit-mcp:${info.extension_id}:url`;
+  url.value = info.definition.url || "";
+  const toolAllowlist = document.createElement("input");
+  toolAllowlist.placeholder = "Allowed tools (comma-separated, optional)";
+  toolAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:tool-allowlist`;
+  toolAllowlist.value = (info.definition.tool_allowlist || []).join(", ");
+  const resourceAllowlist = document.createElement("input");
+  resourceAllowlist.placeholder = "Allowed resources (comma-separated, optional)";
+  resourceAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:resource-allowlist`;
+  resourceAllowlist.value = (info.definition.resource_allowlist || []).join(", ");
+  const promptAllowlist = document.createElement("input");
+  promptAllowlist.placeholder = "Allowed prompts (comma-separated, optional)";
+  promptAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:prompt-allowlist`;
+  promptAllowlist.value = (info.definition.prompt_allowlist || []).join(", ");
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Save connection";
+  submit.disabled = state.editConnectionPending;
+  submit.dataset.focusKey = `edit-mcp-submit:${info.extension_id}`;
+  form.append(
+    name, url, toolAllowlist, resourceAllowlist, promptAllowlist, submit,
+    renderCancelEdit(state, `edit-mcp-cancel:${info.extension_id}`),
+  );
+  if (state.editConnectionError) appendText(form, state.editConnectionError, "p", "extensions-error");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.actions.updateMcpConnection({
+      localId: info.local_id,
+      name: name.value.trim(),
+      url: url.value.trim(),
+      toolAllowlist: toolAllowlist.value,
+      resourceAllowlist: resourceAllowlist.value,
+      promptAllowlist: promptAllowlist.value,
+    });
+  });
+  return form;
+}
+
+function renderEditLocalTool(state) {
+  const info = state.definition;
+  const form = document.createElement("form");
+  form.className = "extensions-edit-tool";
+  appendText(form, "Edit local tool", "strong");
+  const name = document.createElement("input");
+  name.placeholder = "Display name";
+  name.required = true;
+  name.dataset.draftKey = `edit-tool:${info.extension_id}:name`;
+  name.value = info.name;
+  const command = document.createElement("textarea");
+  command.placeholder = "Command, one argv token per line";
+  command.required = true;
+  command.dataset.draftKey = `edit-tool:${info.extension_id}:command`;
+  command.value = (info.definition.command || []).join("\n");
+  const argvAllowlist = document.createElement("input");
+  argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+  argvAllowlist.required = true;
+  argvAllowlist.dataset.draftKey = `edit-tool:${info.extension_id}:argv-allowlist`;
+  argvAllowlist.value = (info.definition.process?.argv_allowlist || []).join(", ");
+  const envPassthrough = document.createElement("input");
+  envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+  envPassthrough.dataset.draftKey = `edit-tool:${info.extension_id}:env-passthrough`;
+  envPassthrough.value = (info.definition.process?.env_passthrough || []).join(", ");
+  const workingRoot = document.createElement("select");
+  workingRoot.dataset.draftKey = `edit-tool:${info.extension_id}:working-root`;
+  for (const root of STORAGE_ROOTS) {
+    const option = document.createElement("option");
+    option.value = root;
+    option.textContent = root;
+    workingRoot.appendChild(option);
+  }
+  workingRoot.value = info.definition.process?.working_root || STORAGE_ROOTS[0];
+  const submit = document.createElement("button");
+  submit.type = "submit";
+  submit.textContent = "Save tool";
+  submit.disabled = state.editToolPending;
+  submit.dataset.focusKey = `edit-tool-submit:${info.extension_id}`;
+  form.append(
+    name, command, argvAllowlist, envPassthrough, workingRoot, submit,
+    renderCancelEdit(state, `edit-tool-cancel:${info.extension_id}`),
+  );
+  if (state.editToolError) appendText(form, state.editToolError, "p", "extensions-error");
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.actions.updateLocalTool({
+      localId: info.local_id,
       name: name.value.trim(),
       command: command.value,
       argvAllowlist: argvAllowlist.value,
@@ -1059,6 +1315,28 @@ function renderDetail(state) {
       secret.value = "";
     });
     runtime.appendChild(credential);
+    if (detail.definition_available) {
+      if (state.definition?.extension_id === detail.extension_id) {
+        if (state.definition.definition?.transport === "streamable_http") {
+          runtime.appendChild(renderEditMcpConnection(state));
+        } else {
+          appendText(
+            runtime,
+            "Editing is only supported for streamable_http connections; edit the YAML directly for other transports.",
+            "p",
+            "extensions-help",
+          );
+        }
+      } else {
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.dataset.focusKey = `edit-connection:${detail.extension_id}`;
+        edit.textContent = "Edit connection";
+        edit.disabled = state.mutationPending;
+        edit.addEventListener("click", () => state.actions.loadDefinition(detail.extension_id));
+        runtime.appendChild(edit);
+      }
+    }
     if (isOperatorOwnedProvenance(detail)) {
       const remove = document.createElement("button");
       remove.type = "button";
@@ -1113,6 +1391,19 @@ function renderDetail(state) {
     }
   }
   if (detail.family === "tool" && isOperatorOwnedProvenance(detail)) {
+    if (detail.definition_available) {
+      if (state.definition?.extension_id === detail.extension_id) {
+        runtime.appendChild(renderEditLocalTool(state));
+      } else {
+        const edit = document.createElement("button");
+        edit.type = "button";
+        edit.dataset.focusKey = `edit-tool:${detail.extension_id}`;
+        edit.textContent = "Edit tool";
+        edit.disabled = state.mutationPending;
+        edit.addEventListener("click", () => state.actions.loadDefinition(detail.extension_id));
+        runtime.appendChild(edit);
+      }
+    }
     const remove = document.createElement("button");
     remove.type = "button";
     remove.dataset.focusKey = `remove-tool:${detail.extension_id}`;
@@ -1127,7 +1418,13 @@ function renderDetail(state) {
     const editor = document.createElement("form");
     appendText(editor, "Edit skill", "strong");
     const body = document.createElement("textarea");
-    body.dataset.draftKey = `${detail.extension_id}:skill-body`;
+    // The draft key is only assigned once a body has actually loaded. renderPanel's
+    // capture-then-restore step would otherwise stomp a freshly loaded body back to the
+    // pre-load empty value: the outgoing tree (captured before this render) has no draft-key
+    // entry for this field while state.body is still empty, so the very re-render that first
+    // populates state.body has nothing to restore and the seeded value survives; only later
+    // re-renders, once the key exists on both sides, preserve an operator's in-progress edit.
+    if (state.body) body.dataset.draftKey = `${detail.extension_id}:skill-body`;
     body.value = state.body || "";
     body.required = true;
     const save = document.createElement("button");
@@ -1325,6 +1622,8 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     close: () => close(),
     selectExtension: (extensionId) => controller.selectExtension(extensionId),
     loadBody: (extensionId) => controller.loadBody(extensionId),
+    loadDefinition: (extensionId) => controller.loadDefinition(extensionId),
+    cancelDefinitionEdit: () => controller.cancelDefinitionEdit(),
     setState: (extensionId, next) => controller.setState(extensionId, next),
     filterFamily: (family) => controller.filterFamily(family),
     invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),
@@ -1334,8 +1633,10 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     saveSkill: (localId, body) => controller.saveSkill(localId, body),
     removeSkill: (localId) => controller.removeSkill(localId),
     addMcpConnection: (payload) => controller.addMcpConnection(payload),
+    updateMcpConnection: (payload) => controller.updateMcpConnection(payload),
     removeMcpConnection: (localId) => controller.removeMcpConnection(localId),
     addLocalTool: (payload) => controller.addLocalTool(payload),
+    updateLocalTool: (payload) => controller.updateLocalTool(payload),
     removeLocalTool: (localId) => controller.removeLocalTool(localId),
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),

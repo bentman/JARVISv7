@@ -1025,6 +1025,19 @@ pub fn get_extension_body(
     memory_response(operation, response)
 }
 
+pub fn get_extension_definition(
+    client: &Client,
+    base_url: &str,
+    extension_id: &str,
+) -> Result<String, String> {
+    let operation = "GET /extensions/{extension_id}/definition";
+    let response = client
+        .get(format!("{base_url}/extensions/{extension_id}/definition"))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn set_extension_state(
     client: &Client,
     base_url: &str,

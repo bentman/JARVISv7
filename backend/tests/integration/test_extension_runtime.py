@@ -410,6 +410,127 @@ def test_removing_a_connection_drops_its_discovery_snapshot(
     assert "mcp:created" not in runtime.snapshots.all()
 
 
+def test_creating_over_an_existing_operator_definition_without_a_fingerprint_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A create (no expected_fingerprint) reusing an id that already exists is not a create at
+    # all - refusing it is what makes the create/update distinction real rather than cosmetic;
+    # otherwise a typo'd Add ID would silently replace an existing connection.
+    runtime = _runtime(tmp_path, monkeypatch)
+    runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+
+    with pytest.raises(ValueError, match="already exists"):
+        runtime.write_definition("mcp", "created", {
+            "name": "Impostor",
+            "version": "1.0.0",
+            "definition": {"transport": "streamable_http", "url": "https://evil.example.test/mcp"},
+        })
+
+    _, data_dir = definitions_directory("mcp", config_root=runtime.config_dir, data_root=runtime.data_dir)
+    assert "Created connection" in (data_dir / "created.yaml").read_text(encoding="utf-8")
+
+
+def test_editing_a_connection_drops_its_stale_discovery_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A snapshot describes what the OLD definition's server exposed; keeping it after the
+    # connection's shape changes would serve stale tools/resources as if still current.
+    runtime = _runtime(tmp_path, monkeypatch)
+    first = runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+    runtime.snapshots.save("mcp:created", {"tools": [], "health": "ready"})
+    assert "mcp:created" in runtime.snapshots.all()
+
+    runtime.write_definition(
+        "mcp", "created",
+        {
+            "name": "Created connection", "version": "1.0.0",
+            "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp/v2"},
+        },
+        expected_fingerprint=first["fingerprint"],
+    )
+
+    assert "mcp:created" not in runtime.snapshots.all()
+
+
+def test_a_stale_editor_cannot_overwrite_a_definition_that_changed_underneath_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    first = runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+    # Someone else edits the connection after the stale editor read its fingerprint.
+    runtime.write_definition(
+        "mcp", "created",
+        {
+            "name": "Created connection", "version": "1.0.0",
+            "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp/v2"},
+        },
+        expected_fingerprint=first["fingerprint"],
+    )
+
+    with pytest.raises(ValueError, match="changed since it was read"):
+        runtime.write_definition(
+            "mcp", "created",
+            {
+                "name": "Stale overwrite", "version": "1.0.0",
+                "definition": {"transport": "streamable_http", "url": "https://evil.example.test/mcp"},
+            },
+            expected_fingerprint=first["fingerprint"],
+        )
+
+    _, data_dir = definitions_directory("mcp", config_root=runtime.config_dir, data_root=runtime.data_dir)
+    assert "v2" in (data_dir / "created.yaml").read_text(encoding="utf-8")
+
+
+def test_an_editor_with_the_current_fingerprint_may_save(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    first = runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+
+    second = runtime.write_definition(
+        "mcp", "created",
+        {
+            "name": "Renamed connection", "version": "1.0.0",
+            "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+        },
+        expected_fingerprint=first["fingerprint"],
+    )
+
+    assert second["fingerprint"] != first["fingerprint"]
+    _, data_dir = definitions_directory("mcp", config_root=runtime.config_dir, data_root=runtime.data_dir)
+    assert "Renamed connection" in (data_dir / "created.yaml").read_text(encoding="utf-8")
+
+
+def test_a_write_leaves_no_temporary_file_behind(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    runtime.write_definition("mcp", "created", {
+        "name": "Created connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+
+    _, data_dir = definitions_directory("mcp", config_root=runtime.config_dir, data_root=runtime.data_dir)
+    assert [path.name for path in data_dir.glob("*")] == ["created.yaml"]
+
+
 def test_an_operator_imports_and_removes_a_skill(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
