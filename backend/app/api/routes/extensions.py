@@ -120,6 +120,14 @@ def complete_extension_oauth(
         raise HTTPException(422, str(exc)) from exc
 
 
+@router.post("/{extension_id}/oauth/forget")
+def forget_extension_oauth(extension_id: str, service=Depends(get_runtime)):
+    try:
+        return service.oauth_forget(extension_id)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 def _execute(operation: Callable[[], T]) -> T:
     try:
         return operation()

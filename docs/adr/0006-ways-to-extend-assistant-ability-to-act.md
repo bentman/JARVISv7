@@ -62,11 +62,13 @@ local tools, and MCP connections all have complete human-familiar Add/Edit/Remov
 backed by the same read/edit contract for operator-owned declarative definitions - MCP connections
 covering both `streamable_http` (URL, allowlists, credential reference, OAuth configuration) and
 `stdio` (command, argv allowlist, environment passthrough, working root, credential reference)
-transport. The operator experience is not complete because hooks and plugins still have no
-workflow of their own - the generic capability-console path remains their only reachable surface -
-and some other operations (extension run display, resource content, MCP Disconnect) still show
-internal capability names, raw JSON, or no route at all instead of complete human-familiar
-treatment.
+transport. MCP connections also have Forget authorization (clearing a stored OAuth token) and a
+content-preview view for resource reads, and a stdio connection's read-only operations (discover,
+resource reads, prompt fetches) execute directly instead of asking the operator to approve their
+own already-governed request. The operator experience is not complete because hooks and plugins
+still have no workflow of their own - the generic capability-console path remains their only
+reachable surface - and extension run display still shows internal capability names and raw JSON
+instead of complete human-familiar treatment.
 
 Implemented foundations:
 - Operator settings are scoped and classified through `backend/app/core/settings.py`. `backend/app/services/operator_config_service.py` owns the operator field allowlist and secret masking; `backend/app/api/routes/config.py` and `backend/app/api/schemas/config.py` are the route surface over it. Operator writes are allowlisted, and secrets are masked.
@@ -89,43 +91,14 @@ Implemented foundations:
 - Hook and plugin lifecycles and runners exist in `backend/app/extensions/{hooks,plugins}.py`: closed hook event names, effect classes reused from ADR 0005, application-owned `record_event`, governed capability dispatch, bounded plugin installation, bundle hashing, and child-definition validation.
 - MCP connection management exists in `backend/app/extensions/mcp.py` with official SDK transport, discovery, schema-preserving records, health, credential references, allowlists, elicitation, cancellation, and host authorization callbacks. ACP adapter definitions are discovered through the same declarative extension catalog and declare governed process boundaries; ADR 0007 owns using those definitions for Agent Client Protocol session behavior and conformance.
 - Backend API and desktop surfaces exist through `backend/app/api/routes/extensions.py` and `desktop/src/components/extensions-panel.js`, covering catalog discovery, load errors, detail, progressive body disclosure, and state changes.
+- Three modules remain adjacent to but distinct from the extension catalog: `backend/app/core/capabilities.py` only describes hardware/runtime capability flags, `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state, and `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
 
 - `ExtensionRuntimeService` registers extension operations with the shared capability service. Approvals bind a definition fingerprint; changed definitions require a new proposal. `ExtensionRuns` persists run state and marks interrupted work after restart without replaying effects.
-- The current desktop exposes invocation, approvals, run progress, cancellation, credentials, and structured elicitation through raw extension detail surfaces. Approval requests run off the native UI thread so nested input remains usable, but these controls are implementation-facing and need the operator-familiar follow-up below.
+- The current desktop exposes invocation, approvals, run progress, cancellation, credentials, and structured elicitation through raw extension detail surfaces. Approval requests run off the native UI thread so nested input remains usable, but these controls are implementation-facing and need dedicated operator-familiar workflows (Follow-up).
 
 Declarative definitions and their initial tracked defaults are documented in
 `config/extensions/README.md`. The disabled application hook default records
 no events until explicitly enabled.
-
-MCP credentials support the OAuth 2.0 authorization code flow and resolve on the live connection
-path. `backend/app/extensions/mcp_oauth.py` provides `McpOAuthConfig`, `McpOAuthFlow`
-(authorization URL generation, code exchange, token refresh, local callback server), and
-authorization-server discovery. The code verifier is held against the state it was minted with and
-consumed once, so it never travels through the browser and an unknown or replayed state cannot
-redeem a code. Authorization and token requests carry the RFC 8707 `resource` parameter, binding a
-token to one MCP server. When a connection declares no `authorization_url` and `token_url`, they are
-discovered through RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata;
-an explicit endpoint overrides discovery. Tokens persist in the application's encrypted operator
-secret store and refresh when expired.
-
-`ExtensionRuntimeService.mcp_credentials` is the single host-owned credential resolver for MCP.
-An OAuth connection resolves a bearer token there; a connection with no stored authorization is
-refused rather than connected unauthenticated. Because `ProcessBoundary.scrub_environment` is an
-allowlist, a stdio credential absent from the connection's `env_passthrough` is refused rather than
-silently dropped into an unauthenticated server start.
-
-Operator-owned declarative definitions are created and removed through governed actions rather
-than by hand-editing YAML. `extension-definition-write` and `extension-definition-delete` route
-through the ADR 0005 executor and write into `data/extensions/{family}`, the location discovery
-already reads, so provenance, trust, precedence, and collision reporting are unchanged. A
-definition is parsed and family-validated before it reaches disk, so a malformed connection is
-refused with its reason instead of persisted; an application definition of the same family and id
-keeps precedence and is never overwritten.
-
-MCP discovery snapshots persist in `mcp_discovery_snapshot` behind a schema migration, so
-discovered tools, resources, and prompts remain proposable after a restart instead of silently
-retracting until rediscovery. Stored health is not replayed as a live claim: a snapshot restored
-from disk reports `unknown` until the connection is contacted again.
 
 The turn engine selects extension capabilities natively. `LLMBase.generate_with_tools` offers
 eligible operations to the model; `backend/app/cognition/tool_policy.py` bounds the offer to what
@@ -148,176 +121,17 @@ which capability was parked. One capability runs per turn; a second round is an 
 ADR 0007 owns. An extension that blocks for operator input is refused inside a turn and directed to
 the Extensions panel rather than stalling the turn until its deadline.
 
-The desktop drives the OAuth connection flow without ever handling a secret. `GET`, `authorize`,
-and `complete` routes under `/extensions/{id}/oauth` report configuration and authorization state,
-return the authorization URL, and exchange the code. The verifier and state stay on the backend, and
-a completion whose state does not match the request it answers is refused. The Extensions panel
-shows authorization state, opens the authorization page, and accepts the returned code. The MCP
-credential form is independent of discovered operations, so a server that demands authorization
-before discovery can still be credentialed. Cancelling a run is confirmed.
+Operator-owned declarative definitions are created and removed through governed actions rather
+than by hand-editing YAML. `extension-definition-write` and `extension-definition-delete` route
+through the ADR 0005 executor and write into `data/extensions/{family}`, the location discovery
+already reads, so provenance, trust, precedence, and collision reporting are unchanged. A
+definition is parsed and family-validated before it reaches disk, so a malformed connection is
+refused with its reason instead of persisted; an application definition of the same family and id
+keeps precedence and is never overwritten.
 
-OAuth definition metadata accepts public endpoint keys ending in `_url`, such as
-`authorization_url` and `token_url`. Inline `client_secret` remains refused and must use a
-credential reference.
-
-Operator-owned skills are imported, edited, and removed through `extension-skill-write` and
-`extension-skill-delete`. The manifest is parsed before it is written, so a skill declaring an
-authority-bearing field is refused with its reason rather than landing on disk, and an application
-skill of the same id is never overwritten. The desktop gates skill editing on provenance, because an
-operator skill is external-trust by design; trust does not indicate ownership.
-
-`extension-credential-write` already executes through its own dedicated route (`POST
-/extensions/{id}/credentials`) with no proposal or approval step at all, so operator-requested
-credential storage was never gated by the capability-console ceremony.
-
-The Extensions panel has its own Add MCP Connection flow for `extension-definition-write` and
-`extension-definition-delete`.
-`desktop/src/components/extensions-panel.js` renders an "Add MCP connection" form at the top of the
-catalog list - display name, connection ID, and a transport-dependent field set covering both
-`streamable_http` and `stdio` (detailed further below) - that proposes `extension-definition-write`
-with `family: "mcp"` through the same governed capability path `saveSkill` already used for operator
-skills; `extensionLocalIdValid` rejects a malformed connection ID before it is proposed, matching the
-backend's `SAFE_LOCAL_ID` pattern. A connection whose provenance shows it is operator-owned
-(`isOperatorOwnedProvenance`) gets a "Remove connection" control next to its credential form, which
-proposes `extension-definition-delete`.
-
-`removeMcpConnection` and `removeSkill` both check the resolved proposal's `status` before
-reporting success, matching `saveSkill`'s behavior. A governed capability can resolve with
-`{status: "failure", execution: {error}}` without throwing, so removal paths surface execution
-errors instead of treating the proposal call itself as success.
-
-The Extensions panel has an Import Skill flow for creating operator-owned skills. `importSkill`
-proposes the same `extension-skill-write` capability
-`saveSkill` uses, through a dedicated form (skill ID, body) rendered at the top of the Extensions
-catalog next to Add MCP Connection, so its error and success messaging land next to the form the
-operator is using rather than in the (possibly unrelated) detail column `saveSkill`'s edit errors
-target. `extensionLocalIdValid` (renamed from the MCP-specific `mcpConnectionIdValid`, since the
-`SAFE_LOCAL_ID` pattern it checks is shared across every extension family) rejects a malformed skill
-ID before it is proposed.
-
-Discover Tools and Resources and Refresh Health are the same action for an MCP connection, not two
-separate ones: `_mcp` in `backend/app/services/extension_runtime_service.py` refreshes a connection's
-cached health and discovered tool/resource/prompt list when the invoked operation name is
-`discover`, and `discover` is the one operation every MCP connection registers. The desktop labels
-that operation "Discover tools and resources" / "Discover" through `operationDisplayName` and
-`operationSubmitLabel`. `invoke()` re-fetches `getExtensionRuntime` after any invocation that
-actually ran (not one still `awaiting_approval`) against the currently selected extension, so a
-successful discovery is visible immediately.
-
-Discovered tools, resources, and prompts render as separate operator concepts. `_mcp` in
-`backend/app/services/extension_runtime_service.py` names
-each discovered operation `tool:<name>`, `resource:<uri>`, or `prompt:<name>`; `operationKind` reads
-that prefix (checking the exact family word before the first colon, so a bare non-MCP operation
-name such as ACP's `prompt` or the tool family's `run` is never miscategorized) and
-`operationShortLabel` strips it for display, so a discovered `tool:get_forecast` reads as
-`get_forecast` under a "Tools" heading rather than as a raw capability-shaped string. `renderDetail`
-groups an extension's operations by kind and renders "Tools", "Resources", and "Prompts" sections in
-that order, each only when it has entries; `discover` keeps its own unlabeled "Discover tools and
-resources" control rather than sitting under a generic heading, and any operation that matches
-neither pattern (every non-MCP extension family) renders exactly as before, under "Operations".
-
-The catalog list and detail columns keep their scroll position across a re-render.
-`renderPanel` rebuilds the whole panel through `container.replaceChildren` on every state change,
-including the run-poll tick that fires roughly once a second while the panel is open. `listColumn`
-and `detailColumn` carry a
-`data-scroll-key`, and `renderPanel` captures each keyed element's `scrollTop` from the outgoing
-tree and reapplies it to the incoming one, the same capture-then-restore shape the existing
-`data-draft-key` mechanism already uses for form values. The `window.setInterval` callback in
-`createExtensionsPanel`'s `show()` (not `renderPanel` itself) checks `document.activeElement` and
-returns before calling `controller.refreshRuns()` when focus is on an input, textarea, or select, so
-that specific trigger already cannot fire a poll re-render at all while a form field is focused.
-
-Focus on a non-form control - a catalog row, a state-transition button, "Show body", or "Remove
-connection" - is preserved the same way: `renderPanel` reads `document.activeElement`'s
-`data-focus-key` before `replaceChildren` and refocuses the element carrying the same key afterward,
-searching the fresh tree with `querySelectorAll("[data-focus-key]")` rather than assuming the old node
-reference is still attached to anything. Catalog rows key on `row:<extension_id>`, state-transition
-buttons on `state:<extension_id>:<next>`, "Show body" on `show-body:<extension_id>`, and "Remove
-connection" on `remove-connection:<extension_id>`. A state-transition click triggers `setState` ->
-`refreshCatalog()`, so the focus key preserves keyboard and screen-reader position across that
-operator-requested refresh.
-
-`config/extensions/README.md` describes the desktop OAuth flow as implemented. Connect and
-Reconnect exist for OAuth-configured MCP connections through the authorize and reauthorize controls.
-Disconnect remains undefined: no backend revoke or clear-authorization route exists, and non-OAuth
-connections are not held open between operations.
-
-A resource is read and a prompt is fetched, not "invoked" the way a tool is - `operationSubmitLabel`
-returns "Read" for a `resource:` operation and "Get prompt" for a `prompt:` operation, alongside
-"Discover" for `discover` and "Invoke" for tool or non-MCP operations. This is a labeling change
-only: a resource's operation schema is empty because its identity is the URI already in its name, and
-a prompt's schema renders as plain text fields from its declared arguments.
-
-A run's heading shows status and start time instead of its raw run id. `ExtensionRuns.create` in
-`backend/app/extensions/runs.py` names a run with `uuid4().hex` - a backend correlation identifier
-with no operator meaning. `formatRunStarted` uses the run's `started_at` timestamp formatted through
-`toLocaleTimeString`, falling back to the raw value if it does not parse as a date rather than
-producing "Invalid Date". The run id and `proposal_id` (also backend-only; a run's payload carries no
-operator-facing operation name to show instead) render inside a "Run details" disclosure per run,
-the same disclosure shape the extension-level Source/Revision fields already use, so they stay
-reachable for audit without sitting in the heading every run renders.
-
-Source and revision sit behind detail disclosure instead of in an extension's primary facts. `source`
-is a raw file or
-module path (`data/extensions/mcp/weather.yaml`, `backend/app/services/operator_config_service.py`)
-and `revision` is an optimistic-concurrency counter used only to detect a conflicting write. Both
-render inside a `<details>` labeled "Details" appended after the primary facts, the same disclosure
-shape this file
-already uses for a loaded extension body, so an operator reads identity and status at a glance and
-opens the same control to see the backend/audit-shaped fields underneath.
-
-Three modules remain adjacent to but distinct from the extension catalog. `backend/app/core/capabilities.py` only describes hardware/runtime capability flags. `backend/app/actions/catalog.py` builds ADR 0005 governed capability descriptors from observed runtime state. `backend/app/models/catalog.py` is the model artifact catalog. None of them carries extension provenance, trust status, enablement, or dependency state.
-
-The Add MCP Connection form accepts allowed tools, resources, and prompts lists for the
-connection being created, instead of leaving a `streamable_http` connection unrestricted until an
-operator edits its stored definition by hand. `backend/app/extensions/mcp.py`'s `_require_allowed`
-only rejects an operation when its allowlist is both present and non-empty (`if allowlist and value
-not in allowlist`), so an absent or empty list means unrestricted, not "deny all" - `parseAllowlist`
-splits each new field's comma-separated text into a trimmed, non-empty array, and `addMcpConnection`
-adds `tool_allowlist`/`resource_allowlist`/`prompt_allowlist` to the proposed definition only when
-that array is non-empty, so an operator who leaves a field blank still gets today's unrestricted
-connection rather than one that can reach nothing. Credential type and OAuth configuration remain
-out of the connection form, per Follow-up below.
-
-An operation's submit button, the Add MCP Connection and Import Skill forms' submit buttons, and the
-Store credential submit button carry the same `data-focus-key` mechanism as the catalog row and
-state-transition controls. A skill import, connection/tool add, or credential save calls back into
-`refreshCatalog()` or `selectExtension()`, while an operation invocation goes through `invoke()`,
-which refreshes runs and selected runtime detail directly and calls `emit()`. Each button keys on its
-own stable identity - `add-mcp:submit`, `import-skill:submit`, `credential-submit:<extension_id>`, and
-`operation-submit:<extension_id>:<capability_id>` - rather than sharing one key across forms.
-
-A completed "Get prompt" run renders its result as role-labeled message text instead of the same
-raw JSON block every other operation result falls back to. An MCP prompt result's shape
-(`{messages: [{role, content: {type: "text", text}}]}`) is structurally distinct from a tool result's
-shape (`{content: [...]}`), so `formatPromptMessages` detects it by structure rather than needing the
-run to carry which operation produced it, which the run record does not track today. Any message
-whose content is not plain text (image, audio, embedded resource) makes the whole result fall back to
-raw JSON rather than silently dropping that content.
-
-Add Local Tool exists for governed command tools, the same `extension-definition-write` capability
-path as Add MCP Connection rather than a direct write. `backend/app/services/extension_runtime_service.py`
-requires a `tool` definition's `command` (a fixed, non-empty argv list - a tool takes no
-operator-supplied arguments at invoke time, only the `run` operation with an empty schema) and a
-`process` mapping validated by `ProcessBoundary.from_mapping` (`subprocess`, a non-empty
-`argv_allowlist`, an explicit `env_passthrough` allowlist with no wildcard, and `working_root` from
-the fixed set `data`/`cache`/`reports`/`models`/`runtimes`); the form collects command as one argv
-token per line via `parseCommandLines`, `argv_allowlist` and `env_passthrough` as
-comma-separated lists via the existing `parseAllowlist`, and `working_root` as a constrained
-`<select>`. The backend does not accept or use a per-tool timeout, output setting, or argument
-schema. `subprocess` is not a form field, even though it is a required part of `process`: every tool registers with
-`effect_class` `privileged_execution` (`extension_runtime_service.py`'s `_operations_for`), and
-`boundaries.py`'s `require_boundaries` rejects a `privileged_execution` capability whose process
-boundary declares `subprocess: false` - so it is not an operator choice, only a fixed fact, and
-`addLocalTool` always sends `subprocess: true` regardless of caller input. A "Remove tool" control
-exists in a tool's detail view, gated on
-`isOperatorOwnedProvenance` the same way "Remove connection" and skill removal are.
-
-A stored operator-owned declarative definition can be read and edited through a lossless,
-concurrency-safe contract, closing the gap that blocked both Edit MCP Connection and Edit Local
-Tool.
-
-`ExtensionResponse.definition_available` is true only when a family is in `DEFINITION_FAMILIES`
+A stored operator-owned declarative definition can also be read and edited through a lossless,
+concurrency-safe contract, closing the gap that once blocked both Edit MCP Connection and Edit Local
+Tool. `ExtensionResponse.definition_available` is true only when a family is in `DEFINITION_FAMILIES`
 (`mcp`, `acp`, `hook`, `plugin`, `tool`), provenance is exactly `data/extensions`, and trust is
 `operator`. The trust check excludes a plugin-installed child: `ExtensionRuntimeService.definitions()`
 gives an installed plugin child the same `data/extensions` provenance as a standalone operator
@@ -337,19 +151,27 @@ file may declare instead of silently dropping `dependencies` or `metadata` on sa
 serialization of that same field set, not the raw YAML text, so reformatting alone never produces
 a false conflict.
 
-`write_definition` now accepts that same field set (`extension-definition-write`'s input schema
-gained `dependencies`, `metadata`, and an optional `expected_fingerprint`) and four write-safety
-gaps are closed, all guarded by the same `self._lock` `bindings()` already uses: it writes through
-`write_text_atomic` (temp file plus `os.replace`, the same helper `backend/app/artifacts/storage.py`
-already provides for artifact writes) instead of a direct `path.write_text`, so a crash mid-write
-cannot leave a truncated YAML file; `expected_fingerprint` distinguishes create from update rather
-than being an optional extra check - a create (no `expected_fingerprint`) is refused if an operator
-definition with that id already exists, so reusing an id (a typo, or two operators racing to add the
-same connection) cannot silently replace it, and an edit (`expected_fingerprint` given) is refused if
-the stored definition no longer matches it or has disappeared, so a stale editor cannot silently
-overwrite a concurrent change either; and an edit of an MCP connection now clears its discovery
-snapshot the same way `delete_definition` already does, so a connection's changed transport or URL
-cannot keep serving a health/tool list captured from what it looked like before the edit.
+`write_definition` accepts that same field set (`extension-definition-write`'s input schema
+gained `dependencies`, `metadata`, and an optional `expected_fingerprint`), guarded by the same
+`self._lock` `bindings()` already uses: it writes through `write_text_atomic` (temp file plus
+`os.replace`, the same helper `backend/app/artifacts/storage.py` already provides for artifact
+writes) instead of a direct `path.write_text`, so a crash mid-write cannot leave a truncated YAML
+file; `expected_fingerprint` distinguishes create from update rather than being an optional extra
+check - a create (no `expected_fingerprint`) is refused if an operator definition with that id
+already exists, so reusing an id (a typo, or two operators racing to add the same connection)
+cannot silently replace it, and an edit (`expected_fingerprint` given) is refused if the stored
+definition no longer matches it or has disappeared, so a stale editor cannot silently overwrite a
+concurrent change either; and an edit of an MCP connection clears its discovery snapshot the same
+way `delete_definition` already does, so a connection's changed transport or URL cannot keep
+serving a health/tool list captured from what it looked like before the edit.
+
+Edit MCP Connection and Edit Local Tool exist, built on this contract, and `desktop/src/main.js`
+wires `getExtensionDefinition` into the mounted Extensions panel's handlers alongside the others -
+without that wiring the click-to-load workflow returns nothing in the real application even though
+every isolated controller and DOM test supplies its own mock handler and passes regardless. A
+regression test extracts every `handlers.<name>` call `extensions-panel.js` makes and asserts
+`main.js`'s `createExtensionsPanel` call wires each one by name, so a future handler that is added
+to the panel but not mounted fails a test instead of only failing silently in the running app.
 
 The unrelated "Edit skill" editor's textarea carried an unconditional `data-draft-key`, so
 `renderPanel`'s capture-then-restore step captured the pre-load empty value from the outgoing tree
@@ -360,38 +182,93 @@ no matching key on the render that first loads it and there is nothing to restor
 value - the same prefill hazard any editor built on this pattern, including Edit MCP Connection and
 Edit Local Tool, would otherwise inherit.
 
-Edit MCP Connection and Edit Local Tool exist, built on this contract, and `desktop/src/main.js`
-wires `getExtensionDefinition` into the mounted Extensions panel's handlers alongside the others -
-without that wiring the click-to-load workflow described below returns nothing in the real
-application even though every isolated controller and DOM test supplies its own mock handler and
-passes regardless. A regression test now extracts every `handlers.<name>` call
-`extensions-panel.js` makes and asserts `main.js`'s `createExtensionsPanel` call wires each one by
-name, so a future handler that is added to the panel but not mounted fails a test instead of only
-failing silently in the running app.
-
 Clicking "Edit connection" (gated on `definition_available`, not the client-side
 `isOperatorOwnedProvenance` heuristic "Remove connection" uses) or "Edit tool" calls
 `loadDefinition`, and once loaded renders a distinct form - `extensions-edit-connection` /
 `extensions-edit-tool`, not the empty Add form reused with stale values - prefilled from the
 response. Because this form only renders after the definition has loaded, there is no pre-load
 render for the capture-then-restore mechanism to have captured an empty draft from, so it does not
-need the conditional-draft-key fix the Edit skill editor required. A connection whose stored
-`transport` is not `streamable_http` shows a plain notice directing the operator to edit the YAML
-directly instead of rendering a form the Add flow's own field set cannot represent, the same scope
-limit Add MCP Connection already has.
+need the conditional-draft-key fix the Edit skill editor required.
 
 Saving calls `updateMcpConnection` / `updateLocalTool`, which build the new `definition` by
 spreading the just-loaded definition and overwriting only the fields the form actually edits, rather
-than constructing a fresh object from only those fields. `streamableHttpDefinition` and
-`toolDefinition` both now take that prior definition as a base argument (an empty object for Add, so
-create behavior is unchanged) - an MCP connection's `credential_ref` and `oauth`, and a tool's
-`skill_id` and `script`, none of which any form field edits, survive a save instead of silently
-disappearing the first time an operator changes a display name or command; an edited allowlist is
-still explicitly deleted rather than left over from the base when the operator clears it. The rest
+than constructing a fresh object from only those fields. `streamableHttpDefinition`,
+`stdioDefinition`, and `toolDefinition` all take that prior definition as a base argument (an empty
+object for Add, so create behavior is unchanged) - a tool's `skill_id` and `script`, which no tool
+form field edits, survive a save instead of silently disappearing the first time an operator changes
+a command. An MCP connection's `credential_ref` and `oauth` are themselves editable form fields, so
+they round-trip through the same base-preserving save as explicit values - set when the field
+carries one, deleted when it is cleared - rather than surviving only because nothing touches them.
+An edited allowlist is still explicitly deleted rather than left over from the base when the
+operator clears it. The rest
 of the write - `dependencies`/`metadata`/`enabled` carried from the loaded definition, plus
 `expected_fingerprint` - goes through the existing `extension-definition-write` capability as
 before. "Cancel edit" and a successful save both close the form and, on success, reselect the
 extension so its detail reflects the saved value.
+
+MCP credentials support the OAuth 2.0 authorization code flow and resolve on the live connection
+path. `backend/app/extensions/mcp_oauth.py` provides `McpOAuthConfig`, `McpOAuthFlow`
+(authorization URL generation, code exchange, token refresh, local callback server), and
+authorization-server discovery. The code verifier is held against the state it was minted with and
+consumed once, so it never travels through the browser and an unknown or replayed state cannot
+redeem a code. Authorization and token requests carry the RFC 8707 `resource` parameter, binding a
+token to one MCP server. When a connection declares no `authorization_url` and `token_url`, they are
+discovered through RFC 9728 protected-resource metadata and RFC 8414 authorization-server metadata;
+an explicit endpoint overrides discovery. Tokens persist in the application's encrypted operator
+secret store and refresh when expired.
+
+`ExtensionRuntimeService.mcp_credentials` is the single host-owned credential resolver for MCP.
+An OAuth connection resolves a bearer token there; a connection with no stored authorization is
+refused rather than connected unauthenticated. Because `ProcessBoundary.scrub_environment` is an
+allowlist, a stdio credential absent from the connection's `env_passthrough` is refused rather than
+silently dropped into an unauthenticated server start.
+
+MCP discovery snapshots persist in `mcp_discovery_snapshot` behind a schema migration, so
+discovered tools, resources, and prompts remain proposable after a restart instead of silently
+retracting until rediscovery. Stored health is not replayed as a live claim: a snapshot restored
+from disk reports `unknown` until the connection is contacted again.
+
+The desktop drives the OAuth connection flow without ever handling a secret. `GET`, `authorize`,
+and `complete` routes under `/extensions/{id}/oauth` report configuration and authorization state,
+return the authorization URL, and exchange the code. The verifier and state stay on the backend, and
+a completion whose state does not match the request it answers is refused. The Extensions panel
+shows authorization state, opens the authorization page, and accepts the returned code. The MCP
+credential form is independent of discovered operations, so a server that demands authorization
+before discovery can still be credentialed. Cancelling a run is confirmed.
+
+OAuth definition metadata accepts public endpoint keys ending in `_url`, such as
+`authorization_url` and `token_url`. Inline `client_secret` remains refused and must use a
+credential reference.
+
+`extension-credential-write` already executes through its own dedicated route (`POST
+/extensions/{id}/credentials`) with no proposal or approval step at all, so operator-requested
+credential storage was never gated by the capability-console ceremony.
+
+The Extensions panel has its own Add MCP Connection flow for `extension-definition-write` and
+`extension-definition-delete`.
+`desktop/src/components/extensions-panel.js` renders an "Add MCP connection" form at the top of the
+catalog list - display name, connection ID, and a transport-dependent field set covering both
+`streamable_http` and `stdio` - that proposes `extension-definition-write` with `family: "mcp"`
+through the same governed capability path `saveSkill` already used for operator skills;
+`extensionLocalIdValid` rejects a malformed connection ID before it is proposed, matching the
+backend's `SAFE_LOCAL_ID` pattern. A connection whose provenance shows it is operator-owned
+(`isOperatorOwnedProvenance`) gets a "Remove connection" control next to its credential form, which
+proposes `extension-definition-delete`.
+
+`removeMcpConnection` and `removeSkill` both check the resolved proposal's `status` before
+reporting success, matching `saveSkill`'s behavior. A governed capability can resolve with
+`{status: "failure", execution: {error}}` without throwing, so removal paths surface execution
+errors instead of treating the proposal call itself as success.
+
+The Add MCP Connection form accepts allowed tools, resources, and prompts lists for the
+connection being created, instead of leaving a `streamable_http` connection unrestricted until an
+operator edits its stored definition by hand. `backend/app/extensions/mcp.py`'s `_require_allowed`
+only rejects an operation when its allowlist is both present and non-empty (`if allowlist and value
+not in allowlist`), so an absent or empty list means unrestricted, not "deny all" - `parseAllowlist`
+splits each new field's comma-separated text into a trimmed, non-empty array, and `addMcpConnection`
+adds `tool_allowlist`/`resource_allowlist`/`prompt_allowlist` to the proposed definition only when
+that array is non-empty, so an operator who leaves a field blank still gets today's unrestricted
+connection rather than one that can reach nothing.
 
 Add and Edit MCP Connection both carry a credential-reference field and an OAuth fieldset,
 requiring no backend change: `McpConnectionDefinition` (`backend/app/extensions/mcp.py`) already
@@ -412,19 +289,18 @@ form like every other field now - an operator who edits only the display name re
 credential/OAuth values the form loaded, rather than the base-object preservation `skill_id`/
 `script` still need because tools have no such field to prefill from.
 
-Add and Edit MCP Connection both support `stdio` transport now, also requiring no backend change:
+Add and Edit MCP Connection both support `stdio` transport, also requiring no backend change:
 `McpSdkPeer.open()` already branches on `definition.transport == "stdio"` to launch the server
-through `StdioServerParameters`, and `_operations_for` already classifies a stdio connection's
-operations as `privileged_execution` rather than `external_read` - confirmed by writing a stdio
-definition through a real `ExtensionRuntimeService` and observing it discover and register its
-`discover` operation with no code change, the same proof already used for the credential/OAuth
-fields above. A transport `<select>` on the Add form toggles between the existing
-`streamable_http` field set (URL, OAuth) and a new `stdio` field set - command as one argv token
-per line via the existing `parseCommandLines`, `argv_allowlist`/`env_passthrough` via the existing
-`parseAllowlist`, and `working_root` as the same constrained `<select>` Add Local Tool already
-uses - while `subprocess: true` is fixed for the same reason Local Tool's is: every stdio MCP
-connection registers as `privileged_execution`, and `boundaries.py` rejects that effect class
-declaring `subprocess: false`. `stdioDefinition` and `streamableHttpDefinition` share
+through `StdioServerParameters` - confirmed by writing a stdio definition through a real
+`ExtensionRuntimeService` and observing it discover and register its `discover` operation with no
+code change, the same proof already used for the credential/OAuth fields. A transport `<select>` on
+the Add form toggles between the existing `streamable_http` field
+set (URL, OAuth) and a `stdio` field set - command as one argv token per line via the existing
+`parseCommandLines`, `argv_allowlist`/`env_passthrough` via the existing `parseAllowlist`, and
+`working_root` as the same constrained `<select>` Add Local Tool already uses - while
+`subprocess: true` is fixed for the same reason Local Tool's is: a stdio MCP connection's tool
+calls register as `privileged_execution`, and `boundaries.py` rejects that effect class declaring
+`subprocess: false`. `stdioDefinition` and `streamableHttpDefinition` share
 `applyMcpAllowlists`/`applyMcpCredentialRef` so the tool/resource/prompt allowlists and the
 credential-reference field behave identically - set or explicitly deleted - regardless of
 transport. Transport is fixed at create time and is not an Edit field: `renderEditMcpConnection`
@@ -447,6 +323,187 @@ capture-then-restore mechanism restores a draft-keyed field's `.value` without d
 polling - would rebuild the field set from an event-driven toggle's fixed defaults regardless of
 which transport is selected; reading `state.addConnectionTransport` directly instead means the
 field set is correct on every render, independent of what triggered it.
+
+An MCP operation's effect class is assessed by what it does, not by which transport carries it.
+`_operations_for` in `backend/app/services/extension_runtime_service.py` gives `discover`, a
+resource read, and a prompt fetch `external_read` on both transports, since neither ever mutates
+anything; a tool call stays `privileged_execution` on stdio (an arbitrary local program run with
+model-supplied arguments) and `external_write` on `streamable_http` (a remote call whose write
+potential cannot be read off its schema alone) - confirmed against the current MCP specification
+(`https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization`), which defines no
+approval concept beyond the transport-level OAuth this ADR already implements separately, and
+which stdio SHOULD NOT even use, retrieving credentials from the environment instead
+(`https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio`). Before this,
+every stdio operation - including a read-only discover the operator had already requested by
+adding the connection - carried the same `privileged_execution` gate as a tool call, so approving
+it was the operator approving their own already-governed request rather than a distinct decision.
+A stdio tool call's own risk is unchanged by this: `boundaries.py` still requires it to declare
+process boundaries and be cancellable, and `McpConnectionDefinition.from_mapping` still validates
+those boundaries for every stdio connection regardless of any one operation's effect class.
+
+Discover Tools and Resources and Refresh Health are the same action for an MCP connection, not two
+separate ones: `_mcp` in `backend/app/services/extension_runtime_service.py` refreshes a connection's
+cached health and discovered tool/resource/prompt list when the invoked operation name is
+`discover`, and `discover` is the one operation every MCP connection registers. The desktop labels
+that operation "Discover tools and resources" / "Discover" through `operationDisplayName` and
+`operationSubmitLabel`. `invoke()` re-fetches `getExtensionRuntime` after any invocation that
+actually ran (not one still `awaiting_approval`) against the currently selected extension, so a
+successful discovery is visible immediately.
+
+An MCP operation whose effect class requires approval - a stdio tool call, the one MCP operation
+that still registers as `privileged_execution` - resolves through `decide()` rather than through
+`invoke()`'s own post-invocation refresh: the initial proposal returns `awaiting_approval`, and
+the run only reaches a final status later, when the approval is decided. `decide()` looks up the
+resolved run's `extension_id` in `state.runs` and refreshes `state.runtime` when it matches the
+currently selected extension, the same refresh `invoke()` already performs for a same-turn
+completion, so an approved stdio tool call's effect on the connection reaches the operator as soon
+as the approval resolves instead of only after they navigate away from the extension and back.
+Discover itself no longer takes this path: it is `external_read` on both transports and executes
+directly, confirmed live by adding a stdio connection and watching its "Tools" section populate
+with no approval prompt at all.
+
+Discovered tools, resources, and prompts render as separate operator concepts. `_mcp` in
+`backend/app/services/extension_runtime_service.py` names
+each discovered operation `tool:<name>`, `resource:<uri>`, or `prompt:<name>`; `operationKind` reads
+that prefix (checking the exact family word before the first colon, so a bare non-MCP operation
+name such as ACP's `prompt` or the tool family's `run` is never miscategorized) and
+`operationShortLabel` strips it for display, so a discovered `tool:get_forecast` reads as
+`get_forecast` under a "Tools" heading rather than as a raw capability-shaped string. `renderDetail`
+groups an extension's operations by kind and renders "Tools", "Resources", and "Prompts" sections in
+that order, each only when it has entries; `discover` keeps its own unlabeled "Discover tools and
+resources" control rather than sitting under a generic heading, and any operation that matches
+neither pattern (every non-MCP extension family) renders exactly as before, under "Operations".
+
+A resource is read and a prompt is fetched, not "invoked" the way a tool is - `operationSubmitLabel`
+returns "Read" for a `resource:` operation and "Get prompt" for a `prompt:` operation, alongside
+"Discover" for `discover` and "Invoke" for tool or non-MCP operations. This is a labeling change
+only: a resource's operation schema is empty because its identity is the URI already in its name, and
+a prompt's schema renders as plain text fields from its declared arguments.
+
+A completed "Get prompt" run renders its result as role-labeled message text instead of the same
+raw JSON block every other operation result falls back to. `_mcp` in
+`backend/app/services/extension_runtime_service.py` wraps every non-discover result as
+`{content: result, trusted: false}` before it reaches a run record, so an MCP prompt result's own
+shape sits at `result.content.messages` (`{messages: [{role, content: {type: "text", text}}]}`),
+not at the top level. `formatPromptMessages` detects it by structure at that path rather than
+needing the run to carry which operation produced it, which the run record does not track today.
+Any message whose content is not plain text (image, audio, embedded resource), or a result missing
+the `content` wrapper, makes the whole result fall back to raw JSON rather than silently dropping
+that content.
+
+A completed resource "Read" run renders its result as a content preview - the text inline, or an
+image inline for image content - instead of the same raw JSON block a tool result falls back to.
+An MCP resource-read result's own shape sits at the same `result.content` path, as
+`{contents: [{uri, mimeType, text}]}` for text or `{contents: [{uri, mimeType, blob}]}` (base64) for
+binary content; `formatResourceContents` detects it by structure the same way
+`formatPromptMessages` does, tried second so a tool-shaped result under the same wrapper is never
+misread as either. A blob whose `mimeType` this file has no rendering for (audio, an unrecognized
+binary type) makes the whole result fall back to raw JSON rather than silently dropping that
+content, the same discipline the prompt case already follows.
+
+`config/extensions/README.md` describes the desktop OAuth flow as implemented. Connect, Reconnect,
+and "Forget authorization" exist for OAuth-configured MCP connections through the authorize,
+reauthorize, and forget controls; non-OAuth connections are not held open between operations, so
+they have nothing to forget.
+
+Connection state and credential state are kept as separate concepts with separate names.
+"Forget authorization" clears the client's own stored OAuth token rather than calling anything on
+the authorization server, because the current MCP authorization specification defines no
+revocation or logout flow and says nothing about a client's responsibility when it stops using a
+token - it profiles OAuth 2.1, RFC 6750, RFC 7591, RFC 8414, RFC 8707, RFC 9728, RFC 9207, OAuth
+Client ID Metadata Documents, and OpenID Connect Discovery
+(`https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization`), none of which
+cover this, confirmed directly against the published specification text rather than assumed.
+`ExtensionRuntimeService.oauth_forget` deletes the token from the operator secret store under the
+same `oauth_owner_id`/`OAUTH_SECRET_NAME` key `save_oauth_token`/`load_oauth_token` already use,
+refuses a connection with no OAuth configured, and drops any in-progress authorization flow for
+that connection; `POST /extensions/{extension_id}/oauth/forget` is a direct route with no proposal
+or approval step, the same pattern the adjacent OAuth and credential routes already use for this
+effect class (`local_write`). The Extensions panel shows a "Forget authorization" control next to
+"Reconnect" only once a connection is authorized, and refreshes its OAuth status from the backend
+afterward rather than assuming success locally. Disconnect - ending an actively held connection
+rather than clearing a credential - is a distinct concept this ADR does not yet implement, tracked
+in Follow-up.
+
+Operator-owned skills are imported, edited, and removed through `extension-skill-write` and
+`extension-skill-delete`. The manifest is parsed before it is written, so a skill declaring an
+authority-bearing field is refused with its reason rather than landing on disk, and an application
+skill of the same id is never overwritten. The desktop gates skill editing on provenance, because an
+operator skill is external-trust by design; trust does not indicate ownership.
+
+The Extensions panel has an Import Skill flow for creating operator-owned skills. `importSkill`
+proposes the same `extension-skill-write` capability
+`saveSkill` uses, through a dedicated form (skill ID, body) rendered at the top of the Extensions
+catalog next to Add MCP Connection, so its error and success messaging land next to the form the
+operator is using rather than in the (possibly unrelated) detail column `saveSkill`'s edit errors
+target. `extensionLocalIdValid` (renamed from the MCP-specific `mcpConnectionIdValid`, since the
+`SAFE_LOCAL_ID` pattern it checks is shared across every extension family) rejects a malformed skill
+ID before it is proposed.
+
+Add Local Tool exists for governed command tools, the same `extension-definition-write` capability
+path as Add MCP Connection rather than a direct write. `backend/app/services/extension_runtime_service.py`
+requires a `tool` definition's `command` (a fixed, non-empty argv list - a tool takes no
+operator-supplied arguments at invoke time, only the `run` operation with an empty schema) and a
+`process` mapping validated by `ProcessBoundary.from_mapping` (`subprocess`, a non-empty
+`argv_allowlist`, an explicit `env_passthrough` allowlist with no wildcard, and `working_root` from
+the fixed set `data`/`cache`/`reports`/`models`/`runtimes`); the form collects command as one argv
+token per line via `parseCommandLines`, `argv_allowlist` and `env_passthrough` as
+comma-separated lists via the existing `parseAllowlist`, and `working_root` as a constrained
+`<select>`. The backend does not accept or use a per-tool timeout, output setting, or argument
+schema. `subprocess` is not a form field, even though it is a required part of `process`: every tool registers with
+`effect_class` `privileged_execution` (`extension_runtime_service.py`'s `_operations_for`), and
+`boundaries.py`'s `require_boundaries` rejects a `privileged_execution` capability whose process
+boundary declares `subprocess: false` - so it is not an operator choice, only a fixed fact, and
+`addLocalTool` always sends `subprocess: true` regardless of caller input. A "Remove tool" control
+exists in a tool's detail view, gated on
+`isOperatorOwnedProvenance` the same way "Remove connection" and skill removal are.
+
+The catalog list and detail columns keep their scroll position across a re-render.
+`renderPanel` rebuilds the whole panel through `container.replaceChildren` on every state change,
+including the run-poll tick that fires roughly once a second while the panel is open. `listColumn`
+and `detailColumn` carry a
+`data-scroll-key`, and `renderPanel` captures each keyed element's `scrollTop` from the outgoing
+tree and reapplies it to the incoming one, the same capture-then-restore shape the existing
+`data-draft-key` mechanism already uses for form values. The `window.setInterval` callback in
+`createExtensionsPanel`'s `show()` (not `renderPanel` itself) checks `document.activeElement` and
+returns before calling `controller.refreshRuns()` when focus is on an input, textarea, or select, so
+that specific trigger already cannot fire a poll re-render at all while a form field is focused.
+
+Focus on a non-form control - a catalog row, a state-transition button, "Show body", or "Remove
+connection" - is preserved the same way: `renderPanel` reads `document.activeElement`'s
+`data-focus-key` before `replaceChildren` and refocuses the element carrying the same key afterward,
+searching the fresh tree with `querySelectorAll("[data-focus-key]")` rather than assuming the old node
+reference is still attached to anything. Catalog rows key on `row:<extension_id>`, state-transition
+buttons on `state:<extension_id>:<next>`, "Show body" on `show-body:<extension_id>`, and "Remove
+connection" on `remove-connection:<extension_id>`. A state-transition click triggers `setState` ->
+`refreshCatalog()`, so the focus key preserves keyboard and screen-reader position across that
+operator-requested refresh.
+
+An operation's submit button, the Add MCP Connection and Import Skill forms' submit buttons, and the
+Store credential submit button carry the same `data-focus-key` mechanism as the catalog row and
+state-transition controls. A skill import, connection/tool add, or credential save calls back into
+`refreshCatalog()` or `selectExtension()`, while an operation invocation goes through `invoke()`,
+which refreshes runs and selected runtime detail directly and calls `emit()`. Each button keys on its
+own stable identity - `add-mcp:submit`, `import-skill:submit`, `credential-submit:<extension_id>`, and
+`operation-submit:<extension_id>:<capability_id>` - rather than sharing one key across forms.
+
+A run's heading shows status and start time instead of its raw run id. `ExtensionRuns.create` in
+`backend/app/extensions/runs.py` names a run with `uuid4().hex` - a backend correlation identifier
+with no operator meaning. `formatRunStarted` uses the run's `started_at` timestamp formatted through
+`toLocaleTimeString`, falling back to the raw value if it does not parse as a date rather than
+producing "Invalid Date". The run id and `proposal_id` (also backend-only; a run's payload carries no
+operator-facing operation name to show instead) render inside a "Run details" disclosure per run,
+the same disclosure shape the extension-level Source/Revision fields already use, so they stay
+reachable for audit without sitting in the heading every run renders.
+
+Source and revision sit behind detail disclosure instead of in an extension's primary facts. `source`
+is a raw file or
+module path (`data/extensions/mcp/weather.yaml`, `backend/app/services/operator_config_service.py`)
+and `revision` is an optimistic-concurrency counter used only to detect a conflicting write. Both
+render inside a `<details>` labeled "Details" appended after the primary facts, the same disclosure
+shape this file
+already uses for a loaded extension body, so an operator reads identity and status at a glance and
+opens the same control to see the backend/audit-shaped fields underneath.
 
 ## Confirmation
 
@@ -566,6 +623,16 @@ Validation results (windows-amd64):
 - Direct backend inspection: PASS. Wrote a `stdio` MCP definition (matching the exact shape `addMcpConnection({transport: "stdio", ...})` now produces) through a real `ExtensionRuntimeService.write_definition`, confirmed it discovers and registers its `discover` operation, then edited only its `command` through the same instance with `expected_fingerprint`, confirming both the create and the fingerprint-guarded update paths accept the desktop's stdio payload shape unchanged.
 - `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `addMcpConnection`/`updateMcpConnection` building the stdio `command`/`process` shape with a `credential_ref` automatically folded into `env_passthrough`; an edit that changes only the command preserving `tool_allowlist`, `credential_ref`, `transport`, and `expected_fingerprint`; a DOM-level render of the Add form's transport `<select>` toggling from the `streamable_http` field set to command/argv-allowlist/working-root fields and submitting a `url`-free stdio definition; and a DOM-level render of the Edit form for an already-stdio connection showing the stdio field set with neither a URL nor OAuth fields, prefilled from the loaded definition, surviving an edit to the command unchanged for `credential_ref`. Desktop source and component contracts only; native desktop interaction and a live stdio MCP server remain unverified.
 - `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers the Add form's transport field set: `hidden`/`required` state matches the selected transport immediately after selecting stdio, and continues to match it after an intervening re-render this form does not itself cause (`refreshCatalog()`, the same trigger run polling uses).
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `decide()` refreshing the selected extension's runtime when the resolved run's `extension_id` matches; reverting the fix reproduces the failure this test catches (`1 !== 2` fetch count) rather than passing regardless.
+- Live verification against a real backend (a real local model on `llama.cpp`/CUDA, the real extension catalog and action governance) and a real stdio MCP server subprocess, driving the unmodified `main.js`/`extensions-panel.js`/`api-client.js` in a browser with only the Tauri IPC hop replaced by an HTTP-equivalent bridge mapped one-to-one from `desktop/src-tauri/src/backend.rs`: added a stdio connection, ran Discover, approved the resulting run through the panel's own inline Approve control, and confirmed the discovered "Tools" section (`echo`) appeared immediately - the exact gap `decide()`'s runtime refresh closes - before it, the same steps reproduced the gap (the run showed `success` while the detail view kept showing no tools until the extension was deselected and reselected). Also exercised Edit (stdio-only field set, no URL/OAuth), a `credential_ref` round-trip through a real save and reload, and Remove, confirmed against the actual file on disk. This exercised real desktop source and a real backend/subprocess in a browser tab; it did not exercise the native Tauri window or the Rust IPC commands themselves.
+- `backend/.venv/Scripts/python.exe scripts/validate_backend.py integration`: PASS, 35 passed. Covers `oauth_forget` clearing a real OAuth token from the real encrypted secret store while leaving the connection's definition file on disk, `oauth_status` reporting `authorized: false` afterward, and a connection with no OAuth configured refusing to forget with its reason.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `forgetOauth` calling the backend and refreshing OAuth status from it rather than assuming success; reverting the implementation to a no-op reproduces the failure this test catches (an empty call list) rather than passing regardless; the "Forget authorization" control rendering only once a connection is authorized; and the `main.js` handler-wiring regression test picking up `forgetExtensionOauth` automatically.
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS. Covers the new `forget_extension_oauth` Tauri command and its `backend.rs` request function.
+- Live verification against a real backend and a real OAuth-configured `streamable_http` MCP connection (fake but syntactically valid endpoints; no real authorization server round trip), with an access token seeded directly into the real encrypted secret store the running backend also reads: the Extensions panel showed "Authorized." and a "Forget authorization" control next to "Reconnect"; clicking it showed "Stored authorization forgotten." and "Not authorized." immediately, and a direct request to `GET /extensions/{id}/oauth` confirmed `authorized: false` on the real backend afterward.
+- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers `formatResourceContents` unwrapping `result.content.contents` for text and image entries, falling back to `null` for a tool-shaped result, an empty `contents` array, an unrenderable blob type, and a result missing the `content` wrapper; and a DOM-level render of a resource "Read" run showing inline text and an inline image while an unsupported blob type still falls back to the raw JSON block.
+- Live verification against a real backend and a real stdio MCP server exposing a real resource (`note://today`): reading it through the Extensions panel's "Read" control initially rendered the raw JSON block instead of a preview, because the real run result was wrapped as `{content: {contents: [...]}, trusted: false}` while `formatResourceContents` (and the already-shipped `formatPromptMessages`) read the unwrapped top level - a defect the existing unit and DOM tests could not catch because their mocks used the unwrapped shape. Fixing both functions to read `result.content.*` and updating every test's mock data to the real wrapped shape, then repeating the same live read, rendered `It rained today.` inline as intended.
+- `backend/.venv/Scripts/python.exe scripts/validate_backend.py integration`: PASS, 36 passed. Covers a stdio discover executing directly (`status: "success"`, no approval step) where it previously required approval, and a stdio tool call still requiring approval and executing correctly once approved - locking in the read/write split by transport and operation kind together, not by transport alone.
+- Live verification against a real backend and a real stdio MCP server: adding a fresh stdio connection and clicking Discover showed "Extension invoked." with the "Tools" section populated and no "Approve" control anywhere on the page; invoking the discovered `echo` tool with an argument showed "Awaiting approval." with a real "Approve" control, and approving it executed the tool and returned the echoed text - confirming the read/write split live, not just in mocked tests. (A bug surfaced and fixed during this check was in the manual test harness itself - its shim read the wrong argument key from the real `invokeExtension` call - not in application code.)
 
 Protocol tests required execution outside the restricted runner because its asyncio
 subprocess/thread I/O stalled. Native operator layout and interaction validation
@@ -579,8 +646,9 @@ Human-familiar extension surfaces:
 - Rework extension run display so each run has an operator-readable identity, status, requested input, event/failure summary, result summary, and artifacts for the extension operation that ran. Raw action evidence, authorization records, and definition fingerprints remain ADR 0005 audit/detail evidence.
 
 MCP connections:
-- Define MCP Disconnect semantics against the current MCP specification's own authorization/token-revocation guidance rather than an ad hoc application choice. Non-OAuth connections currently connect only for the duration of an operation; OAuth connections have authorize/reauthorize but no backend route to clear or revoke a stored token. "Disable use" already exists through the generic `extension-state-update` capability - what remains is whether clearing local authorization requires only local secret-store deletion (`local_write`) or also calling the authorization server's revocation endpoint (`external_write`, per ADR 0005's risk table), which the spec research should settle before a route is built.
-- Render resource reads as a content-preview view instead of only a bare submit/result path.
+- Keep a stdio connection's process open across operations instead of spawning and closing one per call, by attaching `_mcp` in `backend/app/services/extension_runtime_service.py` to ADR 0005's shared session-lifecycle mechanism once that exists - `_mcp` is one of the two call sites that mechanism's Follow-up entry names directly. The current per-call open/close is an implementation choice, not something the MCP stdio transport spec requires: a client keeps one shared channel open across operations and only restarts it after unexpected termination (`https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio`).
+- Add a real Disconnect action once a stdio connection can stay open: ending the held connection, distinct from "Forget authorization" (clearing a stored credential) and from `extension-state-update` (disabling the extension entirely). Streamable HTTP has no protocol-level session left to disconnect under the current revision (`https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http#earlier-streamable-http-revisions`), so this is a stdio-specific concept and depends on the same ADR 0005 mechanism existing first.
+- Assess a stdio tool call's own effect instead of classifying every stdio tool call as `privileged_execution` uniformly. MCP tool definitions can carry hints such as `readOnlyHint`; today's split only reaches operation kind (discover/resource/prompt vs. tool call) and transport, not what an individual declared tool actually claims to do.
 
 Hooks and plugins:
 - Provide Add Hook and Edit Hook flows organized by event, effect class, target capability, and action arguments. Show hook event history, failures, and disable controls in the hook detail view.

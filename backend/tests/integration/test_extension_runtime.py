@@ -312,12 +312,11 @@ def test_discovered_mcp_operations_survive_a_restart(
     discover = next(
         item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "discover"
     )
+    # Discovery is a read - it never mutates anything - so it executes directly without a
+    # separate approval step, on stdio the same as on streamable_http; only a stdio tool call
+    # (running an arbitrary local program) remains approval-gated.
     proposed = runtime.invoke("mcp:fixture", discover["capability_id"], {})
-    # A stdio connection spawns a process, so discovery is approval-gated.
-    view = runtime.actions.decide(
-        proposal_id=proposed.proposal_id, outcome="approved", decided_by="operator"
-    )
-    assert view.status == "success", view
+    assert proposed.status == "success", proposed
 
     before = {item["name"] for item in runtime.detail("mcp:fixture")["operations"]}
     assert "tool:echo" in before
@@ -334,6 +333,32 @@ def test_discovered_mcp_operations_survive_a_restart(
     assert {item["name"] for item in detail["operations"]} == before
     # The connection has not been contacted since restart, so health is not asserted.
     assert detail["snapshot"]["health"] == "unknown"
+
+
+def test_a_stdio_tool_call_still_requires_approval_while_discover_does_not(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A stdio tool call runs an arbitrary local program with model-supplied arguments - a
+    # materially different risk from a read-only discover on the same connection - so it stays
+    # approval-gated even though discover no longer is.
+    runtime = _runtime(tmp_path, monkeypatch)
+    _write_mcp_definition(runtime.data_dir, _mcp_server_script(tmp_path))
+    runtime.actions.refresh()
+    discover = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "discover"
+    )
+    assert runtime.invoke("mcp:fixture", discover["capability_id"], {}).status == "success"
+
+    tool = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "tool:echo"
+    )
+    proposed = runtime.invoke("mcp:fixture", tool["capability_id"], {"value": "hi"})
+    assert proposed.status == "awaiting_approval", proposed
+
+    approved = runtime.actions.decide(
+        proposal_id=proposed.proposal_id, outcome="approved", decided_by="operator"
+    )
+    assert approved.status == "success", approved
 
 
 def test_an_operator_creates_and_removes_an_mcp_connection_without_editing_yaml(
@@ -432,6 +457,52 @@ def test_creating_over_an_existing_operator_definition_without_a_fingerprint_is_
 
     _, data_dir = definitions_directory("mcp", config_root=runtime.config_dir, data_root=runtime.data_dir)
     assert "Created connection" in (data_dir / "created.yaml").read_text(encoding="utf-8")
+
+
+def test_oauth_forget_clears_the_stored_token_and_leaves_the_definition_intact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.extensions.mcp_oauth import McpOAuthToken, load_oauth_token, save_oauth_token
+
+    runtime = _runtime(tmp_path, monkeypatch)
+    runtime.write_definition("mcp", "authed", {
+        "name": "Authed connection",
+        "version": "1.0.0",
+        "definition": {
+            "transport": "streamable_http",
+            "url": "https://mcp.example.test/mcp",
+            "oauth": {
+                "client_id": "c",
+                "authorization_url": "https://auth.example.test/authorize",
+                "token_url": "https://auth.example.test/token",
+            },
+        },
+    })
+    save_oauth_token(runtime.runs.store, "authed", McpOAuthToken(access_token="secret-token"))
+    assert load_oauth_token(runtime.runs.store, "authed") is not None
+
+    result = runtime.oauth_forget("mcp:authed")
+
+    assert result == {"extension_id": "mcp:authed", "authorized": False}
+    assert load_oauth_token(runtime.runs.store, "authed") is None
+    assert runtime.oauth_status("mcp:authed")["authorized"] is False
+    # Disconnect clears the credential, not the connection - the definition must survive so
+    # the operator can reconnect without recreating it.
+    _, authed_dir = definitions_directory("mcp", config_root=runtime.config_dir, data_root=runtime.data_dir)
+    assert (authed_dir / "authed.yaml").is_file()
+
+
+def test_oauth_forget_refuses_a_connection_with_no_oauth_configured(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    runtime.write_definition("mcp", "plain", {
+        "name": "Plain connection",
+        "version": "1.0.0",
+        "definition": {"transport": "streamable_http", "url": "https://mcp.example.test/mcp"},
+    })
+    with pytest.raises(ValueError, match="not configured for OAuth"):
+        runtime.oauth_forget("mcp:plain")
 
 
 def test_editing_a_connection_drops_its_stale_discovery_snapshot(

@@ -43,6 +43,7 @@ import {
   extensionStateEnabled,
   formatExtensionOrigin,
   formatPromptMessages,
+  formatResourceContents,
   formatRunStarted,
   operationDisplayName,
   operationKind,
@@ -211,6 +212,58 @@ assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operati
     submitLabels,
     ["Discover", "Invoke", "Read", "Get prompt", "Store credential"],
     "each operation kind must submit with its own verb, in the same order as its group",
+  );
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // A stdio (or any privileged_execution) discover is approval-gated, so it resolves through
+  // decide(), not through invoke()'s own post-invocation refresh. Approving it must still pick
+  // up the newly discovered tools instead of leaving the operator staring at an empty runtime
+  // until they navigate away from the extension and back.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  let runStatus = "awaiting_approval";
+  let runtimeFetches = 0;
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:fixture", display_name: "Fixture", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:fixture", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => {
+      runtimeFetches += 1;
+      return {
+        operations: runtimeFetches > 1
+          ? [{ name: "tool:echo", capability_id: "extension-tool1", input_schema: { type: "object", properties: {} }, available: true }]
+          : [],
+        snapshot: {},
+      };
+    },
+    getExtensionRuns: async () => ({
+      runs: [{ run_id: "r1", proposal_id: "p1", extension_id: "mcp:fixture", status: runStatus }],
+    }),
+    decideAction: async () => { runStatus = "success"; },
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:fixture");
+  assert.equal(runtimeFetches, 1, "selecting the extension must fetch runtime once");
+  assert.deepEqual(panel.controller.snapshot().runtime.operations, [], "no tools are discovered yet");
+
+  await panel.controller.decide("p1", "approved");
+
+  assert.equal(runtimeFetches, 2, "approving a run for the selected extension must refresh its runtime");
+  assert.deepEqual(
+    panel.controller.snapshot().runtime.operations.map((op) => op.name),
+    ["tool:echo"],
+    "the newly discovered tool must reach state without navigating away and back",
   );
 
   panel.close();
@@ -454,12 +507,15 @@ assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operati
     getExtensionRuns: async () => ({
       runs: [
         {
+          // extension_runtime_service.py's _mcp wraps every non-discover result as
+          // {content: result, trusted: false} - the SDK's own shape sits one level under
+          // result.content, not at the top.
           run_id: "run-prompt", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:32:00.000Z",
-          result: { messages: [{ role: "user", content: { type: "text", text: "Summarize today." } }] },
+          result: { content: { messages: [{ role: "user", content: { type: "text", text: "Summarize today." } }] }, trusted: false },
         },
         {
           run_id: "run-tool", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:33:00.000Z",
-          result: { content: [{ type: "text", text: "72F and sunny" }] },
+          result: { content: { content: [{ type: "text", text: "72F and sunny" }] }, trusted: false },
         },
       ],
     }),
@@ -473,6 +529,60 @@ assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operati
   const rawFallback = findElement(container, (node) => node.tagName === "p" && node.textContent.includes("72F and sunny"));
   assert.ok(rawFallback, "a tool-shaped result must still fall back to the raw JSON block");
   assert.ok(rawFallback.textContent.startsWith("{"), "the fallback must be the raw JSON result, not reformatted as a message");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // A "read resource" result ({contents: [...]}) must render as a content preview - text
+  // inline, an image inline - instead of the same raw JSON block a tool result falls back to.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({
+      extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
+      families: { mcp: 1 },
+    }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [] }),
+    getExtensionRuns: async () => ({
+      runs: [
+        {
+          // extension_runtime_service.py's _mcp wraps every non-discover result as
+          // {content: result, trusted: false} - the SDK's own shape sits one level under
+          // result.content, not at the top.
+          run_id: "run-resource-text", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:32:00.000Z",
+          result: { content: { contents: [{ uri: "file:///notes.txt", mimeType: "text/plain", text: "It rained today." }] }, trusted: false },
+        },
+        {
+          run_id: "run-resource-image", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:33:00.000Z",
+          result: { content: { contents: [{ uri: "file:///radar.png", mimeType: "image/png", blob: "QUJD" }] }, trusted: false },
+        },
+        {
+          run_id: "run-resource-audio", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:34:00.000Z",
+          result: { content: { contents: [{ uri: "file:///alert.mp3", mimeType: "audio/mpeg", blob: "QUJD" }] }, trusted: false },
+        },
+      ],
+    }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:weather");
+
+  const textPreview = findElement(container, (node) => node.tagName === "pre" && node.textContent === "It rained today.");
+  assert.ok(textPreview, "a text resource result must render as a readable preview, not raw JSON");
+
+  const imagePreview = findElement(container, (node) => node.tagName === "img" && node.src === "data:image/png;base64,QUJD");
+  assert.ok(imagePreview, "an image resource result must render inline from its base64 blob");
+
+  const audioFallback = findElement(container, (node) => node.tagName === "p" && node.textContent.includes("audio/mpeg"));
+  assert.ok(audioFallback, "a resource kind with no rendering support must still fall back to the raw JSON block");
+  assert.ok(audioFallback.textContent.startsWith("{"), "the fallback must be the raw JSON result, not silently dropped");
 
   panel.close();
   globalThis.document = previousDocument;
@@ -2556,6 +2666,90 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
 }
 
 {
+  // "Forget authorization" clears the client's stored token; the panel must refresh oauth
+  // status from the backend afterward rather than assume success locally.
+  const calls = [];
+  let forgotten = false;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
+    getExtensionRuns: async () => ({ runs: [] }),
+    getExtensionOauth: async () => ({ configured: true, authorized: !forgotten }),
+    forgetExtensionOauth: async (extensionId) => {
+      calls.push(["forget", extensionId]);
+      forgotten = true;
+    },
+  });
+  await controller.selectExtension("mcp:probe");
+  assert.equal(controller.snapshot().oauthStatus.authorized, true);
+
+  await controller.forgetOauth("mcp:probe");
+
+  assert.deepEqual(calls, [["forget", "mcp:probe"]]);
+  assert.equal(
+    controller.snapshot().oauthStatus.authorized,
+    false,
+    "forgetting authorization must refresh oauth status from the backend rather than assume success",
+  );
+  assert.equal(controller.snapshot().notice, "Stored authorization forgotten.");
+}
+
+{
+  // The "Forget authorization" control only appears once authorized - there is nothing to
+  // forget before then, and Connect/Reconnect already cover that state.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
+    getExtensionRuns: async () => ({ runs: [] }),
+    getExtensionOauth: async () => ({ configured: true, authorized: true }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:probe");
+
+  const authorizedButtons = findElements(container, (node) => node.tagName === "button").map((node) => node.textContent);
+  assert.ok(authorizedButtons.includes("Forget authorization"), "an authorized OAuth connection must offer to forget its authorization");
+  assert.ok(authorizedButtons.includes("Reconnect"), "an authorized connection still offers Reconnect, distinct from forgetting authorization");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
+    getExtensionRuns: async () => ({ runs: [] }),
+    getExtensionOauth: async () => ({ configured: true, authorized: false }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:probe");
+
+  const unauthorizedButtons = findElements(container, (node) => node.tagName === "button").map((node) => node.textContent);
+  assert.ok(!unauthorizedButtons.includes("Forget authorization"), "an unauthorized OAuth connection has no stored authorization to forget");
+  assert.ok(unauthorizedButtons.includes("Connect"));
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
   // Completing without a started flow must not invent a state value.
   let completed = 0;
   const controller = createExtensionsPanelController({
@@ -3134,19 +3328,44 @@ assert.deepEqual(parseCommandLines("python3\n\n-m\n"), ["python3", "-m"], "a bla
   assert.notEqual(snapshot.notice, "Local tool removed.");
 }
 
+// extension_runtime_service.py's _mcp wraps every non-discover result as
+// {content: result, trusted: false} - the SDK's own shape sits one level under result.content,
+// not at the top; both functions below must unwrap it, not read the top level directly.
 assert.deepEqual(
   formatPromptMessages({
-    messages: [
-      { role: "user", content: { type: "text", text: "What changed?" } },
-      { role: "assistant", content: { type: "text", text: "Nothing yet." } },
-    ],
+    content: {
+      messages: [
+        { role: "user", content: { type: "text", text: "What changed?" } },
+        { role: "assistant", content: { type: "text", text: "Nothing yet." } },
+      ],
+    },
+    trusted: false,
   }),
   [{ role: "user", text: "What changed?" }, { role: "assistant", text: "Nothing yet." }],
 );
-assert.equal(formatPromptMessages({ content: [{ type: "text", text: "tool output" }] }), null, "a tool-shaped result has no messages array and must not be misread as a prompt result");
-assert.equal(formatPromptMessages({ messages: [] }), null, "an empty messages array is not a usable prompt result");
-assert.equal(formatPromptMessages({ messages: [{ role: "user", content: { type: "image", data: "..." } }] }), null, "non-text prompt content must fall back to raw JSON rather than being silently dropped");
+assert.equal(formatPromptMessages({ content: { content: [{ type: "text", text: "tool output" }] }, trusted: false }), null, "a tool-shaped result has no messages array and must not be misread as a prompt result");
+assert.equal(formatPromptMessages({ content: { messages: [] }, trusted: false }), null, "an empty messages array is not a usable prompt result");
+assert.equal(formatPromptMessages({ content: { messages: [{ role: "user", content: { type: "image", data: "..." } }] }, trusted: false }), null, "non-text prompt content must fall back to raw JSON rather than being silently dropped");
+assert.equal(formatPromptMessages({ messages: [{ role: "user", content: { type: "text", text: "unwrapped" } }] }), null, "a result missing the content wrapper must not be misread as unwrapped");
 assert.equal(formatPromptMessages(null), null);
+
+assert.deepEqual(
+  formatResourceContents({ content: { contents: [{ uri: "file:///notes.txt", mimeType: "text/plain", text: "hello" }] }, trusted: false }),
+  [{ uri: "file:///notes.txt", mimeType: "text/plain", kind: "text", text: "hello" }],
+);
+assert.deepEqual(
+  formatResourceContents({ content: { contents: [{ uri: "file:///pixel.png", mimeType: "image/png", blob: "QUJD" }] }, trusted: false }),
+  [{ uri: "file:///pixel.png", mimeType: "image/png", kind: "image", dataUrl: "data:image/png;base64,QUJD" }],
+);
+assert.equal(formatResourceContents({ content: { content: [{ type: "text", text: "tool output" }] }, trusted: false }), null, "a tool-shaped result has no contents array and must not be misread as a resource result");
+assert.equal(formatResourceContents({ content: { contents: [] }, trusted: false }), null, "an empty contents array is not a usable resource result");
+assert.equal(
+  formatResourceContents({ content: { contents: [{ uri: "file:///song.mp3", mimeType: "audio/mpeg", blob: "QUJD" }] }, trusted: false }),
+  null,
+  "unrenderable binary content (audio, an unrecognized blob type) must fall back to raw JSON rather than being silently dropped",
+);
+assert.equal(formatResourceContents({ contents: [{ uri: "file:///notes.txt", mimeType: "text/plain", text: "hello" }] }), null, "a result missing the content wrapper must not be misread as unwrapped");
+assert.equal(formatResourceContents(null), null);
 
 {
   // A refused connection delete must surface the backend's reason, not claim success.

@@ -57,19 +57,46 @@ export function parseCommandLines(text) {
     .filter(Boolean);
 }
 
+// extension_runtime_service.py's _mcp wraps every tool/resource/prompt result (everything but
+// "discover") as {content: result, trusted: false} before it ever reaches a run record, so the
+// MCP SDK's own result shape sits one level under result.content here, not at the top.
+
 // An MCP "get prompt" result is a list of role-tagged messages, not the tool-shaped
 // {content: [...]} result every other operation produces - render it as the message text an
 // operator actually wants to read rather than the raw JSON block generic results fall back to.
 // Any message whose content is not plain text (image, audio, embedded resource) returns null so
 // the caller falls back to raw JSON instead of silently dropping that content.
 export function formatPromptMessages(result) {
-  const messages = result?.messages;
+  const messages = result?.content?.messages;
   if (!Array.isArray(messages) || !messages.length) return null;
   const formatted = [];
   for (const message of messages) {
     const text = message?.content?.text;
     if (typeof text !== "string") return null;
     formatted.push({ role: message.role, text });
+  }
+  return formatted;
+}
+
+// An MCP "read resource" result ({contents: [{uri, mimeType, text|blob}]}) is structurally
+// distinct from a tool result's {content: [...]} shape and a prompt result's {messages: [...]}
+// shape, so this renders it as a content preview - readable text, or an inline image for
+// image content - instead of the same raw JSON block a generic result falls back to. Any
+// content entry this file has no rendering for (audio, an unrecognized blob type) returns null
+// so the caller falls back to raw JSON for the whole result instead of silently dropping it.
+export function formatResourceContents(result) {
+  const contents = result?.content?.contents;
+  if (!Array.isArray(contents) || !contents.length) return null;
+  const formatted = [];
+  for (const item of contents) {
+    const mimeType = String(item?.mimeType || "");
+    if (typeof item?.text === "string") {
+      formatted.push({ uri: item.uri, mimeType, kind: "text", text: item.text });
+    } else if (typeof item?.blob === "string" && mimeType.startsWith("image/")) {
+      formatted.push({ uri: item.uri, mimeType, kind: "image", dataUrl: `data:${mimeType};base64,${item.blob}` });
+    } else {
+      return null;
+    }
   }
   return formatted;
 }
@@ -317,6 +344,23 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     }
     state.oauth = null;
     state.notice = "Connection authorized.";
+    if (handlers.getExtensionOauth) {
+      try { state.oauthStatus = await handlers.getExtensionOauth(extensionId); } catch { state.oauthStatus = null; }
+    }
+    emit();
+  }
+
+  async function forgetOauth(extensionId) {
+    if (!handlers.forgetExtensionOauth) return;
+    try {
+      await handlers.forgetExtensionOauth(extensionId);
+    } catch (error) {
+      state.detailError = errorMessage(error, "The stored authorization could not be forgotten.");
+      emit();
+      return;
+    }
+    state.notice = "Stored authorization forgotten.";
+    state.oauth = null;
     if (handlers.getExtensionOauth) {
       try { state.oauthStatus = await handlers.getExtensionOauth(extensionId); } catch { state.oauthStatus = null; }
     }
@@ -762,6 +806,16 @@ export function createExtensionsPanelController(handlers, render = () => undefin
   async function decide(proposalId, outcome) {
     await handlers.decideAction(proposalId, outcome);
     await refreshRuns();
+    // An approval-gated run (every stdio MCP "discover", any other privileged_execution
+    // operation) resolves here, outside invoke()'s own post-invocation refresh above - without
+    // this, an approved discover's tools/resources/prompts never reach the operator until they
+    // navigate away from the extension and back, even though the run itself already shows
+    // success.
+    const run = state.runs.find((item) => item.proposal_id === proposalId);
+    if (run?.extension_id === state.selectedExtensionId && handlers.getExtensionRuntime) {
+      try { state.runtime = await handlers.getExtensionRuntime(state.selectedExtensionId); } catch { /* keep the prior runtime display */ }
+      emit();
+    }
   }
 
   async function cancel(proposalId, confirmCancel) {
@@ -897,6 +951,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     removeLocalTool,
     startOauth,
     completeOauth,
+    forgetOauth,
     refreshRuns,
     decide,
     cancel,
@@ -1679,6 +1734,18 @@ function renderDetail(state) {
         connect.disabled = state.mutationPending;
         connect.addEventListener("click", () => state.actions.startOauth(detail.extension_id));
         oauth.appendChild(connect);
+        if (state.oauthStatus.authorized) {
+          // "Forget authorization" clears the client's own stored token; the MCP
+          // authorization specification defines no revocation flow this needs to call, and
+          // is a distinct concept from Disconnect (ending an active connection), which does
+          // not yet exist as a separate action.
+          const forget = document.createElement("button");
+          forget.type = "button";
+          forget.textContent = "Forget authorization";
+          forget.disabled = state.mutationPending;
+          forget.addEventListener("click", () => state.actions.forgetOauth(detail.extension_id));
+          oauth.appendChild(forget);
+        }
       }
       runtime.appendChild(oauth);
     }
@@ -1792,8 +1859,21 @@ function renderDetail(state) {
       if (run.events?.length) appendText(block, JSON.stringify(run.events.at(-1)), "p", "extensions-row-meta");
       if (run.result) {
         const messages = formatPromptMessages(run.result);
+        const resourceContents = messages ? null : formatResourceContents(run.result);
         if (messages) {
           for (const message of messages) appendText(block, `${message.role}: ${message.text}`, "p", "extensions-row-meta");
+        } else if (resourceContents) {
+          for (const item of resourceContents) {
+            if (item.kind === "text") {
+              appendText(block, item.text, "pre", "extensions-row-meta");
+            } else {
+              const image = document.createElement("img");
+              image.src = item.dataUrl;
+              image.alt = item.uri || "resource content";
+              image.className = "extensions-row-meta";
+              block.appendChild(image);
+            }
+          }
         } else {
           appendText(block, JSON.stringify(run.result), "p", "extensions-row-meta");
         }
@@ -1934,6 +2014,7 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     removeLocalTool: (localId) => controller.removeLocalTool(localId),
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
+    forgetOauth: (extensionId) => controller.forgetOauth(extensionId),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
     cancel: (proposalId) => controller.cancel(proposalId, confirmCancel),
     notice: (message) => controller.notice(message),

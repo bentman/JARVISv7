@@ -27,6 +27,7 @@ use backend::{
     get_extension_oauth as backend_get_extension_oauth,
     start_extension_oauth as backend_start_extension_oauth,
     complete_extension_oauth as backend_complete_extension_oauth,
+    forget_extension_oauth as backend_forget_extension_oauth,
     list_agents as backend_list_agents,
     get_agent as backend_get_agent,
     invoke_agent as backend_invoke_agent,
@@ -780,6 +781,11 @@ fn complete_extension_oauth(extension_id: String, code: String, oauth_state: Str
 }
 
 #[tauri::command]
+fn forget_extension_oauth(extension_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_forget_extension_oauth(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?)
+}
+
+#[tauri::command]
 fn list_agents(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_list_agents(&state.http_client, &base_url)
@@ -996,6 +1002,7 @@ pub fn run() {
             get_extension_oauth,
             start_extension_oauth,
             complete_extension_oauth,
+            forget_extension_oauth,
             list_agents,
             get_agent,
             invoke_agent,

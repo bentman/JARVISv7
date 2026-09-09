@@ -197,22 +197,32 @@ class ExtensionRuntimeService:
             return []
         from backend.app.extensions.mcp import McpConnectionDefinition
         connection = McpConnectionDefinition.from_mapping(manifest.local_id, definition)
-        effect = "privileged_execution" if connection.transport == "stdio" else "external_read"
-        operations = [("discover", empty, effect, lambda args, op, run: self._mcp(manifest, "discover", args, op, run))]
+        # Effect class is assessed by what an operation does, not by transport alone. Discovery,
+        # a resource read, and a prompt fetch never mutate anything on either transport, so they
+        # are external_read regardless of transport - confirmed against the current MCP
+        # specification (https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization),
+        # which defines no approval concept beyond the transport-level OAuth this ADR already
+        # implements separately (and which stdio SHOULD NOT even use, retrieving credentials from
+        # the environment instead). A stdio tool call still runs an arbitrary local program with
+        # model-supplied arguments - a materially different risk than the same call over HTTP -
+        # so it stays privileged_execution; an HTTP tool call stays external_write.
+        read_effect = "external_read"
+        tool_effect = "privileged_execution" if connection.transport == "stdio" else "external_write"
+        operations = [("discover", empty, read_effect, lambda args, op, run: self._mcp(manifest, "discover", args, op, run))]
         snapshot = self._snapshots.get(identifier, {})
         for tool in snapshot.get("tools", []):
             name = "tool:" + tool["name"]
-            operations.append((name, tool["inputSchema"], effect if effect == "privileged_execution" else "external_write",
+            operations.append((name, tool["inputSchema"], tool_effect,
                                lambda args, op, run, name=name: self._mcp(manifest, name, args, op, run)))
         for resource in snapshot.get("resources", []):
             name = "resource:" + resource["uri"]
-            operations.append((name, empty, effect, lambda args, op, run, name=name: self._mcp(manifest, name, args, op, run)))
+            operations.append((name, empty, read_effect, lambda args, op, run, name=name: self._mcp(manifest, name, args, op, run)))
         for prompt in snapshot.get("prompts", []):
             name = "prompt:" + prompt["name"]
             fields = prompt.get("arguments", [])
             schema = {"type": "object", "properties": {item["name"]: {"type": "string"} for item in fields},
                       "required": [item["name"] for item in fields if item.get("required")], "additionalProperties": False}
-            operations.append((name, schema, effect, lambda args, op, run, name=name: self._mcp(manifest, name, args, op, run)))
+            operations.append((name, schema, read_effect, lambda args, op, run, name=name: self._mcp(manifest, name, args, op, run)))
         return operations
 
     def _handler(self, manifest: DefinitionManifest, name: str, handler: Callable) -> Callable:
@@ -519,6 +529,37 @@ class ExtensionRuntimeService:
         token = flow.exchange_code(code, state)
         save_oauth_token(self.runs.store, extension_id.split(":", 1)[1], token)
         return {"extension_id": extension_id, "authorized": True}
+
+    def oauth_forget(self, extension_id: str) -> dict[str, Any]:
+        """Clear a connection's stored OAuth authorization.
+
+        The MCP authorization specification (2026-07-28) defines no revocation or logout
+        flow and says nothing about a client's responsibility when it stops using a
+        token; it profiles OAuth 2.1, RFC 6750, RFC 7591, RFC 8414, RFC 8707, RFC 9728,
+        RFC 9207, OAuth Client ID Metadata Documents, and OpenID Connect Discovery, none
+        of which this method needs. Deleting the client's own stored copy is sufficient:
+        the next operation refuses with "not authorized" instead of replaying it, and
+        the authorization server governs the token's own validity independently of
+        anything the client does with its copy. This is deliberately distinct from
+        Disconnect (ending an active connection), which is not yet a separate action.
+        """
+        from backend.app.extensions.mcp import McpConnectionDefinition
+        from backend.app.extensions.mcp_oauth import OAUTH_SECRET_NAME, oauth_owner_id
+
+        manifest = next(
+            (item for item in self.definitions()
+             if f"{item.family}:{item.local_id}" == extension_id and item.family == "mcp"),
+            None,
+        )
+        if manifest is None:
+            raise ValueError("unknown MCP connection")
+        definition = McpConnectionDefinition.from_mapping(manifest.local_id, manifest.definition)
+        if definition.oauth is None:
+            raise ValueError("this MCP connection is not configured for OAuth")
+        self.runs.store.delete_secret(oauth_owner_id(manifest.local_id), OAUTH_SECRET_NAME)
+        with self._lock:
+            self._oauth_flows.pop(extension_id, None)
+        return {"extension_id": extension_id, "authorized": False}
 
     def mcp_credentials(self, definition: Any, local_id: str) -> dict[str, str]:
         """Resolve host-owned credentials for one MCP connection."""
