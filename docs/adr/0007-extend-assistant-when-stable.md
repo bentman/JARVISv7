@@ -44,7 +44,7 @@ Agent work starts only when the needed scope is stable:
 - memory: retrieval, write, lifecycle, curation, and artifact ingestion are application-owned and inspectable
 - action: capabilities have stable IDs, schemas, effect classes, authorization rules, timeouts, cancellation, typed results, and artifacts
 - extension: skills, MCP, hooks, plugins, prompts, providers, and connectors register through one extension/capability model
-- approval: sensitive operations pause and resume the same turn/run, including delegated or nested work
+- approval: model-proposed operations requiring authorization pause and resume the same turn/run; specific operator requests follow ADR 0005 without self-approval
 - process: subprocess agents have explicit adapters, allowed roots, environment, credentials, timeouts, cancellation, output capture, and cleanup
 - client: desktop, CLI/script, daemon, and future clients display agent status, approvals, outputs, failures, and artifacts without owning policy
 - validation: unit and integration tests prove each gate before live agent claims are made
@@ -68,174 +68,63 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented for direct agent operation and the current extension/governance integration. Some invocation modes and profile-management workflows remain follow-up work.
+This ADR is partially implemented. File-backed agents support direct invocation and inspection. The outbound ACP adapter supports persistent, conversation-scoped connections and negotiated resume. Profile management, other invocation modes, and full inbound/outbound ACP v2 conformance remain incomplete.
 
-Implemented foundations:
-- `backend/app/conversation/engine.py` centralizes text and voice turns through the same reasoning path, session continuity, personality policy, memory retrieval, search planning, response generation, artifact recording, and final state reporting.
-- `backend/app/services/turn_service.py` delegates text and voice turn entry points to `TurnEngine`.
-- `backend/app/services/resident_voice_invocation.py` routes resident voice work into the session service instead of owning separate assistant behavior.
-- Realtime voice support in `backend/app/conversation/realtime/` records events and interruption/recovery behavior without creating an agent runtime.
-- Prompt authority boundaries exist in `backend/app/cognition/prompt_envelope.py`, `backend/app/cognition/prompt_assembler.py`, and `backend/app/cognition/prompt_renderer.py`.
-- Memory foundations exist in `backend/app/memory/`, `backend/app/services/memory_service.py`, `backend/app/api/routes/memory.py`, and `desktop/src/components/memory-panel.js`.
-- Turn and session artifacts exist in `backend/app/artifacts/turn_artifact.py`, `backend/app/artifacts/session_artifact.py`, and `backend/app/artifacts/session_timeline.py`.
-- Provider profile, settings, readiness, and search-provider surfaces exist through backend services/routes and thin desktop API/UI bindings.
-- Action governance records exist in `backend/app/actions/contracts.py`, including capability descriptors, proposals, authorization decisions, approvals, execution results, cancellation policy, and delegated-run artifact fields.
-- ACP client sessions are admitted through the same `TurnEngine` session path and governed capability executor; ACP events, permission requests, cancellation, and results are available for turn artifacts and approval handling. Current ACP behavior must be aligned to Agent Client Protocol v2 before the project claims ACP compatibility for either outbound agent adapters or the inbound JARVIS server.
-- A local inbound bridge exists in `backend/app/extensions/acp_server.py`. It accepts client connections over loopback TCP using JSON-RPC 2.0, manages session lifecycle with configurable maximum sessions and timeouts, and routes incoming messages through `TurnEngine.run_text_turn()`, so an external client enters the same single interaction loop as every other surface. Start, stop, status, and session-list endpoints are exposed through `backend/app/api/routes/acp_server.py`. It is a local bridge, not an Agent Client Protocol v2 server.
+### Agent profiles and direct invocation
 
-The current agent system is file-backed and operational for direct invocation, governed execution evidence, and inspection.
+`backend/app/agents/schema.py` defines profile identity, purpose, instructions, invocation modes, capability IDs, memory scope, approval class, timeout, cancellation, output contract, and provider/model policy. Authority-bearing override fields are rejected. `AgentRegistry` reloads YAML profiles from `config/agents/` when files change and reports malformed profiles without disabling the rest of the catalog.
 
-Agent profiles are defined by `AgentProfile` in `backend/app/agents/schema.py`. Each profile declares a `profile_id`, `display_name`, `purpose`, `instructions`, `invocation_modes` (from `direct`, `router_selected`, `as_tool`, `handoff`), `capability_ids`, `memory_scope` (from `none`, `working`, `episodic`, `semantic`, `full`), `approval_class` (from `none`, `standard`, `strict`), `timeout_ms`, `cancellable`, `output_contract`, and `provider_model_policy`. Authority-bearing fields (`tool_policy`, `routing_policy`, `memory_policy`, `safety_overrides`, `hidden_instructions`) are rejected at load time. Profiles are loaded from YAML files under `config/agents/` by `backend/app/agents/loader.py`.
+The registry exposes agent profiles through the extension catalog and `agent-invoke-{profile_id}` capability descriptors. Current in-process approval classes map `none` to local-read/allow and `standard` or `strict` to local-write/requires-approval. Only direct mode is currently reachable; profiles without it report misconfigured. `AgentRouter` and `invoke_as_tool` exist but are not connected to complete invocation workflows.
 
-`AgentRegistry` in `backend/app/agents/registry.py` loads and caches profiles, integrates with the extension catalog (as family `agent` in `ExtensionObservation.agents`), and registers capability descriptors (as `agent-invoke-{profile_id}` in `CapabilityObservation.agents`). The current `approval_class` mapping is `none` -> `local_read`/`allow`, `standard` -> `local_write`/`requires_approval`, and `strict` -> `local_write`/`requires_approval`.
+`backend/app/agents/invocation.py` delegates direct work to `TurnEngine.run_agent`, using the shared turn-admission, prompt, provider, and artifact path. Handler bindings in `backend/app/api/app.py` resolve the active session engine. ADR 0002 owns turn/session execution, ADR 0003 prompt authority, ADR 0004 memory boundaries, and ADR 0005 authorization and action evidence.
 
-Invocation is implemented in `backend/app/agents/invocation.py`. `AgentInvoker.invoke_direct()` and `invoke_as_tool()` validate the profile exists and supports the requested mode, then delegate to `TurnEngine.run_agent()`. The engine method admits agent work through `_admit_turn()`, builds a prompt envelope with the agent's instructions as a trusted application segment, calls the LLM, and records a `TurnArtifact` with `delegated_runs`.
+`backend/app/api/routes/agents.py` provides list, detail, invoke, run listing, and cancellation. `desktop/src/components/agents-panel.js` exposes catalog, invocation, run status, and cancellation through Tauri. Agent profile authoring remains file-based. Operator invocation still uses the generic proposal path and can park for self-approval; the shared authorization correction is tracked in ADR 0005.
 
-`backend/app/api/app.py` constructs the registry with `CONFIG_DIR`, so the profiles under `config/agents/` are loaded and exposed through `GET /agents`, the extension catalog's agent family, and `agent-invoke-*` descriptors.
+### Outbound ACP
 
-`backend/app/api/app.py` binds that invoker to the governed loop. `build_agent_handlers` maps each `agent-invoke-{profile_id}` capability to `AgentInvoker.invoke_direct`, and `CapabilityService.bind_handler_provider` (ADR 0005) re-reads the mapping on every catalog refresh, so a profile the registry reports always has an executor behind its descriptor.
+`backend/app/extensions/acp.py` consumes ADR 0006 adapter definitions and ADR 0005's shared `SessionManager`. Connection identity is `acp:{agent_id}:{host_session_id}`: prompts in one host conversation reuse the same agent process and protocol session; separate host conversations use separate connections. Definition edit/delete closes every connection for that agent through prefix matching.
 
-Agent capabilities are decided on the operator surface, not inside a conversation turn: `backend/app/actions/catalog.py` gives every agent descriptor `approval_mode="same_turn"`. `turn_boundary` means the proposal is raised and answered within a conversation turn, which is the search handshake; an API-initiated invocation is not that. A `standard` profile can park for approval through the current raw Actions surface; the follow-up below replaces that with a named agent workflow.
+An open connection holds its subprocess and SDK transport through an `AsyncExitStack`. Initialization and session creation or resume occur once per connection; subsequent work sends prompts. Event and permission callbacks bind before initialization/resume and again for each prompt, attributing replayed updates and new events to the current call.
 
-The `approval_class` to effect-class mapping describes what the executor does, not what the label suggests. The current runtime invokes an agent in-process through `TurnEngine`, so `strict` maps to `local_write` with `requires_approval` rather than `privileged_execution`; a `privileged_execution` effect class belongs to the process-isolated runtime adapter named in Follow-up, and until it exists `strict` and `standard` differ only in intent. ADR 0005's registry still refuses a `privileged_execution` descriptor that declares no process boundaries, so that adapter cannot register without them.
+A remembered protocol session ID can be resumed after process replacement when the agent advertises `sessionCapabilities.resume`. Missing support or a failed resume falls back to a new session. Remembered IDs are host-memory state; recovery across a JARVIS restart is not implemented. The SDK fixture requires the agent process to enable `use_unstable_protocol` for resume routing, so advertised capability alone does not establish real-agent compatibility.
 
-`AgentRegistry` re-reads `config/agents/` when its files change and reports a profile it cannot parse instead of raising, so editing a profile on a running backend takes effect without a restart and a malformed file does not take the action loop offline. A profile that does not declare `direct` is served as `misconfigured` with that explanation, because `direct` is the only mode the current runtime executes - `invoke_as_tool` and `AgentRouter` exist but are not reachable until the router and as-tool paths in Follow-up are built.
+Transport `ConnectionError` signals a dead resource for cleanup and eviction. Subsequent use can create a replacement; an uncertain prompt is not replayed automatically. ACP has a separate PID-based `_stop_process_tree` termination path, allowing forceful teardown to be retried when a prior close was unconfirmed. Shared coordination and confirmation semantics belong to ADR 0005.
 
-`AgentRouter` in `backend/app/agents/router.py` provides heuristic router-selected invocation by matching keywords from the profile's purpose against the request text.
+ACP work enters `TurnEngine.run_extension` admission and records delegated-run evidence. Streamed updates, permission requests, cancellation, and results flow through host callbacks and extension run records. The implemented SDK flow does not yet establish full ACP v2 conformance, including distinct prompt acceptance and foreground completion.
 
-Agent API routes exist at `backend/app/api/routes/agents.py`: `GET /agents` (list profiles), `GET /agents/{profile_id}` (detail), `POST /agents/invoke` (invoke through the ADR 0005 capability path; it reports the agent's own status and error, because a failed run is returned in the invocation result rather than raised, which would otherwise record a successful capability execution), `GET /agents/runs` (list runs), `POST /agents/{profile_id}/cancel` (cancel). The desktop agent panel at `desktop/src/components/agents-panel.js` provides catalog display, invocation, run tracking, and cancellation through Tauri commands.
+### Inbound bridge and agent boundaries
 
-Agent profile authoring is not an operator UI workflow in the current codebase. Profiles are edited as YAML under `config/agents/`, then loaded and validated by `AgentRegistry`. The desktop should not expose add/remove/modify controls until backend-owned profile mutation routes exist.
+`backend/app/extensions/acp_server.py` implements a persistent local JSON-RPC bridge over loopback TCP, with tracked sessions, limits, timeouts, and requests routed through `TurnEngine.run_text_turn`. `backend/app/api/routes/acp_server.py` exposes start, stop, status, and session listing. Its lifecycle is implemented; its handshake and message shapes still require ACP v2 alignment.
 
-Session mapping in `backend/app/agents/session_mapping.py` maps ACP session events into `AgentSessionRecord` entries that produce `delegated_runs` dicts for `TurnArtifact`. `TurnArtifact.agent_evidence()` filters delegated runs for agent-specific evidence.
-
-Agent-scoped MCP filtering in `backend/app/agents/mcp_filter.py` provides `AgentMcpPolicy` that restricts agent access to specific MCP connections, tools, resources, and prompts based on the agent profile's `capability_ids`.
-
-Process isolation for agents is implemented in `AgentIsolation` in `backend/app/actions/boundaries.py`. It extends `ProcessBoundary` with agent-scoped environment scrubbing (removes sensitive keys like TOKEN, SECRET, PASSWORD, KEY, CREDENTIAL unless explicitly allowlisted), output byte limits, credential reference tracking, and working directory escape prevention.
+`backend/app/agents/session_mapping.py` maps session events into delegated-run artifacts. `backend/app/agents/mcp_filter.py` implements agent-scoped MCP connection/tool/resource/prompt filtering. `AgentIsolation` in `backend/app/actions/boundaries.py` provides environment scrubbing, credential reference tracking, output limits, and working-root containment. These are application-level controls, not kernel isolation.
 
 ## Confirmation
 
-Implementation evidence:
-- `ProjectVision.md`
-- `backend/app/api/app.py`
-- `backend/app/services/capability_service.py`
-- `backend/app/conversation/engine.py`
-- `backend/app/conversation/realtime/session.py`
-- `backend/app/conversation/realtime/interruption.py`
-- `backend/app/services/turn_service.py`
-- `backend/app/services/resident_voice_invocation.py`
-- `backend/app/cognition/prompt_envelope.py`
-- `backend/app/cognition/prompt_assembler.py`
-- `backend/app/cognition/prompt_renderer.py`
-- `backend/app/cognition/search_policy.py`
-- `backend/app/memory/`
-- `backend/app/services/memory_service.py`
-- `backend/app/api/routes/memory.py`
-- `backend/app/artifacts/turn_artifact.py`
-- `backend/app/artifacts/session_artifact.py`
-- `backend/app/artifacts/session_timeline.py`
-- `backend/app/actions/contracts.py`
-- `backend/app/services/llm_provider_profiles.py`
-- `backend/app/services/llm_provider_service.py`
-- `backend/app/api/routes/llm_config.py`
-- `backend/app/api/routes/config.py`
-- `backend/app/core/settings.py`
-- `backend/app/services/search_service.py`
-- `backend/app/runtimes/internetsearch/`
-- `desktop/src/api-client.js`
-- `desktop/src/components/memory-panel.js`
-- `desktop/src/components/search-evidence.js`
-- `desktop/src/components/llm-provider-settings.js`
-- `desktop/src/components/readiness-panel.js`
-- `desktop/src-tauri/src/backend.rs`
-- `backend/app/agents/schema.py`
-- `backend/app/agents/loader.py`
-- `backend/app/agents/registry.py`
-- `backend/app/agents/invocation.py`
-- `backend/app/agents/router.py`
-- `backend/app/agents/session_mapping.py`
-- `backend/app/agents/mcp_filter.py`
-- `backend/app/extensions/acp.py`
-- `backend/app/extensions/acp_server.py`
-- `backend/app/api/routes/agents.py`
-- `backend/app/api/routes/acp_server.py`
-- `backend/app/api/schemas/agents.py`
-- `backend/app/actions/boundaries.py`
-- `backend/app/extensions/contracts.py`
-- `backend/app/extensions/catalog.py`
-- `backend/app/actions/catalog.py`
-- `backend/app/services/extension_service.py`
-- `backend/app/services/capability_service.py`
-- `backend/app/api/app.py`
-- `config/agents/summarizer.yaml`
-- `desktop/src/components/agents-panel.js`
+Implementation files are identified above. Focused coverage:
 
-Validation evidence:
-- `backend/tests/unit/api/test_routes.py`
-- `backend/tests/unit/services/test_turn_service.py`
-- `backend/tests/unit/conversation/test_engine.py`
-- `backend/tests/unit/conversation/realtime/test_session.py`
-- `backend/tests/unit/conversation/realtime/test_response_and_interruption.py`
-- `backend/tests/unit/cognition/test_prompt_assembler.py`
-- `backend/tests/unit/cognition/test_search_policy.py`
-- `backend/tests/unit/memory/test_working_memory.py`
-- `backend/tests/unit/memory/test_episodic.py`
-- `backend/tests/unit/memory/test_semantic.py`
-- `backend/tests/unit/memory/test_semantic_lifecycle.py`
-- `backend/tests/unit/memory/test_retrieval.py`
-- `backend/tests/unit/services/test_memory_service.py`
-- `backend/tests/unit/api/test_memory_routes.py`
-- `backend/tests/unit/artifacts/test_turn_artifact.py`
-- `backend/tests/unit/actions/test_action_contracts.py`
-- `backend/tests/unit/actions/test_action_boundaries.py`
-- `backend/tests/unit/services/test_llm_provider_profiles.py`
-- `backend/tests/unit/services/test_llm_provider_service.py`
-- `backend/tests/unit/services/test_search_service.py`
-- `backend/tests/unit/agents/test_agent_schema.py`
-- `backend/tests/unit/agents/test_agent_registry.py`
-- `backend/tests/unit/agents/test_agent_invocation.py`
-- `backend/tests/unit/agents/test_agent_router.py`
-- `backend/tests/unit/agents/test_agent_session_mapping.py`
-- `backend/tests/unit/agents/test_agent_mcp_filter.py`
-- `backend/tests/unit/extensions/test_acp_bridge.py`
-- `backend/tests/unit/extensions/test_acp_server.py`
-- `backend/tests/unit/services/test_capability_service.py`
-- `backend/tests/integration/test_acp_sdk.py`
-- `backend/tests/runtime/turn/test_turn_control_live.py`
-- `backend/tests/runtime/desktop/test_resident_voice_desktop_live.py`
+- `backend/tests/unit/agents/`: schemas, registry, direct invocation, router, session mapping, and MCP filtering.
+- `backend/tests/unit/extensions/test_acp_bridge.py`: adapter callbacks, resume negotiation, and fallback behavior.
+- `backend/tests/unit/extensions/test_acp_server.py`: local inbound bridge.
+- `backend/tests/integration/test_acp_sdk.py`: real process/session reuse, separate host-conversation isolation, current-call callbacks, cancellation, dead-process eviction, and resume after process replacement. The resume fixture persists history and emits recovered content during resume, establishing content continuity rather than only matching session IDs.
+- `backend/tests/integration/test_extension_runtime.py`: ACP turn admission, permission/input handling, and delegated-run persistence.
+- `desktop/tests/static.test.mjs`: agent panel behavior.
 
-Validation results (linux-amd64):
-- `backend/.venv/bin/python scripts/validate_backend.py unit`: PASS, 1482 passed.
-- `backend/.venv/bin/python scripts/validate_backend.py integration`: PASS, 17 passed, including actual local MCP and ACP SDK peers.
-- `npm --prefix desktop test`: PASS. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`: PASS.
+Recorded validation:
 
-`build_agent_handlers` is bound through `session_service.engine()`, not the engine built at
-startup. `SessionService` replaces the engine for each session, so agent invocation reaches the
-same active engine path used by `ResidentVoiceInvocationService`.
+- Windows-amd64: `backend\.venv\Scripts\python.exe scripts\validate_backend.py integration`: PASS, 46 passed, including real-process death and resume coverage.
+- Windows-amd64: `backend\.venv\Scripts\python.exe -m pytest backend\tests\unit\extensions\test_acp_bridge.py`: PASS, 6 passed, including unsupported/failed resume fallback.
+- Later integrated backend suite and desktop build/test evidence is recorded in ADR 0005.
+- Linux-amd64 live backend validation demonstrated the built-in summarizer profile, a real model-backed direct response, persisted proposal/decision/execution evidence, and denial of a profile lacking direct mode.
 
-Driven against a live backend on `127.0.0.1` (`linux-amd64`): `GET /agents` returns the
-`summarizer` profile from `config/agents/summarizer.yaml`, `GET /actions/capabilities` lists
-`agent-invoke-summarizer` as `local_read`/`allow`/`same_turn` with `executable: true`, and
-`POST /agents/invoke` records a proposal, an authorization decision, and an execution result in
-`data/actions/action-log.jsonl`. `POST /agents/invoke` returns a real model-backed summary from
-the managed llama.cpp sidecar; the honest-failure path was confirmed separately by invoking a
-profile that declares no `direct` mode, which is denied with that reason.
-
-Protocol tests required execution outside the restricted runner because its asyncio
-subprocess/thread I/O stalled. The declared process controls are not an OS sandbox. Remote
-deployment and other host classes are outside this ADR's Follow-up list below.
+These results establish the implemented adapter and controlled fixture behavior. They do not establish interoperability with every external agent or native operator interaction.
 
 ## Follow-up
 
-- Agent profile control plane: add backend-owned create, update, delete, enable, disable, validation, conflict handling, persistence rules, audit evidence, and desktop controls. Desktop must not mutate profile YAML directly. Operator profile changes must produce clear validation/storage errors and leave the registry in a reloadable state.
-- Agent identity/runtime split: keep agent profile identity separate from runtime adapter. The profile owns purpose, instructions, invocation modes, capability IDs, memory scope, approval class, output contract, provider/model policy, and operator-visible metadata. Runtime adapters own how the work is executed: internal `TurnEngine` for JARVIS-owned agents, or Agent Client Protocol v2 for external agents. Do not add a JARVIS-specific external-agent protocol.
-- Built-in external ACP agent defaults: ship disabled-by-default, backend-owned ACP v2 profiles/adapters for Antigravity (`agy`), Claude Code, Codex, GitHub Copilot, and Qwen-capable agent execution. These defaults should be immutable application profiles with operator overrides stored outside tracked config. Availability is determined by installed ACP v2 command/runtime discovery, not by assuming the tools exist. Each default needs operator-facing setup, availability detection, connection status, and clear unavailable reasons.
-- Outbound ACP v2: delegated subprocess agents must use Agent Client Protocol v2, including initialization/version negotiation, optional auth, `session/new`, `session/list`, `session/resume`, `session/close`, `session/prompt`, streamed `session/update`, `session/request_permission`, `elicitation/create`, cancellation, and durable run evidence. Prompt acceptance and foreground completion are separate states and must be reflected in artifacts and desktop status. `run_acp` in `backend/app/extensions/acp.py` is one of the two call sites ADR 0005's shared session-lifecycle mechanism names directly: it opens a session, sends one prompt, and kills the process inside a single `asyncio.run()`, so `session/prompt` cannot be called again against that session and `session/resume` has nothing to reconnect to. Attach outbound ACP to that mechanism once it exists rather than building separate session persistence here.
-- Inbound ACP v2: replace the current local bridge with an Agent Client Protocol v2 server before exposing inbound agent-client interoperability. A compatible server must expose ACP v2 session lifecycle, update notifications, permission and elicitation handling, cancellation, and absolute-path conventions through the backend-owned turn engine.
-- Router and handoff behavior: `router_selected`, `as_tool`, and `handoff` modes need explicit execution paths, ranking or selection evidence, confidence/fallback behavior, approval boundaries, cancellation, and artifacts. The current heuristic selector is not an autonomous routing policy.
-- Agent capability integration: agent invocation must be usable from the assistant loop, not only from manual desktop controls. The model may propose an agent capability, but backend policy decides eligibility, approval, memory scope, and execution.
-- Desktop Agents: provide a human-familiar Advanced Controls surface for internal agents and external ACP agents. Operators should see Add Agent, Edit Agent, Enable/Disable, Connect External Agent, Test Connection, Run Agent, Cancel Run, and View Evidence workflows, not raw `agent-invoke-*` capability records.
-- Agent permissions and input: ACP permission requests and elicitation should render as named agent requests with Accept, Decline, Cancel, and form controls. Protocol details remain backend-owned; operator-facing text should describe the agent, requested action, target, and risk.
-- Validation: prove profile mutation, direct invocation, as-tool invocation, router-selected invocation, handoff, ACP v2 inbound/outbound operation, cancellation, approval, elicitation, run evidence, and desktop agent behavior before marking this ADR implemented. Native operator layout and interaction validation belongs to ADR 0008.
-- Live agent validation requires actual model/provider/process availability. Unit tests cover code paths; runtime tests are gated on hardware. `AgentIsolation` provides application-level environment scrubbing and path containment, not kernel-level isolation.
+- Add backend-owned agent profile create/update/delete, enable/disable, validation, conflict handling, persistence, and audit, with desktop controls using those APIs.
+- Complete the agent identity/runtime split: profiles own role and scope; runtime adapters select internal TurnEngine execution or external ACP v2 execution.
+- Ship disabled application ACP agent defaults for Antigravity, Claude Code, Codex, GitHub Copilot, and Qwen-capable execution, with operator overrides, installed-runtime discovery, setup, status, and unavailable reasons. Verify each real agent's resume routing and recovered conversation content.
+- Complete outbound ACP v2 conformance: version/auth negotiation, distinct `session/list` and `session/close` operations, elicitation, and separate prompt acceptance/foreground completion in artifacts and status.
+- Replace the inbound bridge's handshake/message shapes with ACP v2 session lifecycle, updates, permission/elicitation, cancellation, and absolute-path conventions.
+- Wire `router_selected`, `as_tool`, and `handoff` paths with selection/fallback evidence, approval boundaries, cancellation, and artifacts. Make model-proposed agent invocation available through the assistant's governed capability path.
+- Complete named desktop agent workflows for profile management, external connection/testing, invocation, cancellation, evidence, and permission/elicitation input. Apply ADR 0005's operator-authorization correction to direct agent invocation.
+- Validate profile mutation, all invocation modes, real ACP peers, cancellation, input handling, and run evidence before marking this ADR implemented. ADR 0008 owns native layout and interaction validation; live tests require actual model/provider/process availability.

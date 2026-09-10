@@ -128,6 +128,23 @@ def forget_extension_oauth(extension_id: str, service=Depends(get_runtime)):
         raise HTTPException(422, str(exc)) from exc
 
 
+@router.post("/{extension_id}/disconnect")
+def disconnect_extension(
+    extension_id: str,
+    service=Depends(get_runtime),
+    actions: CapabilityService | None = Depends(get_optional_capability_service),
+):
+    try:
+        return execute_operator_action(
+            actions,
+            catalog.EXTENSION_MCP_DISCONNECT,
+            {"extension_id": extension_id},
+            lambda: service.disconnect(extension_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 def _execute(operation: Callable[[], T]) -> T:
     try:
         return operation()

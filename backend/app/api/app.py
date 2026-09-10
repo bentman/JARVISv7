@@ -201,6 +201,7 @@ def build_startup_state() -> ApiState:
             operator_config_keys=operator_config.keys,
             agent_registry_provider=lambda: agent_registry,
         ),
+        session_closer=extension_runtime.close_session,
     )
     engine = TurnEngine(
         stt=stt,

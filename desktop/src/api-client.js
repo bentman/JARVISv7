@@ -157,6 +157,8 @@ export function createApiClient(invoke) {
       invokeMemory(invoke, "complete_extension_oauth", { extensionId, code, oauthState }),
     forgetExtensionOauth: (extensionId) =>
       invokeMemory(invoke, "forget_extension_oauth", { extensionId }),
+    disconnectExtension: (extensionId) =>
+      invokeMemory(invoke, "disconnect_extension", { extensionId }),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
     cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
     openSearchSource: (url) => invoke("open_search_source", { url }),

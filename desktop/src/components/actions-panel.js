@@ -17,6 +17,12 @@ export function executionActivityState(execution) {
   if (execution.status === "success") return "succeeded";
   if (execution.status === "cancelled") return "cancelled";
   if (execution.status === "failure") return "failed";
+  // A timeout or cancellation can leave the backend unable to tell whether the call
+  // already ran - reported as "outcome_unknown" rather than "failure" so an operator is
+  // not led to believe nothing happened and it is safe to repeat. Rendered as
+  // "degraded" (the same caution styling already used elsewhere), not "failed", since
+  // treating it as an ordinary failure is exactly the collapse this exists to avoid.
+  if (execution.status === "outcome_unknown") return "degraded";
   return "running";
 }
 

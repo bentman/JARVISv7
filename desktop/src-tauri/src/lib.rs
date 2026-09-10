@@ -28,6 +28,7 @@ use backend::{
     start_extension_oauth as backend_start_extension_oauth,
     complete_extension_oauth as backend_complete_extension_oauth,
     forget_extension_oauth as backend_forget_extension_oauth,
+    disconnect_extension as backend_disconnect_extension,
     list_agents as backend_list_agents,
     get_agent as backend_get_agent,
     invoke_agent as backend_invoke_agent,
@@ -747,8 +748,22 @@ fn get_extension_runs(state: State<'_, DesktopState>) -> Result<String, String> 
 }
 
 #[tauri::command]
-fn invoke_extension(extension_id: String, capability_id: String, action_arguments: Value, state: State<'_, DesktopState>) -> Result<String, String> {
-    backend_invoke_extension(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?, &required_extension_id(capability_id)?, action_arguments)
+async fn invoke_extension(extension_id: String, capability_id: String, action_arguments: Value, state: State<'_, DesktopState>) -> Result<String, String> {
+    // Operator invocation now executes the capability synchronously on the backend
+    // instead of just parking it (ADR 0005) - a long-running tool call or one that waits
+    // on elicitation can hold this call open for as long as the operator takes to
+    // answer. A plain synchronous command would block Tauri's shared blocking thread
+    // pool for that whole duration, starving other commands (polling extension runs,
+    // answering the elicitation itself, cancelling) queued behind it on that pool - the
+    // same reason `decide_action` already moved its own backend call onto
+    // `spawn_blocking` under an `async fn`.
+    let base_url = backend_base_url(&state)?;
+    let extension_id = required_extension_id(extension_id)?;
+    let capability_id = required_extension_id(capability_id)?;
+    let client = state.http_client.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        backend_invoke_extension(&client, &base_url, &extension_id, &capability_id, action_arguments)
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -783,6 +798,11 @@ fn complete_extension_oauth(extension_id: String, code: String, oauth_state: Str
 #[tauri::command]
 fn forget_extension_oauth(extension_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
     backend_forget_extension_oauth(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?)
+}
+
+#[tauri::command]
+fn disconnect_extension(extension_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    backend_disconnect_extension(&state.http_client, &backend_base_url(&state)?, &required_extension_id(extension_id)?)
 }
 
 #[tauri::command]
@@ -1003,6 +1023,7 @@ pub fn run() {
             start_extension_oauth,
             complete_extension_oauth,
             forget_extension_oauth,
+            disconnect_extension,
             list_agents,
             get_agent,
             invoke_agent,

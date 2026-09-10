@@ -312,6 +312,19 @@ class McpConnectionRuntime:
         return True
 
     async def close(self) -> None:
+        """Ends the peer connection gracefully.
+
+        Idempotent by design, not joinable: a second call while the first is still in
+        flight sees `self._peer` already cleared and returns immediately having awaited
+        nothing further. An earlier attempt at making a second call wait for the first
+        via `asyncio.shield` was reverted - it corrupted anyio's own cancel-scope
+        bookkeeping (`RuntimeError: Attempted to exit cancel scope in a different task
+        than it was entered in`), confirmed by direct reproduction, since anyio's cancel
+        scopes are bound to the task that entered them and shielding a second awaiter
+        does not change which task that is. `backend/app/actions/sessions.py`'s `_close`
+        owns not calling this a second, independent time while the first has not
+        genuinely finished - see its own handling of `handlers.close is handlers.terminate`.
+        """
         async with self._lock:
             peer, self._peer = self._peer, None
         if peer is not None:
@@ -347,6 +360,27 @@ class McpConnectionRuntime:
     def _require_allowed(self, value: str, allowlist: tuple[str, ...], kind: str) -> None:
         if allowlist and value not in allowlist:
             raise McpError(f"{kind} is not exposed by this MCP connection: {value}")
+
+
+def peer_connection_died(exc: BaseException) -> bool:
+    """Whether `exc`, raised from a tool/resource/prompt call, means the underlying
+    connection died rather than the server returning an application-level error.
+
+    Confirmed empirically, not assumed: killing a stdio server's process mid-session and
+    then calling a tool against it raises the SDK's own `mcp.shared.exceptions.MCPError`
+    carrying `mcp_types.CONNECTION_CLOSED` (-32000) - not a raw `anyio`/`ConnectionError`,
+    and not this module's own `McpError` (a different class, used for application-level
+    failures like an unlisted tool name or a tool-reported error result). Only that
+    specific code means the connection itself is gone; any other `MCPError` (an
+    unsupported method, a malformed request) is the server answering normally about a
+    request it disliked, not evidence the connection needs to be evicted and reopened.
+    """
+    try:
+        from mcp.shared.exceptions import MCPError as SdkMcpError
+        from mcp_types import CONNECTION_CLOSED
+    except ImportError:  # pragma: no cover - dependency provisioning owns this path.
+        return False
+    return isinstance(exc, SdkMcpError) and getattr(exc, "code", None) == CONNECTION_CLOSED
 
 
 class McpSdkPeer:
@@ -547,4 +581,5 @@ __all__ = [
     "McpTransport",
     "PeerFactory",
     "open_mcp_sdk_peer",
+    "peer_connection_died",
 ]

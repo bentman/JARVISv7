@@ -140,6 +140,20 @@ export function operationShortLabel(operation) {
     : operationDisplayName(operation);
 }
 
+export function formatToolResult(result) {
+  const content = result?.content?.content;
+  if (!Array.isArray(content) || !content.length) return null;
+  if (!content.every((item) => item.type === "text" && typeof item.text === "string")) return null;
+  return content.map((item) => item.text).join("\n");
+}
+
+export function extensionRunTitle(run) {
+  const operation = { name: run.operation || "" };
+  const label = operationShortLabel(operation);
+  return [run.extension_name, label, String(run.status || "unknown").replaceAll("_", " ")]
+    .filter(Boolean).join(" · ");
+}
+
 function copyState(state) {
   return {
     ...state,
@@ -284,7 +298,16 @@ export function createExtensionsPanelController(handlers, render = () => undefin
   async function invoke(extensionId, capabilityId, argumentsValue) {
     try {
       const result = await handlers.invokeExtension(extensionId, capabilityId, argumentsValue);
-      state.notice = result?.status === "awaiting_approval" ? "Awaiting approval." : "Extension invoked.";
+      // outcome_unknown means a timeout or cancellation left the backend unable to tell
+      // whether the call already ran on the far side - reported distinctly from an
+      // ordinary failure so this notice can warn against blindly repeating it, rather
+      // than defaulting to the same "Extension invoked." success-sounding text a plain
+      // failure would also fall through to otherwise.
+      state.notice = result?.status === "awaiting_approval"
+        ? "Awaiting approval."
+        : result?.status === "outcome_unknown"
+        ? "Outcome unknown - the call may already have run; check before repeating it."
+        : "Extension invoked.";
       if (handlers.getExtensionRuns) state.runs = (await handlers.getExtensionRuns())?.runs || [];
       // An operation such as MCP "discover" changes the extension's own runtime detail -
       // health, discovered tools/resources/prompts - so a completed invocation must refresh
@@ -352,17 +375,35 @@ export function createExtensionsPanelController(handlers, render = () => undefin
 
   async function forgetOauth(extensionId) {
     if (!handlers.forgetExtensionOauth) return;
+    let failure = "";
+    state.notice = "";
     try {
       await handlers.forgetExtensionOauth(extensionId);
     } catch (error) {
-      state.detailError = errorMessage(error, "The stored authorization could not be forgotten.");
+      failure = errorMessage(error, "The stored authorization could not be forgotten.");
+    }
+    if (state.selectedExtensionId === extensionId) {
+      await selectExtension(extensionId);
+      state.detailError = failure || state.detailError;
+      if (!failure) state.notice = "Stored authorization forgotten.";
+    }
+    emit();
+  }
+
+  async function disconnect(extensionId) {
+    if (!handlers.disconnectExtension) return;
+    try {
+      await handlers.disconnectExtension(extensionId);
+    } catch (error) {
+      state.detailError = errorMessage(error, "The connection could not be disconnected.");
       emit();
       return;
     }
-    state.notice = "Stored authorization forgotten.";
-    state.oauth = null;
-    if (handlers.getExtensionOauth) {
-      try { state.oauthStatus = await handlers.getExtensionOauth(extensionId); } catch { state.oauthStatus = null; }
+    state.notice = "Connection disconnected.";
+    // Ending the session changes health/discovered-tools display the same way an
+    // invocation does, so refresh the same way invoke() does after one completes.
+    if (handlers.getExtensionRuntime && state.selectedExtensionId === extensionId) {
+      try { state.runtime = await handlers.getExtensionRuntime(extensionId); } catch { /* keep the prior runtime display */ }
     }
     emit();
   }
@@ -952,6 +993,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     startOauth,
     completeOauth,
     forgetOauth,
+    disconnect,
     refreshRuns,
     decide,
     cancel,
@@ -1672,6 +1714,17 @@ function renderDetail(state) {
       secret.value = "";
     });
     runtime.appendChild(credential);
+    // Ends the held session without touching the definition or stored credentials -
+    // distinct from "Remove connection" (deletes the definition) and "Forget
+    // authorization" (clears a stored OAuth token) below. Safe to click regardless of
+    // current connection state; disconnecting an already-closed connection is a no-op.
+    const disconnect = document.createElement("button");
+    disconnect.type = "button";
+    disconnect.dataset.focusKey = `disconnect:${detail.extension_id}`;
+    disconnect.textContent = "Disconnect";
+    disconnect.disabled = state.mutationPending;
+    disconnect.addEventListener("click", () => state.actions.disconnect(detail.extension_id));
+    runtime.appendChild(disconnect);
     if (detail.definition_available) {
       if (state.definition?.extension_id === detail.extension_id) {
         runtime.appendChild(renderEditMcpConnection(state));
@@ -1694,9 +1747,16 @@ function renderDetail(state) {
       remove.addEventListener("click", () => state.actions.removeMcpConnection(detail.local_id));
       runtime.appendChild(remove);
     }
+    // snapshot.health is a cached fact from the last discover call, not a live read - a
+    // probe reproduced it still reading "ready" after Disconnect closed the session.
+    // `connected` is the backend's own live signal (SessionManager.is_open) and
+    // overrides a stale "ready" the moment it reports false, rather than treating the
+    // cached health as still current.
     const health = state.runtime?.snapshot?.health;
-    if (health) {
-      appendText(runtime, `Connection health: ${health}`, "p");
+    const connected = state.runtime?.connected;
+    const healthLabel = connected === false ? "not connected" : health;
+    if (healthLabel) {
+      appendText(runtime, `Connection health: ${healthLabel}`, "p");
     }
     if (state.oauthStatus?.configured) {
       const oauth = document.createElement("div");
@@ -1811,7 +1871,7 @@ function renderDetail(state) {
     const block = document.createElement("div"); block.className = "extensions-requested";
     appendText(block, "Runs", "h4");
     for (const run of runs) {
-      appendText(block, `${run.status} · ${formatRunStarted(run.started_at)}`, "strong");
+      appendText(block, `${extensionRunTitle(run)} · ${formatRunStarted(run.started_at)}`, "strong");
       // A run's id and proposal id are backend correlation identifiers, not something an
       // operator reads to understand what happened - they stay reachable for audit, behind
       // the same kind of disclosure the extension-level Source/Revision fields already use.
@@ -1824,7 +1884,19 @@ function renderDetail(state) {
       labeledValue(runFacts, "Run ID", run.run_id);
       labeledValue(runFacts, "Proposal", run.proposal_id);
       runDetails.appendChild(runFacts);
+      if (run.arguments && Object.keys(run.arguments).length) {
+        const input = document.createElement("dl");
+        input.className = "extensions-facts";
+        appendText(block, "Requested input", "h5");
+        for (const [key, value] of Object.entries(run.arguments)) {
+          labeledValue(input, key, typeof value === "string" ? value : JSON.stringify(value));
+        }
+        block.appendChild(input);
+      }
+      if (run.events?.length) appendText(runDetails, JSON.stringify(run.events, null, 2), "pre");
+      if (run.result) appendText(runDetails, JSON.stringify(run.result, null, 2), "pre");
       block.appendChild(runDetails);
+      if (run.error) appendText(block, run.error, "p", "extensions-row-meta");
       if (run.request) {
         const form = document.createElement("form");
         const request = run.request;
@@ -1844,7 +1916,7 @@ function renderDetail(state) {
           const complex = Object.values(fields).some((item) => ["object", "array"].includes(item.type));
           const inputs = [];
           if (complex) { const json = document.createElement("textarea"); json.dataset.draftKey = `${run.run_id}:${request.request_id}:$json`; json.placeholder = "Advanced JSON response"; json.required = true; form.appendChild(json); inputs.push(["$json", json, { type: "json" }]); }
-          appendText(form, JSON.stringify({ message: request.message, tool_call: request.tool_call }), "p", "extensions-row-meta");
+          appendText(form, request.message || "This operation needs your input.", "p", "extensions-row-meta");
           for (const [name, item] of complex ? [] : Object.entries(fields)) { const input = Array.isArray(item.enum) ? document.createElement("select") : document.createElement("input"); input.dataset.draftKey = `${run.run_id}:${request.request_id}:${name}`; input.placeholder = name; input.required = (schema.required || []).includes(name); if (Array.isArray(item.enum)) for (const value of item.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; input.appendChild(option); } else input.type = item.type === "boolean" ? "checkbox" : item.type === "number" || item.type === "integer" ? "number" : "text"; form.appendChild(input); inputs.push([name, input, item]); }
           const submit = document.createElement("button"); submit.type = "submit"; submit.textContent = "Send"; const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Cancel"; decline.addEventListener("click", () => state.actions.answer(run.run_id, request.request_id, { action: "decline" })); form.append(submit, decline);
           form.addEventListener("submit", (event) => { event.preventDefault(); try { const content = inputs[0]?.[0] === "$json" ? JSON.parse(inputs[0][1].value) : Object.fromEntries(inputs.map(([name, input, item]) => [name, item.type === "boolean" ? input.checked : item.type === "number" || item.type === "integer" ? Number(input.value) : input.value])); state.actions.answer(run.run_id, request.request_id, { action: "accept", content }); } catch { state.actions.notice("Response must be valid JSON."); } });
@@ -1856,7 +1928,10 @@ function renderDetail(state) {
         const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Decline"; decline.addEventListener("click", () => state.actions.decide(run.proposal_id, "denied")); block.append(approve, decline);
       }
       if (["running", "awaiting_input", "awaiting_approval"].includes(run.status) && run.proposal_id) { const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel"; cancel.addEventListener("click", () => state.actions.cancel(run.proposal_id)); block.appendChild(cancel); }
-      if (run.events?.length) appendText(block, JSON.stringify(run.events.at(-1)), "p", "extensions-row-meta");
+      if (run.events?.length) {
+        const event = run.events.at(-1);
+        appendText(block, `Latest event: ${String(event.type || event.kind || "update").replaceAll("_", " ")}`, "p", "extensions-row-meta");
+      }
       if (run.result) {
         const messages = formatPromptMessages(run.result);
         const resourceContents = messages ? null : formatResourceContents(run.result);
@@ -1875,7 +1950,16 @@ function renderDetail(state) {
             }
           }
         } else {
-          appendText(block, JSON.stringify(run.result), "p", "extensions-row-meta");
+          const toolText = formatToolResult(run.result);
+          if (toolText !== null) appendText(block, toolText, "pre", "extensions-row-meta");
+          else if (run.operation === "discover") {
+            appendText(block, `Discovered ${run.result.tools?.length || 0} tools, ${run.result.resources?.length || 0} resources, and ${run.result.prompts?.length || 0} prompts.`, "p", "extensions-row-meta");
+          } else appendText(block, "Result available in Run details.", "p", "extensions-row-meta");
+        }
+        const artifacts = run.result.artifacts || run.result.content?.artifacts;
+        if (Array.isArray(artifacts) && artifacts.length) {
+          appendText(block, "Artifacts", "h5");
+          for (const artifact of artifacts) appendText(block, typeof artifact === "string" ? artifact : artifact.path || artifact.name || "Artifact available in Run details", "p");
         }
       }
     }
@@ -2015,6 +2099,7 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
     forgetOauth: (extensionId) => controller.forgetOauth(extensionId),
+    disconnect: (extensionId) => controller.disconnect(extensionId),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
     cancel: (proposalId) => controller.cancel(proposalId, confirmCancel),
     notice: (message) => controller.notice(message),

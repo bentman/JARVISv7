@@ -23,6 +23,7 @@ PROVIDER_SECRET_ROTATE = "provider-secret-rotate"
 PROVIDER_CONNECTIVITY_TEST = "provider-connectivity-test"
 OPERATOR_CONFIG_WRITE = "operator-config-write"
 EXTENSION_STATE_UPDATE = "extension-state-update"
+EXTENSION_MCP_DISCONNECT = "extension-mcp-disconnect"
 EXTENSION_DEFINITION_WRITE = "extension-definition-write"
 EXTENSION_DEFINITION_DELETE = "extension-definition-delete"
 EXTENSION_SKILL_WRITE = "extension-skill-write"
@@ -85,7 +86,7 @@ def build_descriptors(observation: CapabilityObservation) -> tuple[CapabilityDes
         *_memory(observation),
         *_provider(observation),
         _operator(observation),
-        _extension(observation),
+        *_extension(observation),
         *_extension_definitions(observation),
         *_agents(observation),
     )
@@ -452,32 +453,56 @@ def _extension_definitions(
     )
 
 
-def _extension(observation: CapabilityObservation) -> CapabilityDescriptor:
+def _extension(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, ...]:
     present = observation.extension_catalog_present
-    return _capability(
-        EXTENSION_STATE_UPDATE,
-        "local_write",
-        source="builtin",
-        provenance="backend.app.services.extension_service",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "extension_id": {"type": "string", "minLength": 1, "maxLength": 128},
-                "state": {"type": "string", "enum": ["enabled", "disabled", "retired"]},
-                "expected_revision": _REVISION,
-                "reason": _REASON,
+    return (
+        _capability(
+            EXTENSION_STATE_UPDATE,
+            "local_write",
+            source="builtin",
+            provenance="backend.app.services.extension_service",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "extension_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                    "state": {"type": "string", "enum": ["enabled", "disabled", "retired"]},
+                    "expected_revision": _REVISION,
+                    "reason": _REASON,
+                },
+                "required": ["extension_id", "state"],
+                "additionalProperties": False,
             },
-            "required": ["extension_id", "state"],
-            "additionalProperties": False,
-        },
-        readiness="ready" if present else "unavailable",
-        availability="available" if present else "disabled",
-        execution_owner="backend.app.services.extension_service.ExtensionService",
-        timeout_policy={"timeout_ms": CONFIG_TIMEOUT_MS},
-        cancellation_policy={"cancellable": False, "owner": "ExtensionService"},
-        result_schema={"type": "object"},
-        unavailable_explanation="" if present else EXTENSION_CATALOG_UNAVAILABLE,
-        approval_mode="same_turn",
+            readiness="ready" if present else "unavailable",
+            availability="available" if present else "disabled",
+            execution_owner="backend.app.services.extension_service.ExtensionService",
+            timeout_policy={"timeout_ms": CONFIG_TIMEOUT_MS},
+            cancellation_policy={"cancellable": False, "owner": "ExtensionService"},
+            result_schema={"type": "object"},
+            unavailable_explanation="" if present else EXTENSION_CATALOG_UNAVAILABLE,
+            approval_mode="same_turn",
+        ),
+        _capability(
+            EXTENSION_MCP_DISCONNECT,
+            "local_write",
+            source="builtin",
+            provenance="backend.app.services.extension_runtime_service",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "extension_id": {"type": "string", "minLength": 1, "maxLength": 128},
+                },
+                "required": ["extension_id"],
+                "additionalProperties": False,
+            },
+            readiness="ready" if present else "unavailable",
+            availability="available" if present else "disabled",
+            execution_owner="backend.app.services.extension_runtime_service.ExtensionRuntimeService",
+            timeout_policy={"timeout_ms": CONFIG_TIMEOUT_MS},
+            cancellation_policy={"cancellable": False, "owner": "ExtensionRuntimeService"},
+            result_schema={"type": "object"},
+            unavailable_explanation="" if present else EXTENSION_CATALOG_UNAVAILABLE,
+            approval_mode="same_turn",
+        ),
     )
 
 

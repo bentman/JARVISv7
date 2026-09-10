@@ -22,7 +22,7 @@ AvailabilityState = Literal["available", "disabled", "misconfigured", "unknown"]
 AuthorizationRule = Literal["allow", "requires_approval", "deny"]
 AuthorizationOutcome = Literal["allowed", "approval_required", "denied"]
 ApprovalOutcome = Literal["approved", "denied"]
-ExecutionStatus = Literal["success", "failure", "cancelled"]
+ExecutionStatus = Literal["success", "failure", "cancelled", "outcome_unknown"]
 ApprovalMode = Literal["turn_boundary", "same_turn"]
 
 EFFECT_CLASSES = {
@@ -39,7 +39,7 @@ AVAILABILITY_STATES = {"available", "disabled", "misconfigured", "unknown"}
 AUTHORIZATION_RULES = {"allow", "requires_approval", "deny"}
 AUTHORIZATION_OUTCOMES = {"allowed", "approval_required", "denied"}
 APPROVAL_OUTCOMES = {"approved", "denied"}
-EXECUTION_STATUSES = {"success", "failure", "cancelled"}
+EXECUTION_STATUSES = {"success", "failure", "cancelled", "outcome_unknown"}
 APPROVAL_MODES = {"turn_boundary", "same_turn"}
 
 # Approval interrupts the operator only where authority or reversibility actually changes:

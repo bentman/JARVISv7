@@ -297,6 +297,34 @@ def test_an_allowed_capability_executes_immediately() -> None:
     assert calls == [confirm_arguments()]
 
 
+def test_an_outcome_unknown_execution_is_not_recorded_as_an_ordinary_failure() -> None:
+    # SessionCallOutcomeUnknown means a timeout or cancellation left the shared session
+    # mechanism (backend/app/actions/sessions.py, used by MCP/ACP extension invocation)
+    # unable to tell whether the far side already executed the call. Collapsing this
+    # into "failure" - as _run used to, since it had no case for it - reads to an
+    # operator as "this did not happen" and could encourage repeating a call that may
+    # have already run.
+    from backend.app.actions.sessions import SessionCallOutcomeUnknown
+
+    def handler(_args: dict, _op: ActionOperation) -> dict:
+        raise SessionCallOutcomeUnknown("a timeout left the outcome unknown")
+
+    instance = service(**{MEMORY_RECORD_CONFIRM: handler})
+
+    view = instance.propose(
+        capability_id=MEMORY_RECORD_CONFIRM,
+        arguments=confirm_arguments(),
+        proposed_by="operator",
+        reason="operator confirmed the fact",
+    )
+
+    assert view.status == "outcome_unknown", (
+        "an unknown outcome must not be reported the same way as a genuine failure"
+    )
+    assert view.execution["status"] == "outcome_unknown"
+    assert view.execution["error"]
+
+
 def test_an_approval_required_capability_parks_without_executing() -> None:
     calls: list[dict] = []
     instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})

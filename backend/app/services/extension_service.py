@@ -106,11 +106,21 @@ class ExtensionService:
         store: ExtensionOverlayStore | None = None,
         config_dir: Path | None = None,
         data_dir: Path | None = None,
+        session_closer: Callable[[str], bool] | None = None,
     ) -> None:
         self._observe = observe
         self._store = store or ExtensionOverlayStore()
         self._config_dir = config_dir
         self._data_dir = data_dir
+        # Called after a state change actually lands (never on a rejected update - a
+        # conflicting revision or an invalid transition must leave a live connection
+        # running). Both `set_state`'s callers - this operator route's own callback and
+        # the generic `extension-state-update` capability handler - go through this one
+        # method, so wiring teardown here instead of duplicating it in each caller is
+        # what keeps them from drifting out of sync the way one of them already did.
+        # Returns whether teardown was actually confirmed - `set_state` raises if not,
+        # rather than reporting the state change as if it fully succeeded.
+        self._session_closer = session_closer
         self._lock = threading.RLock()
         self._catalog = ExtensionCatalog()
         self._errors: list[ExtensionLoadErrorView] = []
@@ -181,6 +191,24 @@ class ExtensionService:
             ) from exc
         except ExtensionError as exc:
             raise ExtensionServiceError(422, "invalid", str(exc)) from exc
+        if state != "enabled" and self._session_closer is not None:
+            # Only reached once the overlay write above actually succeeded - a rejected
+            # update (stale revision, invalid retired->enabled transition) raised out of
+            # the try block before this line, leaving any open connection untouched.
+            confirmed = self._session_closer(extension_id)
+            if not confirmed:
+                # The overlay write already landed - reported here as failure of the
+                # teardown specifically, not reverted, since undoing a state change that
+                # already took effect would misrepresent what actually happened. A probe
+                # reproduced this call returning as if the connection were confirmed
+                # closed while the underlying process was still alive; this is what
+                # propagating that outcome to the caller instead looks like.
+                raise ExtensionServiceError(
+                    500,
+                    "teardown_unconfirmed",
+                    f"'{extension_id}' is now {state}, but its live connection could not "
+                    "be confirmed closed; it may still be running",
+                )
         return self.read(extension_id)
 
     def body(self, extension_id: str) -> ExtensionBodyView:

@@ -143,6 +143,21 @@ assert.ok(extensionsPanel.includes("data-draft-key"), "extension forms must reta
   assert.equal(runtimeFetches, 1, "an awaiting-approval invocation must not trigger a runtime refresh");
 }
 
+{
+  // A timeout or cancellation can leave the backend unable to tell whether a call
+  // already ran on the far side - the notice must warn against repeating it rather than
+  // reading like an ordinary completed invocation.
+  const controller = createExtensionsPanelController({
+    invokeExtension: async () => ({ status: "outcome_unknown" }),
+    getExtensionRuns: async () => ({ runs: [] }),
+  }, () => undefined);
+  await controller.invoke("mcp:server", "capability", {});
+  assert.equal(
+    controller.snapshot().notice,
+    "Outcome unknown - the call may already have run; check before repeating it.",
+  );
+}
+
 assert.equal(operationDisplayName({ name: "discover" }), "Discover tools and resources");
 assert.equal(operationDisplayName({ name: "tool:get_forecast" }), "tool:get_forecast");
 assert.equal(operationSubmitLabel({ name: "discover" }), "Discover");
@@ -514,7 +529,8 @@ assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operati
           result: { content: { messages: [{ role: "user", content: { type: "text", text: "Summarize today." } }] }, trusted: false },
         },
         {
-          run_id: "run-tool", extension_id: "mcp:weather", status: "success", started_at: "2026-09-08T10:33:00.000Z",
+          run_id: "run-tool", extension_id: "mcp:weather", extension_name: "Weather", operation: "tool:forecast", status: "success", started_at: "2026-09-08T10:33:00.000Z",
+          arguments: { city: "London" }, events: [{ type: "tool_completed", detail: "audit only" }],
           result: { content: { content: [{ type: "text", text: "72F and sunny" }] }, trusted: false },
         },
       ],
@@ -526,9 +542,12 @@ assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operati
   const promptText = findElement(container, (node) => node.tagName === "p" && node.textContent === "user: Summarize today.");
   assert.ok(promptText, "a prompt result must render as role-labeled message text");
 
-  const rawFallback = findElement(container, (node) => node.tagName === "p" && node.textContent.includes("72F and sunny"));
-  assert.ok(rawFallback, "a tool-shaped result must still fall back to the raw JSON block");
-  assert.ok(rawFallback.textContent.startsWith("{"), "the fallback must be the raw JSON result, not reformatted as a message");
+  assert.ok(findElement(container, (node) => node.tagName === "pre" && node.textContent === "72F and sunny"));
+  assert.ok(findElement(container, (node) => node.tagName === "strong" && node.textContent.startsWith("Weather · forecast · success")));
+  assert.ok(findElement(container, (node) => node.tagName === "dd" && node.textContent === "London"));
+  assert.ok(findElement(container, (node) => node.tagName === "p" && node.textContent === "Latest event: tool completed"));
+  const evidence = findElements(container, (node) => node.tagName === "details");
+  assert.ok(evidence.some((node) => findElement(node, (child) => child.tagName === "pre" && child.textContent.includes('"trusted": false'))));
 
   panel.close();
   globalThis.document = previousDocument;
@@ -580,7 +599,7 @@ assert.equal(operationShortLabel({ name: "run" }), "run", "a non-grouped operati
   const imagePreview = findElement(container, (node) => node.tagName === "img" && node.src === "data:image/png;base64,QUJD");
   assert.ok(imagePreview, "an image resource result must render inline from its base64 blob");
 
-  const audioFallback = findElement(container, (node) => node.tagName === "p" && node.textContent.includes("audio/mpeg"));
+  const audioFallback = findElement(container, (node) => node.tagName === "pre" && node.textContent.includes("audio/mpeg"));
   assert.ok(audioFallback, "a resource kind with no rendering support must still fall back to the raw JSON block");
   assert.ok(audioFallback.textContent.startsWith("{"), "the fallback must be the raw JSON result, not silently dropped");
 
@@ -2261,8 +2280,13 @@ for (const [execution, expected] of [
   [{ status: "success" }, "succeeded"],
   [{ status: "failure" }, "failed"],
   [{ status: "cancelled" }, "cancelled"],
+  [{ status: "outcome_unknown" }, "degraded"],
 ]) {
-  assert.equal(executionActivityState(execution), expected);
+  assert.equal(
+    executionActivityState(execution),
+    expected,
+    "outcome_unknown must render distinctly from an ordinary failure, not fall through to it",
+  );
 }
 
 for (const [capability, expected] of [
@@ -2670,15 +2694,17 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
   // status from the backend afterward rather than assume success locally.
   const calls = [];
   let forgotten = false;
+  let failClose = false;
   const controller = createExtensionsPanelController({
     getExtensions: async () => ({ extensions: [], families: {} }),
     getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
-    getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: null, connected: failClose || !forgotten }),
     getExtensionRuns: async () => ({ runs: [] }),
     getExtensionOauth: async () => ({ configured: true, authorized: !forgotten }),
     forgetExtensionOauth: async (extensionId) => {
       calls.push(["forget", extensionId]);
       forgotten = true;
+      if (failClose) throw new Error("Stored authorization was removed locally, but the connection may still be running.");
     },
   });
   await controller.selectExtension("mcp:probe");
@@ -2693,6 +2719,117 @@ console.log("desktop static, advanced-control, memory, action, extension, and ag
     "forgetting authorization must refresh oauth status from the backend rather than assume success",
   );
   assert.equal(controller.snapshot().notice, "Stored authorization forgotten.");
+  assert.equal(controller.snapshot().runtime.connected, false);
+  failClose = true;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await controller.forgetOauth("mcp:probe");
+    assert.equal(controller.snapshot().oauthStatus.authorized, false);
+    assert.equal(controller.snapshot().runtime.connected, true);
+    assert.match(controller.snapshot().detailError, /removed locally.*may still be running/);
+    assert.equal(controller.snapshot().notice, "");
+  }
+}
+
+{
+  // "Disconnect" ends the held session without touching the definition or stored
+  // credentials - distinct from "Forget authorization" above and from "Remove
+  // connection". The panel must refresh runtime detail from the backend afterward, the
+  // same way a completed invocation does, rather than assume anything about the new state.
+  const calls = [];
+  let health = "ready";
+  let connected = true;
+  const controller = createExtensionsPanelController({
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: { health }, connected }),
+    getExtensionRuns: async () => ({ runs: [] }),
+    disconnectExtension: async (extensionId) => {
+      calls.push(["disconnect", extensionId]);
+      connected = false;
+    },
+  });
+  await controller.selectExtension("mcp:probe");
+  assert.equal(controller.snapshot().runtime.snapshot.health, "ready");
+  assert.equal(controller.snapshot().runtime.connected, true);
+
+  await controller.disconnect("mcp:probe");
+
+  assert.deepEqual(calls, [["disconnect", "mcp:probe"]]);
+  // A probe reproduced the cached discovery snapshot still reading "ready" after
+  // Disconnect closed the session - `connected` is the backend's own live signal and
+  // must reflect that immediately, distinct from the unrefreshed cached health.
+  assert.equal(
+    controller.snapshot().runtime.snapshot.health,
+    "ready",
+    "the cached discovery snapshot is history, not something Disconnect itself rewrites",
+  );
+  assert.equal(
+    controller.snapshot().runtime.connected,
+    false,
+    "connected must reflect the live session state, not the stale cached health",
+  );
+  assert.equal(controller.snapshot().notice, "Connection disconnected.");
+}
+
+{
+  // Disconnect is offered for any MCP connection regardless of current health, unlike
+  // "Forget authorization" which only appears once OAuth is configured and authorized.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
+    getExtensionRuns: async () => ({ runs: [] }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:probe");
+
+  const buttons = findElements(container, (node) => node.tagName === "button").map((node) => node.textContent);
+  assert.ok(buttons.includes("Disconnect"), "an MCP connection must always offer Disconnect regardless of its current health");
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
+}
+
+{
+  // A probe reproduced the panel displaying the cached discovery snapshot's "ready"
+  // health as if it were current, even after Disconnect had already closed the live
+  // session (`connected: false`). The rendered label must reflect the live signal, not
+  // the stale cached one.
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
+    getExtensionRuntime: async () => ({ operations: [], snapshot: { health: "ready" }, connected: false }),
+    getExtensionRuns: async () => ({ runs: [] }),
+  });
+  await panel.open();
+  await panel.controller.selectExtension("mcp:probe");
+
+  const text = findElements(container, (node) => node.tagName === "p").map((node) => node.textContent);
+  assert.ok(
+    text.includes("Connection health: not connected"),
+    "a disconnected session must not display the stale cached health as current",
+  );
+  assert.ok(
+    !text.some((line) => line === "Connection health: ready"),
+    "the cached snapshot's health must not be shown once the live connection is known closed",
+  );
+
+  panel.close();
+  globalThis.document = previousDocument;
+  globalThis.window = previousWindow;
 }
 
 {

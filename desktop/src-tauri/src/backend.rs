@@ -1129,6 +1129,13 @@ pub fn forget_extension_oauth(client: &Client, base_url: &str, extension_id: &st
     memory_response(operation, response)
 }
 
+pub fn disconnect_extension(client: &Client, base_url: &str, extension_id: &str) -> Result<String, String> {
+    let operation = "POST /extensions/{extension_id}/disconnect";
+    let response = client.post(format!("{base_url}/extensions/{extension_id}/disconnect")).send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn close_session(client: &Client, base_url: &str, session_id: &str) -> Result<(), String> {
     let response = client
         .post(format!("{base_url}/session/close"))

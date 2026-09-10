@@ -32,6 +32,7 @@ from backend.app.actions.contracts import (
     ExecutionStatus,
     ModelActionProposal,
 )
+from backend.app.actions.sessions import SessionCallOutcomeUnknown
 from backend.app.artifacts.storage import append_action_event
 
 CapabilityHandler = Callable[[dict[str, Any], ActionOperation], dict[str, Any]]
@@ -319,6 +320,85 @@ class CapabilityService:
         finally:
             with self._lock:
                 self._contexts.pop(proposal_id, None)
+
+    def invoke_operator_capability(
+        self,
+        *,
+        capability_id: str,
+        arguments: dict[str, Any],
+        proposed_by: str = "operator",
+        reason: str,
+    ) -> ActionProposalView:
+        """Authorize and execute one capability on the operator's own already-specified
+        request, through the same handler-dispatch (`_execute`/`_run`) a model proposal
+        uses once approved - not the standalone `execute_operator_action`, which calls a
+        caller-supplied callable directly and so cannot give a capability access to its
+        own `ActionOperation` (cancellation, boundary, elicitation routing) the way
+        extension invocation needs.
+
+        Mirrors `propose()` exactly except the `AuthorizationContext` carries
+        `operator_approved=True`: a clear, specific operator request is its own
+        authorization (see this ADR's Decision Outcome), so a `requires_approval`
+        capability the operator invoked directly - through a dedicated Invoke path, not
+        the generic propose/park surface - executes immediately instead of parking for a
+        second decision on a request the operator already made. A capability that is
+        still refused outright (disabled, unavailable, invalid arguments, an explicit
+        `deny` rule) reports `denied` without executing, exactly as `propose()` already
+        does for those same outcomes - `operator_approved` only ever removes the
+        `approval_required` outcome, never the `denied` one.
+        """
+        self.refresh()
+        descriptor = self.descriptor(capability_id)
+        if descriptor is None:
+            raise CapabilityServiceError(404, "unknown_capability", "capability is not registered")
+        if descriptor.approval_mode == "turn_boundary":
+            raise CapabilityServiceError(
+                409,
+                "turn_boundary_capability",
+                "this capability is proposed and executed inside a conversation turn",
+            )
+        if _argument_bytes(arguments) > MAX_ARGUMENT_BYTES:
+            raise CapabilityServiceError(
+                413, "arguments_too_large", "action arguments exceed the accepted size"
+            )
+
+        proposal_id = uuid4().hex
+        proposal = ModelActionProposal(
+            proposal_id=proposal_id,
+            capability_id=capability_id,
+            arguments=dict(arguments),
+            proposed_by=proposed_by,
+            reason=reason,
+        )
+        approval_id = uuid4().hex
+        context = AuthorizationContext(
+            session_id="api",
+            turn_id=f"api:{proposal_id}",
+            caller="operator_api",
+            operator_approved=True,
+            approval_id=approval_id,
+        )
+        with self._lock:
+            decision = self._registry.authorize(proposal, context)
+        self._record("action_proposal", proposal, capability_id)
+        self._record("authorization_decision", decision, capability_id)
+        if decision.outcome != "allowed":
+            return self._view_proposal(proposal, decision, status="denied")
+        if descriptor.authorization_rule == "requires_approval":
+            self._record(
+                "approval_record",
+                ApprovalAuditRecord(
+                    approval_id=approval_id,
+                    proposal_id=proposal_id,
+                    capability_id=capability_id,
+                    outcome="approved",
+                    decided_by="operator_api",
+                    decided_at=utc_now_iso(),
+                    reason=reason,
+                ),
+                capability_id,
+            )
+        return self._execute(proposal, descriptor, decision)
 
     def decide(
         self,
@@ -626,6 +706,15 @@ class CapabilityService:
             )
         except ActionCancelledError:
             status, error = "cancelled", None
+        except SessionCallOutcomeUnknown as exc:
+            # A timeout or cancellation left the shared session mechanism
+            # (backend/app/actions/sessions.py) unable to tell whether the far side
+            # already executed this call. Collapsing this into "failure" - as this
+            # branch used to, since it did not exist as its own case - reads to an
+            # operator as "this did not happen", which could encourage repeating a call
+            # that may have already run. `outcome_unknown` is its own `ExecutionStatus`
+            # for exactly this reason, distinct from both "failure" and "success".
+            status, error = "outcome_unknown", handler_error(exc)
         except Exception as exc:
             status, error = "failure", handler_error(exc)
         finally:
@@ -957,6 +1046,14 @@ def build_extension_handlers(
         service = extension_service_provider()
         if service is None:
             raise CapabilityServiceError(503, "unavailable", "extension catalog is unavailable")
+        # Session teardown for a disabled/retired extension lives inside
+        # ExtensionService.set_state itself (its own `session_closer`), not here - the
+        # operator-facing POST /extensions/{id}/state route calls that same method
+        # directly, bypassing this handler entirely, so teardown wired only at this
+        # layer previously left that route's own disable path not actually closing
+        # anything (confirmed directly: reverting to handler-only wiring reproduces
+        # the route's disable leaving the process alive while the capability-handler
+        # path still passes).
         return asdict(
             service.set_state(
                 extension_id=arguments["extension_id"],
@@ -995,12 +1092,16 @@ def build_extension_handlers(
     def delete_skill(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
         return _runtime().delete_skill(arguments["local_id"])
 
+    def disconnect(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        return _runtime().disconnect(arguments["extension_id"])
+
     return {
         catalog.EXTENSION_STATE_UPDATE: set_state,
         catalog.EXTENSION_DEFINITION_WRITE: write_definition,
         catalog.EXTENSION_DEFINITION_DELETE: delete_definition,
         catalog.EXTENSION_SKILL_WRITE: write_skill,
         catalog.EXTENSION_SKILL_DELETE: delete_skill,
+        catalog.EXTENSION_MCP_DISCONNECT: disconnect,
     }
 
 

@@ -114,6 +114,7 @@ const extensionsPanel = createExtensionsPanel(
     startExtensionOauth: (...args) => api.startExtensionOauth(...args),
     completeExtensionOauth: (...args) => api.completeExtensionOauth(...args),
     forgetExtensionOauth: (...args) => api.forgetExtensionOauth(...args),
+    disconnectExtension: (...args) => api.disconnectExtension(...args),
     decideAction: (...args) => api.decideAction(...args),
     cancelAction: (...args) => api.cancelAction(...args),
   },
