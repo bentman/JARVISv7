@@ -259,6 +259,9 @@ backend/.venv/bin/python scripts/provision.py verify
 backend/.venv/bin/python scripts/validate_backend.py profile
 ```
 
+
+Validation reports for unit, ci, and regression (for both backend and desktop) are written to reports/validation/ and automatically cleaned up after 30 days.
+
 Repository validation:
 
 ```powershell
@@ -266,7 +269,7 @@ Repository validation:
 .\backend\.venv\Scripts\python scripts\validate_backend.py integration
 .\backend\.venv\Scripts\python scripts\validate_backend.py runtime
 .\backend\.venv\Scripts\python scripts\validate_backend.py ci
-npm --prefix desktop test
+.\backend\.venv\Scripts\python scripts\validate_desktop.py regression
 npm --prefix desktop run build
 ```
 
@@ -275,7 +278,7 @@ backend/.venv/bin/python scripts/validate_backend.py unit
 backend/.venv/bin/python scripts/validate_backend.py integration
 backend/.venv/bin/python scripts/validate_backend.py runtime
 backend/.venv/bin/python scripts/validate_backend.py ci
-npm --prefix desktop test
+backend/.venv/bin/python scripts/validate_desktop.py regression
 npm --prefix desktop run build
 ```
 
@@ -333,12 +336,12 @@ Desktop shell fails before app launch:
 
 ```powershell
 npm --prefix desktop install
-npm --prefix desktop test
+.\backend\.venv\Scripts\python scripts\validate_desktop.py regression
 ```
 
 ```bash
 npm --prefix desktop install
-npm --prefix desktop test
+.\backend\.venv\Scripts\python scripts\validate_desktop.py regression
 ```
 
 ## Windows Desktop Build Requirements

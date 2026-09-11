@@ -53,7 +53,7 @@ def _runner(
     import backend.app.extensions.hooks as hooks
 
     monkeypatch.setattr(hooks, "append_action_event", lambda entry: evidence.append(entry))
-    return HookRunner(actions, lambda: definitions), evidence
+    return HookRunner(actions, lambda: definitions), evidence  # type: ignore[arg-type]
 
 
 def test_closed_event_names_are_refused_without_evidence(monkeypatch: pytest.MonkeyPatch) -> None:

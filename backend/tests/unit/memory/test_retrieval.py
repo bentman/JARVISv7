@@ -191,12 +191,12 @@ def test_cache_miss_hit_and_corruption(tmp_path: Path):
     cache = MockCacheManager(available=True)
 
     # 1. First retrieve: Cache miss, writes to cache
-    facts_1 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    facts_1 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)  # type: ignore[arg-type]
     assert len(facts_1) == 1
     assert len(cache.store) == 1  # Should have 1 cache key written
 
     # 2. Second retrieve: Cache hit
-    facts_2 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    facts_2 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)  # type: ignore[arg-type]
     assert len(facts_2) == 1
     assert facts_2[0].content == "Cache test response."
 
@@ -205,7 +205,7 @@ def test_cache_miss_hit_and_corruption(tmp_path: Path):
     cache.store[cache_key] = "{invalid json string}"
 
     # 4. Third retrieve: Cache corruption fallback to database
-    facts_3 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    facts_3 = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)  # type: ignore[arg-type]
     assert len(facts_3) == 1
     assert facts_3[0].content == "Cache test response."
 
@@ -232,7 +232,7 @@ def test_redis_unavailable_fallback(tmp_path: Path):
     cache = MockCacheManager(available=False)  # Redis unavailable
 
     # Retrieve should not crash and should correctly query DB
-    facts = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    facts = retrieval.retrieve("test", n=1, cache_manager=cache, episodic=episodic, semantic=semantic)  # type: ignore[arg-type]
     assert len(facts) == 1
     assert facts[0].content == "Redis down response."
 
@@ -259,11 +259,11 @@ def test_cached_result_from_missing_backend_not_served_after_backend_returns(tmp
     retrieval = RetrievalManager()
 
     # Episodic backend down: recency retrieval computes (and caches) an empty result.
-    degraded = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=None, semantic=semantic)
+    degraded = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=None, semantic=semantic)  # type: ignore[arg-type]
     assert degraded == []
 
     # Episodic backend back: the degraded cached empty result must not be served.
-    recovered = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=episodic, semantic=semantic)
+    recovered = retrieval.retrieve(query=None, n=1, cache_manager=cache, episodic=episodic, semantic=semantic)  # type: ignore[arg-type]
     assert len(recovered) == 1
     assert recovered[0].turn_id == "t-1"
 
@@ -300,7 +300,7 @@ def test_episodic_revision_changes_cache_identity_after_a_write(tmp_path: Path) 
         ),
         policy,
     )
-    first = retrieval.retrieve("episodic", n=3, cache_manager=cache, episodic=episodic)
+    first = retrieval.retrieve("episodic", n=3, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
 
     episodic.write_entry(
         TurnArtifact(
@@ -313,7 +313,7 @@ def test_episodic_revision_changes_cache_identity_after_a_write(tmp_path: Path) 
         ),
         policy,
     )
-    refreshed = retrieval.retrieve("episodic", n=3, cache_manager=cache, episodic=episodic)
+    refreshed = retrieval.retrieve("episodic", n=3, cache_manager=cache, episodic=episodic)  # type: ignore[arg-type]
 
     assert [fact.turn_id for fact in first] == ["turn-1"]
     assert [fact.turn_id for fact in refreshed] == ["turn-2", "turn-1"]
@@ -583,15 +583,15 @@ def test_semantic_revision_changes_cache_identity_and_roundtrips_provenance(
     cache = MockCacheManager()
     retrieval = RetrievalManager()
 
-    first = retrieval.retrieve("revision target", n=5, cache_manager=cache, semantic=semantic)
-    cached = retrieval.retrieve("revision target", n=5, cache_manager=cache, semantic=semantic)
+    first = retrieval.retrieve("revision target", n=5, cache_manager=cache, semantic=semantic)  # type: ignore[arg-type]
+    cached = retrieval.retrieve("revision target", n=5, cache_manager=cache, semantic=semantic)  # type: ignore[arg-type]
     second_id = semantic.write_fact(
         "revision target two",
         source_session_id="session-2",
         source_turn_id="turn-2",
         source_field="transcript",
     )
-    refreshed = retrieval.retrieve("revision target", n=5, cache_manager=cache, semantic=semantic)
+    refreshed = retrieval.retrieve("revision target", n=5, cache_manager=cache, semantic=semantic)  # type: ignore[arg-type]
 
     assert first == cached
     assert first[0].semantic_fact_id == first_id
@@ -627,7 +627,7 @@ def test_incompatible_cached_payload_is_ignored_safely(tmp_path: Path) -> None:
         ]
     )
 
-    facts = retrieval.retrieve("safe", n=1, cache_manager=cache, semantic=semantic)
+    facts = retrieval.retrieve("safe", n=1, cache_manager=cache, semantic=semantic)  # type: ignore[arg-type]
 
     assert facts[0].content == "safe cache fallback"
 
@@ -671,7 +671,7 @@ def test_semantic_revision_read_failure_disables_cache_but_not_retrieval() -> No
     facts = RetrievalManager().retrieve(
         "same",
         n=1,
-        cache_manager=cache,
+        cache_manager=cache,  # type: ignore[arg-type]
         semantic=semantic,  # type: ignore[arg-type]
     )
 

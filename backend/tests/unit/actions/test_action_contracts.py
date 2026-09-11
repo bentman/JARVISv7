@@ -37,10 +37,10 @@ def descriptor(
         provenance="backend.app.services.search_service",
         input_schema=input_schema
         or {"type": "object", "properties": {"query": {"type": "string"}}},
-        effect_class=effect_class,
-        readiness=readiness,
-        availability=availability,
-        authorization_rule=authorization_rule,
+        effect_class=effect_class,  # type: ignore[arg-type]
+        readiness=readiness,  # type: ignore[arg-type]
+        availability=availability,  # type: ignore[arg-type]
+        authorization_rule=authorization_rule,  # type: ignore[arg-type]
         execution_owner="backend.app.services.search_service.SearchService",
         timeout_policy={"timeout_ms": 10000},
         cancellation_policy={"cancellable": cancellable, "owner": "SearchOperation"},
@@ -48,7 +48,7 @@ def descriptor(
         artifact_evidence={"records": ["action_proposals", "authorization_decisions", "action_execution_results"]},
         unavailable_explanation=unavailable_explanation,
         metadata_claims=metadata_claims or {},
-        approval_mode=approval_mode,
+        approval_mode=approval_mode,  # type: ignore[arg-type]
         boundaries=boundaries if boundaries is not None else {},
     )
 
@@ -70,7 +70,7 @@ def auth_context(**overrides) -> AuthorizationContext:
         "caller": "conversation-turn",
     }
     values.update(overrides)
-    return AuthorizationContext(**values)
+    return AuthorizationContext(**values)  # type: ignore[arg-type]
 
 
 def test_descriptor_requires_real_capability_metadata() -> None:
@@ -317,7 +317,7 @@ def test_approval_and_cancellation_records_require_attributable_identity() -> No
             approval_id="approval-1",
             proposal_id="proposal-1",
             capability_id=SEARCH_PUBLIC_WEB_CAPABILITY_ID,
-            outcome="expired",
+            outcome="expired",  # type: ignore[arg-type]
             decided_by="user",
             decided_at="2026-09-04T00:00:00+00:00",
         )

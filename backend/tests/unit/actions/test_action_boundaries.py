@@ -26,7 +26,7 @@ def boundary(**overrides) -> ExecutionBoundary:
         "max_result_bytes": 2000,
     }
     values.update(overrides)
-    return ExecutionBoundary(**values)
+    return ExecutionBoundary(**values)  # type: ignore[arg-type]
 
 
 def operation(**overrides) -> ActionOperation:
@@ -85,7 +85,7 @@ def test_a_result_within_the_bound_is_returned_untouched() -> None:
 
 def test_handlers_must_return_a_mapping() -> None:
     with pytest.raises(BoundaryViolationError, match="capability handlers must return a mapping"):
-        run_bounded(operation(), lambda op: ["not", "a", "mapping"])
+        run_bounded(operation(), lambda op: ["not", "a", "mapping"])  # type: ignore[arg-type, return-value]
 
 
 def test_storage_roots_outside_the_approved_roots_are_refused() -> None:

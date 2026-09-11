@@ -102,12 +102,12 @@ def test_sdk_v2_stdio_adapter_round_trips_discovery_and_tool_call(tmp_path: Path
 
     snapshot, result = asyncio.run(asyncio.wait_for(exercise(), timeout=10))
 
-    assert snapshot.health == "ready"
-    assert snapshot.protocol_version == "2026-07-28"
-    assert [tool["name"] for tool in snapshot.tools] == ["echo"]
-    assert [resource["uri"] for resource in snapshot.resources] == ["fixture://status"]
-    assert [prompt["name"] for prompt in snapshot.prompts] == ["greeting"]
-    output_schema = snapshot.tools[0]["outputSchema"]
+    assert snapshot.health == "ready"  # type: ignore[attr-defined]
+    assert snapshot.protocol_version == "2026-07-28"  # type: ignore[attr-defined]
+    assert [tool["name"] for tool in snapshot.tools] == ["echo"]  # type: ignore[attr-defined]
+    assert [resource["uri"] for resource in snapshot.resources] == ["fixture://status"]  # type: ignore[attr-defined]
+    assert [prompt["name"] for prompt in snapshot.prompts] == ["greeting"]  # type: ignore[attr-defined]
+    output_schema = snapshot.tools[0]["outputSchema"]  # type: ignore[attr-defined]
     assert output_schema["type"] == "object"
     assert output_schema["required"] == ["result"]
     assert output_schema["properties"]["result"]["type"] == "string"

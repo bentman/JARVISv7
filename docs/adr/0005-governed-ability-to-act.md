@@ -54,7 +54,7 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented. Shared governance, execution boundaries, durable evidence, and session management are built. Agent operator-invocation authorization and the action audit presentation remain incomplete.
+This ADR is partially implemented. Shared governance, execution boundaries, durable evidence, session management, and agent operator-invocation authorization are built. The action audit presentation remains incomplete.
 
 ### Capability governance and execution
 
@@ -72,7 +72,7 @@ Search records plans, provider attempts, sources, approval, cancellation, and fa
 
 `backend/app/actions/sessions.py` defines `SessionManager` and `SessionHandlers`. One background event loop in a dedicated thread owns a manager's connections. An opaque connection ID selects the resource; a per-connection lock serializes the complete open-and-work sequence. Adapters supply open, close, and async terminate handlers. Cancelled initialization must clean up its own partial resources.
 
-Close coordinates with the same lock, marks the connection closed to new work, and uses bounded waits for draining and cancellation. Queued calls cannot reuse or reopen a closed connection object. An adapter-reported dead resource receives best-effort cleanup before its reference is discarded; a subsequent call can open a replacement. Calls with uncertain effects raise `SessionCallOutcomeUnknown` and are not automatically replayed.
+Close coordinates with the same lock, marks the connection closed to new work, and uses bounded waits for draining and cancellation. Queued calls cannot reuse or reopen a closed connection object. An adapter-reported dead resource receives best-effort cleanup before its reference is discarded; a subsequent call can open a replacement. Calls with uncertain effects raise `SessionCallOutcomeUnknownError` and are not automatically replayed.
 
 `close` and `close_prefix` return whether teardown was confirmed. `_close_and_evict_if_confirmed` removes a connection only after confirmation, checking object identity so it cannot remove a newer resource under the same ID. Unconfirmed teardown retains the resource and registry entry while blocking further work. `is_open` therefore reports a retained resource, not a guarantee that it is healthy or usable.
 
@@ -86,7 +86,7 @@ For adapters whose close and terminate handlers are identical, the manager await
 
 Action records are persisted and fsynced to `data/actions/action-log.jsonl`, with bounded rotation. Turn artifacts retain proposals, decisions, approvals, execution results, cancellations, search evidence, and delegated runs. Tool results enter prompts as untrusted context.
 
-`SessionCallOutcomeUnknown` is preserved as `outcome_unknown` by both capability execution and extension run recording. Desktop status renders it distinctly; extension invocation warns against repeating a call whose effects are unknown.
+`SessionCallOutcomeUnknownError` is preserved as `outcome_unknown` by both capability execution and extension run recording. Desktop status renders it distinctly; extension invocation warns against repeating a call whose effects are unknown.
 
 Extension run records retain operation identity, display name, and arguments masked by the existing action policy. ADR 0006 owns their operator-readable presentation and MCP teardown-result handling.
 
@@ -115,6 +115,5 @@ Earlier live backend validation on linux-amd64 demonstrated direct allow executi
 
 ## Follow-up
 
-- Route fully specified operator agent invocation through `CapabilityService.invoke_operator_capability`. `POST /agents/invoke` still uses the proposal path and can ask for self-approval; preserve agent run tracking, cancellation, and evidence when correcting it. ADR 0007 owns the agent workflow.
 - Complete operator-readable action audit/detail presentation for proposals, decisions, results, cancellations, descriptor problems, and unavailable states. Keep raw IDs and backend records in explicit detail controls, with the generic runner available for audit and fallback use.
 - Obtain native interaction evidence for direct execution, required model-proposal approvals, cancellation, and inspectable action evidence. ADR 0008 owns native layout and interaction validation; computer-use validation was excluded from MCP closeout.

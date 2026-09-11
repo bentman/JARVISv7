@@ -67,7 +67,7 @@ def test_llm_profile_api_authorizes_full_profile_payload_with_capability_service
     capability_service = CapabilityService(
         observe=lambda: CapabilityObservation(provider_store_present=True)
     )
-    client.app.state.jarvis_state = SimpleNamespace(capability_service=capability_service)
+    client.app.state.jarvis_state = SimpleNamespace(capability_service=capability_service)  # type: ignore[attr-defined]
 
     created = client.post(
         "/config/llm/profiles",
@@ -97,7 +97,7 @@ def test_llm_profile_api_supports_secret_delete_discovery_and_rotation(tmp_path,
     capability_service = CapabilityService(
         observe=lambda: CapabilityObservation(provider_store_present=True)
     )
-    client.app.state.jarvis_state = SimpleNamespace(capability_service=capability_service)
+    client.app.state.jarvis_state = SimpleNamespace(capability_service=capability_service)  # type: ignore[attr-defined]
     created = client.post(
         "/config/llm/profiles",
         json={

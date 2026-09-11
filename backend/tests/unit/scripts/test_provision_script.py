@@ -104,7 +104,7 @@ def test_arm64_qnn_install_uses_only_editable_install(monkeypatch) -> None:
     commands: list[list[str]] = []
     profile = _arm64_qnn_profile()
 
-    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
+    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)  # type: ignore[func-returns-value]
 
     exit_code = provision._run_install(
         profile,
@@ -178,7 +178,7 @@ def test_linux_install_uses_no_deps_only_for_openwakeword(monkeypatch) -> None:
         "openwakeword==0.6.0; sys_platform=='win32' or sys_platform=='linux'",
     ]
     monkeypatch.setattr(provision, "_selected_requirement_specs", lambda *args: requirements)
-    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
+    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)  # type: ignore[func-returns-value]
 
     exit_code = provision._run_install(profile, extras)
 
@@ -195,7 +195,7 @@ def test_linux_cuda_install_does_not_swap_cpu_ort_for_gpu_ort(monkeypatch) -> No
     commands: list[list[str]] = []
     profile = _linux_cuda_profile()
     extras = ["hw-cpu-base", "hw-x64-base", "hw-x64-ort-cpu", "hw-gpu-nvidia-cuda", "dev"]
-    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)
+    monkeypatch.setattr(provision, "_run_pip_install", lambda command: commands.append(command) or 0)  # type: ignore[func-returns-value]
 
     exit_code = provision._run_install(profile, extras)
 

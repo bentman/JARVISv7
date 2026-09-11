@@ -26,7 +26,7 @@ def profile(**overrides) -> AgentProfile:
         "provider_model_policy": {},
     }
     values.update(overrides)
-    return AgentProfile(**values)
+    return AgentProfile(**values)  # type: ignore[arg-type]
 
 
 def _valid_yaml_dict(**overrides) -> dict:

@@ -59,7 +59,7 @@ def test_catalog_reports_search_unavailable_once_every_provider_is_disabled() ->
     instance = service()
     assert capability(instance.catalog(), SEARCH_PUBLIC_WEB).availability == "available"
 
-    instance.observed["observation"] = CapabilityObservation(
+    instance.observed["observation"] = CapabilityObservation(  # type: ignore[attr-defined]
         search_providers=(("ddgs", False), ("searxng", False), ("tavily", False))
     )
     entry = capability(instance.catalog(), SEARCH_PUBLIC_WEB)
@@ -185,7 +185,7 @@ def test_a_direct_operator_action_observes_its_declared_deadline(monkeypatch) ->
 def test_a_completed_proposal_does_not_retain_its_authorization_context() -> None:
     # Only a parked proposal needs its context after the call returns; anything else would
     # grow without bound for the life of the process.
-    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})
+    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})  # type: ignore[arg-type]
 
     for index in range(5):
         instance.propose(
@@ -259,7 +259,7 @@ def test_an_agent_capability_is_served_with_its_executor_bound() -> None:
 
 
 def test_catalog_marks_capabilities_without_a_handler_as_not_executable() -> None:
-    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})
+    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})  # type: ignore[arg-type]
     catalog = instance.catalog()
 
     assert capability(catalog, MEMORY_RECORD_CONFIRM).executable is True
@@ -283,7 +283,7 @@ def test_turn_boundary_capabilities_are_refused_at_the_api_edge() -> None:
 
 def test_an_allowed_capability_executes_immediately() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
 
     view = instance.propose(
         capability_id=MEMORY_RECORD_CONFIRM,
@@ -298,18 +298,18 @@ def test_an_allowed_capability_executes_immediately() -> None:
 
 
 def test_an_outcome_unknown_execution_is_not_recorded_as_an_ordinary_failure() -> None:
-    # SessionCallOutcomeUnknown means a timeout or cancellation left the shared session
+    # SessionCallOutcomeUnknownError means a timeout or cancellation left the shared session
     # mechanism (backend/app/actions/sessions.py, used by MCP/ACP extension invocation)
     # unable to tell whether the far side already executed the call. Collapsing this
     # into "failure" - as _run used to, since it had no case for it - reads to an
     # operator as "this did not happen" and could encourage repeating a call that may
     # have already run.
-    from backend.app.actions.sessions import SessionCallOutcomeUnknown
+    from backend.app.actions.sessions import SessionCallOutcomeUnknownError
 
     def handler(_args: dict, _op: ActionOperation) -> dict:
-        raise SessionCallOutcomeUnknown("a timeout left the outcome unknown")
+        raise SessionCallOutcomeUnknownError("a timeout left the outcome unknown")
 
-    instance = service(**{MEMORY_RECORD_CONFIRM: handler})
+    instance = service(**{MEMORY_RECORD_CONFIRM: handler})  # type: ignore[arg-type]
 
     view = instance.propose(
         capability_id=MEMORY_RECORD_CONFIRM,
@@ -327,7 +327,7 @@ def test_an_outcome_unknown_execution_is_not_recorded_as_an_ordinary_failure() -
 
 def test_an_approval_required_capability_parks_without_executing() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
 
     view = instance.propose(
         capability_id=MEMORY_RECORD_FORGET,
@@ -344,7 +344,7 @@ def test_an_approval_required_capability_parks_without_executing() -> None:
 
 def test_approval_executes_exactly_once_and_a_second_decision_is_refused() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     parked = instance.propose(
         capability_id=MEMORY_RECORD_FORGET,
         arguments=confirm_arguments(),
@@ -368,7 +368,7 @@ def test_approval_executes_exactly_once_and_a_second_decision_is_refused() -> No
 
 def test_a_denied_decision_never_executes() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     parked = instance.propose(
         capability_id=MEMORY_RECORD_FORGET,
         arguments=confirm_arguments(),
@@ -387,7 +387,7 @@ def test_a_denied_decision_never_executes() -> None:
 
 def test_approval_reauthorizes_against_state_that_changed_while_parked() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     parked = instance.propose(
         capability_id=MEMORY_RECORD_FORGET,
         arguments=confirm_arguments(),
@@ -395,7 +395,7 @@ def test_approval_reauthorizes_against_state_that_changed_while_parked() -> None
         reason="model proposed forgetting",
     )
 
-    instance.observed["observation"] = CapabilityObservation(memory_service_present=False)
+    instance.observed["observation"] = CapabilityObservation(memory_service_present=False)  # type: ignore[attr-defined]
     view = instance.decide(
         proposal_id=parked.proposal_id, outcome="approved", decided_by="operator"
     )
@@ -406,7 +406,7 @@ def test_approval_reauthorizes_against_state_that_changed_while_parked() -> None
 
 def test_cancellation_of_a_parked_proposal_prevents_execution() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     parked = instance.propose(
         capability_id=MEMORY_RECORD_FORGET,
         arguments=confirm_arguments(),
@@ -425,7 +425,7 @@ def test_a_cancelled_handler_records_a_cancelled_execution() -> None:
         op.cancel.set()
         return {"ok": True}
 
-    instance = service(**{MEMORY_RECORD_CONFIRM: handler})
+    instance = service(**{MEMORY_RECORD_CONFIRM: handler})  # type: ignore[arg-type]
 
     view = instance.propose(
         capability_id=MEMORY_RECORD_CONFIRM,
@@ -442,7 +442,7 @@ def test_handler_failures_are_sanitized_before_they_reach_the_audit() -> None:
     def handler(args: dict, op: ActionOperation) -> dict:
         raise OSError("C:/private/memory.sqlite is locked by internal-vectorizer")
 
-    instance = service(**{MEMORY_RECORD_CONFIRM: handler})
+    instance = service(**{MEMORY_RECORD_CONFIRM: handler})  # type: ignore[arg-type]
 
     view = instance.propose(
         capability_id=MEMORY_RECORD_CONFIRM,
@@ -473,7 +473,7 @@ def test_a_capability_without_a_handler_fails_instead_of_silently_succeeding() -
 
 def test_invalid_arguments_are_denied_before_any_handler_runs() -> None:
     calls: list[dict] = []
-    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: calls.append(args) or {"ok": True}})
+    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
 
     view = instance.propose(
         capability_id=MEMORY_RECORD_CONFIRM,
@@ -488,7 +488,7 @@ def test_invalid_arguments_are_denied_before_any_handler_runs() -> None:
 
 
 def test_secret_arguments_are_masked_in_views_and_audit() -> None:
-    instance = service(**{PROVIDER_PROFILE_WRITE: lambda args, op: {"ok": True}})
+    instance = service(**{PROVIDER_PROFILE_WRITE: lambda args, op: {"ok": True}})  # type: ignore[arg-type]
     parked = instance.propose(
         capability_id=PROVIDER_PROFILE_WRITE,
         arguments={
@@ -518,7 +518,7 @@ def test_operator_config_secret_fields_are_masked() -> None:
 
 
 def test_the_pending_store_is_bounded() -> None:
-    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: {"ok": True}})
+    instance = service(**{MEMORY_RECORD_FORGET: lambda args, op: {"ok": True}})  # type: ignore[arg-type]
 
     for index in range(12):
         instance.propose(
@@ -568,7 +568,7 @@ def test_operator_action_is_a_pass_through_when_no_capability_service_exists() -
     calls: list[str] = []
 
     result = execute_operator_action(
-        None, MEMORY_RECORD_FORGET, confirm_arguments(), lambda: calls.append("ran") or {"ok": True}
+        None, MEMORY_RECORD_FORGET, confirm_arguments(), lambda: calls.append("ran") or {"ok": True}  # type: ignore[func-returns-value]
     )
 
     assert result == {"ok": True}
@@ -601,7 +601,7 @@ def test_operator_action_still_refuses_an_unregistered_capability() -> None:
 
 
 def test_concurrent_proposals_do_not_corrupt_the_audit() -> None:
-    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})
+    instance = service(**{MEMORY_RECORD_CONFIRM: lambda args, op: {"ok": True}})  # type: ignore[arg-type]
 
     def propose(index: int) -> None:
         instance.propose(

@@ -32,7 +32,7 @@ def _patch_startup(monkeypatch) -> None:
         run_backend,
         "load_startup_context",
         lambda: StartupContext(
-            report=report,
+            report=report,  # type: ignore[arg-type]
             profile=report.profile,
             extras=["dev"],
             preflight=PreflightResult(tokens=["import:onnxruntime"], dll_discovery_log=[], probe_errors={}),

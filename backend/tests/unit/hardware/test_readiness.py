@@ -22,7 +22,7 @@ def _llm_settings(**overrides) -> Settings:
         use_ollama=False,
     )
     defaults.update(overrides)
-    return Settings(**defaults)
+    return Settings(**defaults)  # type: ignore[arg-type]
 
 
 def _profile(**overrides) -> HardwareProfile:

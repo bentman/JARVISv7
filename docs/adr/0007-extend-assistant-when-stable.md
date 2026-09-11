@@ -126,5 +126,5 @@ These results establish the implemented adapter and controlled fixture behavior.
 - Complete outbound ACP v2 conformance: version/auth negotiation, distinct `session/list` and `session/close` operations, elicitation, and separate prompt acceptance/foreground completion in artifacts and status.
 - Replace the inbound bridge's handshake/message shapes with ACP v2 session lifecycle, updates, permission/elicitation, cancellation, and absolute-path conventions.
 - Wire `router_selected`, `as_tool`, and `handoff` paths with selection/fallback evidence, approval boundaries, cancellation, and artifacts. Make model-proposed agent invocation available through the assistant's governed capability path.
-- Complete named desktop agent workflows for profile management, external connection/testing, invocation, cancellation, evidence, and permission/elicitation input. Apply ADR 0005's operator-authorization correction to direct agent invocation.
+- Complete named desktop agent workflows for profile management, external connection/testing, invocation, cancellation, evidence, and permission/elicitation input.
 - Validate profile mutation, all invocation modes, real ACP peers, cancellation, input handling, and run evidence before marking this ADR implemented. ADR 0008 owns native layout and interaction validation; live tests require actual model/provider/process availability.

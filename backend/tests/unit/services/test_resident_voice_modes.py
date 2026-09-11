@@ -40,7 +40,7 @@ class _FakeEngine:
 def _bare_service() -> ResidentVoiceInvocationService:
     return ResidentVoiceInvocationService(
         session_service=object(),  # type: ignore[arg-type]
-        engine_provider=lambda: object(),  # type: ignore[return-value]
+        engine_provider=lambda: object(),  # type: ignore[return-value, arg-type]
     )
 
 
@@ -77,7 +77,7 @@ def _resident(calls: list[tuple[np.ndarray, int]], tmp_path: Path) -> tuple[Resi
     service = _session_service(tmp_path)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),

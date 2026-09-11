@@ -75,7 +75,7 @@ Do not claim verification without command evidence. Report validation with:
 - host class, such as `windows-amd64`, `windows-arm64`, `linux-amd64`, `linux-arm64`, etc.
 - minimal output excerpt or report path
 
-Use `scripts/validate_backend.py` for backend closeout evidence. Raw `pytest` is acceptable for inner-loop development, but it is not governance closeout evidence unless explicitly requested.
+Use `scripts/validate_backend.py` and `scripts/validate_desktop.py` for closeout evidence. Raw `pytest` is acceptable for inner-loop development, but it is not governance closeout evidence unless explicitly requested.
 
 Key validator commands: `profile`, `unit`, `integration`, `runtime --families ... --devices ...`, `regression`, `matrix`, `all`, `ci`. Exit codes: `0` pass, `1` fail, `2` skipped-not-failed, `3` environment-unsatisfied.
 

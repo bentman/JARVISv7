@@ -53,7 +53,7 @@ def test_research_limits_deduplication_and_partial_pages():
         Provider("ddgs", SearchResponse("empty"), calls),
         Provider("searxng", SearchResponse("failed"), calls),
         Provider("tavily", SearchResponse("success", results), calls),
-    ], Reader())
+    ], Reader())  # type: ignore[arg-type]
     with service.operation("session", "turn") as operation:
         evidence = service.retrieve(operation, mode="research", topic="topic", queries=["one", "two", "three", "four"])
         assert evidence.outcome == "partial"
@@ -105,7 +105,7 @@ def test_redirected_pages_deduplicate_and_retain_provider_provenance():
         def read(self, url, *, cancelled):
             return PageResult("https://final.example.com/", "success", "Public fact")
     results = (result("https://one.example.com/"), result("https://two.example.com/"))
-    service = SearchService([Provider("ddgs", SearchResponse("success", results), [])], Reader())
+    service = SearchService([Provider("ddgs", SearchResponse("success", results), [])], Reader())  # type: ignore[arg-type]
     with service.operation("s", "t") as operation:
         evidence = service.retrieve(operation, mode="research", topic="topic", queries=["one"])
         assert len(evidence.sources) == 1

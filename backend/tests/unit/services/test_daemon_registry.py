@@ -65,7 +65,7 @@ def test_token_validation_uses_metadata_token(tmp_path: Path) -> None:
     assert registry.validate_token(None) is False
 
 
-def test_public_status_omits_token_value(tmp_path: Path) -> None:
+def test_status_omits_token_value(tmp_path: Path) -> None:
     registry = _registry(tmp_path)
     registry.acquire("127.0.0.1", 8765, token="secret-token")
 

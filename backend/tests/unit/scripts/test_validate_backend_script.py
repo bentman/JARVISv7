@@ -48,12 +48,15 @@ def _fake_context() -> StartupContext:
     )
 
 
-def _patch_context(monkeypatch) -> None:
+def _patch_context(monkeypatch, tmp_path=None) -> None:
+    monkeypatch.setattr(validate_backend, "_relative_report_path", lambda path: str(path))
+    if tmp_path:
+        monkeypatch.setattr(validate_backend, "VALIDATION_DIR", tmp_path)
     monkeypatch.setattr(validate_backend, "load_startup_context", _fake_context)
 
 
-def test_profile_subcommand_prints_fingerprint_first_line(monkeypatch, capsys) -> None:
-    _patch_context(monkeypatch)
+def test_profile_subcommand_prints_fingerprint_first_line(monkeypatch, capsys, tmp_path) -> None:
+    _patch_context(monkeypatch, tmp_path)
     monkeypatch.setattr(validate_backend, "_write_report", lambda *args, **kwargs: None)
 
     exit_code = validate_backend.main(["profile"])
@@ -132,11 +135,11 @@ def test_regression_report_helpers_emit_structured_rows() -> None:
         directory.rmdir()
 
 
-def test_unit_subcommand_invokes_pytest_on_unit_dir(monkeypatch, capsys) -> None:
+def test_unit_subcommand_invokes_pytest_on_unit_dir(monkeypatch, capsys, tmp_path) -> None:
     calls: list[tuple[list[str], dict[str, object]]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    _patch_context(monkeypatch)
+    _patch_context(monkeypatch, tmp_path)
 
     def fake_run(command, **kwargs):
         calls.append((command, kwargs))
@@ -158,11 +161,11 @@ def test_pytest_command_uses_default_pytest_temp_and_cache_behavior() -> None:
     assert "no:cacheprovider" not in command
 
 
-def test_runtime_subcommand_accepts_families_and_devices_filters(monkeypatch, capsys) -> None:
+def test_runtime_subcommand_accepts_families_and_devices_filters(monkeypatch, capsys, tmp_path) -> None:
     calls: list[list[str]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    _patch_context(monkeypatch)
+    _patch_context(monkeypatch, tmp_path)
     monkeypatch.setattr(
         validate_backend.subprocess,
         "run",
@@ -211,11 +214,11 @@ def test_llm_cuda_runtime_filter_selects_managed_llama_cpp_live_tests() -> None:
         assert {"live", "llm", "cuda"} <= markers
 
 
-def test_ci_subcommand_runs_quality_and_test_commands_in_order(monkeypatch, capsys) -> None:
+def test_ci_subcommand_runs_quality_and_test_commands_in_order(monkeypatch, capsys, tmp_path) -> None:
     calls: list[list[str]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    _patch_context(monkeypatch)
+    _patch_context(monkeypatch, tmp_path)
     monkeypatch.setattr(
         validate_backend.subprocess,
         "run",
@@ -232,11 +235,11 @@ def test_ci_subcommand_runs_quality_and_test_commands_in_order(monkeypatch, caps
     assert all("not live" in command for command in calls[2:])
 
 
-def test_ci_subcommand_propagates_quality_failure(monkeypatch, capsys) -> None:
+def test_ci_subcommand_propagates_quality_failure(monkeypatch, capsys, tmp_path) -> None:
     calls: list[list[str]] = []
 
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
-    _patch_context(monkeypatch)
+    _patch_context(monkeypatch, tmp_path)
 
     def fake_run(command, **kwargs):
         calls.append(command)
@@ -251,7 +254,7 @@ def test_ci_subcommand_propagates_quality_failure(monkeypatch, capsys) -> None:
     assert [command[2] for command in calls] == ["ruff", "mypy", "pytest", "pytest", "pytest"]
 
 
-def test_exit_codes_map_documented_states_correctly(monkeypatch) -> None:
+def test_exit_codes_map_documented_states_correctly(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
     monkeypatch.setattr(
         validate_backend.subprocess,

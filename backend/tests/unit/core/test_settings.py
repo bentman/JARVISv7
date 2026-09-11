@@ -51,7 +51,6 @@ ENV_NAMES = (
 )
 
 RETIRED_SETTING_NAMES = {
-    "APP_NAME",
     "CONFIG_PATH",
     "DATA_PATH",
     "MODEL_PATH",
@@ -113,9 +112,7 @@ ENV_EXAMPLE_EXTERNAL_LLAMA_CPP_NAMES: set[str] = {
     "LLAMA_CPP_CONTEXT_SIZE",
 }
 
-ENV_EXAMPLE_UNIMPLEMENTED_NAMES: set[str] = {
-    "APP_NAME",
-}
+ENV_EXAMPLE_UNIMPLEMENTED_NAMES: set[str] = set()
 
 
 def _reload_settings(monkeypatch, tmp_path, env_text: str | None, example_text: str | None):
@@ -512,7 +509,6 @@ def test_env_example_covers_current_settings_env_variables():
     advertised_external_llama_cpp = sorted(ENV_EXAMPLE_EXTERNAL_LLAMA_CPP_NAMES & set(values))
     assert advertised_external_llama_cpp == sorted(ENV_EXAMPLE_EXTERNAL_LLAMA_CPP_NAMES)
     assert "LLM_MODELS" not in values
-    assert values["APP_NAME"] == "JARVISv7"
     assert values["JARVIS_LANGUAGE"] == "english"
     assert values["LLM_MODEL_MODE"] == "dev"
     assert values["LLM_MODEL_POLICY"] == "auto"

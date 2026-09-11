@@ -141,6 +141,7 @@ What is validated or materially present:
 * barge-in/interruption handling and playback coordination
 * live voice tests for selected host paths
 * desktop resident voice proof paths
+* automated validation logs and garbage collection for repeatable proof
 * Windows AMD64 local voice paths, including validated CUDA and DirectML TTS execution where supported
 * Windows ARM64 Qualcomm QNN STT and TTS paths
 * Linux voice and runtime paths where explicitly documented and validated — optimism sold separately

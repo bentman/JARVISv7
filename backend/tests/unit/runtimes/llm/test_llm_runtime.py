@@ -25,7 +25,7 @@ def test_schema_generation_preserves_normal_generation(monkeypatch, kind):
         return httpx.Response(200, json=payload, request=httpx.Request("POST", url))
     monkeypatch.setattr(httpx, "post", post)
     runtime = LlamaCppLLM(base_url="http://test", context_size=4096) if kind == "llama" else OllamaLLM(base_url="http://test", enabled=True, num_ctx=4096)
-    assert runtime.generate_structured(envelope, schema) == '{"topic":"public"}'
+    assert runtime.generate_structured(envelope, schema) == '{"topic":"public"}'  # type: ignore[arg-type]
     assert runtime.context_window() == 4096
     if kind == "llama":
         assert calls[0]["response_format"] == {"type": "json_object", "schema": schema}
@@ -60,7 +60,7 @@ def test_local_runtime_does_not_duplicate_v1_base_path(monkeypatch):
     calls = []
     monkeypatch.setattr(
         "backend.app.runtimes.llm.local_runtime.httpx.get",
-        lambda url, **kwargs: calls.append(url)
+        lambda url, **kwargs: calls.append(url)  # type: ignore[func-returns-value]
         or SimpleNamespace(
             raise_for_status=lambda: None,
             json=lambda: {"data": [{"id": "unsloth-model"}]},
@@ -92,7 +92,7 @@ def test_local_runtime_is_available_falls_back_to_health_endpoint(monkeypatch):
 
 def test_local_runtime_is_available_false_when_sidecar_status_not_running():
     runtime = LlamaCppLLM(
-        sidecar_status=lambda: SimpleNamespace(
+        sidecar_status=lambda: SimpleNamespace(  # type: ignore[arg-type, return-value]
             running=False,
             base_url="http://test",
             degraded_reason="sidecar stopped",
@@ -200,7 +200,7 @@ def test_local_runtime_generate_skips_sidecar_probe_before_successful_post(monke
         base_url="http://test",
         model="assistant-small-q4",
         sidecar_status=status,
-        sidecar_recover=lambda: recoveries.append("restart"),
+        sidecar_recover=lambda: recoveries.append("restart"),  # type: ignore[arg-type, return-value]
         managed=True,
     )
 
@@ -244,8 +244,8 @@ def test_local_runtime_generate_retries_after_connection_failure_with_managed_re
     runtime = LlamaCppLLM(
         base_url="http://test",
         model="assistant-small-q4",
-        sidecar_status=lambda: running_status,
-        sidecar_recover=lambda: recoveries.append("restart") or running_status,
+        sidecar_status=lambda: running_status,  # type: ignore[arg-type, return-value]
+        sidecar_recover=lambda: recoveries.append("restart") or running_status,  # type: ignore[func-returns-value, arg-type, return-value]
         managed=True,
     )
 
@@ -267,7 +267,7 @@ def test_local_runtime_generate_does_not_recover_application_error(monkeypatch):
     runtime = LlamaCppLLM(
         base_url="http://test",
         model="assistant-small-q4",
-        sidecar_recover=lambda: recoveries.append("restart"),
+        sidecar_recover=lambda: recoveries.append("restart"),  # type: ignore[arg-type, return-value]
         managed=True,
     )
 
@@ -302,8 +302,8 @@ def test_local_runtime_generate_envelope_sends_role_separated_chat_payload(monke
             "temperature": 0,
             "chat_template_kwargs": {"enable_thinking": False},
         },
-        sidecar_status=lambda: SimpleNamespace(running=True),
-        sidecar_recover=lambda: recoveries.append("restart"),
+        sidecar_status=lambda: SimpleNamespace(running=True),  # type: ignore[arg-type, return-value]
+        sidecar_recover=lambda: recoveries.append("restart"),  # type: ignore[arg-type, return-value]
         managed=True,
     )
     envelope = PromptEnvelope(

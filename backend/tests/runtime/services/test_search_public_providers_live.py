@@ -85,7 +85,7 @@ def test_cited_search_and_contextual_research_turn_live(search_model, tmp_path):
     if not any((settings.use_ddgs, settings.use_searxng, settings.use_tavily)):
         pytest.skip("all search providers disabled")
     engine = TurnEngine(
-        stt=None, tts=None, llm=search_model, personality=load_default_personality(),
+        stt=None, tts=None, llm=search_model, personality=load_default_personality(),  # type: ignore[arg-type]
         search_service=SearchService.configured(settings),
         search_secret_values=(settings.tavily_api_key,),
         session_manager=SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions"),
@@ -94,15 +94,15 @@ def test_cited_search_and_contextual_research_turn_live(search_model, tmp_path):
     assert result.failure_reason is None, result.failure_reason
     assert result.search and result.search["sources"], result.search
     assert "[S" in result.response_text, result.response_text
-    assert any("python.org" in source["url"] for source in result.search["sources"])
-    assert "python" in result.response_text.lower()
+    assert any("python.org" in source["url"] for source in result.search["sources"])  # type: ignore[attr-defined]
+    assert "python" in result.response_text.lower()  # type: ignore[union-attr]
     research = engine.run_text_turn("Please research this")
     assert research.failure_reason is None, research.failure_reason
     assert research.search and research.search["mode"] == "research", research.search
-    assert 1 <= len(research.search["queries"]) <= 3
+    assert 1 <= len(research.search["queries"]) <= 3  # type: ignore[arg-type]
     sources = research.search["sources"]
-    assert sources and any(source["basis"] == "page_excerpt" for source in sources), research.search
-    assert sum(source["page_status"] is not None for source in sources) <= 3
+    assert sources and any(source["basis"] == "page_excerpt" for source in sources), research.search  # type: ignore[attr-defined]
+    assert sum(source["page_status"] is not None for source in sources) <= 3  # type: ignore[attr-defined]
     assert "[S" in research.response_text
 
 
@@ -149,7 +149,7 @@ def test_search_governed_action_evidence():
 
     def run_search():
         with search_svc.operation("governed", "turn-1") as op:
-            search_svc.retrieve(op, **search_args)
+            search_svc.retrieve(op, **search_args)  # type: ignore[arg-type]
         return op.snapshot()
 
     result = service.execute_operator_action(SEARCH_PUBLIC_WEB, search_args, run_search)

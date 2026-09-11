@@ -94,7 +94,7 @@ def _client() -> TestClient:
     session_service = SessionService(
         session_manager=session_manager,  # type: ignore[arg-type]
         engine=engine,  # type: ignore[arg-type]
-        engine_factory=lambda manager: _Engine(),  # type: ignore[arg-type]
+        engine_factory=lambda manager: _Engine(),  # type: ignore[arg-type, return-value]
     )
     from unittest.mock import MagicMock
 
@@ -189,9 +189,9 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
 
     def build_engine(session_manager):
         return __import__("backend.app.conversation.engine", fromlist=["TurnEngine"]).TurnEngine(
-            stt=runtime,  # type: ignore[arg-type]
-            tts=runtime,  # type: ignore[arg-type]
-            llm=runtime,  # type: ignore[arg-type]
+            stt=runtime,
+            tts=runtime,
+            llm=runtime,
             personality=PersonalityProfile(
                 profile_id="default",
                 display_name="JARVIS",

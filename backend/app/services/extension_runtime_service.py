@@ -23,7 +23,7 @@ from backend.app.actions.contracts import (
     validate_schema,
 )
 from backend.app.actions.process import run_process
-from backend.app.actions.sessions import SessionCallOutcomeUnknown, SessionManager
+from backend.app.actions.sessions import SessionCallOutcomeUnknownError, SessionManager
 from backend.app.artifacts.storage import write_text_atomic
 from backend.app.core.paths import CONFIG_DIR, DATA_DIR
 from backend.app.extensions.contracts import SAFE_LOCAL_ID
@@ -265,10 +265,10 @@ class ExtensionRuntimeService:
                 except ActionCancelledError:
                     self.runs.update(run_id, status="cancelled", request=None)
                     raise
-                except SessionCallOutcomeUnknown as exc:
+                except SessionCallOutcomeUnknownError:
                     # A timeout or cancellation left the shared session mechanism unable
                     # to tell whether the far side already executed this call -
-                    # SessionCallOutcomeUnknown exists specifically so that ambiguity is
+                    # SessionCallOutcomeUnknownError exists specifically so that ambiguity is
                     # not reported as an ordinary failure, which would read as "this did
                     # not happen" and could encourage an operator to repeat a call that
                     # may already have run. Recorded and re-raised as itself, distinct
@@ -321,7 +321,7 @@ class ExtensionRuntimeService:
         )
 
     def _mcp(self, manifest: DefinitionManifest, name: str, arguments: dict[str, Any], operation: ActionOperation, run_id: str) -> dict[str, Any]:
-        from backend.app.actions.sessions import SessionHandlers, SessionResourceDied
+        from backend.app.actions.sessions import SessionHandlers, SessionResourceDiedError
         from backend.app.extensions.mcp import (
             McpConnectionDefinition,
             McpConnectionRuntime,
@@ -377,7 +377,7 @@ class ExtensionRuntimeService:
                     # restart against a fresh connection instead of the same wedged one,
                     # matching MCP stdio's own guidance to restart after unexpected
                     # termination rather than retry against it on a schedule.
-                    raise SessionResourceDied(snapshot.get("error") or "MCP discovery failed")
+                    raise SessionResourceDiedError(snapshot.get("error") or "MCP discovery failed")
                 self.snapshots.save(identifier, snapshot)
                 return snapshot
             kind, value = name.split(":", 1)
@@ -396,7 +396,7 @@ class ExtensionRuntimeService:
                 # itself closed means the next call must reopen rather than retry
                 # against the same now-unusable connection.
                 if peer_connection_died(exc):
-                    raise SessionResourceDied(f"MCP connection died during {kind} call: {exc}") from exc
+                    raise SessionResourceDiedError(f"MCP connection died during {kind} call: {exc}") from exc
                 raise
             if hasattr(result, "model_dump"):
                 result = result.model_dump(mode="json", by_alias=True)
@@ -404,7 +404,7 @@ class ExtensionRuntimeService:
 
         try:
             return self._sessions.call(identifier, handlers, work, timeout_s=operation.boundary.timeout_ms / 1000)
-        except SessionResourceDied as exc:
+        except SessionResourceDiedError as exc:
             self.snapshots.delete(identifier)
             raise ValueError(str(exc)) from exc
 

@@ -258,7 +258,7 @@ def _state() -> ApiState:
     session_service = SessionService(
         session_manager=session_manager,  # type: ignore[arg-type]
         engine=engine,  # type: ignore[arg-type]
-        engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type]
+        engine_factory=lambda manager: _FakeEngine(),  # type: ignore[arg-type, return-value]
     )
     resident_voice = ResidentVoiceInvocationService(
         session_service=session_service,
@@ -267,7 +267,7 @@ def _state() -> ApiState:
     )
     wake_monitor = WakeMonitorService(
         session_service=session_service,
-        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type]
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=_wake_source,
         invocation_callback=resident_voice.enqueue,
     )
@@ -361,10 +361,10 @@ def test_build_startup_state_uses_provider_profile_service(monkeypatch) -> None:
     assert state.llm_trace is trace
     assert state.resident_audio_stream is not None
     assert state.utterance_segmenter is not None
-    assert state.resident_voice._utterance_segmenter is state.utterance_segmenter
+    assert state.resident_voice._utterance_segmenter is state.utterance_segmenter  # type: ignore[union-attr]
     assert state.wake_monitor._utterance_segmenter is not state.utterance_segmenter
-    assert state.wake_monitor._utterance_segmenter.silence_end_s == 0.8
-    assert state.wake_monitor._utterance_segmenter.trailing_pad_s == 0.8
+    assert state.wake_monitor._utterance_segmenter.silence_end_s == 0.8  # type: ignore[union-attr]
+    assert state.wake_monitor._utterance_segmenter.trailing_pad_s == 0.8  # type: ignore[union-attr]
     assert state.engine.barge_in_detector is not None
     assert state.engine.interruption_audio_chunks is None
 
@@ -433,7 +433,7 @@ def test_build_engine_injects_resident_interruption_chunks_when_stream_running()
     stream.start()
     try:
         state.resident_audio_stream = stream
-        engine = app_module.build_engine(state)  # type: ignore[arg-type]
+        engine = app_module.build_engine(state)
     finally:
         stream.stop()
 
@@ -499,7 +499,7 @@ def test_daemon_status_returns_public_identity_without_token(tmp_path: Path) -> 
         lock_path=tmp_path / "cache" / "daemon" / "backend.lock",
     )
     registry.acquire("127.0.0.1", 8765, token="secret-token")
-    client.app.state.daemon_registry = registry
+    client.app.state.daemon_registry = registry  # type: ignore[attr-defined]
 
     response = client.get("/daemon/status")
     payload = response.json()
@@ -523,8 +523,8 @@ def test_daemon_shutdown_requires_local_token(tmp_path: Path) -> None:
     )
     registry.acquire("127.0.0.1", 8765, token="secret-token")
     shutdown_calls: list[str] = []
-    client.app.state.daemon_registry = registry
-    client.app.state.daemon_shutdown = lambda: shutdown_calls.append("shutdown")
+    client.app.state.daemon_registry = registry  # type: ignore[attr-defined]
+    client.app.state.daemon_shutdown = lambda: shutdown_calls.append("shutdown")  # type: ignore[attr-defined]
 
     rejected = client.post("/daemon/shutdown", headers={"X-JARVIS-DAEMON-TOKEN": "wrong"})
     accepted = client.post("/daemon/shutdown", headers={"X-JARVIS-DAEMON-TOKEN": "secret-token"})
@@ -553,7 +553,7 @@ def test_readiness_returns_family_readiness() -> None:
 
 def test_readiness_adds_provider_selection_without_breaking_existing_fields() -> None:
     state = _state()
-    state.llm.selection = type(
+    state.llm.selection = type(  # type: ignore[attr-defined]
         "Selection",
         (),
         {
@@ -773,7 +773,7 @@ def test_personality_select_switches_active_profile_without_session_reset() -> N
     assert after["session_id"] == before["session_id"]
     assert after["turn_count"] == before["turn_count"]
     assert readiness["active_personality_profile_id"] == "warm"
-    assert client.app.state.jarvis_state.session_service.engine().personality.profile_id == "warm"
+    assert client.app.state.jarvis_state.session_service.engine().personality.profile_id == "warm"  # type: ignore[attr-defined]
 
 
 def test_personality_select_rejects_unknown_profile() -> None:
@@ -791,7 +791,7 @@ def test_session_create_returns_session_id() -> None:
 
 def test_session_status_returns_active_session() -> None:
     client = _client()
-    session_id = client.app.state.jarvis_state.session_service.status().session_id
+    session_id = client.app.state.jarvis_state.session_service.status().session_id  # type: ignore[attr-defined]
     response = client.get("/session/status")
     assert response.status_code == 200
     assert response.json() == {
@@ -816,7 +816,7 @@ def test_search_cancel_api_scopes_turn_and_publishes_progress():
     from backend.app.services.search_service import SearchService
 
     client = _client()
-    service = client.app.state.jarvis_state.session_service
+    service = client.app.state.jarvis_state.session_service  # type: ignore[attr-defined]
     search = SearchService([])
     service.engine().search_service = search
     session_id = service.status().session_id
@@ -833,7 +833,7 @@ def test_search_cancel_api_scopes_turn_and_publishes_progress():
 
 def test_session_status_returns_latest_turn_summary() -> None:
     client = _client()
-    state = client.app.state.jarvis_state
+    state = client.app.state.jarvis_state  # type: ignore[attr-defined]
     session_id = state.session_service.status().session_id
     assert session_id is not None
     state.session_service.session_manager.turn_artifacts.append(
@@ -891,7 +891,7 @@ def test_session_ptt_queues_resident_voice_invocation() -> None:
 
 def test_session_ptt_works_when_wake_is_unavailable() -> None:
     client = _client()
-    client.app.state.jarvis_state.readiness["wake"] = ("cpu", False, "wake unavailable")
+    client.app.state.jarvis_state.readiness["wake"] = ("cpu", False, "wake unavailable")  # type: ignore[attr-defined]
 
     response = client.post("/session/ptt")
 
@@ -939,7 +939,7 @@ def test_session_ptt_works_while_wake_monitoring_is_enabled() -> None:
 
 def test_session_close_returns_closed() -> None:
     client = _client()
-    session_id = client.app.state.jarvis_state.session_manager.session_id
+    session_id = client.app.state.jarvis_state.session_manager.session_id  # type: ignore[attr-defined]
     response = client.post("/session/close", json={"session_id": session_id})
     assert response.status_code == 200
     assert response.json()["closed"] is True
@@ -962,7 +962,7 @@ def test_text_turn_returns_turn_result() -> None:
 
 def test_text_turn_accepts_active_session_id() -> None:
     client = _client()
-    session_id = client.app.state.jarvis_state.session_service.status().session_id
+    session_id = client.app.state.jarvis_state.session_service.status().session_id  # type: ignore[attr-defined]
     response = client.post("/task/text", json={"text": "hello", "session_id": session_id})
     assert response.status_code == 200
     assert response.json()["session_id"] == "session-test"
@@ -1034,7 +1034,7 @@ def test_diagnostics_audio_ingress_returns_backend_capture_diagnostics(monkeypat
 
 
 def test_agent_routes_present_in_openapi() -> None:
-    paths = _client().app.openapi()["paths"]
+    paths = _client().app.openapi()["paths"]  # type: ignore[attr-defined]
 
     assert any(path.startswith("/agents") for path in paths)
 
@@ -1042,7 +1042,7 @@ def test_agent_routes_present_in_openapi() -> None:
 def test_action_routes_are_wired_into_the_real_app() -> None:
     # Full behavioral coverage (approval flow, privileged-capability refusal, etc.)
     # lives in test_action_routes.py; this only proves the router is mounted here.
-    paths = _client().app.openapi()["paths"]
+    paths = _client().app.openapi()["paths"]  # type: ignore[attr-defined]
 
     assert "/actions/capabilities" in paths
     assert "/actions/propose" in paths
@@ -1068,7 +1068,7 @@ def test_wake_status_uses_readiness_without_starting_monitor() -> None:
 
 def test_desktop_status_snapshot_builds_each_underlying_status_once(monkeypatch) -> None:
     state = _state()
-    state.resident_voice.set_mode("ptt-only")
+    state.resident_voice.set_mode("ptt-only")  # type: ignore[union-attr]
     assert state.wake_monitor.start().active is True
     calls = {"session": 0, "configure_wake": 0, "read_wake": 0, "tts": 0}
     original_session_status = state.session_service.status
@@ -1152,12 +1152,12 @@ def test_wake_status_reflects_deterministic_detection_state() -> None:
             self.last_score = 0.7
             return True
 
-    client.app.state.jarvis_state.session_service.configure_wake_status(
+    client.app.state.jarvis_state.session_service.configure_wake_status(  # type: ignore[attr-defined]
         provider="openwakeword",
         available=True,
         reason="wake ready",
     )
-    client.app.state.jarvis_state.session_service.process_wake_chunk(WakeRuntime(), np.zeros(4))
+    client.app.state.jarvis_state.session_service.process_wake_chunk(WakeRuntime(), np.zeros(4))  # type: ignore[attr-defined]
     response = client.get("/status/wake")
     assert response.status_code == 200
     payload = response.json()
@@ -1212,7 +1212,7 @@ def test_resident_voice_tts_voice_endpoint_applies_runtime_voice_without_rewriti
     assert accepted.json()["tts_voice"] == "af_bella"
     assert "af_bella" in accepted.json()["tts_supported_voices"]
     assert accepted.json()["tts_voice_restart_required"] is False
-    assert client.app.state.jarvis_state.tts.voice == "af_bella"
+    assert client.app.state.jarvis_state.tts.voice == "af_bella"  # type: ignore[attr-defined]
     assert rejected.status_code == 400
     assert "unsupported tts voice" in rejected.json()["detail"]
     assert config_path.read_text(encoding="utf-8") == before
@@ -1259,7 +1259,7 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert state.semantic_memory is semantic_memory
     assert state.engine.barge_in_detector is barge_in_detector
     first_interruption_factory = (
-        client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks
+        client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks  # type: ignore[attr-defined]
     )
     assert callable(first_interruption_factory)
 
@@ -1282,20 +1282,20 @@ def test_resident_voice_stream_start_stop_endpoints_report_lifecycle_truth() -> 
     assert state.cache_manager is cache_manager
     assert state.semantic_memory is semantic_memory
     assert state.engine.barge_in_detector is barge_in_detector
-    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None
+    assert client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks is None  # type: ignore[attr-defined]
 
     restarted = client.post("/status/resident-voice/start")
     assert restarted.status_code == 200
     assert restarted.json()["stream_running"] is True
     second_interruption_factory = (
-        client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks
+        client.app.state.jarvis_state.session_service.engine().interruption_audio_chunks  # type: ignore[attr-defined]
     )
     assert callable(second_interruption_factory)
     assert second_interruption_factory is not first_interruption_factory
     interruption_chunks = second_interruption_factory()
     assert interruption_chunks is not None
     assert state.resident_audio_stream.status().subscribers == 1
-    interruption_chunks.close()  # type: ignore[attr-defined]
+    interruption_chunks.close()
     assert state.resident_audio_stream.status().subscribers == 0
     assert state.engine is engine
     assert state.session_service.engine() is session_engine is engine
@@ -1382,7 +1382,7 @@ def test_resident_voice_wake_mode_keeps_wake_plus_ptt_available() -> None:
 
 def test_resident_voice_status_reports_ptt_only_wake_inconsistency_without_mutation() -> None:
     client = _client()
-    state = client.app.state.jarvis_state
+    state = client.app.state.jarvis_state  # type: ignore[attr-defined]
     state.resident_voice.set_mode("ptt-only")
     wake_started = client.post("/status/wake/start")
     assert wake_started.status_code == 200
@@ -1490,12 +1490,12 @@ def test_wake_status_reflects_error_state() -> None:
             self.last_score = 0.25
             raise RuntimeError("wake failed")
 
-    client.app.state.jarvis_state.session_service.configure_wake_status(
+    client.app.state.jarvis_state.session_service.configure_wake_status(  # type: ignore[attr-defined]
         provider="openwakeword",
         available=True,
         reason="wake ready",
     )
-    client.app.state.jarvis_state.session_service.process_wake_chunk(WakeRuntime(), np.zeros(4))
+    client.app.state.jarvis_state.session_service.process_wake_chunk(WakeRuntime(), np.zeros(4))  # type: ignore[attr-defined]
     response = client.get("/status/wake")
     assert response.status_code == 200
     payload = response.json()

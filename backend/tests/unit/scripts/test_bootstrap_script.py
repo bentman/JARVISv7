@@ -43,7 +43,7 @@ def _fake_preflight_helpers():
 
 def _fake_profile_context() -> ProfileContext:
     report = _fake_report()
-    return ProfileContext(report=report, profile=report.profile, extras=["dev"])
+    return ProfileContext(report=report, profile=report.profile, extras=["dev"])  # type: ignore[arg-type]
 
 
 def _fake_startup_context() -> StartupContext:
@@ -52,7 +52,7 @@ def _fake_startup_context() -> StartupContext:
         report=profile_context.report,
         profile=profile_context.profile,
         extras=profile_context.extras,
-        preflight=_fake_preflight(),
+        preflight=_fake_preflight(),  # type: ignore[arg-type]
         readiness={
             "stt": ("cpu", True, "stt ready"),
             "tts": ("cpu", True, "tts ready"),

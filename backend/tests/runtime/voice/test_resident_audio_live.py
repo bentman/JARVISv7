@@ -66,7 +66,7 @@ def test_wake_monitor_uses_resident_stream_for_operator_command(tmp_path, capsys
     monitor = WakeMonitorService(
         session_service=service,
         runtime_factory=lambda: OpenWakeWordRuntime(),
-        invocation_callback=lambda source, audio, sample_rate: invocations.append((source, audio, sample_rate)),
+        invocation_callback=lambda source, audio, sample_rate: invocations.append((source, audio, sample_rate)),  # type: ignore[arg-type]
         resident_stream=stream,
         utterance_segmenter=segmenter,
     )

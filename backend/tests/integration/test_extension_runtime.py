@@ -188,8 +188,8 @@ def _acp_engine(runtime: ExtensionRuntimeService, tmp_path: Path) -> tuple[TurnE
         turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions"
     )
     engine = TurnEngine(
-        stt=SimpleNamespace(), tts=SimpleNamespace(), llm=SimpleNamespace(),
-        personality=SimpleNamespace(profile_id="integration"), session_manager=manager,
+        stt=SimpleNamespace(), tts=SimpleNamespace(), llm=SimpleNamespace(),  # type: ignore[arg-type]
+        personality=SimpleNamespace(profile_id="integration"), session_manager=manager,  # type: ignore[arg-type]
         extension_runtime=runtime,
     )
     runtime.session_executor = engine.run_extension
@@ -463,7 +463,7 @@ def test_mcp_tool_hints_classify_effects_without_authorizing_model_calls(
     ]}
     calls = []
     monkeypatch.setattr(runtime, "_mcp", lambda manifest, name, arguments, operation, run_id:
-                        calls.append(name) or {"content": {"content": [{"type": "text", "text": "done"}]}, "trusted": False})
+                        calls.append(name) or {"content": {"content": [{"type": "text", "text": "done"}]}, "trusted": False})  # type: ignore[func-returns-value]
     operations = runtime.detail("mcp:fixture")["operations"]
     for index, (_, expected) in enumerate(cases):
         tool = next(item for item in operations if item["name"] == f"tool:tool{index}")
@@ -837,7 +837,7 @@ def test_an_unknown_call_outcome_is_not_recorded_as_an_ordinary_run_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # ExtensionRuntimeService._handler's own work() wrapper used to catch
-    # SessionCallOutcomeUnknown (a timeout or cancellation leaving SessionManager unable
+    # SessionCallOutcomeUnknownError (a timeout or cancellation leaving SessionManager unable
     # to tell whether the far side already executed the call - backend/app/actions/
     # sessions.py) with the same bare `except Exception`, recording the run as an
     # ordinary "failure" - discarding the exact distinction the exception exists to
@@ -847,7 +847,7 @@ def test_an_unknown_call_outcome_is_not_recorded_as_an_ordinary_run_failure(
     # MCP call timing out, since the shared timeout wiring itself is already proven in
     # sessions.py's own tests.
     from backend.app.actions.boundaries import ActionOperation, ExecutionBoundary
-    from backend.app.actions.sessions import SessionCallOutcomeUnknown
+    from backend.app.actions.sessions import SessionCallOutcomeUnknownError
 
     runtime = _runtime(tmp_path, monkeypatch)
     runtime.write_definition("mcp", "fixture", {
@@ -858,7 +858,7 @@ def test_an_unknown_call_outcome_is_not_recorded_as_an_ordinary_run_failure(
     manifest = next(item for item in runtime.definitions() if f"{item.family}:{item.local_id}" == "mcp:fixture")
 
     def handler(_arguments: dict, _operation: ActionOperation, _run_id: str) -> dict:
-        raise SessionCallOutcomeUnknown("a timeout left the outcome unknown")
+        raise SessionCallOutcomeUnknownError("a timeout left the outcome unknown")
 
     execute = runtime._handler(manifest, "test-op", handler)
     operation = ActionOperation(
@@ -866,7 +866,7 @@ def test_an_unknown_call_outcome_is_not_recorded_as_an_ordinary_run_failure(
         ExecutionBoundary(("data",), 5_000, True, 4_000),
     )
 
-    with pytest.raises(SessionCallOutcomeUnknown):
+    with pytest.raises(SessionCallOutcomeUnknownError):
         execute({}, operation)
 
     run = runtime.runs.list()[0]
@@ -955,7 +955,7 @@ def test_mcp_elicitation_routes_to_the_run_that_triggered_it_not_the_run_that_op
             self._callbacks = callbacks
 
         async def refresh(self, operation: object) -> SimpleNamespace:
-            await self._callbacks.request_elicitation(None, {"message": "need input"})
+            await self._callbacks.request_elicitation(None, {"message": "need input"})  # type: ignore[attr-defined]
             return SimpleNamespace(to_dict=lambda: {"health": "ready"})
 
         async def close(self) -> None:
@@ -1122,7 +1122,7 @@ def test_oauth_forget_closes_the_live_session_so_a_stale_credential_cannot_keep_
     # the same proportionate substitution the reported repro itself used ("synthetic
     # credentials and a fake peer") for a defect that is about session invalidation
     # wiring, not about the OAuth HTTP exchange itself.
-    from backend.app.actions.sessions import SessionHandlers, SessionResourceDied
+    from backend.app.actions.sessions import SessionHandlers, SessionResourceDiedError
     from backend.app.api.routes.extensions import forget_extension_oauth
     from backend.app.extensions.mcp_oauth import McpOAuthToken, save_oauth_token
 
@@ -1175,7 +1175,7 @@ def test_oauth_forget_closes_the_live_session_so_a_stale_credential_cannot_keep_
                 assert "removed locally" in error.value.detail
                 assert "may still be running" in error.value.detail
                 assert runtime.detail(identifier)["connected"] is True
-                with pytest.raises(SessionResourceDied):
+                with pytest.raises(SessionResourceDiedError):
                     runtime._sessions.call(identifier, handlers, work)
                 assert len(closed) == 1
             else:

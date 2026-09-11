@@ -140,7 +140,7 @@ def test_text_only_turns_one_delegates_through_text_service(monkeypatch, capsys)
 
 def test_build_engine_uses_backend_provider_preparation_helper(monkeypatch) -> None:
     context = run_jarvis.StartupContext(
-        report=_fake_report(),
+        report=_fake_report(),  # type: ignore[arg-type]
         profile=_fake_report().profile,
         extras=["dev"],
         preflight=_fake_preflight(),

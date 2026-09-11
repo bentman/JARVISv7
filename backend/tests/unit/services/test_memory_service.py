@@ -223,7 +223,7 @@ def test_lifecycle_mutations_reuse_revisioned_transitions(tmp_path: Path) -> Non
             reason=None,
         )
     assert invalid.value.status_code == 409
-    assert memory.read_fact(pending.fact_id).value.fact.revision == forgotten.record.revision
+    assert memory.read_fact(pending.fact_id).value.fact.revision == forgotten.record.revision  # type: ignore[union-attr]
 
 
 def test_correction_preserves_claim_identity_and_returns_supersession(tmp_path: Path) -> None:

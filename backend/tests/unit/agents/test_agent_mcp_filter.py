@@ -24,7 +24,7 @@ def _profile(**overrides) -> AgentProfile:
         "provider_model_policy": {},
     }
     values.update(overrides)
-    return AgentProfile(**values)
+    return AgentProfile(**values)  # type: ignore[arg-type]
 
 
 def _stdio_connection(connection_id: str, **overrides) -> McpConnectionDefinition:
@@ -40,7 +40,7 @@ def _stdio_connection(connection_id: str, **overrides) -> McpConnectionDefinitio
         },
     }
     values.update(overrides)
-    return McpConnectionDefinition(**values)
+    return McpConnectionDefinition(**values)  # type: ignore[arg-type]
 
 
 # --- AgentMcpPolicy creation ---

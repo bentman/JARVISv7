@@ -913,7 +913,7 @@ def test_verify_family_llm_defaults_to_selected_model(monkeypatch, tmp_path: Pat
     monkeypatch.setattr(
         ensure_models,
         "select_llm_model",
-        lambda route, profile, policy=None: selected.append((route, policy)) or type(
+        lambda route, profile, policy=None: selected.append((route, policy)) or type(  # type: ignore[func-returns-value]
             "Selection",
             (),
             {

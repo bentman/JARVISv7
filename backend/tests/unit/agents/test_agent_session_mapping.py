@@ -35,7 +35,7 @@ def _profile(**overrides) -> AgentProfile:
         "provider_model_policy": {},
     }
     values.update(overrides)
-    return AgentProfile(**values)
+    return AgentProfile(**values)  # type: ignore[arg-type]
 
 
 # --- AgentSessionEvent ---

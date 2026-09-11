@@ -55,7 +55,7 @@ def test_missing_artifact_is_visible_terminal_failure_without_processor_call(
         memory,
         tmp_path / "sessions",
         tmp_path / "turns",
-        processor=lambda evidence: calls.append(evidence),  # type: ignore[arg-type]
+        processor=lambda evidence: calls.append(evidence),
     )
     missing = tmp_path / "sessions" / "session-1" / "session.json"
     memory.enqueue_curation_job(

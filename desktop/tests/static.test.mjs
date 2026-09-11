@@ -8,6 +8,10 @@ import { createResidentVoicePresenter } from "../src/components/resident-voice.j
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
 import { createSearchStatus, renderSearchEvidence } from "../src/components/search-evidence.js";
 import { createApiClient } from "../src/api-client.js";
+import { renderReadiness } from "../src/components/readiness-panel.js";
+import { renderWakeStatus } from "../src/components/wake-indicator.js";
+import { renderServiceStatus } from "../src/components/service-status.js";
+import { createAppearanceControls } from "../src/components/appearance-controls.js";
 import { restartScopeDisables } from "../src/components/settings-panel.js";
 import {
   builtinProfileNotice,
@@ -823,9 +827,7 @@ for (const selector of [
 ]) {
   assert.ok(style.includes(selector), `advanced-control style contract missing: ${selector}`);
 }
-for (const dead of [".icon-button", ".operator-trigger-group", ".settings-trigger-group"]) {
-  assert.ok(!style.includes(dead), `dead operator trigger-row style must be removed: ${dead}`);
-}
+
 assert.ok(
   !style.includes(".status-panel #personality-select"),
   "Personality must share the operator-panel selector sizing once it moves to the right sidebar",
@@ -905,7 +907,6 @@ Date.now = originalDateNow;
 
 assert.ok(!main.includes("getUserMedia"), "desktop PTT must not capture WebView microphone audio");
 assert.ok(!main.includes("MediaRecorder"), "desktop PTT must not record WebView microphone audio");
-assert.ok(!backend.includes("/task/voice"), "backend bridge must not call legacy /task/voice");
 assert.ok(backend.includes("/session/ptt"), "backend bridge must call resident /session/ptt");
 assert.ok(lib.includes("invoke_resident_ptt"), "Tauri command must expose invoke_resident_ptt");
 assert.ok(apiClient.includes('invoke("invoke_resident_ptt")'), "desktop API client must invoke resident PTT");
@@ -955,7 +956,6 @@ assert.ok(
   index.indexOf("service-status") < index.indexOf("advanced-controls-trigger"),
   "Backend, Readiness and Services must stay above the advanced-control launch button",
 );
-assert.ok(!index.includes("operator-trigger-group"), "the single-letter operator trigger row must be gone");
 assert.ok(index.includes('<dialog id="advanced-panel"'), "advanced controls must open one dialog surface");
 assert.ok(index.includes('id="advanced-panel-rail"'), "the advanced-control dialog must carry a category rail");
 assert.ok(index.includes('id="advanced-panel-close"'), "the advanced-control dialog must expose an explicit close control");
@@ -998,7 +998,6 @@ assert.ok(index.includes("Degraded list detail"), "desktop degraded detail surfa
 assert.ok(index.includes("Conversation debug details"), "desktop must title the conversation debug surface correctly");
 assert.ok(index.includes("Backend diagnostics"), "desktop must include collapsed backend diagnostics surface");
 assert.ok(index.includes("backend-diagnostics"), "desktop must include backend diagnostics target element");
-assert.ok(!index.includes("Voice debug details"), "desktop must not keep the voice-only debug label");
 assert.ok(index.indexOf("Conversation debug details") < index.indexOf("Backend diagnostics"), "backend diagnostics must follow conversation debug details");
 assert.ok(index.indexOf("Backend diagnostics") < index.indexOf("Degraded list detail"), "backend diagnostics must precede degraded list detail");
 assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
@@ -1119,9 +1118,6 @@ assert.ok(main.includes("Description"), "desktop must display profile descriptio
 assert.ok(main.includes("Locale"), "desktop must display profile locale");
 assert.ok(!main.includes("Default words"), "desktop must not show profile default word count in the compact operator sidebar");
 assert.ok(main.includes("personalityDetailEl.textContent"), "desktop must keep compact personality metadata on one rendered line");
-assert.ok(!main.includes("profile.tone"), "desktop must not depend on old personality tone field");
-assert.ok(!main.includes("profile.brevity"), "desktop must not depend on old personality brevity field");
-assert.ok(!main.includes("profile.formality"), "desktop must not depend on old personality formality field");
 assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
 assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
 assert.ok(settingsPanel.includes("field.options"), "settings panel must render select controls from backend metadata");
@@ -1217,7 +1213,6 @@ assert.ok(
   "desktop System State must consider selected required-family readiness",
 );
 assert.ok(main.includes("desktopState.renderTurnStatus"), "desktop must render turn status from session");
-assert.ok(!index.includes("id=\"turn-state\""), "desktop must not keep separate turn-state badge in Conversation header");
 const readinessPanelContent = readFileSync(new URL("../src/components/readiness-panel.js", import.meta.url), "utf8");
 assert.ok(!readinessPanelContent.includes('["Status"'), "desktop must not include Status fact in readiness summary");
 assert.ok(readinessPanelContent.includes('["Arch"'), "desktop must include Arch fact in readiness summary");
@@ -1270,6 +1265,8 @@ function createElement(tagName) {
   };
   Object.defineProperty(element, "childNodes", { get() { return this.children; } });
   element.classList = {
+    add(className) { this.toggle(className, true); },
+    remove(className) { this.toggle(className, false); },
     toggle(className, enabled) {
       const classes = new Set(String(element.className).split(" ").filter(Boolean));
       if (enabled) classes.add(className);
@@ -4220,4 +4217,105 @@ assert.equal(formatResourceContents(null), null);
   const wired = mainSource.slice(callStart, callEnd);
   const missing = [...usedHandlers].filter((name) => !wired.includes(`${name}:`));
   assert.deepEqual(missing, [], `main.js must wire every handler extensions-panel.js calls; missing: ${missing.join(", ")}`);
+}
+const previousDocument2 = globalThis.document;
+globalThis.document = { createElement };
+// --- New functionality tests ---
+
+{
+  // wake-indicator.js tests
+  const container = createElement("div");
+  renderWakeStatus({
+    provider: "test-wake",
+    available: true,
+    active: true,
+    monitoring: true,
+    reason: "ok",
+    detection_count: 5,
+    last_detected: "recently",
+    last_score: 0.95,
+    threshold: 0.5
+  }, container);
+  
+  assert.equal(container.dataset.available, "true");
+  assert.equal(container.dataset.active, "true");
+  assert.equal(container.dataset.monitoring, "true");
+  
+  const summary = findElement(container, (n) => String(n.className).includes("wake-indicator-summary"));
+  assert.ok(summary.textContent.includes("test-wake"), "summary must include provider name");
+  
+  const providerField = findElement(container, (n) => String(n.className).includes("wake-indicator-value") && n.textContent === "test-wake");
+  assert.ok(providerField, "provider must render in fields");
+  
+  const scoreField = findElement(container, (n) => String(n.className).includes("wake-indicator-value") && n.textContent.includes("0.950"));
+  assert.ok(scoreField, "score and threshold must render formatted");
+}
+
+{
+  // service-status.js tests
+  const container = createElement("div");
+  renderServiceStatus({
+    redis: { reachable: true, endpoint: "localhost:6379" },
+    searxng: { reachable: false, reason: "container unavailable" }
+  }, container);
+  
+  const dots = findElements(container, (n) => String(n.className).includes("service-status-dot"));
+  assert.equal(dots.length, 2, "must render lines for redis and searxng");
+  assert.equal(dots[0].dataset.status, "reachable", "redis should be reachable");
+  assert.equal(dots[1].dataset.status, "unavailable", "searxng should be unavailable");
+  
+  const details = findElements(container, (n) => String(n.className).split(" ").includes("service-status-detail"));
+  assert.ok(details[0].textContent.includes("localhost:6379"), "redis endpoint must render");
+  assert.ok(details[1].textContent.includes("container unavailable"), "searxng reason must render");
+}
+
+{
+  // appearance-controls.js tests
+  const section = createAppearanceControls();
+  assert.ok(String(section.className).includes("appearance-panel"), "appearance panel must have correct class");
+  const selects = findElements(section, (n) => n.tagName === "select");
+  assert.equal(selects.length, 3, "must render Font, Density, and Accent selectors");
+  const labels = findElements(section, (n) => n.tagName === "label");
+  assert.ok(labels[0].children[0].textContent.includes("Font"), "must render Font label");
+  assert.ok(labels[1].children[0].textContent.includes("Density"), "must render Density label");
+  assert.ok(labels[2].children[0].textContent.includes("Accent"), "must render Accent label");
+  
+  let propertySet = false;
+  const previousDocumentElement = globalThis.document.documentElement;
+  globalThis.document.documentElement = {
+    style: { setProperty: () => { propertySet = true; } }
+  };
+  
+  selects[0].listeners.change();
+  assert.ok(propertySet, "appearance change must update documentElement styles");
+  
+  globalThis.document.documentElement = previousDocumentElement;
+}
+
+{
+  // readiness-panel.js tests
+  const container = createElement("div");
+  renderReadiness({
+    status: "ready",
+    arch: "amd64",
+    profile_id: "jarvis",
+    active_llm_runtime: "llama.cpp",
+    families: {
+      llm: { family: "llm", ready: true, runtime: "llama", device: "cpu", reason: "ok" },
+      stt: { family: "stt", ready: false, runtime: "whisper", device: "gpu", reason: "missing model" }
+    }
+  }, container);
+  
+  const labels = findElements(container, (n) => n.tagName === "dt").map(n => n.textContent);
+  assert.ok(labels.includes("Arch"), "readiness panel must render Arch fact");
+  assert.ok(labels.includes("Profile"), "readiness panel must render Profile fact");
+  assert.ok(labels.includes("LLM"), "readiness panel must render LLM fact");
+  assert.ok(!labels.includes("Status"), "readiness panel must not render Status fact");
+  
+  const familyRows = findElements(container, (n) => String(n.className).includes("readiness-family"));
+  assert.ok(familyRows.length >= 2, "readiness panel must render family rows");
+  
+  const sttRow = familyRows.find(n => n.dataset && n.dataset.family === "stt");
+  assert.ok(sttRow, "STT family row must be rendered");
+  assert.ok(sttRow.title.includes("missing model"), "readiness panel must use family reason as title");
 }

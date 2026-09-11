@@ -135,7 +135,7 @@ Native interaction validation belongs to ADR 0008 and was excluded from this clo
 
 ## Follow-up
 
-- Verify invocation, nested elicitation, answering input, cancellation, and Disconnect in the actual native Tauri application. ADR 0008 owns native interaction validation.
+- Verify invocation, nested elicitation, answering input, cancellation, Disconnect, and session failure (`outcome_unknown`) recovery in the actual native Tauri application. ADR 0008 owns native interaction validation.
 - Add Hook creation/editing by event, effect, target, and arguments, with event history, failure visibility, and disable controls.
 - Add local Plugin install/inspect/enable/disable/remove/retire workflows. Implement any missing bundle-removal contract before exposing removal. Remote sources and arbitrary install scripts require a separate decision.
 - Complete backend validator and desktop contract evidence for the unfinished workflows before marking the ADR implemented.

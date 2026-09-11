@@ -32,7 +32,7 @@ from backend.app.actions.contracts import (
     ExecutionStatus,
     ModelActionProposal,
 )
-from backend.app.actions.sessions import SessionCallOutcomeUnknown
+from backend.app.actions.sessions import SessionCallOutcomeUnknownError
 from backend.app.artifacts.storage import append_action_event
 
 CapabilityHandler = Callable[[dict[str, Any], ActionOperation], dict[str, Any]]
@@ -706,7 +706,7 @@ class CapabilityService:
             )
         except ActionCancelledError:
             status, error = "cancelled", None
-        except SessionCallOutcomeUnknown as exc:
+        except SessionCallOutcomeUnknownError as exc:
             # A timeout or cancellation left the shared session mechanism
             # (backend/app/actions/sessions.py) unable to tell whether the far side
             # already executed this call. Collapsing this into "failure" - as this

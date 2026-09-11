@@ -158,7 +158,7 @@ def test_capture_audio_falls_back_when_resident_stream_is_stopped(monkeypatch) -
         calls.append((frames, samplerate, channels, dtype))
         return np.zeros((frames, channels), dtype=np.float32)
 
-    fake_sounddevice = SimpleNamespace(rec=fake_rec, wait=lambda: calls.append("wait"))
+    fake_sounddevice = SimpleNamespace(rec=fake_rec, wait=lambda: calls.append("wait"))  # type: ignore[arg-type]
     monkeypatch.setitem(__import__("sys").modules, "sounddevice", fake_sounddevice)
 
     audio, sample_rate = capture_audio(0.1, sample_rate=16000, resident_stream=stream)

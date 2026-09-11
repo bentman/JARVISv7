@@ -92,7 +92,7 @@ def invoke_agent(
     service: CapabilityService = Depends(_get_capability_service),
 ) -> AgentInvokeResponse:
     try:
-        view = service.propose(
+        view = service.invoke_operator_capability(
             capability_id=f"agent-invoke-{request.profile_id}",
             arguments={"prompt": request.prompt},
             proposed_by="operator",

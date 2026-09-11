@@ -109,13 +109,13 @@ No backend route, Tauri command, or API-client route change was made. `backend/a
 
 Validated on `linux-amd64` (WSL2):
 
-- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, `agentRunProfileId`, honest invoke/cancel reporting, stale-response ordering, provider default selection, post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, and the advanced-control style contract.
+- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, `agentRunProfileId`, honest invoke/cancel reporting, stale-response ordering, provider default selection, post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, appearance controls, and the advanced-control style contract.
 - `cargo check --manifest-path desktop/src-tauri/Cargo.toml` — `PASS`. `Finished \`dev\` profile ... in 36.12s`, confirming no Tauri-side change was introduced.
 - Live desktop session — `SKIPPED`. Native WebView2 behavior was not exercised on this host.
 
 Validated on `windows-amd64`:
 
-- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers compact Personality metadata, right-sidebar scroll ownership, advanced-control category registration, Extensions list/detail split, and single dialog-level Close control.
+- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers compact Personality metadata, right-sidebar scroll ownership, advanced-control category registration, Extensions list/detail split, appearance controls, and single dialog-level Close control.
 - `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_capability_service.py backend\tests\unit\api\test_llm_config_routes.py backend\tests\unit\services\test_llm_provider_profiles.py` — `PASS`, 51 passed. Covers provider profile writes as direct local actions and provider profile storage/routes.
 
 ## Follow-up

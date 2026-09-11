@@ -48,7 +48,7 @@ def test_installs_a_local_bundle_atomically_and_reports_hash_evidence(tmp_path: 
     _bundle(config)
     installer = PluginInstaller(config, data)
 
-    result = installer.install(_manifest(), _operation())
+    result = installer.install(_manifest(), _operation())  # type: ignore[arg-type]
 
     destination = data / "extensions" / "plugins" / "release-tools"
     assert result["status"] == "installed"
@@ -67,14 +67,14 @@ def test_same_bundle_is_idempotent_but_a_changed_destination_is_rejected(tmp_pat
     _bundle(config)
     installer = PluginInstaller(config, data)
 
-    assert installer.install(_manifest(), _operation())["status"] == "installed"
-    assert installer.install(_manifest(), _operation())["status"] == "already_installed"
+    assert installer.install(_manifest(), _operation())["status"] == "installed"  # type: ignore[arg-type]
+    assert installer.install(_manifest(), _operation())["status"] == "already_installed"  # type: ignore[arg-type]
     (data / "extensions" / "plugins" / "release-tools" / "mcp" / "release-notes.yaml").write_text(
         "changed", encoding="utf-8"
     )
 
     with pytest.raises(ValueError, match="destination collision"):
-        installer.install(_manifest(), _operation())
+        installer.install(_manifest(), _operation())  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("source", ["../escape", "/tmp/escape"])
@@ -99,7 +99,7 @@ def test_refuses_a_symlink_in_the_bundle(tmp_path: Path) -> None:
     symlink_or_skip(outside, bundle / "mcp" / "escape.yaml")
 
     with pytest.raises(ValueError, match="contains a symlink"):
-        PluginInstaller(config, data).install(_manifest(), _operation())
+        PluginInstaller(config, data).install(_manifest(), _operation())  # type: ignore[arg-type]
 
 
 def test_cancelled_install_removes_its_temporary_directory(tmp_path: Path) -> None:
@@ -109,7 +109,7 @@ def test_cancelled_install_removes_its_temporary_directory(tmp_path: Path) -> No
     operation.cancel.set()
 
     with pytest.raises(ActionCancelledError, match="action cancelled"):
-        PluginInstaller(config, data).install(_manifest(), operation)
+        PluginInstaller(config, data).install(_manifest(), operation)  # type: ignore[arg-type]
 
     assert not (data / "extensions" / "plugins" / "release-tools").exists()
     root = data / "extensions" / "plugins"

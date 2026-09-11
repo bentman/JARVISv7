@@ -383,7 +383,7 @@ def test_prepare_managed_local_llm_starts_managed_sidecar_and_returns_wired_runt
 
 
 def test_wait_for_llama_cpp_ready_reports_health_and_models_phase_durations(monkeypatch) -> None:
-    monotonic_values = iter((0.0, 0.0, 0.001, 0.004, 0.005, 0.011))
+    monotonic_values = iter((0.0, 0.0, 0.001, 0.004, 0.005, 0.011, 0.020, 0.020, 0.020, 0.020, 0.020, 0.020))
     monkeypatch.setattr(local_llm_startup.time, "monotonic", lambda: next(monotonic_values))
     monkeypatch.setattr(
         local_llm_startup.httpx,

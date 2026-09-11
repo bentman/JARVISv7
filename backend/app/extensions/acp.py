@@ -12,7 +12,7 @@ import acp
 from acp.schema import AllowedOutcome, DeniedOutcome, Implementation, RequestPermissionResponse
 from backend.app.actions.boundaries import ActionOperation, BoundaryViolationError, ProcessBoundary
 from backend.app.actions.process import _stop_process_tree
-from backend.app.actions.sessions import SessionHandlers, SessionManager, SessionResourceDied
+from backend.app.actions.sessions import SessionHandlers, SessionManager, SessionResourceDiedError
 
 ACP_PROTOCOL_VERSION = acp.PROTOCOL_VERSION
 _DEFINITION_KEYS = {"command", "process"}
@@ -52,7 +52,7 @@ class _AcpSession:
     process: Any
     session_id: str
     agent_capabilities: Any
-    client: "_JarvisAcpClient"
+    client: _JarvisAcpClient
 
 
 def run_acp(
@@ -151,7 +151,7 @@ def run_acp(
     async def terminate_session(session: _AcpSession) -> None:
         # Reached two ways: a call did not finish draining (the process may still be
         # alive, possibly hung), or the session-lifecycle mechanism is evicting a
-        # connection a call already reported dead (SessionResourceDied - the process is
+        # connection a call already reported dead (SessionResourceDiedError - the process is
         # already gone). Either way, the SDK's own in-memory connection object (its
         # sender/receiver background tasks) still needs closing, or those tasks leak as
         # pending work - a bounded, best-effort attempt first, since a graceful exit
@@ -194,7 +194,7 @@ def run_acp(
             # against the same now-unusable connection.
             with suppress(Exception):
                 await asyncio.wait_for(session.connection.cancel(session.session_id), timeout=1)
-            raise SessionResourceDied(f"ACP connection died during prompt: {exc}") from exc
+            raise SessionResourceDiedError(f"ACP connection died during prompt: {exc}") from exc
         except BaseException:
             with suppress(Exception):
                 await asyncio.wait_for(session.connection.cancel(session.session_id), timeout=1)

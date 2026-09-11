@@ -160,7 +160,7 @@ class FakeEpisodic(EpisodicMemory):
         self.calls = 0
         self.raise_on_write = False
 
-    def write_entry(self, artifact, policy):  # type: ignore[override]
+    def write_entry(self, artifact, policy):
         self.calls += 1
         if self.raise_on_write:
             raise RuntimeError("episodic failed")
@@ -707,7 +707,7 @@ def test_engine_calls_retrieval_when_episodic_is_set(tmp_path: Path) -> None:
 
     assert result.final_state == ConversationState.IDLE
     assert retrieval.calls == [("hello", 3, episodic)]
-    assert "Relevant prior context:" in engine.llm.prompts[0]
+    assert "Relevant prior context:" in engine.llm.prompts[0]  # type: ignore[attr-defined]
 
 
 def test_engine_skips_retrieval_when_episodic_is_none() -> None:
@@ -729,7 +729,7 @@ def test_engine_skips_retrieval_when_episodic_is_none() -> None:
 
     assert result.final_state == ConversationState.IDLE
     assert retrieval.calls == []
-    assert "Relevant prior context:" not in engine.llm.prompts[0]
+    assert "Relevant prior context:" not in engine.llm.prompts[0]  # type: ignore[attr-defined]
 
 
 def test_engine_populates_retrieved_memory_refs_in_artifact(tmp_path: Path) -> None:
@@ -811,7 +811,7 @@ def test_engine_retrieval_failure_does_not_fail_turn_and_is_logged(tmp_path: Pat
     assert result.final_state == ConversationState.IDLE
     assert result.failure_reason is None
     assert retrieval.calls == [("hello", 3, episodic)]
-    assert "Relevant prior context:" not in engine.llm.prompts[0]
+    assert "Relevant prior context:" not in engine.llm.prompts[0]  # type: ignore[attr-defined]
     assert "memory retrieval failed" in caplog.text
 
 
@@ -1046,7 +1046,7 @@ def test_tts_synthesis_resolves_before_playback_starts():
     # Turn without interruption monitor (regular play)
     engine = _engine(
         tts=TrackedTTS(available=True),
-        playback_api=TrackedPlayback(),
+        playback_api=TrackedPlayback(),  # type: ignore[arg-type]
     )
     engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
@@ -1059,7 +1059,7 @@ def test_tts_synthesis_resolves_before_playback_starts():
         tts=TrackedTTS(available=True),
         barge_in_detector=detector,
         interruption_audio_chunks=[np.zeros(8, dtype=np.float32)],
-        playback_api=TrackedPlayback(),
+        playback_api=TrackedPlayback(),  # type: ignore[arg-type]
     )
     engine_with_monitor.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
@@ -1123,7 +1123,7 @@ def test_partial_tts_playback_starts_before_synthesis_completes():
 
     engine = _engine(
         tts=StreamingTTS(available=True),
-        playback_api=TrackingPlaybackAPI(),
+        playback_api=TrackingPlaybackAPI(),  # type: ignore[arg-type]
     )
     result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 
@@ -1220,7 +1220,7 @@ def test_streaming_playback_start_failure_reports_playback_failure_phase():
         tts=StreamingTTS(available=True),
         barge_in_detector=BargeInDetector(),
         interruption_audio_chunks=lambda: interruption_source,
-        playback_api=FailingPlaybackAPI(),
+        playback_api=FailingPlaybackAPI(),  # type: ignore[arg-type]
     )
     result = engine.run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
 

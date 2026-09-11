@@ -290,7 +290,7 @@ class TestOAuthTokenPersistence:
         mock_response.__exit__ = MagicMock(return_value=False)
         with patch("urllib.request.urlopen", return_value=mock_response):
             assert resolve_oauth_bearer(store, "test-conn", oauth) == "refreshed-token"
-        assert load_oauth_token(store, "test-conn").access_token == "refreshed-token"
+        assert load_oauth_token(store, "test-conn").access_token == "refreshed-token"  # type: ignore[union-attr]
 
     def test_an_expired_token_without_a_refresh_token_requires_reconnection(self) -> None:
         store = _FakeSecretStore()

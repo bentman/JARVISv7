@@ -40,9 +40,9 @@ def engine_at(tmp_path, model=None, providers=None):
             return PageResult(url, "success", "Public page evidence")
     manager = SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
     engine = TurnEngine(
-        stt=STT(), tts=TTS(), llm=model or Model(), personality=load_default_personality(),
+        stt=STT(), tts=TTS(), llm=model or Model(), personality=load_default_personality(),  # type: ignore[arg-type]
         session_manager=manager, llm_coordinator=LLMExecutionCoordinator(),
-        search_service=SearchService(providers if providers is not None else [Provider("ddgs", SearchResponse("success", (result(),)), [])], Reader()),
+        search_service=SearchService(providers if providers is not None else [Provider("ddgs", SearchResponse("success", (result(),)), [])], Reader()),  # type: ignore[arg-type]
     )
     return engine, manager
 

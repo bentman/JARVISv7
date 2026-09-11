@@ -54,7 +54,7 @@ def test_activate_qnn_execution_provider_registers_packaged_provider(monkeypatch
     monkeypatch.setattr(
         qnn_provider.os,
         "add_dll_directory",
-        lambda path: added_dll_dirs.append(path) or SimpleNamespace(close=lambda: None),
+        lambda path: added_dll_dirs.append(path) or SimpleNamespace(close=lambda: None),  # type: ignore[func-returns-value]
         raising=False,
     )
 

@@ -98,7 +98,7 @@ def test_strict_parser_rejects_recovered_or_nonstandard_json(raw_output: str) ->
 def test_strict_parser_rejects_unknown_nested_and_model_judgment_fields() -> None:
     candidate = _candidate()
     evidence = candidate["evidence_refs"][0]  # type: ignore[index]
-    evidence["unknown"] = "value"  # type: ignore[index]
+    evidence["unknown"] = "value"
     with pytest.raises(ProposalContractError, match="evidence reference fields"):
         parse_model_proposals(_raw(candidate))
 

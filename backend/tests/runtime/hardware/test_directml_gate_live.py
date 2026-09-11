@@ -10,7 +10,7 @@ from backend.tests.conftest import SKIP_UNLESS_DIRECTML, SKIP_UNLESS_LIVE
 
 def _whisper_encoder_model_path() -> Path:
     entry = get_model_entry("stt", "whisper-small-onnx")
-    return entry.path / "encoder_model.onnx"
+    return entry.path / "encoder_model.onnx"  # type: ignore[attr-defined]
 
 
 @pytest.mark.live

@@ -85,7 +85,7 @@ def test_kokoro_runtime_uses_custom_session_for_accelerated_device(monkeypatch, 
         def from_session(cls, session, voices_path):
             from_session_calls.append((session, voices_path))
             instance = cls.__new__(cls)
-            instance.sess = session
+            instance.sess = session  # type: ignore[attr-defined]
             return instance
 
         def create(self, text, *, voice):
@@ -129,7 +129,7 @@ def test_kokoro_runtime_uses_custom_session_for_qnn_device(monkeypatch, tmp_path
         def from_session(cls, session, voices_path):
             from_session_calls.append((session, voices_path))
             instance = cls.__new__(cls)
-            instance.sess = session
+            instance.sess = session  # type: ignore[attr-defined]
             return instance
 
         def create(self, text, *, voice):

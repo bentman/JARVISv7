@@ -29,7 +29,7 @@ def descriptor(**overrides) -> ExtensionDescriptor:
         "availability": "available",
     }
     values.update(overrides)
-    return ExtensionDescriptor(**values)
+    return ExtensionDescriptor(**values)  # type: ignore[arg-type]
 
 
 def test_extension_id_must_name_its_family_and_local_id() -> None:

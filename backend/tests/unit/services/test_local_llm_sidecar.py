@@ -39,7 +39,7 @@ class _SlowStopProcess(_FakeProcess):
     def wait(self, timeout: float | None = None) -> int:
         self.wait_calls += 1
         if self.terminated and not self.killed:
-            raise subprocess.TimeoutExpired(cmd="llama-server", timeout=timeout)
+            raise subprocess.TimeoutExpired(cmd="llama-server", timeout=timeout)  # type: ignore[arg-type]
         return 0
 
 
@@ -341,7 +341,7 @@ def test_invalid_base_url_fails_before_command_is_returned(tmp_path: Path) -> No
 def test_lifecycle_start_uses_mocked_process_creation_and_records_status(tmp_path: Path) -> None:
     calls: list[list[str]] = []
     process = _FakeProcess(pid=2468)
-    service = LocalLLMSidecarService(process_factory=lambda argv: calls.append(argv) or process)
+    service = LocalLLMSidecarService(process_factory=lambda argv: calls.append(argv) or process)  # type: ignore[func-returns-value]
     resolution = _resolution(tmp_path)
 
     status = service.start(resolution)
@@ -394,7 +394,7 @@ def test_default_process_factory_uses_binary_parent_as_working_directory(
 def test_lifecycle_start_is_idempotent_for_same_running_profile(tmp_path: Path) -> None:
     calls: list[list[str]] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=1111)
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=1111)  # type: ignore[func-returns-value]
     )
     resolution = _resolution(tmp_path)
 
@@ -502,7 +502,7 @@ def test_process_matching_rejects_same_name_at_different_concrete_path(tmp_path:
                 "name": "llama-server.exe",
             }
 
-    assert local_llm_sidecar._process_matches_binary(HostProcess(), selected_binary) is False
+    assert local_llm_sidecar._process_matches_binary(HostProcess(), selected_binary) is False  # type: ignore[arg-type]
 
 
 def test_process_matching_accepts_exact_concrete_path(tmp_path: Path) -> None:
@@ -516,7 +516,7 @@ def test_process_matching_accepts_exact_concrete_path(tmp_path: Path) -> None:
                 "name": "llama-server.exe",
             }
 
-    assert local_llm_sidecar._process_matches_binary(HostProcess(), selected_binary) is True
+    assert local_llm_sidecar._process_matches_binary(HostProcess(), selected_binary) is True  # type: ignore[arg-type]
 
 
 def test_lifecycle_start_failure_reports_degraded_reason(tmp_path: Path) -> None:
@@ -536,7 +536,7 @@ def test_lifecycle_start_failure_reports_degraded_reason(tmp_path: Path) -> None
 def test_lifecycle_start_with_missing_command_inputs_reports_degraded_without_spawn(tmp_path: Path) -> None:
     calls: list[list[str]] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess()
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess()  # type: ignore[func-returns-value]
     )
 
     status = service.start(_resolution(tmp_path, binary_exists=False))
@@ -550,7 +550,7 @@ def test_lifecycle_start_with_missing_command_inputs_reports_degraded_without_sp
 def test_lifecycle_changed_profile_reports_restart_required(tmp_path: Path) -> None:
     calls: list[list[str]] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=3333)
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=3333)  # type: ignore[func-returns-value]
     )
     service.start(_resolution(tmp_path, profile_id="windows_amd64_cpu"))
 
@@ -659,7 +659,7 @@ def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(
     calls: list[list[str]] = []
 
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),  # type: ignore[func-returns-value]
     )
 
     # Mock the endpoint probe to return healthy
@@ -691,8 +691,8 @@ def test_endpoint_adoption_status_remains_running_while_endpoint_is_healthy(
     calls: list[list[str]] = []
     health_checks: list[str] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),
-        health_probe=lambda base_url: health_checks.append(base_url) or (True, f"healthy:{base_url}"),
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),  # type: ignore[func-returns-value]
+        health_probe=lambda base_url: health_checks.append(base_url) or (True, f"healthy:{base_url}"),  # type: ignore[func-returns-value]
     )
 
     monkeypatch.setattr(
@@ -748,7 +748,7 @@ def test_endpoint_adoption_stop_clears_adoption_without_reaping_external_process
     reaped: list[Path] = []
     port_reaped: list[tuple[int, str, float]] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: spawned.append(argv) or _FakeProcess(),
+        process_factory=lambda argv: spawned.append(argv) or _FakeProcess(),  # type: ignore[func-returns-value]
         health_probe=lambda base_url: (True, f"healthy:{base_url}"),
         process_reaper=lambda path, timeout: reaped.append(path),
     )
@@ -803,7 +803,7 @@ def test_endpoint_adoption_restart_attempts_transition_without_reaping_external_
         lambda port, binary_name, timeout: port_reaped.append((port, binary_name, timeout)),
     )
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: spawned.append(argv) or _FakeProcess(pid=9876),
+        process_factory=lambda argv: spawned.append(argv) or _FakeProcess(pid=9876),  # type: ignore[func-returns-value]
         process_reaper=lambda path, timeout: binary_reaped.append(path),
     )
 
@@ -826,7 +826,7 @@ def test_endpoint_adoption_spawns_when_endpoint_unhealthy(
     calls: list[list[str]] = []
 
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=4321),
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=4321),  # type: ignore[func-returns-value]
     )
 
     # Mock the endpoint probe to return unhealthy
@@ -851,7 +851,7 @@ def test_endpoint_adoption_verifies_model_matching_successfully(
 ) -> None:
     calls: list[list[str]] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(),  # type: ignore[func-returns-value]
     )
 
     # Mock the endpoint probe to return healthy and match model ID
@@ -881,7 +881,7 @@ def test_endpoint_adoption_fails_when_model_mismatches(
 ) -> None:
     calls: list[list[str]] = []
     service = LocalLLMSidecarService(
-        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=999),
+        process_factory=lambda argv: calls.append(argv) or _FakeProcess(pid=999),  # type: ignore[func-returns-value]
     )
 
     # Mock the endpoint probe to return model mismatch

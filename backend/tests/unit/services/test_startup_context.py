@@ -48,7 +48,7 @@ def test_load_profile_context_resolves_report_profile_and_extras(monkeypatch) ->
 
 def test_complete_startup_context_runs_preflight_and_derives_readiness(monkeypatch) -> None:
     report = _fake_report()
-    profile_context = startup_context.ProfileContext(report=report, profile=report.profile, extras=["dev"])
+    profile_context = startup_context.ProfileContext(report=report, profile=report.profile, extras=["dev"])  # type: ignore[arg-type]
     preflight = _fake_preflight()
 
     monkeypatch.setattr(
@@ -73,7 +73,7 @@ def test_complete_startup_context_runs_preflight_and_derives_readiness(monkeypat
 def test_readiness_summary_reports_probe_error_degradation() -> None:
     report = _fake_report()
     context = startup_context.StartupContext(
-        report=report,
+        report=report,  # type: ignore[arg-type]
         profile=report.profile,
         extras=["dev"],
         preflight=_fake_preflight(probe_errors={"import:missing": "missing"}),
@@ -86,7 +86,7 @@ def test_readiness_summary_reports_probe_error_degradation() -> None:
 def test_selected_path_summary_preserves_qnn_probe_error_guard() -> None:
     report = _fake_report()
     context = startup_context.StartupContext(
-        report=report,
+        report=report,  # type: ignore[arg-type]
         profile=report.profile,
         extras=["dev"],
         preflight=_fake_preflight(probe_errors={"onnxruntime.qnn.ep": "missing"}),

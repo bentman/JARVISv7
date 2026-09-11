@@ -49,19 +49,7 @@ class DaemonMetadata:
             "health": self.health,
         }
 
-    def public_status(self) -> dict[str, Any]:
-        return {
-            "service": DAEMON_SERVICE,
-            "base_url": self.base_url,
-            "host": self.host,
-            "port": self.port,
-            "pid": self.pid,
-            "repo_root": self.repo_root,
-            "started_at": self.started_at,
-            "owner": self.owner,
-            "health": self.health,
-            "token_present": bool(self.token),
-        }
+
 
 
 class DaemonRegistry:

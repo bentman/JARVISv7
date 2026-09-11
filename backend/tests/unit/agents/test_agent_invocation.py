@@ -187,7 +187,7 @@ def _invoke_client(result: dict[str, Any], modes: tuple[str, ...] = ("direct",))
     engine.run_agent.return_value = AgentInvocationResult(**result)
     service = CapabilityService(
         observe=lambda: CapabilityObservation(
-            agents=(tuple(registry.to_capability_records()[0]),)
+            agents=(tuple(registry.to_capability_records()[0]),)  # type: ignore[arg-type]
         )
     )
     service.bind_handler_provider(

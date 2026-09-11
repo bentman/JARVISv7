@@ -101,7 +101,7 @@ def test_turn_boundary_capabilities_cannot_be_proposed_through_the_api() -> None
 def test_an_approval_required_proposal_parks_without_executing() -> None:
     calls: list[dict] = []
     client = _client(
-        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     )
 
     response = client.post("/actions/propose", json=_forget_payload(proposed_by="model"))
@@ -120,7 +120,7 @@ def test_an_approval_required_proposal_parks_without_executing() -> None:
 def test_approval_executes_once_and_a_second_decision_is_refused() -> None:
     calls: list[dict] = []
     client = _client(
-        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     )
     proposal_id = client.post("/actions/propose", json=_forget_payload()).json()["proposal_id"]
 
@@ -140,7 +140,7 @@ def test_approval_executes_once_and_a_second_decision_is_refused() -> None:
 def test_a_denied_decision_never_executes() -> None:
     calls: list[dict] = []
     client = _client(
-        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})
+        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     )
     proposal_id = client.post("/actions/propose", json=_forget_payload()).json()["proposal_id"]
 
@@ -158,7 +158,7 @@ def test_an_unavailable_capability_is_denied_with_the_operator_facing_explanatio
     client = _client(
         _service(
             CapabilityObservation(memory_service_present=False),
-            **{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}},
+            **{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}},  # type: ignore[func-returns-value]
         )
     )
 
@@ -170,7 +170,7 @@ def test_an_unavailable_capability_is_denied_with_the_operator_facing_explanatio
 
 
 def test_a_cancelled_proposal_reports_cancellation_once() -> None:
-    client = _client(_service(**{MEMORY_RECORD_FORGET: lambda args, op: {"ok": True}}))
+    client = _client(_service(**{MEMORY_RECORD_FORGET: lambda args, op: {"ok": True}}))  # type: ignore[arg-type]
     proposal_id = client.post("/actions/propose", json=_forget_payload()).json()["proposal_id"]
 
     first = client.post(f"/actions/{proposal_id}/cancel")
@@ -202,7 +202,7 @@ def test_action_requests_reject_unknown_fields() -> None:
 
 
 def test_secret_arguments_never_appear_in_responses_or_the_audit() -> None:
-    client = _client(_service(**{PROVIDER_PROFILE_WRITE: lambda args, op: {"ok": True}}))
+    client = _client(_service(**{PROVIDER_PROFILE_WRITE: lambda args, op: {"ok": True}}))  # type: ignore[arg-type]
 
     parked = client.post(
         "/actions/propose",
@@ -231,7 +231,7 @@ def test_handler_failures_return_a_recorded_result_without_leaking_internals() -
     def handler(args: dict, op: ActionOperation) -> dict:
         raise OSError("C:/private/memory.sqlite is locked by internal-vectorizer")
 
-    client = _client(_service(**{MEMORY_RECORD_CONFIRM: handler}))
+    client = _client(_service(**{MEMORY_RECORD_CONFIRM: handler}))  # type: ignore[arg-type]
 
     response = client.post(
         "/actions/propose",

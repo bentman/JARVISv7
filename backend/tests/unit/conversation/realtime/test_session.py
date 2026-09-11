@@ -66,7 +66,7 @@ def test_realtime_voice_invocation_delegates_committed_turn_and_records_order(tm
     engine = _FakeEngine()
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
 
     session.run_voice_invocation(
@@ -103,7 +103,7 @@ def test_realtime_voice_invocation_publishes_live_engine_phase_status(tmp_path: 
     engine = _PhaseReportingEngine(service)
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
 
     session.run_voice_invocation(
@@ -130,7 +130,7 @@ def test_realtime_degraded_tts_response_does_not_record_speech_events(tmp_path: 
     )
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
 
     session.run_voice_invocation(
@@ -154,7 +154,7 @@ def test_realtime_wake_audio_uses_payload_without_capture(tmp_path: Path) -> Non
     engine = _FakeEngine()
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
     wake_audio = np.arange(4, dtype=np.float32)
 
@@ -175,7 +175,7 @@ def test_realtime_wake_passes_capture_diagnostics_with_exact_invocation(tmp_path
     engine = _FakeEngine()
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
     diagnostics = {"reason": "silence", "chunks": 7, "speech_chunks": 4}
 
@@ -214,7 +214,7 @@ def test_realtime_wake_empty_transcript_maps_no_speech_failure(tmp_path: Path) -
     )
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
 
     result = session.run_voice_invocation(
@@ -243,7 +243,7 @@ def test_realtime_barge_in_empty_transcript_recovers_to_idle(tmp_path: Path) -> 
     )
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
 
     result = session.run_voice_invocation(
@@ -265,7 +265,7 @@ def test_realtime_capture_failure_records_failed_status_and_event(tmp_path: Path
     service = _service(tmp_path)
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(),  # type: ignore[return-value, arg-type]
     )
 
     try:
@@ -298,7 +298,7 @@ def test_realtime_interrupted_turn_records_recovery_boundary(tmp_path: Path) -> 
     )
     session = RealtimeConversationSession(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
     )
 
     result = session.run_voice_invocation(

@@ -354,9 +354,9 @@ def test_acp_sdk_a_prompt_against_a_killed_agent_process_evicts_the_connection(
         time.sleep(0.05)
     assert not psutil.pid_exists(pid)
 
-    from backend.app.actions.sessions import SessionResourceDied
+    from backend.app.actions.sessions import SessionResourceDiedError
 
-    with pytest.raises(SessionResourceDied):
+    with pytest.raises(SessionResourceDiedError):
         run_acp(
             sessions, definition, "hello again", _operation(timeout_ms=20_000),
             on_event=lambda _event: None, request_permission=lambda _request: None,
@@ -422,9 +422,9 @@ def test_acp_sdk_resumes_the_prior_session_after_the_process_is_killed(
         time.sleep(0.05)
     assert not psutil.pid_exists(pid)
 
-    from backend.app.actions.sessions import SessionResourceDied
+    from backend.app.actions.sessions import SessionResourceDiedError
 
-    with pytest.raises(SessionResourceDied):
+    with pytest.raises(SessionResourceDiedError):
         run_acp(
             sessions, definition, "hello again", _operation(timeout_ms=20_000),
             on_event=lambda _event: None, request_permission=lambda _request: None,

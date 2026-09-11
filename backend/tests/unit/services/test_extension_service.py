@@ -43,7 +43,7 @@ def service(tmp_path: Path, **observation) -> ExtensionService:
         "search_providers": (("ddgs", True), ("searxng", False)),
     }
     values.update(observation)
-    observed = ExtensionObservation(**values)
+    observed = ExtensionObservation(**values)  # type: ignore[arg-type]
     return ExtensionService(
         observe=lambda: observed,
         store=ExtensionOverlayStore(db_path=tmp_path / "operator.sqlite"),

@@ -80,7 +80,7 @@ def test_ptt_invocation_runs_canonical_voice_turn_and_records_status(tmp_path: P
     service = _service(tmp_path)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
 
@@ -124,7 +124,7 @@ def test_ptt_no_speech_after_success_does_not_reuse_stale_completion(tmp_path: P
     stream.start()
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -163,7 +163,7 @@ def test_ptt_uses_streamed_utterance_when_resident_stream_is_available(tmp_path:
     stream.start()
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -202,7 +202,7 @@ def test_ptt_uses_resident_stream_buffer_for_manual_pre_roll(tmp_path: Path) -> 
     stream.start()
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -234,7 +234,7 @@ def test_streamed_ptt_no_speech_records_failure_without_committing_audio(tmp_pat
     stream.start()
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -265,7 +265,7 @@ def test_ptt_only_mode_falls_back_to_blocking_capture_when_stream_is_stopped(tmp
     stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -285,7 +285,7 @@ def test_wake_capable_mode_fails_visibly_when_required_stream_is_stopped(tmp_pat
     stream = ResidentAudioStream(sample_rate=16000, chunk_samples=4)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -305,9 +305,9 @@ def test_invocation_suspends_and_resumes_wake_monitor_hooks(tmp_path: Path) -> N
     service = _service(tmp_path)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
-        before_invocation=lambda: calls.append("pause") or True,
+        before_invocation=lambda: calls.append("pause") or True,  # type: ignore[func-returns-value]
         after_invocation=lambda should_resume: calls.append(f"resume:{should_resume}"),
     )
 
@@ -327,7 +327,7 @@ def test_resume_hook_failure_does_not_stop_later_invocations(tmp_path: Path) -> 
 
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
         before_invocation=lambda: True,
         after_invocation=resume_error,
@@ -347,7 +347,7 @@ def test_wake_and_ptt_enqueue_same_invocation_service(tmp_path: Path) -> None:
     service = _service(tmp_path)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
     original_enqueue = resident.enqueue
@@ -380,7 +380,7 @@ def test_interrupted_ptt_queues_barge_in_follow_up_through_resident_service(tmp_
     )
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls, interrupted if len(calls) == 0 else None),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls, interrupted if len(calls) == 0 else None),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -420,7 +420,7 @@ def test_interrupted_non_barge_mode_does_not_queue_barge_in_follow_up(tmp_path: 
     )
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
     resident.set_mode(mode)
@@ -460,7 +460,7 @@ def test_non_barge_mode_temporarily_disables_engine_interruption_monitor(tmp_pat
     engine = InspectingEngine(calls)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
     resident.set_mode(mode)
@@ -562,7 +562,7 @@ def test_interrupted_barge_in_does_not_recursively_queue_follow_up(tmp_path: Pat
     )
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls, interrupted),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
 
@@ -584,7 +584,7 @@ def test_wake_invocation_uses_provided_audio_without_new_capture(tmp_path: Path)
 
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=capture_error,
     )
 
@@ -677,7 +677,7 @@ def test_capture_failure_records_failed_voice_status(tmp_path: Path) -> None:
 
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value, arg-type]
         audio_capture=capture_error,
     )
 
@@ -704,7 +704,7 @@ def test_wake_empty_transcript_reports_no_speech_detected(tmp_path: Path) -> Non
     )
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine([], empty_result),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine([], empty_result),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
 
@@ -721,7 +721,7 @@ def test_wake_empty_audio_reports_no_speech_without_fallback_capture(tmp_path: P
     service = _service(tmp_path)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine(calls),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("empty wake audio should not recapture")),
     )
 
@@ -746,7 +746,7 @@ def test_ptt_empty_transcript_keeps_stt_failure_reason(tmp_path: Path) -> None:
     )
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine([], empty_result),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine([], empty_result),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
     )
 
@@ -767,7 +767,7 @@ def test_no_speech_voice_paths_release_registered_llm_ticket(
     service = _service(tmp_path)
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value]
+        engine_provider=lambda: _FakeEngine([]),  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (np.ones(8, dtype=np.float32), 16000),
         llm_coordinator=coordinator,
     )

@@ -14,6 +14,7 @@ adapter that calls this module, not by this module.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -33,16 +34,16 @@ DEFAULT_DRAIN_SECONDS = 1.0
 _NO_SEPARATE_TERMINATE_SECONDS = 10.0
 
 
-class SessionResourceDied(Exception):
+class SessionResourceDiedError(Exception):
     """An opener or call raises this to tell the manager its resource is unusable.
 
     The manager evicts the resource so the next call opens a fresh one under the same
     connection id. Raising this says nothing about whether the operation that raised it
-    executed on the far side before the resource died - see `SessionCallOutcomeUnknown`.
+    executed on the far side before the resource died - see `SessionCallOutcomeUnknownError`.
     """
 
 
-class SessionCallOutcomeUnknown(Exception):
+class SessionCallOutcomeUnknownError(Exception):
     """A call's resource died, was cancelled, or was terminated while it was in flight.
 
     Whether the far side already executed the call before that happened is unknown - it
@@ -85,7 +86,7 @@ class SessionHandlers(Generic[R]):
 
 
 class _Connection(Generic[R]):
-    __slots__ = ("handlers", "resource", "lock", "current_task", "closed", "teardown_attempted")
+    __slots__ = ("closed", "current_task", "handlers", "lock", "resource", "teardown_attempted")
 
     def __init__(self, handlers: SessionHandlers[R]) -> None:
         self.handlers = handlers
@@ -174,9 +175,9 @@ class SessionManager:
         """Dispatch `work` against the connection's resource on the shared loop.
 
         Opens the resource first if this connection has none yet. Evicts the resource
-        if `work` raises `SessionResourceDied`, so the next call reopens a fresh one
+        if `work` raises `SessionResourceDiedError`, so the next call reopens a fresh one
         under the same `connection_id`. A timeout or an external cancellation while the
-        call is in flight raises `SessionCallOutcomeUnknown` rather than a generic
+        call is in flight raises `SessionCallOutcomeUnknownError` rather than a generic
         failure, since the resource may have already executed the call.
         """
         loop = self._ensure_loop()
@@ -190,7 +191,7 @@ class SessionManager:
                     # reopening under this now-evicted object, is what close() marking
                     # `closed` under the same lock is for; the next call for this
                     # connection_id will look up the registry fresh and get a new object.
-                    raise SessionResourceDied(f"connection {connection_id!r} was closed")
+                    raise SessionResourceDiedError(f"connection {connection_id!r} was closed")
                 if connection.resource is None:
                     # Tracked as current_task like the work task below, so a close racing
                     # this open sees it and can cancel/await it instead of finding
@@ -201,7 +202,7 @@ class SessionManager:
                     try:
                         connection.resource = await open_task
                     except asyncio.CancelledError:
-                        raise SessionCallOutcomeUnknown(
+                        raise SessionCallOutcomeUnknownError(
                             f"open for connection {connection_id!r} was cancelled before it completed"
                         ) from None
                     finally:
@@ -211,7 +212,7 @@ class SessionManager:
                 connection.current_task = task
                 try:
                     return await task
-                except SessionResourceDied:
+                except SessionResourceDiedError:
                     # The resource itself is what reported this, so its own bookkeeping
                     # (an SDK-internal task group, open file descriptors) may still need
                     # tearing down even though the remote process is already gone -
@@ -220,16 +221,14 @@ class SessionManager:
                     # later time, which anyio in particular treats as a violation
                     # (a cancel scope exited from a different task than opened it).
                     # Best-effort: terminate() failing here must not replace the
-                    # SessionResourceDied about to be re-raised.
+                    # SessionResourceDiedError about to be re-raised.
                     dead_resource, connection.resource = connection.resource, None
                     if dead_resource is not None:
-                        try:
+                        with contextlib.suppress(Exception):
                             await connection.handlers.terminate(dead_resource)
-                        except Exception:
-                            pass
                     raise
                 except asyncio.CancelledError:
-                    raise SessionCallOutcomeUnknown(
+                    raise SessionCallOutcomeUnknownError(
                         f"call against connection {connection_id!r} was cancelled before it completed"
                     ) from None
                 finally:
@@ -241,7 +240,7 @@ class SessionManager:
             return future.result(timeout=timeout_s)
         except TimeoutError:
             future.cancel()
-            raise SessionCallOutcomeUnknown(
+            raise SessionCallOutcomeUnknownError(
                 f"call against connection {connection_id!r} did not finish before its timeout"
             ) from None
 

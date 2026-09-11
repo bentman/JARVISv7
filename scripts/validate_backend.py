@@ -8,7 +8,7 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -33,6 +33,21 @@ CACHE_DIR = APP_REPO_ROOT / "cache" / "validate_backend"
 def _load_context():
     return load_startup_context()
 
+
+
+def _clean_old_reports() -> None:
+    now = datetime.now(UTC)
+    cutoff = now - timedelta(days=30)
+    if not VALIDATION_DIR.exists():
+        return
+    for report_file in VALIDATION_DIR.glob("*-*.txt"):
+        try:
+            ts_str = report_file.name[:14]
+            file_time = datetime.strptime(ts_str, "%Y%m%d%H%M%S").replace(tzinfo=UTC)
+            if file_time < cutoff:
+                report_file.unlink()
+        except ValueError:
+            pass
 
 def _current_timestamp() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -234,20 +249,20 @@ def _build_pytest_command(
 
 
 def _run_pytest(
-    targets: list[str], marker_expr: str | None = None, keyword_expr: str | None = None,
+    targets: list[str], marker_expr: str | None = None, keyword_expr: str | None = None, log_file=None
 ) -> int:
     if not _pytest_available():
         print("pytest is not installed in backend/.venv")
         return 3
 
     command = _build_pytest_command(targets, marker_expr=marker_expr, keyword_expr=keyword_expr)
-    completed = subprocess.run(command, cwd=APP_REPO_ROOT, check=False)
+    completed = subprocess.run(command, cwd=APP_REPO_ROOT, check=False, stdout=log_file, stderr=subprocess.STDOUT if log_file else None)
     if completed.returncode == 5:
         return 2
     return completed.returncode
 
 
-def _run_quality_tool(module: str, arguments: list[str]) -> int:
+def _run_quality_tool(module: str, arguments: list[str], log_file=None) -> int:
     if importlib.util.find_spec(module) is None:
         print(f"{module} is not installed in backend/.venv")
         return 3
@@ -255,6 +270,8 @@ def _run_quality_tool(module: str, arguments: list[str]) -> int:
         [sys.executable, "-m", module, *arguments],
         cwd=APP_REPO_ROOT,
         check=False,
+        stdout=log_file,
+        stderr=subprocess.STDOUT if log_file else None,
     )
     return 0 if completed.returncode == 0 else 1
 
@@ -311,8 +328,8 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def _command_unit() -> int:
-    return _run_pytest(["backend/tests/unit"])
+def _command_unit(log_file=None) -> int:
+    return _run_pytest(["backend/tests/unit"], log_file=log_file)
 
 
 def _command_integration() -> int:
@@ -351,15 +368,15 @@ def _command_all() -> int:
     return _combine_codes([_command_unit(), _command_integration(), _command_regression()])
 
 
-def _command_ci() -> int:
+def _command_ci(log_file=None) -> int:
     marker_expr = "not live"
     return _combine_codes(
         [
-            _run_quality_tool("ruff", ["check", "backend", "scripts"]),
-            _run_quality_tool("mypy", ["backend/app"]),
-            _run_pytest(["backend/tests/unit"], marker_expr=marker_expr),
-            _run_pytest(["backend/tests/integration"], marker_expr=marker_expr),
-            _run_pytest(_regression_targets(), marker_expr=marker_expr),
+            _run_quality_tool("ruff", ["check", "backend", "scripts"], log_file=log_file),
+            _run_quality_tool("mypy", ["backend/app"], log_file=log_file),
+            _run_pytest(["backend/tests/unit"], marker_expr=marker_expr, log_file=log_file),
+            _run_pytest(["backend/tests/integration"], marker_expr=marker_expr, log_file=log_file),
+            _run_pytest(_regression_targets(), marker_expr=marker_expr, log_file=log_file),
         ]
     )
 
@@ -406,15 +423,47 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(payload, sort_keys=True))
         return 0
-    if args.command == "unit":
-        return _command_unit()
+    if args.command in ("unit", "ci"):
+        started_at = _current_timestamp()
+        report_path = VALIDATION_DIR / f"{_timestamp_slug()}-{args.command}_backend.txt"
+
+        print(f"JARVISv7 Backend {args.command.upper()} Validation started at {started_at}")
+        print(f"Report File: {_relative_report_path(report_path)}")
+        print(f"Host Fingerprint: {fingerprint_line}")
+        print(f"Command: {args.command}")
+
+        report_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(report_path, "w", encoding="utf-8") as log_file:
+            log_file.write(f"JARVISv7 Backend {args.command.upper()} Validation started at {started_at}\n")
+            log_file.write(f"Report File: {_relative_report_path(report_path)}\n")
+            log_file.write(f"Host Fingerprint: {fingerprint_line}\n")
+            log_file.write(f"Command: {args.command}\n\n")
+            log_file.write("STDOUT/STDERR\n------\n")
+
+            if args.command == "unit":
+                validator_code = _command_unit(log_file=log_file)
+            else:
+                validator_code = _command_ci(log_file=log_file)
+
+            log_file.write("\nVALIDATION SUMMARY\n")
+            status_tag = "[PASS]" if validator_code == 0 else "[FAIL]"
+            log_file.write(f"{status_tag} JARVISv7 backend {args.command} is validated!\n" if validator_code == 0 else f"{status_tag} JARVISv7 backend {args.command} failed!\n")
+
+        if validator_code == 0:
+            print(f"\n[PASS] JARVISv7 backend {args.command} is validated!")
+        else:
+            print(f"\n[FAIL] JARVISv7 backend {args.command} failed!")
+
+        _clean_old_reports()
+        return validator_code
+
     if args.command == "integration":
         return _command_integration()
     if args.command == "runtime":
         return _command_runtime(args)
     if args.command == "regression":
         started_at = _current_timestamp()
-        report_path = VALIDATION_DIR / f"{_timestamp_slug()}-regression.txt"
+        report_path = VALIDATION_DIR / f"{_timestamp_slug()}-regression_backend.txt"
         xml_path = _regression_temp_xml_path()
         command = _build_pytest_command(_regression_targets(), marker_expr="not live")
         command.extend(["--junitxml", str(xml_path)])

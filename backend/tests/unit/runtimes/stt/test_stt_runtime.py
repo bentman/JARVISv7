@@ -206,11 +206,11 @@ def test_qnn_runtime_ensure_preprocessors_imports_transformers_boundary(monkeypa
         ("tokenizer", "openai/whisper-base", {}),
         ("config", "openai/whisper-base"),
     ]
-    assert runtime._feature_extractor.kind == "feature_extractor"
-    assert runtime._tokenizer.kind == "tokenizer"
-    assert runtime._whisper_config.return_dict is False
-    assert runtime._whisper_config.tie_word_embeddings is False
-    assert runtime._whisper_config.mask_neg == -100.0
+    assert runtime._feature_extractor.kind == "feature_extractor"  # type: ignore[union-attr]
+    assert runtime._tokenizer.kind == "tokenizer"  # type: ignore[union-attr]
+    assert runtime._whisper_config.return_dict is False  # type: ignore[union-attr]
+    assert runtime._whisper_config.tie_word_embeddings is False  # type: ignore[union-attr]
+    assert runtime._whisper_config.mask_neg == -100.0  # type: ignore[union-attr]
 
 
 def test_qnn_runtime_uses_base_tokenizer_without_forced_prefix(monkeypatch, tmp_path):
@@ -586,7 +586,7 @@ def test_barge_in_detector_requires_minimum_speech_duration_with_vad() -> None:
         guard_time_s=0.0,
         min_speech_s=0.02,
         sample_rate=1000,
-        vad=AlwaysSpeechVAD(),  # type: ignore[arg-type]
+        vad=AlwaysSpeechVAD(),
         time_source=lambda: 1.0,
     )
     detector.reset()
@@ -624,7 +624,7 @@ def test_barge_in_detector_resets_speech_accumulator_on_non_speech() -> None:
         guard_time_s=0.0,
         min_speech_s=0.02,
         sample_rate=1000,
-        vad=SequencedVAD(),  # type: ignore[arg-type]
+        vad=SequencedVAD(),
         time_source=lambda: 1.0,
     )
 

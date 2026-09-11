@@ -47,7 +47,7 @@ def test_resident_ptt_uses_active_shared_stream_for_operator_utterance(tmp_path,
     )
     resident = ResidentVoiceInvocationService(
         session_service=service,
-        engine_provider=lambda: engine,  # type: ignore[return-value]
+        engine_provider=lambda: engine,  # type: ignore[return-value, arg-type]
         audio_capture=lambda: (_ for _ in ()).throw(AssertionError("blocking fallback capture should not run")),
         resident_stream=stream,
         utterance_segmenter=segmenter,

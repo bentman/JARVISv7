@@ -7,10 +7,10 @@ from typing import Any
 
 import pytest
 from backend.app.actions.sessions import (
-    SessionCallOutcomeUnknown,
+    SessionCallOutcomeUnknownError,
     SessionHandlers,
     SessionManager,
-    SessionResourceDied,
+    SessionResourceDiedError,
 )
 
 
@@ -119,7 +119,7 @@ def test_close_against_a_hung_call_drains_then_terminates_within_the_bound() -> 
     def run_hung_call() -> None:
         # close()'s drain-then-cancel is expected to end this call with outcome-unknown;
         # this thread only exists to make the call actually in-flight when close() runs.
-        with pytest.raises(SessionCallOutcomeUnknown):
+        with pytest.raises(SessionCallOutcomeUnknownError):
             manager.call("conn", handlers, hung_work, timeout_s=30)
 
     call_thread = threading.Thread(target=run_hung_call, daemon=True)
@@ -176,7 +176,7 @@ def test_close_racing_an_in_flight_open_cancels_it_instead_of_leaking_the_resour
     def run_call() -> None:
         try:
             manager.call("conn", handlers, work, timeout_s=30)
-        except SessionCallOutcomeUnknown as exc:
+        except SessionCallOutcomeUnknownError as exc:
             outcome["error"] = exc
 
     call_thread = threading.Thread(target=run_call, daemon=True)
@@ -192,7 +192,7 @@ def test_close_racing_an_in_flight_open_cancels_it_instead_of_leaking_the_resour
         f"indefinitely; took {elapsed:.2f}s"
     )
     call_thread.join(timeout=2)
-    assert isinstance(outcome.get("error"), SessionCallOutcomeUnknown), (
+    assert isinstance(outcome.get("error"), SessionCallOutcomeUnknownError), (
         "the caller waiting on the cancelled open must see outcome-unknown, not hang or see a raw CancelledError"
     )
     assert manager.is_open("conn") is False
@@ -286,7 +286,7 @@ def test_close_terminates_within_the_bound_even_when_the_call_resists_cancellati
     def run_call() -> None:
         try:
             manager.call("conn", handlers, stubborn_work, timeout_s=2)
-        except SessionCallOutcomeUnknown as exc:
+        except SessionCallOutcomeUnknownError as exc:
             outcome["error"] = exc
 
     thread = threading.Thread(target=run_call, daemon=True)
@@ -305,7 +305,7 @@ def test_close_terminates_within_the_bound_even_when_the_call_resists_cancellati
 
     thread.join(timeout=3)
     assert not thread.is_alive()
-    assert isinstance(outcome.get("error"), SessionCallOutcomeUnknown)
+    assert isinstance(outcome.get("error"), SessionCallOutcomeUnknownError)
 
 
 def test_close_awaits_terminate_to_completion_instead_of_firing_and_forgetting() -> None:
@@ -349,7 +349,7 @@ def test_close_awaits_terminate_to_completion_instead_of_firing_and_forgetting()
     )
 
     def run_call() -> None:
-        with pytest.raises(SessionCallOutcomeUnknown):
+        with pytest.raises(SessionCallOutcomeUnknownError):
             manager.call("conn", handlers, stubborn_work, timeout_s=5)
 
     thread = threading.Thread(target=run_call, daemon=True)
@@ -548,7 +548,7 @@ def test_a_call_queued_behind_close_fails_instead_of_reusing_the_closed_connecti
     def run_first() -> None:
         try:
             manager.call("conn", handlers, blocking_first_call, timeout_s=5)
-        except SessionCallOutcomeUnknown as exc:
+        except SessionCallOutcomeUnknownError as exc:
             first_outcome["error"] = exc
 
     first_thread = threading.Thread(target=run_first)
@@ -562,7 +562,7 @@ def test_a_call_queued_behind_close_fails_instead_of_reusing_the_closed_connecti
     def run_second() -> None:
         try:
             second_outcome["value"] = manager.call("conn", handlers, quick_second_call, timeout_s=5)
-        except SessionResourceDied as exc:
+        except SessionResourceDiedError as exc:
             second_outcome["error"] = exc
 
     second_thread = threading.Thread(target=run_second)
@@ -573,10 +573,10 @@ def test_a_call_queued_behind_close_fails_instead_of_reusing_the_closed_connecti
     first_thread.join(timeout=3)
     second_thread.join(timeout=3)
 
-    assert isinstance(first_outcome.get("error"), SessionCallOutcomeUnknown), (
+    assert isinstance(first_outcome.get("error"), SessionCallOutcomeUnknownError), (
         "the first call outlives the drain window and must be force-cancelled, not silently succeed"
     )
-    assert isinstance(second_outcome.get("error"), SessionResourceDied), (
+    assert isinstance(second_outcome.get("error"), SessionResourceDiedError), (
         "the queued second call must see the connection was closed once it gets the lock, "
         "not silently reuse or reopen under the now-evicted connection"
     )
@@ -607,9 +607,9 @@ def test_a_resource_reported_dead_is_evicted_and_recreated_on_the_next_call() ->
     handlers = _handlers(opened, terminated)
 
     async def dying_work(resource: _FakeResource) -> None:
-        raise SessionResourceDied("the server exited unexpectedly")
+        raise SessionResourceDiedError("the server exited unexpectedly")
 
-    with pytest.raises(SessionResourceDied):
+    with pytest.raises(SessionResourceDiedError):
         manager.call("conn", handlers, dying_work)
     assert manager.is_open("conn") is False, "a resource reported dead must be evicted"
     assert terminated == [opened[0]], (
@@ -634,7 +634,7 @@ def test_a_call_that_times_out_reports_outcome_unknown_not_a_generic_failure() -
     async def slow_work(resource: _FakeResource) -> None:
         await asyncio.sleep(5)
 
-    with pytest.raises(SessionCallOutcomeUnknown):
+    with pytest.raises(SessionCallOutcomeUnknownError):
         manager.call("conn", handlers, slow_work, timeout_s=0.05)
     manager.close("conn")
 
@@ -654,7 +654,7 @@ def test_cancel_call_stops_the_call_without_closing_the_connection() -> None:
     def run() -> None:
         try:
             manager.call("conn", handlers, slow_work, timeout_s=10)
-        except SessionCallOutcomeUnknown as exc:
+        except SessionCallOutcomeUnknownError as exc:
             result["error"] = exc
 
     thread = threading.Thread(target=run)
@@ -665,7 +665,7 @@ def test_cancel_call_stops_the_call_without_closing_the_connection() -> None:
     thread.join(timeout=2)
 
     assert cancelled is True
-    assert isinstance(result.get("error"), SessionCallOutcomeUnknown), "a cancelled call must report outcome-unknown"
+    assert isinstance(result.get("error"), SessionCallOutcomeUnknownError), "a cancelled call must report outcome-unknown"
     assert manager.is_open("conn") is True, "cancelling one call must not close the connection"
     assert len(opened) == 1, "the resource opened for the cancelled call must still be the one reused next"
 

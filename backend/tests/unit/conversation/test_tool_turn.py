@@ -89,9 +89,9 @@ def _capabilities(results: dict[str, Any] | None = None) -> CapabilityService:
     def descriptor(capability_id: str, effect: str) -> CapabilityDescriptor:
         return CapabilityDescriptor(
             capability_id=capability_id, source="test", provenance="test",
-            input_schema={"type": "object"}, effect_class=effect, readiness="ready",
+            input_schema={"type": "object"}, effect_class=effect, readiness="ready",  # type: ignore[arg-type]
             availability="available", execution_owner="backend.extension_runtime",
-            authorization_rule=default_authorization(effect),
+            authorization_rule=default_authorization(effect),  # type: ignore[arg-type]
             timeout_policy={"timeout_ms": 5000}, cancellation_policy={"cancellable": True},
             result_schema={"type": "object"}, artifact_evidence={"records": True},
             unavailable_explanation="",
@@ -123,7 +123,7 @@ def engine_at(tmp_path, model, runtime=None, capabilities=None):
         turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions"
     )
     engine = TurnEngine(
-        stt=None, tts=None, llm=model, personality=load_default_personality(),
+        stt=None, tts=None, llm=model, personality=load_default_personality(),  # type: ignore[arg-type]
         session_manager=manager, llm_coordinator=LLMExecutionCoordinator(),
         capability_service=capabilities or _capabilities(),
         extension_runtime=runtime if runtime is not None else Runtime(),

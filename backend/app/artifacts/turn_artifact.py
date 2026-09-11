@@ -54,9 +54,7 @@ class TurnArtifact:
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
     failure_phase: str | None = None
 
-    def agent_evidence(self) -> list[dict[str, Any]]:
-        """Return only delegated_runs entries with an 'agent_id' key."""
-        return [run for run in self.delegated_runs if "agent_id" in run]
+
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)

@@ -62,7 +62,7 @@ def test_wake_monitor_start_stop_tracks_resident_state(tmp_path: Path) -> None:
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=source,
     )
 
@@ -96,7 +96,7 @@ def test_wake_monitor_stop_retains_live_worker_ownership_until_blocked_source_ex
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=source,
     )
 
@@ -146,7 +146,7 @@ def test_wake_monitor_pause_resume_waits_for_blocked_worker_exit(tmp_path: Path)
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=source,
     )
 
@@ -203,7 +203,7 @@ def test_wake_monitor_detection_updates_count_and_timestamp(tmp_path: Path) -> N
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, True]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, True]),  # type: ignore[arg-type, return-value]
         chunk_source=source,
         invocation_callback=invoke,
     )
@@ -246,7 +246,7 @@ def test_wake_monitor_excludes_detection_preroll_and_keeps_immediate_command(mon
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, True]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, True]),  # type: ignore[arg-type, return-value]
         chunk_source=lambda stop_event: (_ for _ in ()).throw(AssertionError("shared stream should be used")),
         invocation_callback=invoke,
         resident_stream=stream,
@@ -298,7 +298,7 @@ def test_wake_monitor_does_not_start_competing_fallback_when_resident_stream_is_
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=lambda stop_event: (_ for _ in ()).throw(AssertionError("fallback source should not run")),
         resident_stream=stream,
         utterance_segmenter=_segmenter(),
@@ -327,7 +327,7 @@ def test_wake_monitor_reports_no_speech_after_wake_from_vad_timeout(tmp_path: Pa
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[True, True]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[True, True]),  # type: ignore[arg-type, return-value]
         chunk_source=source,
         invocation_callback=lambda source_name, audio, sample_rate, diagnostics: invocations.append(
             (source_name, audio, sample_rate, diagnostics)
@@ -359,7 +359,7 @@ def test_wake_monitor_ignores_single_positive_spike(tmp_path: Path) -> None:
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, False]),
+        runtime_factory=lambda: _FakeWakeRuntime(detections=[False, True, False]),  # type: ignore[arg-type, return-value]
         chunk_source=source,
         invocation_callback=lambda source_name, audio, sample_rate, diagnostics: invocations.append(
             (source_name, audio, sample_rate, diagnostics)
@@ -404,7 +404,7 @@ def test_wake_monitor_unavailable_runtime_fails_closed(tmp_path: Path) -> None:
     service = _service(tmp_path)
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(available=False),
+        runtime_factory=lambda: _FakeWakeRuntime(available=False),  # type: ignore[arg-type, return-value]
         chunk_source=lambda stop_event: iter([np.zeros(4)]),
     )
 
@@ -427,7 +427,7 @@ def test_wake_monitor_capture_error_disables_monitoring(tmp_path: Path) -> None:
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=source,
     )
 
@@ -455,7 +455,7 @@ def test_wake_monitor_toggle_starts_and_stops(tmp_path: Path) -> None:
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=source,
     )
 
@@ -473,7 +473,7 @@ def test_wake_monitor_can_pause_for_resident_voice_and_resume(tmp_path: Path) ->
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         chunk_source=source,
     )
 
@@ -497,7 +497,7 @@ def test_wake_pause_resume_does_not_stop_shared_resident_stream(tmp_path: Path) 
     stream.start()
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: _FakeWakeRuntime(),
+        runtime_factory=lambda: _FakeWakeRuntime(),  # type: ignore[arg-type, return-value]
         resident_stream=stream,
     )
 
@@ -534,7 +534,7 @@ def test_wake_monitor_start_resets_runtime(tmp_path: Path) -> None:
 
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: runtime,
+        runtime_factory=lambda: runtime,  # type: ignore[arg-type, return-value]
         chunk_source=lambda stop: [np.zeros(4)],
     )
 
@@ -562,13 +562,13 @@ def test_wake_monitor_debounces_identical_idle_status_until_bounded_refresh(
     runtime.last_score = 0.2
     monitor = WakeMonitorService(
         session_service=service,
-        runtime_factory=lambda: runtime,
+        runtime_factory=lambda: runtime,  # type: ignore[arg-type, return-value]
     )
 
     for _ in range(5):
-        monitor._record_wake_idle_if_due(runtime)
+        monitor._record_wake_idle_if_due(runtime)  # type: ignore[arg-type]
     runtime.last_score = 0.3
-    monitor._record_wake_idle_if_due(runtime)
+    monitor._record_wake_idle_if_due(runtime)  # type: ignore[arg-type]
 
     assert idle_calls == [
         ("wake listening", 0.2, 0.5),

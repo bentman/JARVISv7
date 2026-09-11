@@ -11,16 +11,16 @@ def test_run_text_turn_delegates_to_engine():
     expected = object()
     engine = SimpleNamespace(run_text_turn=lambda text: expected)
 
-    assert run_text_turn("hello", engine=engine) is expected
+    assert run_text_turn("hello", engine=engine) is expected  # type: ignore[arg-type]
 
 
 def test_run_voice_turn_delegates_to_engine():
     expected = object()
     engine = SimpleNamespace(run_voice_turn=lambda audio, sample_rate: expected)
 
-    assert run_voice_turn(np.zeros(2, dtype=np.float32), 16000, engine=engine) is expected
+    assert run_voice_turn(np.zeros(2, dtype=np.float32), 16000, engine=engine) is expected  # type: ignore[arg-type]
 
 
 def test_run_text_turn_rejects_empty_text():
     with pytest.raises(ValueError, match="non-empty"):
-        run_text_turn("   ", engine=SimpleNamespace())
+        run_text_turn("   ", engine=SimpleNamespace())  # type: ignore[arg-type]

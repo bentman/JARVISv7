@@ -49,7 +49,7 @@ def test_build_engine_wires_state_episodic_memory_for_new_sessions(tmp_path: Pat
         llm_coordinator=None,
     )
 
-    engine = build_engine(state, manager)
+    engine = build_engine(state, manager)  # type: ignore[arg-type]
 
     assert engine.episodic is episodic
     assert engine.episodic.base_dir == tmp_path / "memory" / "episodic"
@@ -129,7 +129,7 @@ def test_lifespan_keeps_sidecar_alive_for_in_flight_non_preemptible_processor(
         turns_root=turns_root,
         coordinator=coordinator,
         session_is_active=lambda: False,
-        processor=processor,
+        processor=processor,  # type: ignore[arg-type]
         runtime_status=lambda: {"ready": True},
         boot_id="test-boot",
     )

@@ -17,13 +17,13 @@ def descriptors(**observation) -> dict[str, object]:
 
 def test_search_readiness_follows_the_live_provider_flags() -> None:
     enabled = descriptors(search_providers=(("ddgs", True),))["search_provider:ddgs"]
-    assert (enabled.state, enabled.availability, enabled.readiness) == ("enabled", "available", "ready")
+    assert (enabled.state, enabled.availability, enabled.readiness) == ("enabled", "available", "ready")  # type: ignore[attr-defined]
 
     disabled = descriptors(search_providers=(("ddgs", False),))["search_provider:ddgs"]
-    assert (disabled.state, disabled.availability, disabled.readiness) == (
+    assert (disabled.state, disabled.availability, disabled.readiness) == (  # type: ignore[attr-defined]
         "disabled", "disabled", "unavailable",
     )
-    assert "Enable DDGS, SearXNG, or Tavily" in disabled.unavailable_explanation
+    assert "Enable DDGS, SearXNG, or Tavily" in disabled.unavailable_explanation  # type: ignore[attr-defined]
 
 
 def test_a_locked_secret_store_degrades_the_provider_family() -> None:
@@ -33,16 +33,16 @@ def test_a_locked_secret_store_degrades_the_provider_family() -> None:
     )
     provider = built["provider:builtin-managed-llama-cpp"]
 
-    assert provider.availability == "misconfigured"
-    assert provider.readiness == "degraded"
-    assert "secret store is locked" in provider.unavailable_explanation
+    assert provider.availability == "misconfigured"  # type: ignore[attr-defined]
+    assert provider.readiness == "degraded"  # type: ignore[attr-defined]
+    assert "secret store is locked" in provider.unavailable_explanation  # type: ignore[attr-defined]
 
 
 def test_a_credential_required_provider_is_degraded_but_available() -> None:
     provider = descriptors(providers=(("p1", "Cloud", "credential_required", False),))["provider:p1"]
 
-    assert (provider.readiness, provider.availability) == ("degraded", "available")
-    assert provider.trust == "operator"
+    assert (provider.readiness, provider.availability) == ("degraded", "available")  # type: ignore[attr-defined]
+    assert provider.trust == "operator"  # type: ignore[attr-defined]
 
 
 def test_operator_authored_and_application_providers_are_distinguished() -> None:
@@ -53,8 +53,8 @@ def test_operator_authored_and_application_providers_are_distinguished() -> None
         )
     )
 
-    assert built["provider:builtin-managed-llama-cpp"].trust == "application"
-    assert built["provider:abc123"].trust == "operator"
+    assert built["provider:builtin-managed-llama-cpp"].trust == "application"  # type: ignore[attr-defined]
+    assert built["provider:abc123"].trust == "operator"  # type: ignore[attr-defined]
 
 
 def test_a_personality_declaring_itself_disabled_is_reported_disabled() -> None:
@@ -65,9 +65,9 @@ def test_a_personality_declaring_itself_disabled_is_reported_disabled() -> None:
         )
     )
 
-    assert built["personality:default"].state == "enabled"
-    assert built["personality:retired"].state == "disabled"
-    assert "enabled: false" in built["personality:retired"].unavailable_explanation
+    assert built["personality:default"].state == "enabled"  # type: ignore[attr-defined]
+    assert built["personality:retired"].state == "disabled"  # type: ignore[attr-defined]
+    assert "enabled: false" in built["personality:retired"].unavailable_explanation  # type: ignore[attr-defined]
 
 
 def test_duplicate_identifiers_are_reported_as_collisions() -> None:
@@ -93,9 +93,9 @@ def test_a_skill_with_scripts_registers_disabled_so_it_cannot_look_runnable() ->
 
     skill = descriptors(skills=(manifest,))["skill:builder"]
 
-    assert skill.availability == "disabled"
-    assert "privileged_execution capability" in skill.unavailable_explanation
-    assert skill.trust == "external"
+    assert skill.availability == "disabled"  # type: ignore[attr-defined]
+    assert "privileged_execution capability" in skill.unavailable_explanation  # type: ignore[attr-defined]
+    assert skill.trust == "external"  # type: ignore[attr-defined]
 
 
 def test_an_operator_override_beats_the_declared_state() -> None:
@@ -136,10 +136,10 @@ def test_generic_definition_records_keep_source_and_operator_provenance() -> Non
 
     item = descriptors(definitions=(definition,))["mcp:docs"]
 
-    assert (item.source, item.provenance, item.trust) == (
+    assert (item.source, item.provenance, item.trust) == (  # type: ignore[attr-defined]
         "data/extensions/mcp/docs.yaml", "data/extensions", "operator",
     )
-    assert (item.readiness, item.availability) == ("unavailable", "unknown")
+    assert (item.readiness, item.availability) == ("unavailable", "unknown")  # type: ignore[attr-defined]
 
 
 def test_runtime_observation_controls_generic_definition_health() -> None:
@@ -156,7 +156,7 @@ def test_runtime_observation_controls_generic_definition_health() -> None:
         definition_runtime=(DefinitionRuntime("mcp", "docs", "ready", "available"),),
     )["mcp:docs"]
 
-    assert (item.readiness, item.availability) == ("ready", "available")
+    assert (item.readiness, item.availability) == ("ready", "available")  # type: ignore[attr-defined]
 
 
 def test_application_definitions_win_and_operator_collisions_are_reported(tmp_path) -> None:
