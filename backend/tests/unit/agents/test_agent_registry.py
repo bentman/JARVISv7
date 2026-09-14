@@ -166,7 +166,7 @@ def test_capability_records_map_approval_strict_to_an_approval_gated_local_write
     tmp_path: Path,
 ) -> None:
     # The effect class describes what the executor does. The current runtime invokes an agent
-    # in-process, so no approval class describes a privileged subprocess; ADR 0007 owns the
+    # in-process, so no approval class describes a privileged subprocess; ADR 0013 owns the
     # process-isolated adapter that would.
     _write_agent(tmp_path, "strict-agent", approval_class="strict")
 

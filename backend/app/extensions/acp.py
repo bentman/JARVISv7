@@ -66,7 +66,7 @@ def run_acp(
     get_resumable_session_id: ResumableSessionLookup = lambda: None,
     remember_session_id: RememberSessionId = lambda _session_id: None,
 ) -> dict[str, Any]:
-    """Run one ACP prompt against a connection ADR 0005's shared session-lifecycle
+    """Run one ACP prompt against a connection ADR 0009's shared session-lifecycle
     mechanism keeps open across separate calls, instead of spawning a fresh agent
     process and session for every prompt - the same `session/prompt` reuse `protocol-
     v2.md` describes, opt-in the first time this agent is prompted and reused after.

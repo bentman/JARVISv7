@@ -628,7 +628,7 @@ def test_mcp_tool_hints_classify_effects_without_authorizing_model_calls(
 def test_a_stdio_connection_stays_open_across_calls_instead_of_one_process_per_call(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ADR 0005's shared session-lifecycle mechanism attaches here: a second discover
+    # ADR 0009's shared session-lifecycle mechanism attaches here: a second discover
     # against the same connection must reuse the process the first one opened, not spawn
     # a fresh one and tear it down - the defect the mechanism exists to close.
     runtime = _runtime(tmp_path, monkeypatch)
@@ -927,7 +927,7 @@ def test_a_rejected_extension_state_update_leaves_the_open_connection_running(
 def test_a_tool_call_against_a_killed_process_evicts_the_connection_instead_of_wedging_it(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ADR 0006 Follow-up: a tool/resource/prompt call failing mid-connection must evict
+    # ADR 0010: a tool/resource/prompt call failing mid-connection must evict
     # it the way discover's own health check already does, or every later call keeps
     # retrying against the same dead connection forever. Confirmed empirically before
     # writing this: killing the spawned server process externally and then calling a
@@ -1020,7 +1020,7 @@ def test_an_unknown_call_outcome_is_not_recorded_as_an_ordinary_run_failure(
 def test_disconnect_ends_the_session_without_touching_the_definition_and_it_reopens_on_next_use(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Disconnect (ADR 0006 Follow-up) ends a live MCP session on operator request,
+    # Disconnect (ADR 0010) ends a live MCP session on operator request,
     # distinct from Forget authorization (clears a credential) and from
     # extension-state-update (disables the extension entirely). The connection stays
     # enabled: the same discover operation on the same definition must still work

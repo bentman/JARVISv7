@@ -24,7 +24,7 @@ Every normal assistant interaction that can affect session state, continuity, me
 
 The committed loop is:
 
-1. Session state is created and owned by `SessionService` and `SessionManager`.
+1. Session state is created and owned by `SessionService` and `backend/app/conversation/session_manager.py`'s `SessionManager`.
 2. Text input enters through `/task/text`, `turn_service.run_text_turn()`, or script callers.
 3. Voice input enters through PTT, wake, resident voice, or script capture paths.
 4. Voice is converted to transcript by the selected STT runtime.

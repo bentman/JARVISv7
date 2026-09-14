@@ -2,7 +2,7 @@
 
 Date: 2026-09-07
 Status: Accepted
-Related: 0005, 0006, 0007
+Related: 0005, 0006, 0007, 0010, 0011, 0013
 
 ## Context and Problem Statement
 
@@ -17,6 +17,8 @@ At decision time, the desktop defects were:
 - The operator controls need one clear launch point and one roomier control surface.
 
 Backend, Readiness, and Services are not operator-control categories. They are persistent visibility indicators and remain on the left. Personality is a frequent operator selection and moves to the right sidebar, directly above Resident Voice.
+
+Two of those defects - the unmounted agents panel and the provider-profile state loss - predate this redesign and would normally belong in their own record rather than in a layout ADR. They are kept here because the remount is what surfaced and fixed them, and because a retroactive ADR for already-shipped work would add process without recording a decision. Future operator-surface defect work gets its own record.
 
 ## Decision Drivers
 
@@ -105,22 +107,58 @@ Provider and settings state:
 
 No backend route, Tauri command, or API-client route change was made. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
 
+### Family workflow surfaces
+
+This ADR owns the operator presentation of every family whose behavior another ADR owns. Backend policy, execution, and evidence stay with the owning ADR; only the surface is decided here.
+
+- Actions: `desktop/src/components/actions-panel.js` exposes catalog availability, descriptor problems, typed invocation, pending decisions, cancellation, and selectable audit records. Route-owned credential and input-answer operations identify their execution owner. ADR 0005 owns the underlying governance.
+- Extensions: `desktop/src/components/extensions-panel.js` provides MCP Add/Edit/Remove for stdio and HTTP, discovery, grouped Tools/Resources/Prompts, invocation, Disconnect, credentials, and OAuth controls; Skill Import/Edit/Remove with progressive body disclosure and provenance-based editability; and Local Tool Add/Edit/Remove for fixed argv commands. Edits preserve hidden manifest fields and use fingerprints; transport is fixed at creation. ADR 0006 owns the taxonomy and catalog, ADR 0010 and ADR 0011 the MCP behavior.
+- Runs: run identity, masked requested inputs, progress, readable event/failure summaries, cancellation, structured elicitation, model-proposal decisions, and explicit unknown-outcome warnings. Text tool results, prompt messages, and text/image resources render from their actual wrapped result. Discovery shows counts and artifacts are listed when present; full results, unsupported content, events, and correlation IDs remain in Run details. Records created before operation metadata was retained still render their status and existing evidence.
+- Agents: `desktop/src/components/agents-panel.js` as described above. ADR 0007 owns agent identity; ADR 0013 owns external runtime behavior.
+- Preserved drafts, scroll, and keyed control focus across panel refreshes; source, revision, and internal identifiers remain available through detail disclosure.
+
+Native `invoke_extension` is async and dispatches the blocking backend request through `tauri::async_runtime::spawn_blocking`.
+
+Advanced Controls stays operator-facing: Providers use profile and credential language; Memory uses review, confirm, correct, and forget language; Actions is an audit/debug view; Extensions uses ADR 0006 family workflows; Agents uses ADR 0007 and ADR 0013 workflows. Internal registry words - capability ID, proposal, authorization rule, fingerprint, local ID, raw definition - stay behind explicit detail views.
+
+### Native validation ownership
+
+This ADR is the single owner of native operator validation. No other ADR carries native interaction evidence as follow-up: backend and contract evidence closes those ADRs, and confirming their behavior in a real desktop session is this ADR's closeout obligation.
+
 ## Confirmation
 
-Validated on `linux-amd64` (WSL2):
+Implementation files:
+- `desktop/src/index.html`
+- `desktop/src/main.js`
+- `desktop/src/style.css`
+- `desktop/src/api-client.js`
+- `desktop/src/components/advanced-panel.js`
+- `desktop/src/components/actions-panel.js`
+- `desktop/src/components/extensions-panel.js`
+- `desktop/src/components/agents-panel.js`
+- `desktop/src/components/memory-panel.js`
+- `desktop/src/components/llm-provider-settings.js`
+- `desktop/src/components/settings-panel.js`
+- `desktop/src/components/appearance-controls.js`
+- `desktop/src-tauri/src/lib.rs`
 
-- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, `agentRunProfileId`, honest invoke/cancel reporting, stale-response ordering, provider default selection, post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, appearance controls, and the advanced-control style contract.
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml` — `PASS`. `Finished \`dev\` profile ... in 36.12s`, confirming no Tauri-side change was introduced.
-- Live desktop session — `SKIPPED`. Native WebView2 behavior was not exercised on this host.
+Test coverage:
+- `desktop/tests/static.test.mjs` for advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, honest invoke/cancel reporting, stale-response ordering, provider default selection and post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, wrapped-result rendering, Disconnect refresh, connection status, and unknown-outcome presentation
+- `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions
 
-Validated on `windows-amd64`:
+Validation commands:
+- `npm --prefix desktop test`
+- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`
+- `backend/.venv/Scripts/python scripts/validate_backend.py unit` when provider or action classification changes
 
-- `npm --prefix desktop test` — `PASS`. Output: `desktop static, advanced-control, memory, action, extension, and agent behavior checks passed`. Covers compact Personality metadata, right-sidebar scroll ownership, advanced-control category registration, Extensions list/detail split, appearance controls, and single dialog-level Close control.
-- `backend\.venv\Scripts\python -m pytest backend\tests\unit\services\test_capability_service.py backend\tests\unit\api\test_llm_config_routes.py backend\tests\unit\services\test_llm_provider_profiles.py` — `PASS`, 51 passed. Covers provider profile writes as direct local actions and provider profile storage/routes.
+Native desktop interaction is not covered by any of the above and remains this ADR's open closeout obligation.
 
 ## Follow-up
 
 - Validate the operator desktop in a native visible session on `windows-amd64`: right sidebar startup fit, selector font size, compact Personality metadata, advanced dialog sizing, Extensions list/detail split, single Close control, Escape, backdrop click, and focus return. Report the exact command or manual run path and observable result.
 - Run a native desktop provider-profile smoke test against the running backend: create an editable `openai_compatible` profile with endpoint, model, context window, timeout, and credential; verify save succeeds, the created profile remains selected, and backend validation or storage failures surface as specific operator-readable errors.
-- Keep Advanced Controls organized as an operator-facing shell. Providers use profile and credential language; Memory uses review, confirm, correct, and forget language; Actions is an audit/debug view; Extensions uses ADR 0006 family workflows; Agents uses ADR 0007 internal-agent and ACP workflows.
-- Validate category switching, mount/unmount behavior, selected category retention, focus return, and draft/scroll preservation at the shared Advanced Controls shell level. Family-specific workflow behavior belongs to the owning ADR.
+- Validate category switching, mount/unmount behavior, selected category retention, focus return, and draft/scroll preservation at the shared Advanced Controls shell level.
+- Complete operator-readable action audit and detail presentation for proposals, decisions, results, cancellations, descriptor problems, and unavailable states. Keep raw IDs and backend records in explicit detail controls, with the generic runner available for audit and fallback use.
+- Obtain native interaction evidence for direct execution, required model-proposal approvals, cancellation, and inspectable action evidence.
+- Verify extension invocation, nested elicitation, answering input, cancellation, Disconnect, and session failure (`outcome_unknown`) recovery in the actual native Tauri application.
+- Complete named desktop agent workflows for profile management, external connection/testing, invocation, cancellation, evidence, and permission/elicitation input.

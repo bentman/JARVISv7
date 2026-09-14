@@ -1,6 +1,6 @@
 """Shared session-lifecycle mechanism for capabilities whose external counterpart is
 itself a session - a still-running subprocess, a resumable remote conversation - so
-MCP and ACP do not each manage their own process lifetime. See ADR 0005's Follow-up
+MCP and ACP do not each manage their own process lifetime. See ADR 0009
 for the researched shape this implements and why: a background loop owns a long-lived
 resource, a call dispatches into that loop instead of starting its own, and closing has
 a bounded drain-then-terminate escape rather than an indefinite wait.

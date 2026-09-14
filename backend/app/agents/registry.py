@@ -6,7 +6,7 @@ from backend.app.agents.loader import load_agent_profile
 from backend.app.agents.schema import AgentProfile
 
 # The current runtime invokes an agent in-process through TurnEngine, so no approval class
-# describes a privileged subprocess yet. ADR 0007 owns the process-isolated runtime adapter
+# describes a privileged subprocess yet. ADR 0013 owns the process-isolated runtime adapter
 # that would justify a privileged_execution effect class here.
 _APPROVAL_EFFECT = {
     "none": "local_read",

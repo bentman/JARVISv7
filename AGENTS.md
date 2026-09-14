@@ -109,10 +109,14 @@ If answers are not concrete, do not add the test. When scope exposes obsolete or
 - Source code and tests describe the system as it exists. Development narration does not belong in durable source artifacts; durable ADRs hold architecture decisions and rationale.
 - ADR rules:
   - One ADR owns one architecture decision.
+  - An ADR must be independently closeable: it reaches `Implemented` on its own evidence. If one part can be finished while another cannot, they are two ADRs.
+  - Infrastructure consumed by two or more ADRs is owned by its own ADR, not by its first consumer.
   - Cross-reference another ADR only for ownership boundaries, required dependencies, supersession, or implementation/validation evidence. Use the ADR ID plus the shortest needed boundary statement; do not restate the other ADR's work.
   - `Related:` lists ADRs directly named for ownership, dependency, supersession, or evidence; do not list merely adjacent topics.
   - `Accepted` means chosen but not fully implemented or validated.
   - `Implemented` means code matches the decision and evidence exists.
+  - Backend and contract evidence closes an ADR. Native operator validation is ADR 0008's closeout obligation and is not carried as follow-up in other ADRs.
+  - `Confirmation` cites durable evidence targets: implementation files, test files, and validator command classes. Perishable run output - pass/skip counts, timings, `reports/validation/*` filenames, per-test narrative - belongs in `reports/validation/`, not in an ADR. Follow `docs/adr/0000-adr-template.md`.
   - `Follow-up` is only unfinished work required to complete that ADR.
   - If follow-up changes the decision, create or supersede an ADR.
   - Keep UI/layout redesign ADRs separate from behavior-defect fixes unless the defect is caused by the redesign.

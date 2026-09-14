@@ -214,7 +214,7 @@ def test_acp_sdk_stdio_cancellation_stops_the_pending_prompt(
 def test_acp_sdk_reuses_the_spawned_process_across_repeated_prompts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ADR 0005's shared session-lifecycle mechanism attaches here: a second prompt
+    # ADR 0009's shared session-lifecycle mechanism attaches here: a second prompt
     # against the same agent must reuse the process and session the first one opened,
     # not spawn a fresh agent and session per prompt - the defect the mechanism exists
     # to close, mirrored from MCP's own reuse test.
@@ -325,7 +325,7 @@ def test_acp_sdk_routes_a_reused_connections_events_to_the_call_that_sent_the_pr
 def test_acp_sdk_a_prompt_against_a_killed_agent_process_evicts_the_connection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ADR 0005 Follow-up: ACP has no equivalent to MCP's discover-triggered eviction, so
+    # ADR 0013: ACP has no equivalent to MCP's discover-triggered eviction, so
     # a killed agent process would otherwise wedge the connection - every later prompt
     # would keep retrying against the same dead connection forever. Confirmed
     # empirically before writing this: killing the spawned agent process externally and
@@ -378,7 +378,7 @@ def test_acp_sdk_a_prompt_against_a_killed_agent_process_evicts_the_connection(
 def test_acp_sdk_resumes_the_prior_session_after_the_process_is_killed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # ADR 0005 Follow-up: session/resume closes the conversation-continuity gap left
+    # ADR 0013: session/resume closes the conversation-continuity gap left
     # after a connection is evicted and reopened - the mechanism only guarantees a fresh
     # connection is reachable, not that a specific prior session survives on it, and it
     # is this adapter's job to actually call session/resume, not just make it reachable.

@@ -199,7 +199,7 @@ def test_turn_artifact_action_evidence_roundtrips() -> None:
             cancelled_at="2026-09-04T00:00:02+00:00",
         ).to_dict()
     ]
-    # delegated_runs has no record type yet; ADR 0005 keeps that follow-up open.
+    # delegated_runs has no record type yet; ADR 0007 keeps that follow-up open.
     artifact.delegated_runs = [
         {"proposal_id": "proposal-4", "capability_id": "delegate-agent", "run_id": "run-1"}
     ]

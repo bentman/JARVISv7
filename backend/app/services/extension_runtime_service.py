@@ -117,7 +117,7 @@ class ExtensionRuntimeService:
         self._errors: dict[str, str] = {}
         self._load_errors: dict[str, str] = {}
         self._oauth_flows: dict[str, tuple[Any, str]] = {}
-        # ADR 0005's shared session-lifecycle mechanism: keeps an MCP stdio connection's
+        # ADR 0009's shared session-lifecycle mechanism: keeps an MCP stdio connection's
         # or an ACP agent process's session open across operations instead of one
         # process per call. Shared across both families - connection ids are namespaced
         # ("mcp:...", "acp:...") so they cannot collide.

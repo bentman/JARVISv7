@@ -2,7 +2,7 @@
 
 Date: 2026-09-01
 Status: Implemented
-Related: 0002, 0004, 0005, 0006, 0007
+Related: 0002, 0004, 0005
 
 ## Context and Problem Statement
 
@@ -55,7 +55,7 @@ Memory extraction is proposal-only. `MemoryCandidateExtractor` asks the model fo
 
 Memory lifecycle is service-owned. `/memory` routes expose policy, inspection, confirmation, correction, dispute, and forgetting through `MemoryService`.
 
-Action governance has contract scaffolding. `backend/app/actions/contracts.py` defines capability descriptors, model action proposals, effect classes, authorization context and decisions, approval audit records, execution result records, and a small registry. These contracts preserve the boundary for later executable action work, but are not yet the general model-callable execution path.
+Action governance preserves this boundary. `backend/app/actions/contracts.py` defines capability descriptors, model action proposals, effect classes, authorization context and decisions, approval audit records, execution result records, and the capability registry. Model output can request or propose an action; application code validates, authorizes, executes, and records it. ADR 0005 owns that governance model and its execution path.
 
 LLM execution is coordinated. `LLMExecutionCoordinator` gives interactive work priority over background curation and blocks new interactive work during shutdown drain.
 

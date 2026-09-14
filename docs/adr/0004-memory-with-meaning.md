@@ -2,7 +2,7 @@
 
 Date: 2026-09-01
 Status: Implemented
-Related: 0002, 0003, 0005, 0006, 0007
+Related: 0002, 0003, 0005, 0009
 
 ## Context and Problem Statement
 
@@ -45,9 +45,9 @@ Negative:
 
 Present-turn context is assembled by the cognition layer. `PromptEnvelope` separates application instructions, personality, continuity, working memory, retrieved memory, search evidence, user input, and output contracts. Retrieved memory is prompt context, not instruction authority.
 
-Working memory is in-process and bounded. `WorkingMemory` keeps recent entries, and `WritePolicy` controls whether responses are added and how many entries are retained. `SessionManager` exposes working context and suppresses it for profile switches or immediate repeats when continuity policy requires it.
+Working memory is in-process and bounded. `WorkingMemory` keeps recent entries, and `WritePolicy` controls whether responses are added and how many entries are retained. `backend/app/conversation/session_manager.py`'s `SessionManager` exposes working context and suppresses it for profile switches or immediate repeats when continuity policy requires it. It is unrelated to the connection-lifecycle `SessionManager` in `backend/app/actions/sessions.py`, which ADR 0009 owns.
 
-Turn and session artifacts are the evidence boundary. `TurnEngine` records transcript, response, prompt, retrieved memory references, search evidence, runtime context, phase timings, failure state, interruptions, raw audio path, and degradation. `TurnArtifact` also defines fields for future action proposals, authorization decisions, approvals, execution results, cancellations, and delegated runs. `SessionArtifact` and `SessionTimeline` preserve session-level evidence.
+Turn and session artifacts are the evidence boundary. `TurnEngine` records transcript, response, prompt, retrieved memory references, search evidence, runtime context, phase timings, failure state, interruptions, raw audio path, and degradation. `TurnArtifact` also carries action proposals, authorization decisions, approvals, execution results, cancellations, and delegated runs; ADR 0005 owns the content of those fields. `SessionArtifact` and `SessionTimeline` preserve session-level evidence.
 
 Episodic memory is local JSON under `data/memory/episodic/`. It writes eligible successful turn artifacts, retains a bounded number of sessions, retrieves recent or keyword-matched entries, and tolerates storage failures without breaking the turn.
 
