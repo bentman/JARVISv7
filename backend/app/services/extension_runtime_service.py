@@ -7,6 +7,7 @@ import shutil
 import threading
 from collections.abc import Callable
 from dataclasses import replace
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
 
@@ -69,6 +70,34 @@ def _mcp_tool_effect(tool: dict[str, Any], transport: str) -> str:
         if annotations.get("readOnlyHint") is True:
             return "external_read"
     return "privileged_execution" if transport == "stdio" else "external_write"
+
+
+def _parse_utc(value: Any) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=UTC)
+    return parsed.astimezone(UTC)
+
+
+def _mcp_list_freshness(value: Any) -> str:
+    if isinstance(value, dict) and value.get("freshness") in {"fresh", "stale", "unknown"}:
+        return str(value["freshness"])
+    return "unknown"
+
+
+def _mcp_snapshot_declares_private_cache(snapshot: dict[str, Any]) -> bool:
+    cache = snapshot.get("cache_metadata")
+    if not isinstance(cache, dict):
+        return False
+    return any(
+        isinstance(item, dict) and item.get("cacheScope") == "private"
+        for item in cache.values()
+    )
 
 
 class ExtensionRuntimeService:
@@ -228,7 +257,7 @@ class ExtensionRuntimeService:
         connection = McpConnectionDefinition.from_mapping(manifest.local_id, definition)
         read_effect = "external_read"
         operations = [("discover", empty, read_effect, lambda args, op, run: self._mcp(manifest, "discover", args, op, run))]
-        snapshot = self._snapshots.get(identifier, {})
+        snapshot = self._fresh_mcp_snapshot(identifier, connection, manifest.local_id)
         for tool in snapshot.get("tools", []):
             name = "tool:" + tool["name"]
             operations.append((name, tool["inputSchema"], _mcp_tool_effect(tool, connection.transport),
@@ -347,9 +376,24 @@ class ExtensionRuntimeService:
                 self.runs.request, current_run_id, {"kind": "elicitation", **request}, current_operation
             )
 
+        async def notify_list_changed(_definition: Any, _kind: str) -> None:
+            # The server announced its tool/resource/prompt list changed, so the cached
+            # discovery snapshot now misdescribes the connection: it must stop presenting
+            # operations that may no longer exist. The next discover rebuilds both the
+            # snapshot and its operations. This callback runs on the session manager's
+            # background loop, so it must not wait on self._lock; the store has its own
+            # connection, and a discover already in flight may repopulate the snapshot
+            # afterward with equally fresh data, which is fine.
+            if identifier not in self._snapshots:
+                return
+            self._snapshots.pop(identifier, None)
+            await asyncio.to_thread(self.snapshots.delete, identifier)
+            await asyncio.to_thread(self.actions.refresh)
+
         async def open_runtime() -> McpConnectionRuntime:
             return McpConnectionRuntime(definition, peer_factory=open_mcp_sdk_peer,
-                                         callbacks=McpHostCallbacks(credentials, authorize, elicit))
+                                         callbacks=McpHostCallbacks(
+                                             credentials, authorize, elicit, notify_list_changed))
 
         async def close_runtime(runtime: McpConnectionRuntime) -> None:
             # For a stdio connection, this is already a genuine forceful kill, not just a
@@ -370,6 +414,10 @@ class ExtensionRuntimeService:
             self._mcp_call_context[identifier] = (run_id, operation)
             if name == "discover":
                 snapshot = (await runtime.refresh(operation)).to_dict()
+                snapshot = self._annotate_mcp_snapshot(
+                    snapshot,
+                    self._mcp_credential_context_hash(definition, manifest.local_id),
+                )
                 self._snapshots[identifier] = snapshot
                 if snapshot.get("health") != "ready":
                     # A connection that failed to answer is not one to keep dispatching
@@ -395,6 +443,11 @@ class ExtensionRuntimeService:
                 # connection is dead. Only the SDK's own signal that the connection
                 # itself closed means the next call must reopen rather than retry
                 # against the same now-unusable connection.
+                from backend.app.extensions.mcp_oauth import reconnect_message_from_challenge
+
+                reconnect = reconnect_message_from_challenge(exc)
+                if reconnect:
+                    raise ValueError(reconnect) from exc
                 if peer_connection_died(exc):
                     raise SessionResourceDiedError(f"MCP connection died during {kind} call: {exc}") from exc
                 raise
@@ -637,7 +690,7 @@ class ExtensionRuntimeService:
             self._oauth_flows[extension_id] = (flow, state)
         return {"extension_id": extension_id, "authorization_url": url, "state": state}
 
-    def oauth_complete(self, extension_id: str, code: str, state: str) -> dict[str, Any]:
+    def oauth_complete(self, extension_id: str, code: str, state: str, issuer: str | None = None) -> dict[str, Any]:
         """Exchange an authorization code and store the token in the secret store."""
         from backend.app.extensions.mcp_oauth import save_oauth_token
 
@@ -648,7 +701,7 @@ class ExtensionRuntimeService:
         flow, expected_state = pending
         if state != expected_state:
             raise ValueError("authorization state does not match the request")
-        token = flow.exchange_code(code, state)
+        token = flow.exchange_code(code, state, issuer)
         save_oauth_token(self.runs.store, extension_id.split(":", 1)[1], token)
         return {"extension_id": extension_id, "authorized": True}
 
@@ -780,9 +833,24 @@ class ExtensionRuntimeService:
 
     def detail(self, extension_id: str) -> dict[str, Any]:
         self.actions.refresh()
+        snapshot = self._snapshots.get(extension_id)
+        if snapshot and extension_id.startswith("mcp:"):
+            manifest = next(
+                (item for item in self.definitions()
+                 if f"{item.family}:{item.local_id}" == extension_id and item.family == "mcp"),
+                None,
+            )
+            if manifest is not None:
+                from backend.app.extensions.mcp import McpConnectionDefinition
+
+                definition = McpConnectionDefinition.from_mapping(manifest.local_id, manifest.definition)
+                snapshot = self._annotate_mcp_snapshot(
+                    snapshot,
+                    self._mcp_credential_context_hash(definition, manifest.local_id, tolerate_missing=True),
+                )
         return {
             "extension_id": extension_id, "operations": self._operations.get(extension_id, []),
-            "snapshot": self._snapshots.get(extension_id), "error": self._errors.get(extension_id),
+            "snapshot": snapshot, "error": self._errors.get(extension_id),
             # `snapshot.health` is a cached fact from the last discover call, not a live
             # read - a probe reproduced it still reporting "ready" after Disconnect
             # closed the session, with nothing in the response distinguishing history
@@ -791,6 +859,95 @@ class ExtensionRuntimeService:
             # `False` rather than raising.
             "connected": self._sessions.is_open(extension_id),
         }
+
+    def _fresh_mcp_snapshot(self, identifier: str, definition: Any, local_id: str) -> dict[str, Any]:
+        snapshot = self._snapshots.get(identifier, {})
+        if not snapshot:
+            return {}
+        if _mcp_snapshot_declares_private_cache(snapshot) and "credential_context_hash" not in snapshot:
+            return {}
+        current_hash = self._mcp_credential_context_hash(definition, local_id, tolerate_missing=True)
+        snapshot = self._annotate_mcp_snapshot(snapshot, current_hash)
+        if self._mcp_snapshot_has_private_mismatch(snapshot, current_hash):
+            return {}
+        cache = snapshot.get("cache_metadata")
+        if not isinstance(cache, dict):
+            return snapshot
+        filtered = dict(snapshot)
+        for list_name in ("tools", "resources", "prompts"):
+            if _mcp_list_freshness(cache.get(list_name)) == "stale":
+                filtered[list_name] = []
+        return filtered
+
+    def _mcp_credential_context_hash(
+        self, definition: Any, local_id: str, *, tolerate_missing: bool = False
+    ) -> str | None:
+        material: dict[str, str] = {}
+        if definition.oauth is not None:
+            from backend.app.extensions.mcp_oauth import (
+                OAUTH_SECRET_NAME,
+                load_oauth_token,
+                oauth_owner_id,
+            )
+
+            raw = self.runs.store.read_secret(oauth_owner_id(local_id), OAUTH_SECRET_NAME)
+            token = load_oauth_token(self.runs.store, local_id)
+            if raw is None or token is None or (token.is_expired() and not token.refresh_token):
+                if tolerate_missing:
+                    return None
+                raise ValueError("MCP connection is not authorized; complete its OAuth connection first")
+            material["oauth_token"] = raw
+        elif definition.credential_ref:
+            value = self.runs.store.read_secret(f"extension:mcp:{local_id}", definition.credential_ref)
+            if value is None:
+                if tolerate_missing:
+                    return None
+                raise ValueError("MCP credential is unavailable")
+            if (
+                definition.transport == "stdio"
+                and definition.credential_ref not in definition.process_boundary.env_passthrough
+            ):
+                if tolerate_missing:
+                    return None
+                raise ValueError(
+                    "MCP credential is not listed in the connection's env_passthrough; "
+                    "the server would start without it"
+                )
+            material[definition.credential_ref] = value
+        if not material:
+            return None
+        payload = json.dumps(sorted(material.items()), separators=(",", ":"), sort_keys=True)
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def _annotate_mcp_snapshot(snapshot: dict[str, Any], credential_context_hash: str | None) -> dict[str, Any]:
+        annotated = dict(snapshot)
+        discovered_at = _parse_utc(annotated.get("discovered_at")) or datetime.now(UTC)
+        annotated.setdefault("discovered_at", discovered_at.isoformat())
+        cache = dict(annotated.get("cache_metadata") or {})
+        for list_name in ("tools", "resources", "resource_templates", "prompts"):
+            raw = dict(cache.get(list_name) or {})
+            ttl = raw.get("ttlMs")
+            if isinstance(ttl, (int, float)) and ttl > 0:
+                expires_at = discovered_at + timedelta(milliseconds=float(ttl))
+                raw["expires_at"] = expires_at.isoformat()
+                raw["freshness"] = "fresh" if expires_at > datetime.now(UTC) else "stale"
+            else:
+                raw["freshness"] = "unknown"
+            cache[list_name] = raw
+        annotated["cache_metadata"] = cache
+        if "credential_context_hash" not in annotated:
+            annotated["credential_context_hash"] = credential_context_hash
+        annotated["current_credential_context_hash"] = credential_context_hash
+        return annotated
+
+    @staticmethod
+    def _mcp_snapshot_has_private_mismatch(
+        snapshot: dict[str, Any], credential_context_hash: str | None
+    ) -> bool:
+        if not _mcp_snapshot_declares_private_cache(snapshot):
+            return False
+        return snapshot.get("credential_context_hash") != credential_context_hash
 
     def observation(self) -> tuple:
         from backend.app.extensions.discovery import DefinitionError, DefinitionRuntime

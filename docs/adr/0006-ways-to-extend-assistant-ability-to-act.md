@@ -56,7 +56,7 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented. The extension catalog, governed runtime, model-selected operations, MCP/skill/local-tool workflows, and readable run evidence are built. MCP code follow-ups are complete with automated validation. Hook/plugin workflows and native interaction validation remain incomplete.
+This ADR is partially implemented. The extension catalog, governed runtime, model-selected operations, MCP/skill/local-tool workflows, and readable run evidence are built. MCP backend follow-ups are complete with automated validation against the SDK-backed 2026-07-28 protocol path. Hook/plugin workflows and native interaction validation remain incomplete.
 
 ### Catalog and declarative lifecycle
 
@@ -78,7 +78,7 @@ Dedicated operator invocation uses `CapabilityService.invoke_operator_capability
 
 ### MCP connections
 
-`backend/app/extensions/mcp.py` implements SDK-backed stdio and streamable HTTP connections, paginated discovery, schema-preserving tool/resource/prompt records, allowlists, cancellation, and host callbacks. Absent or empty allowlists mean unrestricted access within the connection's other controls. Stdio definitions require explicit command, argv/environment allowlists, and working root.
+`backend/app/extensions/mcp.py` implements SDK-backed stdio and streamable HTTP connections, paginated discovery, schema-preserving tool/resource/resource-template/prompt records, list cache metadata, allowlists, cancellation, and host callbacks. Absent or empty allowlists mean unrestricted access within the connection's other controls. Stdio definitions require explicit command, argv/environment allowlists, and working root.
 
 Both transports attach to ADR 0005's shared `SessionManager`. A stdio process stays open across discovery, tool calls, resource reads, and prompt fetches. Host elicitation context is rebound for each call. SDK connection-closed errors trigger cleanup and eviction; ordinary tool errors do not evict a healthy connection. The failed call is not replayed automatically; later use can open a replacement.
 
@@ -88,11 +88,15 @@ MCP uses the SDK's close path for both graceful and forceful termination. The ma
 
 Discovery snapshots persist across backend restarts so operations remain discoverable. Restored health starts as unknown. Desktop shows “not connected” when live connection accounting is false, rather than presenting cached ready health as current.
 
+A server-announced list change invalidates the cached snapshot: a `subscriptions/listen` stream pumps tool/resource/prompt change events on a 2026-07-28 connection, and the SDK's message handler carries unprompted `notifications/*/list_changed` on a handshake-era connection. Either announcement drops that connection's snapshot from memory and `data/operator.sqlite`, so its discovered operations stop being presented until a later discover rebuilds both. The connection itself stays open, and a failed or unsupported listen stream leaves the notification path in place.
+
+Discovery snapshots carry per-list `ttlMs`/`cacheScope` evidence and credential-context hashes. Positive TTLs that expire hide the affected dynamic operations until rediscovery; absent or zero TTLs preserve existing behavior while reporting unknown freshness. Private snapshots are reused only when the current credential context matches the stored hash. Invalid `x-mcp-header` tool metadata is filtered out with descriptor-problem evidence.
+
 Operation classification is `external_read` for discovery, resource reads, and prompt fetches on either transport. Tool annotations refine classification: boolean `destructiveHint: true` selects `destructive_action`; otherwise boolean `readOnlyHint: true` selects `external_read`. Missing or malformed hints retain the transport default (`privileged_execution` for stdio, `external_write` for HTTP). Destructive claims take precedence over conflicting read-only claims. All MCP tool capabilities retain `requires_approval` for model proposals because server metadata cannot grant authority. Specific operator requests execute directly, and stdio process boundaries remain enforced regardless of classification.
 
 ### Credentials and authorization
 
-`backend/app/extensions/mcp_oauth.py` implements authorization-code flow, state-bound single-use verifiers, resource-bound token requests, endpoint discovery or explicit endpoints, local callback handling, and token refresh. Tokens persist in the encrypted operator secret store. `ExtensionRuntimeService.mcp_credentials` resolves credentials when opening the connection; missing OAuth authorization is refused. A stdio credential reference must be included in the process environment allowlist.
+`backend/app/extensions/mcp_oauth.py` implements authorization-code flow, state-bound single-use verifiers, protected-resource discovery with authorization-server and OpenID Connect metadata fallback, issuer validation when `iss` is supplied, resource-bound token requests, endpoint discovery or explicit endpoints, local callback handling, token refresh, and reconnect guidance for insufficient-scope challenges. Tokens persist in the encrypted operator secret store. `ExtensionRuntimeService.mcp_credentials` resolves credentials when opening the connection; missing OAuth authorization is refused. A stdio credential reference must be included in the process environment allowlist.
 
 The desktop provides credential storage and OAuth authorize/reauthorize/complete/status flows through dedicated backend routes. Add/Edit forms carry credential references and OAuth configuration, preserve unedited fields, and refuse inline secrets.
 
@@ -116,15 +120,17 @@ Native `invoke_extension` is async and dispatches the blocking backend request t
 
 Coverage tied to the implemented contracts:
 
-- `backend/tests/integration/test_extension_runtime.py`: real stdio reuse and process death, Disconnect/reopen, a server that ignores SIGTERM, current-call elicitation ownership, operator execution versus model approval, state teardown through route and capability paths, rejected updates, failed/repeated Disconnect, unknown outcomes, credential invalidation, and definition/skill lifecycle.
-- `backend/tests/integration/test_mcp_sdk.py`: SDK peer behavior.
-- `backend/tests/unit/extensions/`: catalog, definitions, family runners, MCP and OAuth contracts.
+- `backend/tests/integration/test_extension_runtime.py`: real stdio reuse and process death, Disconnect/reopen, a server that ignores SIGTERM, current-call elicitation ownership, operator execution versus model approval, state teardown through route and capability paths, rejected updates, failed/repeated Disconnect, unknown outcomes, credential invalidation, definition/skill lifecycle, and server-announced list changes dropping a stale discovery snapshot on both the subscription and handshake-era notification paths.
+- `backend/tests/integration/test_mcp_sdk.py`: SDK peer behavior, including expanded discovery payload size.
+- `backend/tests/unit/extensions/`: catalog, definitions, family runners, MCP contracts including resource templates, cache metadata, private credential scoping, stale operation hiding, invalid `x-mcp-header` filtering, host callback delivery to the peer factory, and OAuth contracts.
 - `backend/tests/unit/services/test_extension_service.py`: extension service behavior.
 - `desktop/tests/static.test.mjs`: form round-trips and handler wiring, wrapped-result rendering, Disconnect refresh, connection status, and unknown-outcome presentation.
 
 Recorded validation:
 
-- Windows-amd64: `backend\.venv\Scripts\python scripts/validate_backend.py integration`: PASS, 60 passed. Unit validator and Tauri build evidence are recorded in ADR 0005.
+- Windows-amd64: `backend\.venv\Scripts\python scripts\validate_backend.py unit`: PASS, 1562 passed / 7 skipped. Report: `reports\validation\20260914180037-unit_backend.txt`.
+- Windows-amd64: `backend\.venv\Scripts\python scripts\validate_backend.py integration`: PASS, 62 passed in 34.84s, including the subscription and handshake-era list-change snapshot tests.
+- Windows-amd64: `backend\.venv\Scripts\python -m pytest backend\tests\unit\extensions\test_mcp.py backend\tests\unit\extensions\test_mcp_oauth.py backend\tests\integration\test_mcp_sdk.py backend\tests\integration\test_mcp_http_auth.py backend\tests\integration\test_extension_runtime.py -q`: PASS, 112 passed in 26.09s.
 - Windows-amd64: `npm --prefix desktop test`: PASS, including repeated OAuth partial-failure refresh, named runs, requested inputs, readable tool output/events, and full result disclosure.
 - `test_oauth_forget_closes_the_live_session_so_a_stale_credential_cannot_keep_being_used` covers successful, failed, and absent connections through the production route and real SessionManager. Repeated failed requests preserve token deletion, clear pending flows, retain the resource, and refuse new work. An in-memory substitution that ignored close confirmation made the test fail with `DID NOT RAISE HTTPException`; production files were not changed for that negative check.
 - `test_mcp_tool_hints_classify_effects_without_authorizing_model_calls` covers both transports, absent/malformed/conflicting hints, model approval, direct operator execution, and masked run metadata.

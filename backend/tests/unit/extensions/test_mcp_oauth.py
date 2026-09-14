@@ -20,6 +20,7 @@ from backend.app.extensions.mcp_oauth import (
     discover_authorization_server,
     load_oauth_token,
     parse_resource_metadata_url,
+    reconnect_message_from_challenge,
     protected_resource_metadata_url,
     resolve_oauth_bearer,
     save_oauth_token,
@@ -221,6 +222,12 @@ class TestMcpOAuthFlow:
         with pytest.raises(ValueError, match="no refresh_token"):
             flow.refresh_token(token)
 
+    def test_exchange_code_validates_a_present_issuer(self) -> None:
+        flow = McpOAuthFlow(_valid_oauth_config(issuer="https://auth.example.com"))
+        _, state = flow.start_authorization()
+        with pytest.raises(ValueError, match="issuer does not match"):
+            flow.exchange_code("auth-code", state, "https://evil.example.com")
+
 
 class _FakeSecretStore:
     """Stands in for the application's encrypted operator secret store."""
@@ -336,6 +343,28 @@ class TestAuthorizationServerDiscovery:
             found = discover_authorization_server("https://mcp.example.test/mcp")
         assert found["authorization_url"] == "https://auth.example.test/authorize"
         assert found["token_url"] == "https://auth.example.test/token"
+        assert found["issuer"] == "https://auth.example.test"
+
+    def test_discovery_falls_back_to_openid_configuration(self) -> None:
+        pages = {
+            "https://mcp.example.test/.well-known/oauth-protected-resource/mcp": {
+                "authorization_servers": ["https://auth.example.test"],
+            },
+            "https://auth.example.test/.well-known/openid-configuration": {
+                "authorization_endpoint": "https://auth.example.test/authorize",
+                "token_endpoint": "https://auth.example.test/token",
+            },
+        }
+
+        def fetch(url: str) -> dict[str, Any]:
+            if url.endswith("/.well-known/oauth-authorization-server"):
+                raise OSError("not found")
+            return pages[url]
+
+        with patch("backend.app.extensions.mcp_oauth._fetch_json", side_effect=fetch):
+            found = discover_authorization_server("https://mcp.example.test/mcp")
+
+        assert found["authorization_url"] == "https://auth.example.test/authorize"
 
     def test_metadata_without_an_authorization_server_is_refused(self) -> None:
         with (
@@ -352,6 +381,7 @@ class TestAuthorizationServerDiscovery:
                 "token_url": "https://auth.example.test/token",
                 "scopes_supported": ("read",),
                 "resource": "https://mcp.example.test/mcp",
+                "issuer": "https://auth.example.test",
             },
         ):
             config = config_from_definition(
@@ -359,6 +389,7 @@ class TestAuthorizationServerDiscovery:
             )
         assert config.token_url == "https://auth.example.test/token"
         assert config.resource == "https://mcp.example.test/mcp"
+        assert config.issuer == "https://auth.example.test"
 
     def test_an_explicit_endpoint_overrides_discovery(self) -> None:
         with patch("backend.app.extensions.mcp_oauth.discover_authorization_server") as discover:
@@ -392,6 +423,21 @@ class TestResourceBoundTokens:
     def test_a_non_http_resource_is_rejected(self) -> None:
         with pytest.raises(ValueError, match="resource must be a valid HTTP"):
             _valid_oauth_config(resource="not-a-url")
+
+
+class TestScopeChallenges:
+    def test_insufficient_scope_challenge_becomes_reconnect_guidance(self) -> None:
+        class Response:
+            headers = {
+                "www-authenticate": 'Bearer error="insufficient_scope", scope="read write"'
+            }
+
+        exc = RuntimeError("forbidden")
+        exc.response = Response()  # type: ignore[attr-defined]
+
+        assert reconnect_message_from_challenge(exc) == (
+            "MCP authorization requires reconnecting this connection with scope(s): read write"
+        )
 
 
 class TestMcpConnectionDefinitionOAuth:

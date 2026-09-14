@@ -100,9 +100,14 @@ class McpConnectionDefinition:
             parsed = urlsplit(str(resource))
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise ValueError("oauth.resource must be a valid HTTP(S) URL")
+        issuer = oauth.get("issuer")
+        if issuer is not None:
+            parsed = urlsplit(str(issuer))
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise ValueError("oauth.issuer must be a valid HTTPS URL")
         unknown = set(oauth) - {
             "authorization_url", "token_url", "client_id", "client_secret",
-            "scopes", "redirect_port", "resource",
+            "scopes", "redirect_port", "resource", "issuer",
         }
         if unknown:
             raise ValueError(f"oauth has unsupported fields: {', '.join(sorted(unknown))}")
@@ -172,7 +177,10 @@ class McpDiscovery:
     server_capabilities: dict[str, Any] = field(default_factory=dict)
     tools: tuple[dict[str, Any], ...] = ()
     resources: tuple[dict[str, Any], ...] = ()
+    resource_templates: tuple[dict[str, Any], ...] = ()
     prompts: tuple[dict[str, Any], ...] = ()
+    cache_metadata: dict[str, Any] = field(default_factory=dict)
+    descriptor_problems: tuple[dict[str, Any], ...] = ()
     health: str = "unknown"
     error: str | None = None
 
@@ -199,7 +207,12 @@ class McpPeer(Protocol):
 CredentialResolver = Callable[[McpConnectionDefinition], Awaitable[dict[str, str]]]
 ActionAuthorizer = Callable[[ActionOperation, str, dict[str, Any]], Awaitable[None]]
 ElicitationHandler = Callable[[McpConnectionDefinition, dict[str, Any]], Awaitable[dict[str, Any]]]
-PeerFactory = Callable[[McpConnectionDefinition, dict[str, str], ElicitationHandler], Awaitable[McpPeer]]
+ListChangedNotifier = Callable[[McpConnectionDefinition, str], Awaitable[None]]
+"""Kind is "tools", "resources", or "prompts": a server-announced list change."""
+PeerFactory = Callable[
+    [McpConnectionDefinition, dict[str, str], ElicitationHandler, ListChangedNotifier | None],
+    Awaitable[McpPeer],
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -209,6 +222,7 @@ class McpHostCallbacks:
     resolve_credentials: CredentialResolver
     authorize: ActionAuthorizer
     request_elicitation: ElicitationHandler
+    notify_list_changed: ListChangedNotifier | None = None
 
 
 class McpConnectionRuntime:
@@ -250,14 +264,20 @@ class McpConnectionRuntime:
             peer = await _await_operation(operation, self._ensure_peer())
             discovered = await _await_operation(operation, peer.discovery())
             operation.check()
+            filtered_tools, descriptor_problems = _filter_invalid_tools(
+                _filter_records(discovered.tools, self.definition.tool_allowlist, "name")
+            )
             discovery = McpDiscovery(
                 connection_id=self.definition.connection_id,
                 server_info=dict(discovered.server_info),
                 protocol_version=discovered.protocol_version,
                 server_capabilities=dict(discovered.server_capabilities),
-                tools=_filter_records(discovered.tools, self.definition.tool_allowlist, "name"),
+                tools=filtered_tools,
                 resources=_filter_records(discovered.resources, self.definition.resource_allowlist, "uri"),
+                resource_templates=tuple(dict(record) for record in discovered.resource_templates),
                 prompts=_filter_records(discovered.prompts, self.definition.prompt_allowlist, "name"),
+                cache_metadata=dict(discovered.cache_metadata),
+                descriptor_problems=descriptor_problems,
                 health="ready",
             )
             _enforce_output_limit(operation, discovery.to_dict())
@@ -335,7 +355,8 @@ class McpConnectionRuntime:
             if self._peer is None:
                 credentials = await self._callbacks.resolve_credentials(self.definition)
                 self._peer = await self._peer_factory(
-                    self.definition, dict(credentials), self._callbacks.request_elicitation
+                    self.definition, dict(credentials), self._callbacks.request_elicitation,
+                    self._callbacks.notify_list_changed,
                 )
             return self._peer
 
@@ -396,6 +417,7 @@ class McpSdkPeer:
         definition: McpConnectionDefinition,
         credentials: dict[str, str],
         elicitation: ElicitationHandler,
+        notify_list_changed: ListChangedNotifier | None = None,
     ) -> McpSdkPeer:
         try:
             from mcp import Client, StdioServerParameters
@@ -409,6 +431,19 @@ class McpSdkPeer:
             action = response.get("action", "decline")
             content = response.get("content")
             return ElicitResult(action=action, content=content)
+
+        async def on_message(message: Any) -> None:
+            # Handshake-era connections surface a server's unprompted list-change
+            # notification here (a 2026-07-28 connection delivers those through the
+            # listen stream pumped below instead). A stale cached discovery snapshot must
+            # not keep presenting operations that no longer exist. The host notifier owns
+            # what staleness means; the SDK contains a callback failure without touching
+            # the connection.
+            if notify_list_changed is None:
+                return
+            kind = _list_changed_kind(message)
+            if kind is not None:
+                await notify_list_changed(definition, kind)
 
         stack = AsyncExitStack()
         try:
@@ -431,17 +466,26 @@ class McpSdkPeer:
                 )
                 target = streamable_http_client(definition.url or "", http_client=http_client)
             client = await stack.enter_async_context(
-                Client(target, elicitation_callback=on_elicitation)
+                Client(target, elicitation_callback=on_elicitation, message_handler=on_message)
             )
+            if notify_list_changed is not None:
+                # 2026-07-28 servers deliver list changes through subscriptions/listen
+                # streams rather than unprompted notifications, so a server that only
+                # publishes there would never be heard without one. `listen` refuses a
+                # pre-2026 connection before any request is sent, so the pump simply ends
+                # there and the message_handler path above carries the legacy case.
+                pump = asyncio.create_task(_pump_list_changes(client, definition, notify_list_changed))
+                stack.callback(_stop_pump, pump)
             return cls(stack, client)
         except BaseException:
             await stack.aclose()
             raise
 
     async def discovery(self) -> McpDiscovery:
-        tools, resources, prompts = await asyncio.gather(
+        tools, resources, resource_templates, prompts = await asyncio.gather(
             _list_all(self._client.list_tools, "tools"),
             _list_all(self._client.list_resources, "resources"),
+            _list_all_optional(self._client.list_resource_templates, "resource_templates"),
             _list_all(self._client.list_prompts, "prompts"),
         )
         return McpDiscovery(
@@ -449,9 +493,16 @@ class McpSdkPeer:
             server_info=_to_mapping(getattr(self._client, "server_info", None)),
             protocol_version=str(getattr(self._client, "protocol_version", "")) or None,
             server_capabilities=_to_mapping(getattr(self._client, "server_capabilities", None)),
-            tools=tuple(_to_mapping(item) for item in tools),
-            resources=tuple(_to_mapping(item) for item in resources),
-            prompts=tuple(_to_mapping(item) for item in prompts),
+            tools=tuple(_to_mapping(item) for item in tools[0]),
+            resources=tuple(_to_mapping(item) for item in resources[0]),
+            resource_templates=tuple(_to_mapping(item) for item in resource_templates[0]),
+            prompts=tuple(_to_mapping(item) for item in prompts[0]),
+            cache_metadata={
+                "tools": tools[1],
+                "resources": resources[1],
+                "resource_templates": resource_templates[1],
+                "prompts": prompts[1],
+            },
         )
 
     async def read_resource(self, uri: str) -> Any:
@@ -486,8 +537,64 @@ async def open_mcp_sdk_peer(
     definition: McpConnectionDefinition,
     credentials: dict[str, str],
     elicitation: ElicitationHandler,
+    notify_list_changed: ListChangedNotifier | None = None,
 ) -> McpPeer:
-    return await McpSdkPeer.open(definition, credentials, elicitation)
+    return await McpSdkPeer.open(definition, credentials, elicitation, notify_list_changed)
+
+
+def _list_changed_kind(message: Any) -> str | None:
+    """The changed list a server notification announces, or None for anything else."""
+    from mcp.types import (
+        PromptListChangedNotification,
+        ResourceListChangedNotification,
+        ToolListChangedNotification,
+    )
+
+    if isinstance(message, ToolListChangedNotification):
+        return "tools"
+    if isinstance(message, ResourceListChangedNotification):
+        return "resources"
+    if isinstance(message, PromptListChangedNotification):
+        return "prompts"
+    return None
+
+
+async def _pump_list_changes(
+    client: Any, definition: McpConnectionDefinition, notify: ListChangedNotifier
+) -> None:
+    """Relay `subscriptions/listen` events to the host notifier until the connection ends."""
+    try:
+        async with client.listen(
+            tools_list_changed=True, prompts_list_changed=True, resources_list_changed=True
+        ) as subscription:
+            async for event in subscription:
+                kind = _listen_event_kind(event)
+                if kind is not None:
+                    await notify(definition, kind)
+    except Exception:
+        # Listen is a best-effort addition: an unsupported, rejected, or dropped stream
+        # leaves the message_handler path in place; nothing here may fail the connection.
+        return
+
+
+def _listen_event_kind(event: Any) -> str | None:
+    from mcp.shared.subscriptions import (
+        PromptsListChanged,
+        ResourcesListChanged,
+        ToolsListChanged,
+    )
+
+    if isinstance(event, ToolsListChanged):
+        return "tools"
+    if isinstance(event, ResourcesListChanged):
+        return "resources"
+    if isinstance(event, PromptsListChanged):
+        return "prompts"
+    return None
+
+
+def _stop_pump(task: "asyncio.Task[None]") -> None:
+    task.cancel()
 
 
 def _filter_records(
@@ -498,21 +605,63 @@ def _filter_records(
     return tuple(dict(record) for record in records if record.get(key) in allowlist)
 
 
-async def _list_all(method: Callable[..., Awaitable[Any]], attribute: str) -> tuple[Any, ...]:
+def _filter_invalid_tools(records: tuple[dict[str, Any], ...]) -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, Any], ...]]:
+    try:
+        from mcp.shared.inbound import find_invalid_x_mcp_header
+    except ImportError:  # pragma: no cover - dependency provisioning owns this path.
+        return records, ()
+    kept: list[dict[str, Any]] = []
+    problems: list[dict[str, Any]] = []
+    for record in records:
+        reason = find_invalid_x_mcp_header(record.get("inputSchema"))
+        if reason is None:
+            kept.append(dict(record))
+            continue
+        problems.append({
+            "kind": "tool",
+            "name": record.get("name", ""),
+            "reason": f"invalid x-mcp-header: {reason}",
+        })
+    return tuple(kept), tuple(problems)
+
+
+async def _list_all(method: Callable[..., Awaitable[Any]], attribute: str) -> tuple[tuple[Any, ...], dict[str, Any]]:
     """Read every SDK page while refusing a malformed repeated pagination cursor."""
     cursor: str | None = None
     seen_cursors: set[str] = set()
     records: list[Any] = []
+    metadata: dict[str, Any] = {}
     while True:
         page = await method(cursor=cursor)
+        if not metadata:
+            metadata = _cache_metadata(page)
         records.extend(getattr(page, attribute, ()))
         next_cursor = getattr(page, "next_cursor", None)
         if not next_cursor:
-            return tuple(records)
+            return tuple(records), metadata
         if next_cursor in seen_cursors:
             raise McpError("MCP discovery repeated a pagination cursor")
         seen_cursors.add(next_cursor)
         cursor = next_cursor
+
+
+async def _list_all_optional(
+    method: Callable[..., Awaitable[Any]], attribute: str
+) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    try:
+        return await _list_all(method, attribute)
+    except Exception:
+        return (), {}
+
+
+def _cache_metadata(page: Any) -> dict[str, Any]:
+    raw = _to_mapping(page)
+    result: dict[str, Any] = {}
+    if "ttlMs" in raw:
+        result["ttlMs"] = raw["ttlMs"]
+    if "cacheScope" in raw:
+        result["cacheScope"] = raw["cacheScope"]
+    return result
 
 
 def _to_mapping(value: Any) -> dict[str, Any]:
@@ -571,6 +720,7 @@ __all__ = [
     "ActionAuthorizer",
     "CredentialResolver",
     "ElicitationHandler",
+    "ListChangedNotifier",
     "McpConnectionDefinition",
     "McpConnectionRuntime",
     "McpDiscovery",

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from backend.app.actions import ActionCancelledError, ActionOperation, ExecutionBoundary
@@ -12,6 +13,7 @@ from backend.app.extensions.mcp import (
     McpError,
     McpHostCallbacks,
 )
+from backend.app.services.extension_runtime_service import ExtensionRuntimeService
 
 
 def operation() -> ActionOperation:
@@ -37,7 +39,14 @@ class FakePeer:
                 {"name": "hidden", "inputSchema": {"$ref": "https://example.invalid/schema"}},
             ),
             resources=({"uri": "file://safe"}, {"uri": "file://hidden"}),
+            resource_templates=({"uriTemplate": "file://{name}"},),
             prompts=({"name": "safe-prompt"}, {"name": "hidden-prompt"}),
+            cache_metadata={
+                "tools": {"ttlMs": 60000, "cacheScope": "private"},
+                "resources": {"ttlMs": 60000, "cacheScope": "public"},
+                "resource_templates": {"ttlMs": 60000, "cacheScope": "public"},
+                "prompts": {"ttlMs": 60000, "cacheScope": "public"},
+            },
         )
 
     async def read_resource(self, uri: str) -> object:
@@ -121,8 +130,63 @@ def test_refresh_preserves_raw_tool_schema_and_applies_host_filters() -> None:
     assert snapshot.connection_id == "example"
     assert snapshot.tools == ({"name": "safe", "inputSchema": {"type": "object", "anyOf": [{"type": "string"}]}},)
     assert snapshot.resources == ({"uri": "file://safe"},)
+    assert snapshot.resource_templates == ({"uriTemplate": "file://{name}"},)
     assert snapshot.prompts == ({"name": "safe-prompt"},)
+    assert snapshot.cache_metadata["tools"] == {"ttlMs": 60000, "cacheScope": "private"}
     assert authorized == ["connect"]
+
+
+def test_refresh_drops_tools_with_invalid_x_mcp_header_metadata() -> None:
+    peer = FakePeer()
+
+    async def discovery() -> McpDiscovery:
+        return McpDiscovery(
+            connection_id="ignored",
+            tools=(
+                {"name": "valid", "inputSchema": {
+                    "type": "object",
+                    "properties": {"tenant": {"type": "string", "x-mcp-header": "Tenant"}},
+                }},
+                {"name": "invalid", "inputSchema": {
+                    "type": "object",
+                    "properties": {"tenant": {"type": "number", "x-mcp-header": "Tenant"}},
+                }},
+            ),
+        )
+
+    peer.discovery = discovery  # type: ignore[method-assign]
+
+    async def factory(*_args):
+        return peer
+
+    async def allow(*_args):
+        return None
+
+    async def elicit(*_args):
+        return {"action": "decline"}
+
+    async def no_credentials(_definition):
+        return {}
+
+    runtime = McpConnectionRuntime(
+        definition(tool_allowlist=("valid", "invalid")),
+        peer_factory=factory,
+        callbacks=McpHostCallbacks(no_credentials, allow, elicit),
+    )
+
+    snapshot = run(runtime.refresh(operation()))
+
+    assert [tool["name"] for tool in snapshot.tools] == ["valid"]
+    assert snapshot.descriptor_problems == (
+        {
+            "kind": "tool",
+            "name": "invalid",
+            "reason": (
+                "invalid x-mcp-header: property 'tenant': x-mcp-header is only "
+                "permitted on integer/string/boolean properties (got 'number')"
+            ),
+        },
+    )
 
 
 def test_peer_operations_require_action_authorization_before_calls() -> None:
@@ -197,14 +261,16 @@ def test_denied_host_authorization_cannot_reach_peer() -> None:
     assert peer.calls == []
 
 
-def test_factory_receives_host_owned_credentials_and_elicit_callback() -> None:
+def test_factory_receives_host_owned_credentials_consent_and_change_callbacks() -> None:
     peer = FakePeer()
     received: dict[str, object] = {}
 
-    async def factory(connection, credentials, elicitation):
+    async def factory(connection, credentials, elicitation, notify_list_changed):
         received["connection"] = connection
         received["credentials"] = credentials
+        received["notify"] = notify_list_changed
         received["response"] = await elicitation(connection, {"message": "Need confirmation"})
+        received["announced"] = await notify_list_changed(connection, "tools")
         return peer
 
     async def credentials(_definition):
@@ -218,14 +284,20 @@ def test_factory_receives_host_owned_credentials_and_elicit_callback() -> None:
         assert request == {"message": "Need confirmation"}
         return {"action": "accept", "content": {"answer": "yes"}}
 
+    announced: list[object] = []
+
+    async def announce(connection, kind):
+        announced.append((connection, kind))
+
     runtime = McpConnectionRuntime(
         definition(), peer_factory=factory,
-        callbacks=McpHostCallbacks(credentials, allow, elicit),
+        callbacks=McpHostCallbacks(credentials, allow, elicit, announce),
     )
     run(runtime.refresh(operation()))
 
     assert received["credentials"] == {"Authorization": "Bearer secret"}
     assert received["response"] == {"action": "accept", "content": {"answer": "yes"}}
+    assert announced == [(definition(), "tools")]
 
 
 def test_cancellation_signals_operation_and_peer_then_closes() -> None:
@@ -349,3 +421,54 @@ def test_refresh_records_sdk_failure_as_unavailable_and_closes_peer() -> None:
     assert snapshot.health == "unavailable"
     assert snapshot.error == "SDK connection failed"
     assert peer.closed is True
+
+
+def test_stale_mcp_snapshot_keeps_detail_data_but_hides_dynamic_operations() -> None:
+    service = ExtensionRuntimeService.__new__(ExtensionRuntimeService)
+    service._snapshots = {
+        "mcp:example": {
+            "tools": [{"name": "safe", "inputSchema": {"type": "object"}}],
+            "resources": [{"uri": "file://safe"}],
+            "prompts": [{"name": "safe-prompt"}],
+            "discovered_at": (datetime.now(UTC) - timedelta(seconds=2)).isoformat(),
+            "cache_metadata": {
+                "tools": {"ttlMs": 1, "cacheScope": "public"},
+                "resources": {},
+                "prompts": {},
+            },
+        }
+    }
+    service.mcp_credentials = lambda _definition, _local_id: {}  # type: ignore[method-assign]
+
+    snapshot = service._fresh_mcp_snapshot("mcp:example", definition(), "example")
+
+    assert snapshot["tools"] == []
+    assert snapshot["resources"] == [{"uri": "file://safe"}]
+    assert snapshot["cache_metadata"]["tools"]["freshness"] == "stale"
+    assert snapshot["cache_metadata"]["resources"]["freshness"] == "unknown"
+
+
+def test_private_mcp_snapshot_is_not_reused_after_credential_context_changes() -> None:
+    service = ExtensionRuntimeService.__new__(ExtensionRuntimeService)
+    service._snapshots = {
+        "mcp:example": {
+            "tools": [{"name": "safe", "inputSchema": {"type": "object"}}],
+            "credential_context_hash": "previous",
+            "cache_metadata": {"tools": {"ttlMs": 60000, "cacheScope": "private"}},
+        }
+    }
+    service.mcp_credentials = lambda _definition, _local_id: {"Authorization": "Bearer changed"}  # type: ignore[method-assign]
+
+    assert service._fresh_mcp_snapshot("mcp:example", definition(), "example") == {}
+
+
+def test_private_mcp_snapshot_without_stored_credential_context_is_not_reused() -> None:
+    service = ExtensionRuntimeService.__new__(ExtensionRuntimeService)
+    service._snapshots = {
+        "mcp:example": {
+            "tools": [{"name": "safe", "inputSchema": {"type": "object"}}],
+            "cache_metadata": {"tools": {"ttlMs": 60000, "cacheScope": "private"}},
+        }
+    }
+
+    assert service._fresh_mcp_snapshot("mcp:example", definition(), "example") == {}

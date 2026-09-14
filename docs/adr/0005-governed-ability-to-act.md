@@ -99,15 +99,15 @@ Implementation files are identified above. Focused coverage:
 - `backend/tests/unit/actions/test_action_contracts.py`, `backend/tests/unit/actions/test_action_catalog.py`, and `backend/tests/unit/actions/test_action_boundaries.py`: registration, authorization posture, and execution boundaries.
 - `backend/tests/unit/actions/test_sessions.py`: reuse, serialized work, initialization/close races, cancellation-resistant handlers, bounded waits, shutdown, confirmed teardown, retained failed closes, and family-specific retry behavior.
 - `backend/tests/unit/services/test_capability_service.py`: authorization, execution, audit, and preservation of `outcome_unknown`.
-- `backend/tests/integration/test_extension_runtime.py`: operator invocation without self-approval, model-proposal approval, and propagation of teardown and unknown-outcome records through application services. Family-specific lifecycle evidence belongs to ADR 0006 and ADR 0007.
+- `backend/tests/integration/test_extension_runtime.py`: operator invocation without self-approval, model-proposal approval, propagation of teardown and unknown-outcome records through application services, and MCP list-change invalidation coverage owned in ADR 0006. Family-specific lifecycle evidence belongs to ADR 0006 and ADR 0007.
 - `desktop/tests/static.test.mjs`: action controls, audit presentation, and distinct unknown-outcome styling.
 
 `backend/tests/fixtures/search_providers.py` and `backend/tests/fixtures/action_governance.py` support deterministic action-path checks; `scripts/validate_backend.py runtime --mock` selects mock-based runtime coverage.
 
 Recorded validation (windows-amd64):
 
-- `backend\.venv\Scripts\python scripts/validate_backend.py unit`: PASS, 1555 passed, 7 platform/privilege skips.
-- `backend\.venv\Scripts\python scripts/validate_backend.py integration`: PASS, 60 passed, including MCP subprocess lifecycle, operator/model authorization, and failed OAuth teardown.
+- `backend\.venv\Scripts\python scripts\validate_backend.py unit`: PASS, 1562 passed, 7 platform/privilege skips. Report: `reports\validation\20260914180037-unit_backend.txt`.
+- `backend\.venv\Scripts\python scripts\validate_backend.py integration`: PASS, 62 passed in 34.84s, including MCP subprocess lifecycle, operator/model authorization, failed OAuth teardown, and MCP list-change invalidation.
 - `npm --prefix desktop test`: PASS; static and behavior checks for actions, extensions, and agents.
 - `cargo build --manifest-path desktop/src-tauri/Cargo.toml`: PASS. The compiler reported an incremental-cache finalization warning; the build completed successfully.
 

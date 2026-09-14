@@ -286,7 +286,8 @@ def test_cancelled_acp_input_returns_conflict_from_the_input_route(
     assert response.value.status_code == 409
 
 
-def _write_mcp_definition(root: Path, server: Path) -> None:
+def _write_mcp_definition(root: Path, server: Path, tool_allowlist: list[str] | None = None) -> None:
+    allowlist = tool_allowlist if tool_allowlist is not None else ["echo"]
     directory = root / "extensions" / "mcp"
     directory.mkdir(parents=True, exist_ok=True)
     (directory / "fixture.yaml").write_text(
@@ -302,7 +303,7 @@ def _write_mcp_definition(root: Path, server: Path) -> None:
             f"    argv_allowlist: ['{sys.executable}']",
             "    env_passthrough: []",
             "    working_root: data",
-            "  tool_allowlist: ['echo']",
+            "  tool_allowlist: [" + ", ".join(f"'{item}'" for item in allowlist) + "]",
         ]),
         encoding="utf-8",
     )
@@ -380,6 +381,147 @@ def test_discovered_mcp_operations_survive_a_restart(
     assert {item["name"] for item in detail["operations"]} == before
     # The connection has not been contacted since restart, so health is not asserted.
     assert detail["snapshot"]["health"] == "unknown"
+
+
+def _mutating_mcp_server_script(tmp_path: Path) -> Path:
+    # A 2026-07-28 high-level server whose list changes reach clients only through the
+    # subscriptions/listen bus (ctx.notify_tools_changed), so the host only hears the
+    # announcement if its connection actually runs a listen stream.
+    server = tmp_path / "mutating_server.py"
+    server.write_text(
+        "from mcp.server import MCPServer\n"
+        "from mcp.server.mcpserver import Context\n"
+        "mcp = MCPServer('fixture')\n"
+        "@mcp.tool()\n"
+        "def echo(value: str) -> str:\n"
+        "    return value\n"
+        "@mcp.tool()\n"
+        "async def mutate(ctx: Context) -> str:\n"
+        "    mcp.add_tool(lambda value: value, name='added_tool', structured_output=False)\n"
+        "    await ctx.notify_tools_changed()\n"
+        "    return 'added'\n"
+        "if __name__ == '__main__':\n"
+        "    mcp.run()\n",
+        encoding="utf-8",
+    )
+    return server
+
+
+def _direct_notify_mcp_server_script(tmp_path: Path) -> Path:
+    # A raw JSON-RPC stdio server speaking only the legacy (2025-11-25) handshake, which
+    # sends notifications/tools/list_changed directly on the wire. This is the shape of
+    # most pre-2026 stdio servers: the modern revision delivers list changes through
+    # subscriptions/listen (covered by the subscription test above), while a legacy-era
+    # connection surfaces the un-asked notification through the client's message
+    # handler - and it must drop the cached snapshot the same way.
+    server = tmp_path / "direct_notify_server.py"
+    server.write_text(
+        "import json, sys\n"
+        "def send(msg):\n"
+        "    sys.stdout.write(json.dumps(msg) + '\\n')\n"
+        "    sys.stdout.flush()\n"
+        "added = False\n"
+        "for line in sys.stdin:\n"
+        "    try:\n"
+        "        req = json.loads(line)\n"
+        "    except json.JSONDecodeError:\n"
+        "        continue\n"
+        "    method = req.get('method')\n"
+        "    rid = req.get('id')\n"
+        "    if method == 'initialize':\n"
+        "        send({'jsonrpc': '2.0', 'id': rid, 'result': {\n"
+        "            'protocolVersion': '2025-11-25',\n"
+        "            'capabilities': {'tools': {'listChanged': True}},\n"
+        "            'serverInfo': {'name': 'fixture', 'version': '1'},\n"
+        "        }})\n"
+        "    elif method in ('tools/list', 'resources/list', 'prompts/list'):\n"
+        "        schema = {'type': 'object', 'properties': {'value': {'type': 'string'}}, 'required': ['value']}\n"
+        "        tools = [{'name': 'echo', 'inputSchema': schema}, {'name': 'mutate', 'inputSchema': {'type': 'object', 'properties': {}}}]\n"
+        "        if added:\n"
+        "            tools.append({'name': 'added_tool', 'inputSchema': schema})\n"
+        "        if method == 'tools/list':\n"
+        "            send({'jsonrpc': '2.0', 'id': rid, 'result': {'tools': tools}})\n"
+        "        else:\n"
+        "            send({'jsonrpc': '2.0', 'id': rid, 'result': {'resources': [], 'prompts': []}})\n"
+        "    elif method == 'tools/call':\n"
+        "        added = True\n"
+        "        send({'jsonrpc': '2.0', 'id': rid, 'result': {'content': [{'type': 'text', 'text': 'added'}]}})\n"
+        "        send({'jsonrpc': '2.0', 'method': 'notifications/tools/list_changed', 'params': {}})\n"
+        "    elif rid is not None:\n"
+        "        send({'jsonrpc': '2.0', 'id': rid, 'error': {'code': -32601, 'message': 'Method not found'}})\n",
+        encoding="utf-8",
+    )
+    return server
+
+
+def _invoke_discover_and_mutate(runtime: ExtensionRuntimeService) -> None:
+    runtime.actions.refresh()
+    discover = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "discover"
+    )
+    proposed = runtime.invoke("mcp:fixture", discover["capability_id"], {})
+    assert proposed.status == "success", proposed
+    mutate = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "tool:mutate"
+    )
+    executed = runtime.invoke("mcp:fixture", mutate["capability_id"], {})
+    assert executed.status == "success", executed
+
+
+def _wait_for_snapshot_drop(runtime: ExtensionRuntimeService) -> None:
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        if runtime.detail("mcp:fixture")["snapshot"] is None:
+            return
+        time.sleep(0.02)
+    raise AssertionError("a server-announced list change must drop the cached discovery snapshot")
+
+
+def _rediscover_shows_added_tool(runtime: ExtensionRuntimeService, discover_id: str) -> None:
+    assert runtime.invoke("mcp:fixture", discover_id, {}).status == "success"
+    names = {item["name"] for item in runtime.detail("mcp:fixture")["operations"]}
+    assert "tool:added_tool" in names
+    assert runtime.detail("mcp:fixture")["snapshot"]["health"] == "ready"
+
+
+def test_a_subscription_list_change_drops_the_stale_discovery_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The 2026-07-28 protocol delivers list changes through subscriptions/listen
+    # streams, and the connection runs one, so a server-side tool addition must drop
+    # the cached snapshot: a stale snapshot would keep presenting a tool operation the
+    # server no longer exposes. The next discover rebuilds it with the added tool.
+    runtime = _runtime(tmp_path, monkeypatch)
+    _write_mcp_definition(runtime.data_dir, _mutating_mcp_server_script(tmp_path),
+                          tool_allowlist=["echo", "mutate", "added_tool"])
+    runtime.actions.refresh()
+    discover = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "discover"
+    )
+    _invoke_discover_and_mutate(runtime)
+    _wait_for_snapshot_drop(runtime)
+    assert not any(
+        item["name"] == "tool:added_tool" for item in runtime.detail("mcp:fixture")["operations"]
+    )
+    _rediscover_shows_added_tool(runtime, discover["capability_id"])
+
+
+def test_a_direct_list_change_notification_drops_the_stale_discovery_snapshot(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A server that announces notifications/tools/list_changed unprompted - no
+    # subscriptions/listen stream involved - must drop the cached snapshot the same
+    # way, so the stale operation list cannot outlive the announcement.
+    runtime = _runtime(tmp_path, monkeypatch)
+    _write_mcp_definition(runtime.data_dir, _direct_notify_mcp_server_script(tmp_path),
+                          tool_allowlist=["echo", "mutate", "added_tool"])
+    runtime.actions.refresh()
+    discover = next(
+        item for item in runtime.detail("mcp:fixture")["operations"] if item["name"] == "discover"
+    )
+    _invoke_discover_and_mutate(runtime)
+    _wait_for_snapshot_drop(runtime)
+    _rediscover_shows_added_tool(runtime, discover["capability_id"])
 
 
 def test_a_stdio_tool_call_invoked_by_the_operator_executes_directly(

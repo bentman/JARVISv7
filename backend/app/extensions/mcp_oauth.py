@@ -30,6 +30,9 @@ class McpOAuthConfig:
     # RFC 8707: binds the issued token to one MCP server so it cannot be replayed
     # against a different resource.
     resource: str | None = None
+    # RFC 9207: when the authorization response supplies `iss`, it must match
+    # the issuer discovered or configured before the authorization request.
+    issuer: str | None = None
 
     def __post_init__(self) -> None:
         for field_name in ("authorization_url", "token_url"):
@@ -47,6 +50,10 @@ class McpOAuthConfig:
             parsed = urlsplit(self.resource)
             if parsed.scheme not in {"http", "https"} or not parsed.netloc:
                 raise ValueError("resource must be a valid HTTP(S) URL")
+        if self.issuer is not None:
+            parsed = urlsplit(self.issuer)
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise ValueError("issuer must be a valid HTTPS URL")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,9 +110,12 @@ class McpOAuthFlow:
         url = f"{self._config.authorization_url}?{urllib.parse.urlencode(params)}"
         return url, state
 
-    def exchange_code(self, code: str, state: str) -> McpOAuthToken:
+    def exchange_code(self, code: str, state: str, issuer: str | None = None) -> McpOAuthToken:
         if state not in self._pending:
             raise ValueError("authorization state is unknown or already used")
+        if issuer is not None and self._config.issuer is not None and issuer.rstrip("/") != self._config.issuer.rstrip("/"):
+            self._pending.pop(state, None)
+            raise ValueError("authorization issuer does not match the discovered authorization server")
         code_verifier = self._pending.pop(state)
         body: dict[str, str] = {
             "grant_type": "authorization_code",
@@ -236,7 +246,7 @@ def discover_authorization_server(resource_url: str) -> dict[str, Any]:
     if not issuers:
         raise ValueError("protected-resource metadata declares no authorization server")
     issuer = str(issuers[0]).rstrip("/")
-    server = _fetch_json(f"{issuer}/.well-known/oauth-authorization-server")
+    server = _discover_authorization_metadata(issuer)
     for required in ("authorization_endpoint", "token_endpoint"):
         if not isinstance(server.get(required), str) or not server[required]:
             raise ValueError(f"authorization-server metadata is missing {required}")
@@ -247,6 +257,15 @@ def discover_authorization_server(resource_url: str) -> dict[str, Any]:
         "resource": metadata.get("resource", resource_url),
         "issuer": issuer,
     }
+
+
+def _discover_authorization_metadata(issuer: str) -> dict[str, Any]:
+    for path in ("/.well-known/oauth-authorization-server", "/.well-known/openid-configuration"):
+        try:
+            return _fetch_json(f"{issuer}{path}")
+        except Exception:
+            pass
+    raise ValueError("authorization-server metadata could not be discovered") from None
 
 
 OAUTH_SECRET_NAME = "oauth_token"
@@ -283,6 +302,7 @@ def config_from_definition(
     token_url = oauth.get("token_url")
     scopes = tuple(oauth.get("scopes", ()))
     resource = oauth.get("resource") or resource_url
+    issuer = oauth.get("issuer")
     if not authorization_url or not token_url:
         if not resource_url:
             raise ValueError("oauth endpoints are undiscoverable without a connection url")
@@ -291,6 +311,7 @@ def config_from_definition(
         token_url = token_url or discovered["token_url"]
         scopes = scopes or discovered["scopes_supported"]
         resource = resource or discovered["resource"]
+        issuer = issuer or discovered.get("issuer")
     return McpOAuthConfig(
         authorization_url=authorization_url,
         token_url=token_url,
@@ -299,6 +320,7 @@ def config_from_definition(
         scopes=scopes,
         redirect_port=oauth.get("redirect_port", 19823),
         resource=resource,
+        issuer=issuer,
     )
 
 
@@ -319,3 +341,39 @@ def resolve_oauth_bearer(
         token = McpOAuthFlow(config).refresh_token(token)
         save_oauth_token(store, connection_id, token)
     return token.access_token
+
+
+def reconnect_message_from_challenge(exc: BaseException) -> str | None:
+    """Return operator guidance for OAuth scope challenges, when the exception carries one."""
+    header = _challenge_header(exc)
+    if not header:
+        return None
+    lowered = header.lower()
+    if "insufficient_scope" not in lowered and "scope=" not in lowered:
+        return None
+    scope = _challenge_value(header, "scope")
+    if scope:
+        return f"MCP authorization requires reconnecting this connection with scope(s): {scope}"
+    return "MCP authorization requires reconnecting this connection with the required scopes"
+
+
+def _challenge_header(exc: BaseException) -> str | None:
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is not None:
+        try:
+            value = headers.get("www-authenticate") or headers.get("WWW-Authenticate")
+            if value:
+                return str(value)
+        except Exception:
+            pass
+    text = str(exc)
+    return text if "www-authenticate" in text.lower() or "insufficient_scope" in text.lower() else None
+
+
+def _challenge_value(header: str, key: str) -> str | None:
+    for part in header.split(","):
+        name, _, value = part.strip().partition("=")
+        if name.strip().lower() == key.lower():
+            return value.strip().strip('"') or None
+    return None

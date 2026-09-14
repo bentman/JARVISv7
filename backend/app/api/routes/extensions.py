@@ -49,6 +49,7 @@ class ExtensionOAuthCompletion(BaseModel):
     model_config = ConfigDict(extra="forbid")
     code: str = Field(min_length=1, max_length=4000)
     state: str = Field(min_length=1, max_length=512)
+    iss: str | None = Field(default=None, min_length=1, max_length=512)
 
 
 def get_runtime(request: Request):
@@ -115,7 +116,7 @@ def complete_extension_oauth(
     extension_id: str, payload: ExtensionOAuthCompletion, service=Depends(get_runtime)
 ):
     try:
-        return service.oauth_complete(extension_id, payload.code, payload.state)
+        return service.oauth_complete(extension_id, payload.code, payload.state, payload.iss)
     except ValueError as exc:
         raise HTTPException(422, str(exc)) from exc
 

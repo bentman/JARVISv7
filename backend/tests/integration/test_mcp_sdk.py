@@ -16,7 +16,7 @@ from backend.app.extensions.mcp import (
 
 def _operation(capability_id: str = "mcp:fixture") -> ActionOperation:
     return ActionOperation(
-        "session", "turn", "proposal", capability_id, ExecutionBoundary(("data",), 10_000, True, 1024)
+        "session", "turn", "proposal", capability_id, ExecutionBoundary(("data",), 10_000, True, 4096)
     )
 
 
