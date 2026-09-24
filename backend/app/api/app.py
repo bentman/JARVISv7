@@ -11,6 +11,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.core.capabilities import FullCapabilityReport, HardwareProfile
 from backend.app.core.paths import CONFIG_DIR, DATA_DIR
 from backend.app.core.settings import SETTING_ENV_CLASSIFICATION, Settings, load_settings
+from backend.app.extensions.store import ExtensionOverlayStore
 from backend.app.hardware.preflight import PreflightResult
 from backend.app.memory.curation_reconciliation import (
     ReviewOnlyCurationPolicy,
@@ -119,6 +120,7 @@ def build_engine(state: ApiState, session_manager: SessionManager | None = None)
         search_secret_values=_search_secrets(settings),
         capability_service=getattr(state, "capability_service", None),
         extension_runtime=getattr(state, "extension_runtime", None),
+        agent_registry=getattr(state, "agent_registry", None),
     )
 
 
@@ -171,7 +173,7 @@ def build_startup_state() -> ApiState:
     )
     memory_service: MemoryService | None = None
     operator_config = OperatorConfigService()
-    agent_registry = AgentRegistry(CONFIG_DIR)
+    agent_registry = AgentRegistry(CONFIG_DIR, DATA_DIR, overlay=ExtensionOverlayStore())
     capability_service = CapabilityService(
         observe=lambda: observe_capabilities(
             settings_provider=load_settings,
@@ -219,6 +221,7 @@ def build_startup_state() -> ApiState:
         search_secret_values=_search_secrets(settings),
         capability_service=capability_service,
         extension_runtime=extension_runtime,
+        agent_registry=agent_registry,
     )
     session_service: SessionService
     memory_curation_service = MemoryCurationService(
@@ -267,6 +270,7 @@ def build_startup_state() -> ApiState:
             **build_agent_handlers(
                 agent_registry_provider=lambda: agent_registry,
                 engine_provider=lambda: session_service.engine(),
+                extension_handler=capability_service.handler,
             ),
             **build_extension_handlers(
                 extension_service_provider=lambda: extension_service,

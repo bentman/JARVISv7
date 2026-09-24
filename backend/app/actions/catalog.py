@@ -28,6 +28,8 @@ EXTENSION_DEFINITION_WRITE = "extension-definition-write"
 EXTENSION_DEFINITION_DELETE = "extension-definition-delete"
 EXTENSION_SKILL_WRITE = "extension-skill-write"
 EXTENSION_SKILL_DELETE = "extension-skill-delete"
+AGENT_PROFILE_WRITE = "agent-profile-write"
+AGENT_PROFILE_DELETE = "agent-profile-delete"
 
 SEARCH_UNAVAILABLE = (
     "No web search provider is enabled. Enable DDGS, SearXNG, or Tavily in operator configuration."
@@ -36,6 +38,7 @@ MEMORY_UNAVAILABLE = "Memory service is unavailable, so memory lifecycle actions
 PROVIDER_LOCKED = "The provider secret store is locked; complete or roll back the key rotation."
 PROVIDER_STORE_UNAVAILABLE = "Provider profile storage is unavailable."
 EXTENSION_CATALOG_UNAVAILABLE = "The extension catalog is unavailable."
+AGENT_REGISTRY_UNAVAILABLE = "The agent registry is unavailable."
 OPERATOR_CONFIG_UNAVAILABLE = (
     "The .env file is missing; copy .env.example to .env before changing operator configuration."
 )
@@ -72,8 +75,9 @@ class CapabilityObservation:
     operator_config_present: bool = False
     operator_config_keys: tuple[str, ...] = ()
     extension_catalog_present: bool = False
-    agents: tuple[tuple[str, str, str, str, str, int, bool, str], ...] = ()
+    agents: tuple[tuple[str, str, str, str, str, int, bool, str, str, dict[str, Any]], ...] = ()
     agent_errors: tuple[tuple[str, str], ...] = ()
+    agent_registry_present: bool = False
 
     @property
     def enabled_search_providers(self) -> tuple[str, ...]:
@@ -88,6 +92,7 @@ def build_descriptors(observation: CapabilityObservation) -> tuple[CapabilityDes
         _operator(observation),
         *_extension(observation),
         *_extension_definitions(observation),
+        *_agent_profiles(observation),
         *_agents(observation),
     )
 
@@ -506,6 +511,51 @@ def _extension(observation: CapabilityObservation) -> tuple[CapabilityDescriptor
     )
 
 
+def _agent_profiles(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, ...]:
+    """Operator-owned agent profiles are created, edited, and removed as governed actions."""
+    present = observation.agent_registry_present
+    common: dict[str, Any] = {
+        "source": "builtin",
+        "provenance": "backend.app.agents.registry",
+        "readiness": "ready" if present else "unavailable",
+        "availability": "available" if present else "disabled",
+        "execution_owner": "backend.app.agents.registry.AgentRegistry",
+        "timeout_policy": {"timeout_ms": CONFIG_TIMEOUT_MS},
+        "cancellation_policy": {"cancellable": False, "owner": "AgentRegistry"},
+        "result_schema": {"type": "object"},
+        "unavailable_explanation": "" if present else AGENT_REGISTRY_UNAVAILABLE,
+        "approval_mode": "same_turn",
+    }
+    fingerprint = {"type": "string", "minLength": 1}
+    return (
+        _capability(
+            AGENT_PROFILE_WRITE,
+            "local_write",
+            input_schema={
+                "type": "object",
+                "properties": {"profile": {"type": "object"}, "expected_fingerprint": fingerprint},
+                "required": ["profile"],
+                "additionalProperties": False,
+            },
+            **common,
+        ),
+        _capability(
+            AGENT_PROFILE_DELETE,
+            "local_write",
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "profile_id": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "expected_fingerprint": fingerprint,
+                },
+                "required": ["profile_id"],
+                "additionalProperties": False,
+            },
+            **common,
+        ),
+    )
+
+
 def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, ...]:
     descriptors = []
     for (
@@ -517,7 +567,16 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
         timeout_ms,
         cancellable,
         unsupported,
+        availability,
+        process,
     ) in observation.agents:
+        # An external-runtime agent declares the process boundary of the ACP definition it runs.
+        boundaries = (
+            {"storage_roots": [process["working_root"]], "timeout_ms": timeout_ms,
+             "cancellable": cancellable, "max_result_bytes": 64000, "process": process}
+            if process
+            else None
+        )
         descriptors.append(
             CapabilityDescriptor(
                 capability_id=capability_id,
@@ -532,12 +591,13 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
                     "additionalProperties": False,
                 },
                 effect_class=effect_class,
-                readiness="ready" if not unsupported else "unavailable",
-                availability="available" if not unsupported else "misconfigured",
+                readiness="unavailable" if availability == "misconfigured" else "ready",
+                availability=availability,
                 authorization_rule=auth_rule,
                 execution_owner="backend.app.agents.invocation",
                 timeout_policy={"timeout_ms": timeout_ms},
                 cancellation_policy={"cancellable": cancellable},
+                boundaries=boundaries or {},
                 result_schema={
                     "type": "object",
                     "properties": {
@@ -554,8 +614,6 @@ def _agents(observation: CapabilityObservation) -> tuple[CapabilityDescriptor, .
                     ]
                 },
                 unavailable_explanation=unsupported,
-                # An agent invocation is requested through the API, not proposed inside a
-                # conversation turn, so its approval is decided on the operator surface.
                 approval_mode="same_turn",
                 metadata_claims={"agent_id": {"value": profile_id, "trusted": False}},
             )

@@ -353,7 +353,7 @@ def observe_extensions(
     runtime = runtime_provider() if runtime_provider else None
     runtime_definitions, runtime_records, runtime_errors = runtime.observation() if runtime else ((), (), ())
 
-    agent_records: tuple[tuple[str, str, str, str], ...] = ()
+    agent_records: tuple[tuple[str, str, str, str, str], ...] = ()
     if agent_registry_provider is not None:
         registry = agent_registry_provider()
         if registry is not None:

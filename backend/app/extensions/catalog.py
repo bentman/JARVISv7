@@ -58,7 +58,7 @@ class ExtensionObservation:
     definitions: tuple[DefinitionManifest, ...] = ()
     definition_errors: tuple[DefinitionError, ...] = ()
     definition_runtime: tuple[DefinitionRuntime, ...] = ()
-    agents: tuple[tuple[str, str, str, str], ...] = ()
+    agents: tuple[tuple[str, str, str, str, str], ...] = ()
 
 
 def build_extension_descriptors(
@@ -259,11 +259,11 @@ def _agents(observation: ExtensionObservation) -> list[ObservedRecord]:
             local_id=profile_id,
             display_name=display_name,
             source=source_path,
-            provenance="config/agents",
-            trust="application",
+            provenance=source_path.rsplit("/", 1)[0],
+            trust=trust,
             metadata_claims={"purpose": {"value": purpose, "trusted": False}},
         )
-        for profile_id, display_name, purpose, source_path in observation.agents
+        for profile_id, display_name, purpose, source_path, trust in observation.agents
     ]
 
 

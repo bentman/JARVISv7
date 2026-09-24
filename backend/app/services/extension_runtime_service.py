@@ -978,7 +978,7 @@ class ExtensionRuntimeService:
 
         ACP operations are excluded: they execute through TurnEngine.run_extension, which
         re-acquires the single turn lock, so selecting one from inside a turn cannot run.
-        ADR 0007 owns agent delegation.
+        TurnEngine adds the agents that can run inside the proposing turn.
         """
         self.actions.refresh()
         with self._lock:

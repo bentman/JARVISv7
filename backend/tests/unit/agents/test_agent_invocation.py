@@ -101,7 +101,9 @@ def test_invoke_direct_with_valid_profile() -> None:
     result = invoker.invoke_direct("test-agent", "do something", lambda: mock_engine)
 
     assert result == expected_result
-    mock_engine.run_agent.assert_called_once_with(profile, "do something", mode="direct")
+    mock_engine.run_agent.assert_called_once_with(
+        profile, "do something", mode="direct", operation=None
+    )
 
 
 def test_invoke_direct_rejects_unknown_profile_id() -> None:
@@ -145,7 +147,9 @@ def test_invoke_as_tool_with_valid_profile() -> None:
     result = invoker.invoke_as_tool("test-agent", "analyze this", lambda: mock_engine)
 
     assert result == expected_result
-    mock_engine.run_agent.assert_called_once_with(profile, "analyze this", mode="as_tool")
+    mock_engine.run_agent.assert_called_once_with(
+        profile, "analyze this", mode="as_tool", operation=None
+    )
 
 
 def test_invoke_as_tool_rejects_profile_without_as_tool_mode() -> None:
@@ -184,6 +188,7 @@ def _invoke_client(result: dict[str, Any], modes: tuple[str, ...] = ("direct",))
     registry = AgentRegistry()
     registry._profiles = [profile]
     engine = MagicMock()
+    engine.is_active_turn.return_value = False
     engine.run_agent.return_value = AgentInvocationResult(**result)
     service = CapabilityService(
         observe=lambda: CapabilityObservation(
@@ -247,10 +252,10 @@ def test_invoke_route_reports_a_failed_agent_run_as_a_failure() -> None:
 def test_invoke_route_reports_why_a_denied_invocation_never_ran() -> None:
     client = _invoke_client(
         {"agent_id": "summarizer", "status": "success", "output": {}, "turn_id": "t", "session_id": "s"},
-        modes=("as_tool",),
+        modes=("handoff",),
     )
 
     body = client.post("/agents/invoke", json={"profile_id": "summarizer", "prompt": "notes"}).json()
 
     assert body["status"] == "denied"
-    assert "'direct' invocation mode" in body["error"]
+    assert "declares no invocation mode the current runtime executes" in body["error"]

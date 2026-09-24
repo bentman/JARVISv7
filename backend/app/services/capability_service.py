@@ -169,6 +169,10 @@ class CapabilityService:
         self._handler_providers.append(provider)
         self.refresh()
 
+    def handler(self, capability_id: str) -> CapabilityHandler | None:
+        with self._lock:
+            return self._handlers.get(capability_id)
+
     def refresh(self) -> None:
         registry = CapabilityRegistry()
         observation = self._observe()
@@ -250,7 +254,8 @@ class CapabilityService:
         if decision.outcome != "allowed":
             return decision, self._turn_failure(proposal, decision.reason)
         return decision, self._run(
-            proposal, descriptor, interactive_input_allowed=interactive_input_allowed
+            proposal, descriptor, interactive_input_allowed=interactive_input_allowed,
+            context=context,
         )
 
     def _turn_failure(self, proposal: ModelActionProposal, error: str) -> ExecutionResultRecord:
@@ -661,6 +666,7 @@ class CapabilityService:
         descriptor: CapabilityDescriptor,
         *,
         interactive_input_allowed: bool = True,
+        context: AuthorizationContext | None = None,
     ) -> ExecutionResultRecord:
         """Execute one authorized proposal.
 
@@ -687,7 +693,7 @@ class CapabilityService:
             if descriptor.boundaries
             else DEFAULT_BOUNDARY
         )
-        context = self._contexts.get(proposal.proposal_id)
+        context = context or self._contexts.get(proposal.proposal_id)
         operation = ActionOperation(
             context.session_id if context else "api",
             context.turn_id if context else f"api:{proposal.proposal_id}", proposal.proposal_id,
@@ -1013,24 +1019,80 @@ def build_agent_handlers(
     *,
     agent_registry_provider: Callable[[], Any],
     engine_provider: Callable[[], Any],
+    extension_handler: Callable[[str], CapabilityHandler | None] | None = None,
 ) -> dict[str, CapabilityHandler]:
-    """Executors for the `agent-invoke-*` descriptors the catalog builds from the registry."""
+    """Executors for the `agent-invoke-*` descriptors the catalog builds from the registry.
+
+    An internal-runtime agent runs through TurnEngine: inside the proposing turn when the
+    call comes from that turn (as_tool), otherwise as its own turn (direct). An ACP-runtime
+    agent runs through its ACP definition's already-authorized prompt operation.
+    """
+    from backend.app.actions import catalog
     from backend.app.agents.invocation import AgentInvoker
+    from backend.app.services.extension_runtime_service import operation_id
 
     registry = agent_registry_provider()
     if registry is None:
         return {}
     invoker = AgentInvoker(registry)
 
+    def invoke_acp(profile: Any, prompt: str, operation: ActionOperation) -> dict[str, Any]:
+        if "direct" not in profile.invocation_modes:
+            raise ValueError(f"agent {profile.profile_id} does not support direct invocation")
+        acp_handler = extension_handler(
+            operation_id(f"acp:{profile.runtime['adapter_id']}", "prompt")
+        ) if extension_handler else None
+        if acp_handler is None:
+            raise ValueError(f"ACP definition '{profile.runtime['adapter_id']}' is not available")
+        result = acp_handler({"prompt": f"{profile.instructions}\n\n{prompt}"}, operation)
+        return {
+            "agent_id": profile.profile_id,
+            "status": "success",
+            "output": result.get("output", {}),
+            "turn_id": operation.turn_id,
+            "session_id": operation.session_id,
+            "error": None,
+        }
+
     def invoke(profile_id: str) -> CapabilityHandler:
-        def handler(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
-            return invoker.invoke_direct(profile_id, arguments["prompt"], engine_provider).to_dict()
+        def handler(arguments: dict[str, Any], operation: ActionOperation) -> dict[str, Any]:
+            profile = registry.get(profile_id)
+            if profile is None:
+                raise ValueError(f"unknown agent profile: {profile_id}")
+            if profile.runtime_kind == "acp":
+                return invoke_acp(profile, arguments["prompt"], operation)
+            if engine_provider().is_active_turn(operation.turn_id):
+                result = invoker.invoke_as_tool(
+                    profile_id, arguments["prompt"], engine_provider, operation
+                )
+                # Inside a turn a failed delegation is a failed action, so the turn explains
+                # it instead of grounding an empty answer.
+                if result.status != "success":
+                    raise RuntimeError(result.error or "agent run failed")
+                return result.to_dict()
+            return invoker.invoke_direct(
+                profile_id, arguments["prompt"], engine_provider, operation
+            ).to_dict()
 
         return handler
 
+    def write_profile(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        return registry.write_profile(
+            arguments["profile"], expected_fingerprint=arguments.get("expected_fingerprint")
+        )
+
+    def delete_profile(arguments: dict[str, Any], _operation: ActionOperation) -> dict[str, Any]:
+        return registry.delete_profile(
+            arguments["profile_id"], expected_fingerprint=arguments.get("expected_fingerprint")
+        )
+
     return {
-        f"agent-invoke-{profile.profile_id}": invoke(profile.profile_id)
-        for profile in registry.profiles()
+        catalog.AGENT_PROFILE_WRITE: write_profile,
+        catalog.AGENT_PROFILE_DELETE: delete_profile,
+        **{
+            f"agent-invoke-{profile.profile_id}": invoke(profile.profile_id)
+            for profile in registry.profiles()
+        },
     }
 
 
@@ -1142,11 +1204,15 @@ def observe_capabilities(
         except Exception:
             store_present = False
 
-    agent_capability_records: tuple[tuple[str, str, str, str, str, int, bool, str], ...] = ()
+    agent_capability_records: tuple[
+        tuple[str, str, str, str, str, int, bool, str, str, dict[str, Any]], ...
+    ] = ()
+    agent_registry_present = False
     agent_errors: tuple[tuple[str, str], ...] = ()
     if agent_registry_provider is not None:
         registry = agent_registry_provider()
         if registry is not None:
+            agent_registry_present = True
             agent_capability_records = tuple(registry.to_capability_records())
             agent_errors = tuple(registry.errors())
 
@@ -1166,6 +1232,7 @@ def observe_capabilities(
         extension_catalog_present=extension_catalog_present,
         agents=agent_capability_records,
         agent_errors=agent_errors,
+        agent_registry_present=agent_registry_present,
     )
 
 

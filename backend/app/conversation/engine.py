@@ -12,12 +12,14 @@ from typing import Any
 from uuid import uuid4
 
 import numpy as np
+from backend.app.actions.boundaries import ActionCancelledError
 from backend.app.actions.catalog import SEARCH_PRIVATE_WEB, SEARCH_PUBLIC_WEB
 from backend.app.actions.contracts import (
     ActionCancellationRecord,
     ApprovalAuditRecord,
     AuthorizationContext,
     AuthorizationDecision,
+    DelegatedRunRecord,
     ExecutionResultRecord,
     ExecutionStatus,
     ModelActionProposal,
@@ -91,6 +93,27 @@ class TurnResult:
     search: dict[str, object] | None = None
 
 
+AGENT_CAPABILITY_PREFIX = "agent-invoke-"
+
+
+def _extension_delegated_run(run: dict[str, Any], capability_id: str) -> DelegatedRunRecord:
+    """An extension run, attributed to the agent profile when an agent delegated it."""
+    agent = capability_id.startswith(AGENT_CAPABILITY_PREFIX)
+    result = run.get("result")
+    return DelegatedRunRecord(
+        run_id=run["run_id"],
+        kind="agent" if agent else "extension",
+        target_id=capability_id.removeprefix(AGENT_CAPABILITY_PREFIX) if agent else run["extension_id"],
+        runtime=run["extension_id"].split(":", 1)[0],
+        status=run["status"],
+        session_id=run["session_id"],
+        turn_id=run["turn_id"],
+        mode="direct" if agent else None,
+        output=result if isinstance(result, dict) else {},
+        error=run.get("error"),
+    )
+
+
 def _turn_tools_invoked(context: TurnContext) -> list[str]:
     """Search providers and capabilities actually run during the turn, in order."""
     providers: list[str] = []
@@ -136,6 +159,7 @@ class TurnEngine:
         search_secret_values: tuple[str, ...] = (),
         capability_service: CapabilityService | None = None,
         extension_runtime: Any | None = None,
+        agent_registry: Any | None = None,
     ) -> None:
         self.stt = stt
         self.tts = tts
@@ -156,7 +180,10 @@ class TurnEngine:
         self.search_service = search_service
         self.capability_service = capability_service
         self.extension_runtime = extension_runtime
+        self.agent_registry = agent_registry
         self._extension_operation = None
+        self._agent_operation = None
+        self._active_context: TurnContext | None = None
         self._pending_tool: PendingToolApproval | None = None
         self._last_tool_result: tuple[str, Any] | None = None
         self.search_intent = SearchIntentResolver(llm, secret_values=search_secret_values)
@@ -177,6 +204,7 @@ class TurnEngine:
         try:
             yield
         finally:
+            self._active_context = None
             self._idle.set()
             self._turn_lock.release()
 
@@ -190,8 +218,9 @@ class TurnEngine:
         with self._admission_lock:
             self._closing = True
         self.search_intent.clear()
-        if self._extension_operation is not None:
-            self._extension_operation.cancel.set()
+        for operation in (self._extension_operation, self._agent_operation):
+            if operation is not None:
+                operation.cancel.set()
         if self.search_service:
             self.search_service.cancel_and_wait(timeout=0)
         if not self._idle.wait(timeout):
@@ -223,44 +252,39 @@ class TurnEngine:
                         final_state="FAILED" if failure else "IDLE", transcript=arguments.get("prompt"),
                         active_personality_profile_id=self.personality.profile_id,
                         profile_epoch=self.session_manager.profile_epoch, failure_reason=failure,
-                        delegated_runs=[run for run in runs if run["turn_id"] == context.turn_id],
+                        delegated_runs=[
+                            _extension_delegated_run(run, operation.capability_id).to_dict()
+                            for run in runs if run["turn_id"] == context.turn_id
+                        ],
                         tools_invoked=[operation.capability_id],
                     ))
 
-    def run_agent(self, profile: AgentProfile, prompt: str, *, mode: str = "direct") -> AgentInvocationResult:
+    def is_active_turn(self, turn_id: str) -> bool:
+        context = self._active_context
+        return context is not None and context.turn_id == turn_id
+
+    def run_agent(
+        self, profile: AgentProfile, prompt: str, *, mode: str = "direct", operation: Any = None
+    ) -> AgentInvocationResult:
+        """Run an internal-runtime agent.
+
+        `as_tool` runs inside the turn that proposed it, which already holds the turn lock;
+        every other mode is admitted as its own turn.
+        """
+        if mode == "as_tool":
+            context = self._active_context
+            if operation is None or context is None or context.turn_id != operation.turn_id:
+                raise RuntimeError("an as_tool agent call must run inside the turn that proposed it")
+            return self._delegate_agent(context, profile, prompt, mode, operation)
         with self._admit_turn():
             context = self._create_context("text")
-            failure = None
-            response = ""
+            result: AgentInvocationResult | None = None
             try:
-                envelope = assemble_prompt_envelope(prompt, self.personality)
-                agent_segment = PromptSegment(
-                    authority="application",
-                    content_type="instruction",
-                    trusted=True,
-                    text=f"Agent: {profile.display_name}\n{profile.instructions}",
-                )
-                envelope = envelope.with_segment(agent_segment)
-                response = bound_single_turn_response(self.llm.generate_envelope(envelope))
-                return AgentInvocationResult(
-                    agent_id=profile.profile_id,
-                    status="success",
-                    output={"response": response},
-                    turn_id=context.turn_id,
-                    session_id=context.session_id,
-                )
-            except Exception as exc:
-                failure = str(exc)
-                return AgentInvocationResult(
-                    agent_id=profile.profile_id,
-                    status="failure",
-                    output={},
-                    turn_id=context.turn_id,
-                    session_id=context.session_id,
-                    error=failure,
-                )
+                result = self._delegate_agent(context, profile, prompt, mode, operation)
+                return result
             finally:
                 if self.session_manager is not None:
+                    failure = result.error if result else "Agent run was cancelled."
                     self.session_manager.record_turn_artifact(TurnArtifact(
                         turn_id=context.turn_id,
                         session_id=context.session_id,
@@ -270,8 +294,56 @@ class TurnEngine:
                         active_personality_profile_id=self.personality.profile_id,
                         profile_epoch=self.session_manager.profile_epoch,
                         failure_reason=failure,
-                        delegated_runs=[{"agent_id": profile.profile_id, "mode": mode, "response": response}],
+                        delegated_runs=list(context.action_evidence.delegated_runs),
                     ))
+
+    def _delegate_agent(
+        self, context: TurnContext, profile: AgentProfile, prompt: str, mode: str, operation: Any
+    ) -> AgentInvocationResult:
+        self._agent_operation = operation
+        status: ExecutionStatus = "failure"
+        output: dict[str, Any] = {}
+        failure: str | None = None
+        try:
+            if operation is not None:
+                operation.check()
+            envelope = assemble_prompt_envelope(prompt, self.personality).with_segment(PromptSegment(
+                authority="application",
+                content_type="instruction",
+                trusted=True,
+                text=f"Agent: {profile.display_name}\n{profile.instructions}",
+            ))
+            response = bound_single_turn_response(self.llm.generate_envelope(envelope))
+            if operation is not None:
+                operation.check()
+            status, output = "success", {"response": response}
+        except ActionCancelledError:
+            status = "cancelled"
+            raise
+        except Exception as exc:
+            failure = str(exc) or type(exc).__name__
+        finally:
+            self._agent_operation = None
+            context.action_evidence.record(DelegatedRunRecord(
+                run_id=operation.proposal_id if operation is not None else uuid4().hex,
+                kind="agent",
+                target_id=profile.profile_id,
+                runtime="internal",
+                status=status,
+                session_id=context.session_id,
+                turn_id=context.turn_id,
+                mode=mode,
+                output=output,
+                error=failure,
+            ))
+        return AgentInvocationResult(
+            agent_id=profile.profile_id,
+            status=status,
+            output=output,
+            turn_id=context.turn_id,
+            session_id=context.session_id,
+            error=failure,
+        )
 
     def _emit_hook(self, event: str, context: TurnContext) -> None:
         if self.extension_runtime is None:
@@ -713,7 +785,7 @@ class TurnEngine:
                 approval_required=True,
                 approval_id=approval_id,
             ))
-            catalog = self.extension_runtime.tool_catalog() if self.extension_runtime else []
+            catalog = self._tool_catalog()
             entry = next(
                 (item for item in catalog if item["capability_id"] == call.name),
                 {"extension_id": call.name, "name": ""},
@@ -786,12 +858,12 @@ class TurnEngine:
 
     def _tool_definitions(self, envelope: PromptEnvelope) -> tuple[Any, ...]:
         """Offer only capabilities the ladder could actually allow right now."""
-        if self.capability_service is None or self.extension_runtime is None:
+        if self.capability_service is None:
             return ()
         if not self.llm.supports_tool_calling():
             return ()
         try:
-            catalog = self.extension_runtime.tool_catalog()
+            catalog = self._tool_catalog()
         except Exception:
             return ()
         if not catalog:
@@ -808,10 +880,38 @@ class TurnEngine:
                 continue
             offers.append(ToolDefinition(
                 name=entry["capability_id"],
-                description=f"{entry['extension_id']} operation '{entry['name']}'",
+                description=entry.get("description")
+                or f"{entry['extension_id']} operation '{entry['name']}'",
                 input_schema=entry["input_schema"] or {"type": "object"},
             ))
         return tool_offer_budget(envelope, tuple(offers), self.llm)
+
+    def _tool_catalog(self) -> list[dict[str, Any]]:
+        """Extension operations plus agents that declare the as_tool mode.
+
+        Only internal-runtime agents are offered: an ACP-runtime agent executes through
+        run_extension, which needs the turn lock the proposing turn already holds.
+        """
+        catalog = list(self.extension_runtime.tool_catalog()) if self.extension_runtime else []
+        registry = self.agent_registry
+        for profile in registry.profiles() if registry is not None else ():
+            if "as_tool" not in profile.invocation_modes or profile.runtime_kind != "internal":
+                continue
+            if registry.unavailable_reason(profile):
+                continue
+            catalog.append({
+                "capability_id": f"{AGENT_CAPABILITY_PREFIX}{profile.profile_id}",
+                "extension_id": f"agent:{profile.profile_id}",
+                "name": profile.display_name,
+                "description": f"Delegate to the {profile.display_name} agent: {profile.purpose}",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {"prompt": {"type": "string", "minLength": 1, "maxLength": 4000}},
+                    "required": ["prompt"],
+                    "additionalProperties": False,
+                },
+            })
+        return catalog
 
     def _resolve_pending_tool(self, context: TurnContext, transcript: str) -> str | None:
         """Settle a tool approval the previous turn asked for.
@@ -1404,6 +1504,11 @@ class TurnEngine:
         return result
 
     def _create_context(self, modality: str) -> TurnContext:
+        context = self._new_context(modality)
+        self._active_context = context
+        return context
+
+    def _new_context(self, modality: str) -> TurnContext:
         if self.session_manager is not None:
             if modality not in {"voice", "text"}:
                 raise ValueError("modality must be voice or text")
@@ -1474,6 +1579,7 @@ class TurnEngine:
             approval_records=list(context.action_evidence.approvals),
             action_execution_results=list(context.action_evidence.executions),
             action_cancellations=list(context.action_evidence.cancellations),
+            delegated_runs=list(context.action_evidence.delegated_runs),
         )
         self.session_manager.record_turn_artifact(artifact)
         self._emit_hook("turn_persisted", context)

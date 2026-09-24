@@ -248,3 +248,56 @@ def test_only_one_capability_runs_per_turn(tmp_path):
     engine.run_text_turn("Look something up")
 
     assert manager.turn_artifacts[0].tools_invoked == [READ]
+
+
+def _agent_engine(tmp_path, model):
+    import yaml
+    from backend.app.agents.registry import AgentRegistry
+    from backend.app.services.capability_service import build_agent_handlers
+
+    agents = tmp_path / "config" / "agents"
+    agents.mkdir(parents=True)
+    for profile_id, modes in (("helper", ["as_tool"]), ("direct-only", ["direct"])):
+        (agents / f"{profile_id}.yaml").write_text(yaml.safe_dump({
+            "profile_id": profile_id, "display_name": profile_id.title(),
+            "purpose": "Helps with notes", "instructions": "Answer briefly.",
+            "invocation_modes": modes, "capability_ids": [], "memory_scope": "none",
+            "approval_class": "none", "timeout_ms": 5000, "cancellable": True,
+            "output_contract": {"type": "object"}, "provider_model_policy": {},
+        }), encoding="utf-8")
+    registry = AgentRegistry(tmp_path / "config")
+    capabilities = CapabilityService(
+        observe=lambda: CapabilityObservation(agents=tuple(registry.to_capability_records()))
+    )
+    engine, manager = engine_at(tmp_path, model, runtime=Runtime([]), capabilities=capabilities)
+    engine.agent_registry = registry
+    capabilities.bind_handler_provider(lambda: build_agent_handlers(
+        agent_registry_provider=lambda: registry, engine_provider=lambda: engine,
+    ))
+    return engine, manager
+
+
+def test_an_as_tool_agent_runs_inside_the_proposing_turn_with_delegated_run_evidence(tmp_path):
+    model = ToolModel(call=ToolCall("agent-invoke-helper", {"prompt": "tidy my notes"}))
+    engine, manager = _agent_engine(tmp_path, model)
+
+    turn = engine.run_text_turn("Tidy my notes")
+
+    assert model.offered[0] == ("agent-invoke-helper",)
+    assert turn.response_text == "Grounded answer."
+    artifact = manager.turn_artifacts[0]
+    assert len(manager.turn_artifacts) == 1
+    assert [record["status"] for record in artifact.action_execution_results] == ["success"]
+    [run] = artifact.delegated_runs
+    assert (run["kind"], run["target_id"], run["runtime"], run["mode"], run["status"]) == (
+        "agent", "helper", "internal", "as_tool", "success",
+    )
+    assert run["turn_id"] == artifact.turn_id
+
+
+def test_an_as_tool_agent_call_is_refused_outside_the_turn_that_proposed_it(tmp_path):
+    engine, _ = _agent_engine(tmp_path, ToolModel())
+    profile = engine.agent_registry.get("helper")
+
+    with pytest.raises(RuntimeError, match="inside the turn that proposed it"):
+        engine.run_agent(profile, "tidy", mode="as_tool", operation=None)

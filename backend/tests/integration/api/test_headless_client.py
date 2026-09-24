@@ -284,3 +284,86 @@ def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path:
     assert status.json()["session_id"] == session_id
     assert status.json()["active"] is True
     assert status.json()["turn_count"] == 3
+
+
+def test_headless_client_manages_an_agent_profile_and_records_its_delegated_run(
+    tmp_path: Path,
+) -> None:
+    from types import SimpleNamespace
+
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.agents.registry import AgentRegistry
+    from backend.app.api.routes.agents import router
+    from backend.app.conversation.engine import TurnEngine
+    from backend.app.conversation.session_manager import SessionManager
+    from backend.app.personality.loader import load_default_personality
+    from backend.app.runtimes.llm.base import LLMBase
+    from backend.app.services.capability_service import CapabilityService, build_agent_handlers
+    from fastapi import FastAPI
+
+    class Model(LLMBase):
+        def generate(self, prompt: str, **kwargs: object) -> str:
+            return "agent answer"
+
+        def is_available(self) -> bool:
+            return True
+
+        def runtime_name(self) -> str:
+            return "fake-llm"
+
+    registry = AgentRegistry(tmp_path / "config", tmp_path / "data")
+    manager = SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    capabilities = CapabilityService(
+        observe=lambda: CapabilityObservation(
+            agents=tuple(registry.to_capability_records()), agent_registry_present=True
+        )
+    )
+    engine = TurnEngine(
+        stt=None, tts=None, llm=Model(), personality=load_default_personality(),  # type: ignore[arg-type]
+        session_manager=manager, capability_service=capabilities, agent_registry=registry,
+    )
+    capabilities.bind_handler_provider(lambda: build_agent_handlers(
+        agent_registry_provider=lambda: registry, engine_provider=lambda: engine,
+    ))
+    app = FastAPI()
+    app.include_router(router)
+    app.state.jarvis_state = SimpleNamespace(agent_registry=registry, capability_service=capabilities)
+    client = TestClient(app)
+    profile = {
+        "profile_id": "notes", "display_name": "Notes", "purpose": "Tidy notes",
+        "instructions": "Answer briefly.", "invocation_modes": ["direct"], "capability_ids": [],
+        "memory_scope": "none", "approval_class": "none", "timeout_ms": 5000,
+        "cancellable": True, "output_contract": {"type": "object"}, "provider_model_policy": {},
+    }
+
+    created = client.post("/agents", json={"profile": profile})
+    assert created.status_code == 201
+    listed = client.get("/agents").json()["agents"]
+    assert [(item["profile_id"], item["editable"], item["source"]) for item in listed] == [
+        ("notes", True, "data/agents/notes.yaml"),
+    ]
+
+    stale = client.put("/agents/notes", json={"profile": profile, "expected_fingerprint": "stale"})
+    assert stale.status_code == 409
+    updated = client.put(
+        "/agents/notes",
+        json={"profile": {**profile, "purpose": "Tidy meeting notes"},
+              "expected_fingerprint": created.json()["fingerprint"]},
+    )
+    assert updated.status_code == 200
+
+    invoked = client.post("/agents/invoke", json={"profile_id": "notes", "prompt": "tidy"}).json()
+    assert (invoked["status"], invoked["output"]) == ("success", {"response": "agent answer"})
+    [artifact] = manager.turn_artifacts
+    [run] = artifact.delegated_runs
+    assert (run["kind"], run["target_id"], run["mode"], run["status"]) == (
+        "agent", "notes", "direct", "success",
+    )
+
+    audit = [record["capability_id"] for record in capabilities.audit(limit=100).records]
+    assert {"agent-profile-write", "agent-invoke-notes"} <= set(audit)
+    deleted = client.delete(
+        "/agents/notes", params={"expected_fingerprint": updated.json()["fingerprint"]}
+    )
+    assert deleted.status_code == 200
+    assert client.get("/agents").json()["agents"] == []

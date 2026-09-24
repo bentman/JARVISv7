@@ -14,6 +14,7 @@ from backend.app.actions.contracts import (
     AuthorizationDecision,
     CapabilityDescriptor,
     CapabilityRegistry,
+    DelegatedRunRecord,
     ExecutionResultRecord,
     ModelActionProposal,
 )
@@ -29,6 +30,7 @@ __all__ = [
     "BoundaryViolationError",
     "CapabilityDescriptor",
     "CapabilityRegistry",
+    "DelegatedRunRecord",
     "ExecutionBoundary",
     "ExecutionResultRecord",
     "ModelActionProposal",

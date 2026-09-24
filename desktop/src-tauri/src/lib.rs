@@ -34,6 +34,9 @@ use backend::{
     invoke_agent as backend_invoke_agent,
     list_agent_runs as backend_list_agent_runs,
     cancel_agent as backend_cancel_agent,
+    create_agent as backend_create_agent,
+    update_agent as backend_update_agent,
+    delete_agent as backend_delete_agent,
     propose_action as backend_propose_action,
     set_extension_state as backend_set_extension_state,
     get_desktop_status as backend_desktop_status, get_json,
@@ -836,6 +839,33 @@ fn cancel_agent(profile_id: String, state: State<'_, DesktopState>) -> Result<St
 }
 
 #[tauri::command]
+fn create_agent(profile: Value, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_create_agent(&state.http_client, &base_url, profile)
+}
+
+#[tauri::command]
+fn update_agent(
+    profile_id: String,
+    profile: Value,
+    expected_fingerprint: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_update_agent(&state.http_client, &base_url, &profile_id, profile, &expected_fingerprint)
+}
+
+#[tauri::command]
+fn delete_agent(
+    profile_id: String,
+    expected_fingerprint: String,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_delete_agent(&state.http_client, &base_url, &profile_id, &expected_fingerprint)
+}
+
+#[tauri::command]
 fn cancel_action(proposal_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_cancel_action(
@@ -1029,6 +1059,9 @@ pub fn run() {
             invoke_agent,
             list_agent_runs,
             cancel_agent,
+            create_agent,
+            update_agent,
+            delete_agent,
             get_resident_voice_status,
             start_resident_voice_stream,
             stop_resident_voice_stream,

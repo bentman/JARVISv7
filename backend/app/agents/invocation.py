@@ -25,7 +25,7 @@ class AgentInvoker:
         self._registry = registry
 
     def invoke_direct(
-        self, profile_id: str, prompt: str, engine_getter: Callable
+        self, profile_id: str, prompt: str, engine_getter: Callable, operation: Any = None
     ) -> AgentInvocationResult:
         profile = self._registry.get(profile_id)
         if profile is None:
@@ -35,10 +35,10 @@ class AgentInvoker:
                 f"agent {profile_id} does not support direct invocation"
             )
         engine = engine_getter()
-        return engine.run_agent(profile, prompt, mode="direct")
+        return engine.run_agent(profile, prompt, mode="direct", operation=operation)
 
     def invoke_as_tool(
-        self, profile_id: str, prompt: str, engine_getter: Callable
+        self, profile_id: str, prompt: str, engine_getter: Callable, operation: Any = None
     ) -> AgentInvocationResult:
         profile = self._registry.get(profile_id)
         if profile is None:
@@ -48,4 +48,4 @@ class AgentInvoker:
                 f"agent {profile_id} does not support as_tool invocation"
             )
         engine = engine_getter()
-        return engine.run_agent(profile, prompt, mode="as_tool")
+        return engine.run_agent(profile, prompt, mode="as_tool", operation=operation)

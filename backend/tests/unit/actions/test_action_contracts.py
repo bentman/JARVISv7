@@ -9,6 +9,7 @@ from backend.app.actions import (
     AuthorizationDecision,
     CapabilityDescriptor,
     CapabilityRegistry,
+    DelegatedRunRecord,
     ExecutionResultRecord,
     ModelActionProposal,
 )
@@ -330,6 +331,10 @@ def test_approval_and_cancellation_records_require_attributable_identity() -> No
             cancelled_at="2026-09-04T00:00:00+00:00",
         )
 
+    for field_name, value in (("kind", "subagent"), ("status", "done")):
+        with pytest.raises(ValueError, match=f"{field_name} must be one of"):
+            delegated_run(**{field_name: value})
+
 
 def test_action_evidence_routes_each_record_to_its_artifact_field() -> None:
     evidence = ActionEvidence()
@@ -371,6 +376,7 @@ def test_action_evidence_routes_each_record_to_its_artifact_field() -> None:
             cancelled_at="2026-09-04T00:00:02+00:00",
         )
     )
+    evidence.record(delegated_run())
 
     assert [len(bucket) for bucket in (
         evidence.proposals,
@@ -378,8 +384,24 @@ def test_action_evidence_routes_each_record_to_its_artifact_field() -> None:
         evidence.approvals,
         evidence.executions,
         evidence.cancellations,
-    )] == [1, 1, 1, 1, 1]
+        evidence.delegated_runs,
+    )] == [1, 1, 1, 1, 1, 1]
     assert evidence.proposals[0]["capability_id"] == SEARCH_PUBLIC_WEB_CAPABILITY_ID
+
+
+def delegated_run(**overrides) -> DelegatedRunRecord:
+    values = {
+        "run_id": "run-1",
+        "kind": "agent",
+        "target_id": "summarizer",
+        "runtime": "internal",
+        "status": "success",
+        "session_id": "session-1",
+        "turn_id": "turn-1",
+        "mode": "as_tool",
+    }
+    values.update(overrides)
+    return DelegatedRunRecord(**values)
 
 
 def privileged(**overrides) -> dict:

@@ -61,9 +61,11 @@ import {
   agentCancelNotice,
   agentInvokeEnabled,
   agentInvokeNotice,
+  agentProfileDocument,
   agentRunActivityState,
   agentRunProfileId,
   createAgentsPanelController,
+  parseAgentProfile,
 } from "../src/components/agents-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
@@ -699,6 +701,60 @@ assert.equal(agentInvokeEnabled(agentProfile, "go", false), true);
   });
   await controller.refreshAgents();
   assert.equal(controller.snapshot().agentsError, "agent registry is unavailable", "an unavailable registry must be surfaced, not hidden");
+}
+
+{
+  const operatorAgent = {
+    ...agentProfile,
+    profile_id: "notes",
+    source: "data/agents/notes.yaml",
+    editable: true,
+    enabled: true,
+    fingerprint: "fp-1",
+  };
+  const applicationAgent = { ...agentProfile, editable: false, enabled: true, fingerprint: "fp-app" };
+  assert.deepEqual(
+    Object.keys(agentProfileDocument(operatorAgent)).filter((key) => ["source", "editable", "enabled", "fingerprint"].includes(key)),
+    [],
+    "an edited profile must not send response-only fields back as profile content",
+  );
+  assert.throws(() => parseAgentProfile("[]"), /JSON object/);
+  assert.equal(agentInvokeEnabled({ ...agentProfile, enabled: false }, "go", false), false, "a disabled agent must not be invoked");
+
+  const calls = [];
+  const controller = createAgentsPanelController({
+    listAgents: async () => ({ agents: [operatorAgent, applicationAgent] }),
+    listAgentRuns: async () => ({ records: [] }),
+    createAgent: async (profile) => { calls.push(["create", profile.profile_id]); return { profile_id: profile.profile_id }; },
+    updateAgent: async (...args) => { calls.push(["update", args[0], args[2]]); return { profile_id: args[0] }; },
+    deleteAgent: async (...args) => { calls.push(["delete", ...args]); return { removed: true }; },
+    setExtensionState: async (...args) => { calls.push(["state", ...args]); return {}; },
+  });
+  await controller.load();
+
+  controller.startEdit(applicationAgent.profile_id);
+  assert.equal(controller.snapshot().editing, "", "an application profile must not open an editor");
+
+  controller.startCreate();
+  controller.setDraft("{ not json");
+  await controller.save();
+  assert.equal(controller.snapshot().mutationError, "The profile must be valid JSON.", "an unparseable draft must be reported before any request");
+  assert.deepEqual(calls, []);
+
+  controller.setDraft(JSON.stringify({ ...agentProfileDocument(operatorAgent), profile_id: "fresh" }));
+  await controller.save();
+  controller.startEdit("notes");
+  await controller.save();
+  await controller.remove("notes");
+  await controller.setEnabled("researcher", false);
+  assert.deepEqual(calls, [
+    ["create", "fresh"],
+    ["update", "notes", "fp-1"],
+    ["delete", "notes", "fp-1"],
+    ["state", "agent:researcher", "disabled"],
+  ], "edits and deletes must carry the fingerprint that was read; enablement uses the agent's extension id");
+  assert.equal(controller.snapshot().editing, "", "a saved profile must close the editor");
+  assert.equal(controller.snapshot().notice, "Agent disabled.");
 }
 
 for (const banned of ["innerHTML", "fetch(", "localStorage", "style.display"]) {

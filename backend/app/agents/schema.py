@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any
 
 INVOCATION_MODES = {"direct", "router_selected", "as_tool", "handoff"}
 MEMORY_SCOPES = {"none", "working", "episodic", "semantic", "full"}
 APPROVAL_CLASSES = {"none", "standard", "strict"}
+RUNTIME_KINDS = {"internal", "acp"}
+INTERNAL_RUNTIME = {"kind": "internal"}
 AUTHORITY_FIELDS = {
     "tool_policy",
     "routing_policy",
@@ -16,6 +18,8 @@ AUTHORITY_FIELDS = {
 }
 
 _SAFE_PROFILE_ID_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
+# Matches the local-id rule for extension definitions, which an acp runtime references.
+_SAFE_ADAPTER_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_.-]*$")
 _PROFILE_ID_MAX_LEN = 64
 _TIMEOUT_MIN_MS = 1000
 _TIMEOUT_MAX_MS = 600000
@@ -75,6 +79,23 @@ def _validate_output_contract(contract: dict[str, Any]) -> None:
         raise ValueError("output_contract must contain a 'type' key")
 
 
+def _validate_runtime(runtime: dict[str, Any]) -> None:
+    if not isinstance(runtime, dict):
+        raise ValueError("runtime must be a mapping")
+    kind = runtime.get("kind")
+    if kind not in RUNTIME_KINDS:
+        allowed = ", ".join(sorted(RUNTIME_KINDS))
+        raise ValueError(f"invalid runtime kind: {kind!r}; expected one of: {allowed}")
+    allowed_keys = {"kind", "adapter_id"} if kind == "acp" else {"kind"}
+    extra = sorted(set(runtime) - allowed_keys)
+    if extra:
+        raise ValueError(f"runtime {kind!r} does not accept: {', '.join(extra)}")
+    if kind == "acp":
+        adapter_id = runtime.get("adapter_id")
+        if not isinstance(adapter_id, str) or not _SAFE_ADAPTER_ID_RE.fullmatch(adapter_id):
+            raise ValueError("an acp runtime requires the adapter_id of an ACP definition")
+
+
 @dataclass(frozen=True, slots=True)
 class AgentProfile:
     profile_id: str
@@ -89,6 +110,7 @@ class AgentProfile:
     cancellable: bool
     output_contract: dict[str, Any]
     provider_model_policy: dict[str, Any]
+    runtime: dict[str, Any] = field(default_factory=lambda: dict(INTERNAL_RUNTIME))
 
     def __post_init__(self) -> None:
         _validate_profile_id(self.profile_id)
@@ -118,6 +140,13 @@ class AgentProfile:
         _validate_output_contract(self.output_contract)
         if not isinstance(self.provider_model_policy, dict):
             raise ValueError("provider_model_policy must be a mapping")
+        _validate_runtime(self.runtime)
+        if self.runtime["kind"] == "acp" and not self.cancellable:
+            raise ValueError("an acp runtime runs an external process and must be cancellable")
+
+    @property
+    def runtime_kind(self) -> str:
+        return self.runtime["kind"]
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -139,6 +168,7 @@ class AgentProfile:
             cancellable=data["cancellable"],
             output_contract=data["output_contract"],
             provider_model_policy=data.get("provider_model_policy", {}),
+            runtime=data.get("runtime", dict(INTERNAL_RUNTIME)),
         )
 
 

@@ -239,7 +239,10 @@ def test_acp_run_uses_turn_admission_and_persists_a_delegated_run(
     artifact = manager.turn_artifacts[-1]
     assert artifact.transcript == "summarize"
     assert artifact.tools_invoked == [executed.capability_id]
-    assert artifact.delegated_runs[0]["extension_id"] == "acp:agent"
+    [run] = artifact.delegated_runs
+    assert (run["kind"], run["target_id"], run["runtime"], run["status"]) == (
+        "extension", "acp:agent", "acp", "success",
+    )
 
 
 def test_cancelled_acp_input_returns_conflict_from_the_input_route(

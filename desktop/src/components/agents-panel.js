@@ -34,7 +34,51 @@ export function agentCancelNotice(payload) {
 }
 
 export function agentInvokeEnabled(agent, prompt, mutationPending) {
-  return Boolean(agent?.invocation_modes?.includes("direct")) && Boolean(prompt.trim()) && !mutationPending;
+  return Boolean(agent?.invocation_modes?.includes("direct"))
+    && agent?.enabled !== false
+    && Boolean(prompt.trim())
+    && !mutationPending;
+}
+
+const RESPONSE_ONLY_FIELDS = ["source", "editable", "enabled", "fingerprint"];
+
+export const NEW_AGENT_PROFILE = {
+  profile_id: "new-agent",
+  display_name: "New agent",
+  purpose: "Describe what this agent is for",
+  instructions: "Describe how this agent should work.",
+  invocation_modes: ["direct"],
+  capability_ids: [],
+  memory_scope: "none",
+  approval_class: "standard",
+  timeout_ms: 30000,
+  cancellable: true,
+  output_contract: { type: "object" },
+  provider_model_policy: {},
+  runtime: { kind: "internal" },
+};
+
+export function agentProfileDocument(agent) {
+  const document = { ...agent };
+  for (const key of RESPONSE_ONLY_FIELDS) delete document[key];
+  return document;
+}
+
+export function parseAgentProfile(text) {
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("The profile must be valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("The profile must be a JSON object.");
+  }
+  return parsed;
+}
+
+export function agentStateNotice(enabled) {
+  return enabled ? "Agent enabled." : "Agent disabled.";
 }
 
 function copyState(state) {
@@ -58,6 +102,8 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     runsError: "",
     mutationError: "",
     notice: "",
+    editing: "",
+    draft: "",
   };
   let agentsSequence = 0;
   let runsSequence = 0;
@@ -126,7 +172,7 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     state.prompt = value;
   }
 
-  async function mutate(run, notice) {
+  async function mutate(run, notice, { catalog = false } = {}) {
     if (state.mutationPending) return null;
     state.mutationPending = true;
     state.notice = "";
@@ -135,7 +181,7 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     try {
       const payload = await run();
       state.notice = notice(payload);
-      await refreshRuns();
+      await (catalog ? refreshAgents() : refreshRuns());
       return payload;
     } catch (error) {
       state.mutationError = errorMessage(error, "That agent request could not be completed.");
@@ -154,6 +200,82 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
 
   async function cancel(profileId) {
     return mutate(() => handlers.cancelAgent(profileId), agentCancelNotice);
+  }
+
+  function agentById(profileId) {
+    return state.agents.find((agent) => agent.profile_id === profileId) || null;
+  }
+
+  function startCreate() {
+    state.editing = "new";
+    state.draft = JSON.stringify(NEW_AGENT_PROFILE, null, 2);
+    state.notice = "";
+    state.mutationError = "";
+    emit();
+  }
+
+  function startEdit(profileId) {
+    const agent = agentById(profileId);
+    if (!agent?.editable) return;
+    state.editing = profileId;
+    state.draft = JSON.stringify(agentProfileDocument(agent), null, 2);
+    state.notice = "";
+    state.mutationError = "";
+    emit();
+  }
+
+  function setDraft(value) {
+    state.draft = value;
+  }
+
+  function cancelEdit() {
+    state.editing = "";
+    state.draft = "";
+    emit();
+  }
+
+  async function save() {
+    let profile;
+    try {
+      profile = parseAgentProfile(state.draft);
+    } catch (error) {
+      state.mutationError = error.message;
+      emit();
+      return null;
+    }
+    const editing = state.editing;
+    const payload = await mutate(
+      () => (editing === "new"
+        ? handlers.createAgent(profile)
+        : handlers.updateAgent(editing, profile, agentById(editing)?.fingerprint)),
+      () => "Agent profile saved.",
+      { catalog: true },
+    );
+    if (payload) {
+      state.editing = "";
+      state.draft = "";
+      state.selectedProfileId = payload.profile_id || state.selectedProfileId;
+      emit();
+    }
+    return payload;
+  }
+
+  async function remove(profileId) {
+    const agent = agentById(profileId);
+    if (!agent?.editable) return null;
+    return mutate(
+      () => handlers.deleteAgent(profileId, agent.fingerprint),
+      () => "Agent profile deleted.",
+      { catalog: true },
+    );
+  }
+
+  async function setEnabled(profileId, enabled) {
+    return mutate(
+      () => handlers.setExtensionState(`agent:${profileId}`, enabled ? "enabled" : "disabled"),
+      () => agentStateNotice(enabled),
+      { catalog: true },
+    );
   }
 
   async function load() {
@@ -176,6 +298,13 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     setPrompt,
     invoke,
     cancel,
+    startCreate,
+    startEdit,
+    setDraft,
+    cancelEdit,
+    save,
+    remove,
+    setEnabled,
     cancelPendingReads,
     snapshot: () => copyState(state),
   };
@@ -213,6 +342,12 @@ function renderCatalog(state) {
   const section = document.createElement("section");
   section.className = "agents-section";
   appendText(section, "Agents", "h3");
+  const create = document.createElement("button");
+  create.type = "button";
+  create.textContent = "New agent";
+  create.disabled = state.mutationPending || Boolean(state.editing);
+  create.addEventListener("click", () => state.actions.startCreate());
+  section.appendChild(create);
   if (state.agentsLoading) {
     appendText(section, "Loading agents…", "p", "agents-help");
     return section;
@@ -236,6 +371,7 @@ function renderCatalog(state) {
     appendText(row, agent.display_name || agent.profile_id, "strong");
     appendText(row, agent.purpose, "span", "agents-row-meta");
     appendText(row, formatValue(agent.invocation_modes), "span", "agents-row-meta");
+    if (agent.enabled === false) appendText(row, "disabled", "span", "agents-row-meta");
     row.addEventListener("click", () => state.actions.selectAgent(agent.profile_id));
     item.appendChild(row);
     list.appendChild(item);
@@ -263,9 +399,14 @@ function renderDetail(state) {
   labeledValue(facts, "Capabilities", agent.capability_ids);
   labeledValue(facts, "Memory scope", agent.memory_scope);
   labeledValue(facts, "Cancellable", agent.cancellable);
+  labeledValue(facts, "Runs in", agentRuntimeLabel(agent.runtime));
+  labeledValue(facts, "Owner", agent.editable ? "Operator" : "Application (read-only)");
+  labeledValue(facts, "Enabled", agent.enabled !== false);
   section.appendChild(facts);
 
-  if (!agent.invocation_modes?.includes("direct")) {
+  if (agent.enabled === false) {
+    appendText(section, "This agent is disabled. Enable it to invoke it.", "p", "agents-help");
+  } else if (!agent.invocation_modes?.includes("direct")) {
     appendText(section, "This agent is not invocable directly from the operator surface.", "p", "agents-help");
   } else {
     const form = document.createElement("form");
@@ -304,7 +445,70 @@ function renderDetail(state) {
   if (!agent.cancellable) cancelButton.title = "This agent profile is not cancellable.";
   cancelButton.addEventListener("click", () => state.actions.cancel(agent.profile_id));
   buttons.appendChild(cancelButton);
+  const enabled = agent.enabled !== false;
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.textContent = enabled ? "Disable" : "Enable";
+  toggle.disabled = state.mutationPending;
+  toggle.addEventListener("click", () => state.actions.setEnabled(agent.profile_id, !enabled));
+  buttons.appendChild(toggle);
+  if (agent.editable) {
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "Edit profile";
+    edit.disabled = state.mutationPending || Boolean(state.editing);
+    edit.addEventListener("click", () => state.actions.startEdit(agent.profile_id));
+    buttons.appendChild(edit);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = "Delete profile";
+    remove.disabled = state.mutationPending;
+    remove.addEventListener("click", () => state.actions.remove(agent.profile_id));
+    buttons.appendChild(remove);
+  }
   section.appendChild(buttons);
+  return section;
+}
+
+function agentRuntimeLabel(runtime) {
+  if (runtime?.kind === "acp") return `External agent (${runtime.adapter_id})`;
+  return "JARVIS";
+}
+
+function renderEditor(state) {
+  const section = document.createElement("section");
+  section.className = "agents-section";
+  appendText(section, state.editing === "new" ? "New agent profile" : "Edit agent profile", "h3");
+  const form = document.createElement("form");
+  form.className = "agents-invoke";
+  const label = document.createElement("label");
+  appendText(label, "Profile (JSON)");
+  const draft = document.createElement("textarea");
+  draft.name = "profile";
+  draft.rows = 16;
+  draft.value = state.draft;
+  draft.addEventListener("input", (event) => state.actions.setDraft(event.target.value));
+  label.appendChild(draft);
+  form.appendChild(label);
+  const buttons = document.createElement("div");
+  buttons.className = "agents-buttons";
+  const save = document.createElement("button");
+  save.type = "submit";
+  save.textContent = "Save profile";
+  save.disabled = state.mutationPending;
+  buttons.appendChild(save);
+  const discard = document.createElement("button");
+  discard.type = "button";
+  discard.textContent = "Discard changes";
+  discard.addEventListener("click", () => state.actions.cancelEdit());
+  buttons.appendChild(discard);
+  form.appendChild(buttons);
+  form.addEventListener("submit", (event) => {
+    event.preventDefault();
+    state.actions.setDraft(draft.value);
+    state.actions.save();
+  });
+  section.appendChild(form);
   return section;
 }
 
@@ -351,7 +555,9 @@ function renderPanel(container, state, actions) {
   if (state.notice) appendText(messages, state.notice, "p", "agents-notice");
   if (state.mutationError) appendText(messages, state.mutationError, "p", "agents-error");
 
-  container.replaceChildren(header, messages, renderCatalog(view), renderDetail(view), renderRuns(view));
+  const sections = [renderCatalog(view)];
+  sections.push(state.editing ? renderEditor(view) : renderDetail(view));
+  container.replaceChildren(header, messages, ...sections, renderRuns(view));
 }
 
 export function createAgentsPanel(container, handlers, options = {}) {
@@ -363,6 +569,13 @@ export function createAgentsPanel(container, handlers, options = {}) {
     setPrompt: (value) => controller.setPrompt(value),
     invoke: (profileId, prompt) => controller.invoke(profileId, prompt),
     cancel: (profileId) => controller.cancel(profileId),
+    startCreate: () => controller.startCreate(),
+    startEdit: (profileId) => controller.startEdit(profileId),
+    setDraft: (value) => controller.setDraft(value),
+    cancelEdit: () => controller.cancelEdit(),
+    save: () => controller.save(),
+    remove: (profileId) => controller.remove(profileId),
+    setEnabled: (profileId, enabled) => controller.setEnabled(profileId, enabled),
   };
   controller = createAgentsPanelController(handlers, (state) => {
     if (open) renderPanel(container, state, actions);

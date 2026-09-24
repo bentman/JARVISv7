@@ -1271,6 +1271,48 @@ pub fn list_agent_runs(client: &Client, base_url: &str) -> Result<String, String
     memory_response(operation, response)
 }
 
+pub fn create_agent(client: &Client, base_url: &str, profile: Value) -> Result<String, String> {
+    let operation = "POST /agents";
+    let response = client
+        .post(format!("{base_url}/agents"))
+        .json(&json!({ "profile": profile }))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn update_agent(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+    profile: Value,
+    expected_fingerprint: &str,
+) -> Result<String, String> {
+    let operation = "PUT /agents/{profile_id}";
+    let body = json!({ "profile": profile, "expected_fingerprint": expected_fingerprint });
+    let response = client
+        .put(format!("{base_url}/agents/{profile_id}"))
+        .json(&body)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn delete_agent(
+    client: &Client,
+    base_url: &str,
+    profile_id: &str,
+    expected_fingerprint: &str,
+) -> Result<String, String> {
+    let operation = "DELETE /agents/{profile_id}";
+    let response = client
+        .delete(format!("{base_url}/agents/{profile_id}"))
+        .query(&[("expected_fingerprint", expected_fingerprint)])
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn cancel_agent(client: &Client, base_url: &str, profile_id: &str) -> Result<String, String> {
     let operation = "POST /agents/{profile_id}/cancel";
     let response = client

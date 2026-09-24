@@ -136,6 +136,10 @@ const agentsPanel = createAgentsPanel(
     listAgentRuns: (...args) => api.listAgentRuns(...args),
     invokeAgent: (...args) => api.invokeAgent(...args),
     cancelAgent: (...args) => api.cancelAgent(...args),
+    createAgent: (...args) => api.createAgent(...args),
+    updateAgent: (...args) => api.updateAgent(...args),
+    deleteAgent: (...args) => api.deleteAgent(...args),
+    setExtensionState: (...args) => api.setExtensionState(...args),
   },
   { onClose: () => advancedPanel.requestClose() },
 );

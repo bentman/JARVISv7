@@ -161,6 +161,31 @@ def test_timeout_ms_rejects_zero() -> None:
         profile(timeout_ms=0)
 
 
+# --- runtime ---
+
+
+def test_runtime_defaults_to_internal_so_existing_profiles_stay_valid() -> None:
+    loaded = AgentProfile.from_dict(_valid_yaml_dict())
+
+    assert loaded.runtime == {"kind": "internal"}
+    assert loaded.runtime_kind == "internal"
+
+
+@pytest.mark.parametrize(
+    ("runtime", "overrides", "message"),
+    [
+        ({"kind": "remote"}, {}, "invalid runtime kind"),
+        ({"kind": "internal", "adapter_id": "coder"}, {}, "does not accept: adapter_id"),
+        ({"kind": "acp"}, {}, "requires the adapter_id"),
+        ({"kind": "acp", "adapter_id": "../coder"}, {}, "requires the adapter_id"),
+        ({"kind": "acp", "adapter_id": "coder"}, {"cancellable": False}, "must be cancellable"),
+    ],
+)
+def test_runtime_rejects_invalid_shapes(runtime: dict, overrides: dict, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        profile(runtime=runtime, **overrides)
+
+
 # --- Authority field rejection ---
 
 

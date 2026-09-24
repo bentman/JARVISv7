@@ -52,7 +52,7 @@ A remembered protocol session ID can be resumed after process replacement when t
 
 Transport `ConnectionError` signals a dead resource for cleanup and eviction. Subsequent use can create a replacement; an uncertain prompt is not replayed automatically. ACP has a separate PID-based `_stop_process_tree` termination path, so forceful teardown can be retried when a prior close was unconfirmed - this is the adapter-supplied terminate handler ADR 0009 describes.
 
-ACP work enters `TurnEngine.run_extension` admission and records delegated-run evidence. Streamed updates, permission requests, cancellation, and results flow through host callbacks and extension run records.
+ACP work enters `TurnEngine.run_extension` admission and records delegated-run evidence as ADR 0007's `DelegatedRunRecord`, attributed to the agent profile when an ACP-runtime agent delegated the run. Streamed updates, permission requests, cancellation, and results flow through host callbacks and extension run records.
 
 ### Inbound
 
@@ -68,7 +68,6 @@ Implementation files:
 - `backend/app/extensions/acp.py`
 - `backend/app/extensions/acp_server.py`
 - `backend/app/api/routes/acp_server.py`
-- `backend/app/agents/session_mapping.py`
 
 Test coverage:
 - `backend/tests/unit/extensions/test_acp_bridge.py` for adapter callbacks, resume negotiation, and unsupported/failed resume fallback

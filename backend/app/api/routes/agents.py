@@ -2,15 +2,22 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.app.agents.registry import AgentRegistry
+from backend.app.actions import catalog
+from backend.app.agents.registry import AgentProfileError, AgentRegistry, profile_fingerprint
 from backend.app.api.schemas.agents import (
     AgentInvokeRequest,
     AgentInvokeResponse,
     AgentListResponse,
     AgentProfileResponse,
+    AgentProfileWriteRequest,
+    AgentProfileWriteResponse,
     AgentRunResponse,
 )
-from backend.app.services.capability_service import CapabilityService, CapabilityServiceError
+from backend.app.services.capability_service import (
+    CapabilityService,
+    CapabilityServiceError,
+    execute_operator_action,
+)
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 
 router = APIRouter(prefix="/agents")
@@ -46,16 +53,99 @@ def _get_capability_service(request: Request) -> CapabilityService:
     return service
 
 
-def _profile_to_response(profile: Any) -> AgentProfileResponse:
-    return AgentProfileResponse(**profile.to_dict())
+def _profile_to_response(registry: AgentRegistry, profile: Any) -> AgentProfileResponse:
+    trust, source = registry.source(profile.profile_id)
+    return AgentProfileResponse(
+        **profile.to_dict(),
+        source=source,
+        editable=trust == "operator",
+        enabled=registry.enabled(profile.profile_id),
+        fingerprint=profile_fingerprint(profile),
+    )
+
+
+def _manage(service: CapabilityService, capability_id: str, arguments: dict[str, Any], operation: Any) -> Any:
+    try:
+        return execute_operator_action(service, capability_id, arguments, operation)
+    except AgentProfileError as exc:
+        raise HTTPException(
+            status_code=exc.status_code, detail={"error": exc.error, "message": str(exc)}
+        ) from exc
+    except CapabilityServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=exc.detail()) from exc
 
 
 @router.get("", response_model=AgentListResponse)
 def list_agents(
     registry: AgentRegistry = Depends(_get_agent_registry),
 ) -> AgentListResponse:
-    agents = [_profile_to_response(p) for p in registry.profiles()]
-    return AgentListResponse(agents=agents)
+    agents = [_profile_to_response(registry, p) for p in registry.profiles()]
+    problems = [
+        {"capability_id": capability_id, "reason": reason}
+        for capability_id, reason in registry.errors()
+    ]
+    return AgentListResponse(agents=agents, problems=problems)
+
+
+@router.post("", response_model=AgentProfileWriteResponse, status_code=201)
+def create_agent(
+    request: AgentProfileWriteRequest,
+    registry: AgentRegistry = Depends(_get_agent_registry),
+    service: CapabilityService = Depends(_get_capability_service),
+) -> AgentProfileWriteResponse:
+    if request.expected_fingerprint is not None:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid", "message": "a create cannot name an expected fingerprint"},
+        )
+    result = _manage(
+        service, catalog.AGENT_PROFILE_WRITE, {"profile": request.profile},
+        lambda: registry.write_profile(request.profile),
+    )
+    return AgentProfileWriteResponse(**result)
+
+
+@router.put("/{profile_id}", response_model=AgentProfileWriteResponse)
+def update_agent(
+    request: AgentProfileWriteRequest,
+    profile_id: str = Path(min_length=1, max_length=64),
+    registry: AgentRegistry = Depends(_get_agent_registry),
+    service: CapabilityService = Depends(_get_capability_service),
+) -> AgentProfileWriteResponse:
+    if request.profile.get("profile_id") != profile_id:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid", "message": "profile_id cannot change on update"},
+        )
+    if request.expected_fingerprint is None:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid", "message": "an update requires expected_fingerprint"},
+        )
+    arguments = {"profile": request.profile, "expected_fingerprint": request.expected_fingerprint}
+    result = _manage(
+        service, catalog.AGENT_PROFILE_WRITE, arguments,
+        lambda: registry.write_profile(
+            request.profile, expected_fingerprint=request.expected_fingerprint
+        ),
+    )
+    return AgentProfileWriteResponse(**result)
+
+
+@router.delete("/{profile_id}")
+def delete_agent(
+    profile_id: str = Path(min_length=1, max_length=64),
+    expected_fingerprint: str | None = Query(default=None, min_length=1),
+    registry: AgentRegistry = Depends(_get_agent_registry),
+    service: CapabilityService = Depends(_get_capability_service),
+) -> dict[str, Any]:
+    arguments: dict[str, Any] = {"profile_id": profile_id}
+    if expected_fingerprint is not None:
+        arguments["expected_fingerprint"] = expected_fingerprint
+    return _manage(
+        service, catalog.AGENT_PROFILE_DELETE, arguments,
+        lambda: registry.delete_profile(profile_id, expected_fingerprint=expected_fingerprint),
+    )
 
 
 @router.get("/runs", response_model=AgentRunResponse)
@@ -83,7 +173,7 @@ def get_agent(
     profile = registry.get(profile_id)
     if profile is None:
         raise HTTPException(status_code=404, detail={"error": "not_found", "message": "agent not found"})
-    return _profile_to_response(profile)
+    return _profile_to_response(registry, profile)
 
 
 @router.post("/invoke", response_model=AgentInvokeResponse)

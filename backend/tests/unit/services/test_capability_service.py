@@ -149,6 +149,10 @@ def test_every_operator_drivable_capability_has_an_executor_or_names_its_owner()
         env_file=object(),
     )
     instance._handlers.update(build_extension_handlers(extension_service_provider=lambda: object()))
+    instance._handlers.update(build_agent_handlers(
+        agent_registry_provider=lambda: SimpleNamespace(profiles=lambda: []),
+        engine_provider=lambda: None,
+    ))
 
     unwired = [
         entry
@@ -215,7 +219,7 @@ def test_one_unregisterable_descriptor_is_reported_without_taking_the_catalog_of
     broken = CapabilityObservation(
         search_providers=READY.search_providers,
         memory_service_present=True,
-        agents=(("agent-invoke-broken", "broken", "Broken", "privileged_execution", "requires_approval", 1000, True, ""),),
+        agents=(("agent-invoke-broken", "broken", "Broken", "privileged_execution", "requires_approval", 1000, True, "", "available", {}),),
     )
     instance = service(broken)
 
@@ -226,25 +230,42 @@ def test_one_unregisterable_descriptor_is_reported_without_taking_the_catalog_of
     assert capability(catalog, MEMORY_RECORD_CONFIRM).availability == "available"
 
 
-def test_an_agent_capability_is_served_with_its_executor_bound() -> None:
-    profile = SimpleNamespace(profile_id="summarizer")
+def _agent_service(profile, engine, extension_handler=None) -> CapabilityService:
     registry = SimpleNamespace(profiles=lambda: [profile], get=lambda _id: profile)
-    engine = SimpleNamespace(
-        run_agent=lambda profile, prompt, mode="direct": SimpleNamespace(
-            to_dict=lambda: {"agent_id": profile.profile_id, "status": "success", "output": {"response": prompt}}
-        )
+    effect = "privileged_execution" if profile.runtime_kind == "acp" else "local_read"
+    rule = "requires_approval" if profile.runtime_kind == "acp" else "allow"
+    process = (
+        {"subprocess": True, "argv_allowlist": ["agent-bin"], "env_passthrough": [],
+         "working_root": "data"}
+        if profile.runtime_kind == "acp"
+        else {}
     )
-    profile.invocation_modes = ("direct",)
     instance = service(
         CapabilityObservation(
-            agents=(("agent-invoke-summarizer", "summarizer", "Summarizer", "local_read", "allow", 1000, True, ""),)
+            agents=(("agent-invoke-summarizer", "summarizer", "Summarizer", effect, rule, 1000, True, "", "available", process),)
         )
     )
     instance.bind_handler_provider(
         lambda: build_agent_handlers(
-            agent_registry_provider=lambda: registry, engine_provider=lambda: engine
+            agent_registry_provider=lambda: registry, engine_provider=lambda: engine,
+            extension_handler=extension_handler,
         )
     )
+    return instance
+
+
+def test_an_agent_capability_outside_a_turn_runs_as_its_own_direct_turn() -> None:
+    profile = SimpleNamespace(
+        profile_id="summarizer", invocation_modes=("direct",), runtime_kind="internal"
+    )
+    calls = []
+    engine = SimpleNamespace(
+        is_active_turn=lambda turn_id: False,
+        run_agent=lambda profile, prompt, mode, operation: calls.append(mode) or SimpleNamespace(
+            to_dict=lambda: {"agent_id": profile.profile_id, "status": "success", "output": {"response": prompt}}
+        ),
+    )
+    instance = _agent_service(profile, engine)
 
     assert capability(instance.catalog(), "agent-invoke-summarizer").executable is True
     view = instance.propose(
@@ -256,6 +277,35 @@ def test_an_agent_capability_is_served_with_its_executor_bound() -> None:
 
     assert view.status == "success"
     assert view.execution["result"]["output"] == {"response": "summarize this"}
+    assert calls == ["direct"]
+
+
+def test_an_acp_runtime_agent_runs_through_its_definitions_prompt_operation() -> None:
+    from backend.app.services.extension_runtime_service import operation_id
+
+    profile = SimpleNamespace(
+        profile_id="summarizer", invocation_modes=("direct",), runtime_kind="acp",
+        runtime={"kind": "acp", "adapter_id": "coder"}, instructions="Be brief.",
+    )
+    prompts = []
+
+    def acp_prompt(arguments, operation):
+        prompts.append(arguments["prompt"])
+        return {"run_id": "run-1", "output": {"text": "done"}}
+
+    handlers = {operation_id("acp:coder", "prompt"): acp_prompt}
+    instance = _agent_service(profile, engine=None, extension_handler=handlers.get)
+
+    view = instance.invoke_operator_capability(
+        capability_id="agent-invoke-summarizer",
+        arguments={"prompt": "fix it"},
+        proposed_by="operator",
+        reason="operator asked",
+    )
+
+    assert view.status == "success"
+    assert view.execution["result"]["output"] == {"text": "done"}
+    assert prompts == ["Be brief.\n\nfix it"]
 
 
 def test_catalog_marks_capabilities_without_a_handler_as_not_executable() -> None:

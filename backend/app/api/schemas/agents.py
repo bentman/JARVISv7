@@ -22,10 +22,32 @@ class AgentProfileResponse(StrictAgentModel):
     cancellable: bool
     output_contract: dict[str, Any]
     provider_model_policy: dict[str, Any]
+    runtime: dict[str, Any]
+    source: str
+    editable: bool
+    enabled: bool
+    fingerprint: str
+
+
+class AgentProfileProblem(StrictAgentModel):
+    capability_id: str
+    reason: str
 
 
 class AgentListResponse(StrictAgentModel):
     agents: list[AgentProfileResponse]
+    problems: list[AgentProfileProblem] = Field(default_factory=list)
+
+
+class AgentProfileWriteRequest(StrictAgentModel):
+    profile: dict[str, Any]
+    expected_fingerprint: str | None = Field(default=None, min_length=1)
+
+
+class AgentProfileWriteResponse(StrictAgentModel):
+    profile_id: str
+    source: str
+    fingerprint: str
 
 
 class AgentInvokeRequest(StrictAgentModel):

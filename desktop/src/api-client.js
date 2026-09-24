@@ -168,5 +168,10 @@ export function createApiClient(invoke) {
       invokeMemory(invoke, "invoke_agent", { profileId, prompt }),
     listAgentRuns: () => invokeMemory(invoke, "list_agent_runs"),
     cancelAgent: (profileId) => invokeMemory(invoke, "cancel_agent", { profileId }),
+    createAgent: (profile) => invokeMemory(invoke, "create_agent", { profile }),
+    updateAgent: (profileId, profile, expectedFingerprint) =>
+      invokeMemory(invoke, "update_agent", { profileId, profile, expectedFingerprint }),
+    deleteAgent: (profileId, expectedFingerprint) =>
+      invokeMemory(invoke, "delete_agent", { profileId, expectedFingerprint }),
   };
 }

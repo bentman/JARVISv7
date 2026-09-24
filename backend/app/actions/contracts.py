@@ -41,6 +41,10 @@ AUTHORIZATION_OUTCOMES = {"allowed", "approval_required", "denied"}
 APPROVAL_OUTCOMES = {"approved", "denied"}
 EXECUTION_STATUSES = {"success", "failure", "cancelled", "outcome_unknown"}
 APPROVAL_MODES = {"turn_boundary", "same_turn"}
+DELEGATED_RUN_KINDS = {"agent", "extension"}
+DELEGATED_RUN_STATUSES = EXECUTION_STATUSES | {
+    "running", "awaiting_input", "awaiting_approval", "interrupted",
+}
 
 # Approval interrupts the operator only where authority or reversibility actually changes:
 # outbound mutation, cloud transmission, privileged process execution, and hard-to-reverse work.
@@ -235,6 +239,30 @@ class ActionCancellationRecord:
         return _deep_asdict(self)
 
 
+@dataclass(frozen=True, slots=True)
+class DelegatedRunRecord:
+    run_id: str
+    kind: str
+    target_id: str
+    runtime: str
+    status: str
+    session_id: str
+    turn_id: str
+    mode: str | None = None
+    output: dict[str, Any] = field(default_factory=dict)
+    error: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in ("run_id", "kind", "target_id", "runtime", "status", "session_id", "turn_id"):
+            _require_non_empty(name, getattr(self, name))
+        _require_one_of("kind", self.kind, DELEGATED_RUN_KINDS)
+        _require_one_of("status", self.status, DELEGATED_RUN_STATUSES)
+        _require_mapping("output", self.output)
+
+    def to_dict(self) -> dict[str, Any]:
+        return _deep_asdict(self)
+
+
 @dataclass(slots=True)
 class ActionEvidence:
     proposals: list[dict[str, Any]] = field(default_factory=list)
@@ -242,6 +270,7 @@ class ActionEvidence:
     approvals: list[dict[str, Any]] = field(default_factory=list)
     executions: list[dict[str, Any]] = field(default_factory=list)
     cancellations: list[dict[str, Any]] = field(default_factory=list)
+    delegated_runs: list[dict[str, Any]] = field(default_factory=list)
 
     def record(
         self,
@@ -249,7 +278,8 @@ class ActionEvidence:
         | AuthorizationDecision
         | ApprovalAuditRecord
         | ExecutionResultRecord
-        | ActionCancellationRecord,
+        | ActionCancellationRecord
+        | DelegatedRunRecord,
     ) -> None:
         _EVIDENCE_SINKS[type(record)](self).append(record.to_dict())
 
@@ -378,6 +408,7 @@ _EVIDENCE_SINKS: dict[type, Any] = {
     ApprovalAuditRecord: lambda evidence: evidence.approvals,
     ExecutionResultRecord: lambda evidence: evidence.executions,
     ActionCancellationRecord: lambda evidence: evidence.cancellations,
+    DelegatedRunRecord: lambda evidence: evidence.delegated_runs,
 }
 
 
