@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { clearRestartRequired, markRestartRequired, restartRequiredScopes, restartScopeDisables } from "../src/components/settings-panel.js";
+import { clearRestartRequired, markRestartRequired, restartRequiredScopes, restartScopeDisables, closeSettings, openSettings } from "../src/components/settings-panel.js";
 import { createAppearanceControls } from "../src/components/appearance-controls.js";
-import { builtinProfileNotice, defaultEditingProfile, providerChoiceGroups, providerRestartDisabled, providerSelectionPayload } from "../src/components/llm-provider-settings.js";
+import { builtinProfileNotice, defaultEditingProfile, providerChoiceGroups, providerRestartDisabled, providerSelectionPayload, createLlmProviderSettings, openProviderSettings } from "../src/components/llm-provider-settings.js";
 import { style, createElement, findElements } from "./support.mjs";
 
 test("the provider editor must open on an editable profile instead of a read-only built-in", async () => {
@@ -94,4 +94,47 @@ test("a restart-required mark must disable only its own scope until cleared", as
   assert.equal(restartScopeDisables(restartRequiredScopes(), "operator"), false);
   clearRestartRequired();
   assert.deepEqual(restartRequiredScopes(), []);
+});
+
+test("operator settings must render sections, choices, and advanced fields from backend metadata", async () => {
+  const previousDocument = globalThis.document;
+  // Browsers report upper-case tag names, and the settings panel branches on that.
+  globalThis.document = { createElement: (tag) => Object.assign(createElement(tag), { tagName: tag.toUpperCase() }) };
+  try {
+    const container = createElement("div");
+    await openSettings(container, {
+      getOperatorConfig: async () => ({ fields: [
+        { key: "USE_DDGS", section: "Search", value: "false", options: ["true", "false"], editable: true },
+        { key: "SEARCH_TIMEOUT_S", section: "Search", value: "20", advanced: true, editable: true },
+      ] }),
+    });
+    const headings = findElements(container, (node) => node.tagName === "H3").map((node) => node.textContent);
+    assert.ok(headings.includes("Search"), "fields must be grouped under their backend section");
+    const select = findElements(container, (node) => node.tagName === "SELECT" && node.name === "USE_DDGS")[0];
+    assert.deepEqual(select.children.map((option) => option.value), ["true", "false"], "choices must come from backend options");
+    assert.equal(select.value, "false");
+    const advanced = findElements(container, (node) => node.tagName === "DETAILS")[0];
+    assert.ok(findElements(advanced, (node) => node.name === "SEARCH_TIMEOUT_S").length === 1, "advanced fields must sit behind a disclosure");
+    closeSettings();
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("the provider section must offer escalation, connection testing, and credential removal", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement };
+  try {
+    const section = createLlmProviderSettings({
+      profiles: [{ profile_id: "lab", name: "Lab", kind: "openai_compatible", readiness_state: "configured" }],
+      selection: { primary_profile_id: "lab" },
+    }, {});
+    const texts = findElements(section, (node) => typeof node.textContent === "string").map((node) => node.textContent);
+    for (const label of ["Model Providers", "Allow cloud escalation", "Test connection", "Remove stored credential"]) {
+      assert.ok(texts.includes(label), `the provider section must render ${label}`);
+    }
+    assert.equal(typeof openProviderSettings, "function", "Providers & Models must be mountable as its own category");
+  } finally {
+    globalThis.document = previousDocument;
+  }
 });

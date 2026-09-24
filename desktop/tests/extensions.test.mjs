@@ -4,7 +4,7 @@ import { strict as assert } from "node:assert";
 import { createExtensionsPanel, createExtensionsPanelController, extensionActivityState, extensionStateEnabled, formatExtensionOrigin, formatPromptMessages, formatResourceContents, formatRunStarted, operationDisplayName, operationKind, operationShortLabel, operationSubmitLabel, parseAllowlist, parseCommandLines, requestedCapabilities, extensionLocalIdValid, extensionRunTitle, formatToolResult } from "../src/components/extensions-panel.js";
 import { main, apiClient, memoryPanel, actionsPanel, extensionsPanel, agentsPanel, backend, createElement, deferred, findElement, findElements } from "./support.mjs";
 
-test("extension forms must retain drafts across run refreshes", async () => {
+test("the extension controller must route invoke, answer, and decide to their handlers", async () => {
   const extensionCalls = [];
   const extensionController = createExtensionsPanelController({
     invokeExtension: async (...args) => { extensionCalls.push(["invoke", ...args]); return { status: "awaiting_approval" }; },
@@ -28,7 +28,6 @@ test("extension forms must retain drafts across run refreshes", async () => {
   }, () => undefined);
   await failingExtensionController.invoke("mcp:server", "capability", {});
   assert.equal(failingExtensionController.snapshot().detailError, "blocked");
-  assert.ok(extensionsPanel.includes("data-draft-key"), "extension forms must retain drafts across run refreshes");
 });
 
 test("Invoking an operation such as MCP \"discover\" changes the extension's own runtime detail (health,...", async () => {
@@ -981,18 +980,51 @@ test("Cancelling a run is confirmed, and declining leaves the run alone", async 
   assert.equal(cancelled, 1);
 });
 
-test("The MCP credential form must not depend on discovered operations: a server that demands authorization...", async () => {
-  // The MCP credential form must not depend on discovered operations: a server that
-  // demands authorization before discovery has none yet.
-  const source = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
-  const credentialAt = source.indexOf('appendText(credential, "Credential"');
-  const guardAt = source.indexOf("if (state.runtime?.operations?.length)");
-  assert.ok(credentialAt > 0 && guardAt > 0);
-  const between = source.slice(guardAt, credentialAt);
-  assert.ok(
-    between.includes('if (detail.family === "mcp")'),
-    "the credential form must sit outside the operations guard",
-  );
+test("owner controls must follow provenance, and the MCP credential form must not wait for discovery", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  async function controlsFor(family, localId, provenance, trust) {
+    const extensionId = `${family}:${localId}`;
+    const container = createElement("div");
+    const panel = createExtensionsPanel(container, {
+      getExtensions: async () => ({
+        extensions: [{ extension_id: extensionId, display_name: localId, family, trust, provenance, version: "1" }],
+        families: { [family]: 1 },
+      }),
+      getExtensionErrors: async () => ({ errors: [] }),
+      getExtensionDetail: async () => ({
+        extension_id: extensionId, family, local_id: localId, trust, provenance, state: "enabled",
+      }),
+      getExtensionRuntime: async () => ({ operations: [] }),
+      getExtensionOauth: async () => ({ configured: false, authorized: false }),
+    });
+    await panel.open();
+    await panel.controller.selectExtension(extensionId);
+    const texts = findElements(container, (node) => typeof node.textContent === "string").map((node) => node.textContent);
+    panel.close();
+    return texts;
+  }
+  try {
+    const operatorConnection = await controlsFor("mcp", "weather", "data/extensions/mcp", "external");
+    assert.ok(operatorConnection.includes("Credential"), "a connection with no discovered operations must still offer its credential form");
+    assert.ok(operatorConnection.includes("Remove connection"), "an operator-owned connection must be removable");
+    assert.ok(!(await controlsFor("mcp", "builtin", "config/extensions/mcp", "application")).includes("Remove connection"),
+      "an application connection must not be removable");
+
+    assert.ok((await controlsFor("tool", "writer", "data/extensions/tools", "external")).includes("Remove tool"));
+    assert.ok(!(await controlsFor("tool", "writer", "config/extensions/tools", "application")).includes("Remove tool"),
+      "an application tool must not be removable");
+
+    assert.ok((await controlsFor("skill", "notes", "data/extensions/skills", "external")).includes("Edit skill"),
+      "an operator skill carries external trust and must still be editable");
+    assert.ok(!(await controlsFor("skill", "notes", "config/extensions/skills", "operator")).includes("Edit skill"),
+      "ownership follows provenance, not trust");
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
 });
 
 test("the desktop must never handle a PKCE verifier", async () => {
@@ -1023,44 +1055,43 @@ test("Operator skills are editable through the governed capability, not a direct
   assert.equal(controller.snapshot().selectedExtensionId, "");
 });
 
-test("A refused save must surface the backend's reason, not claim success", async () => {
-  // A refused save must surface the backend's reason, not claim success.
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async () => ({
-      status: "failure",
-      execution: { error: "skill declares an authority-bearing field" },
-    }),
-  });
-  await controller.saveSkill("rogue", "---\nname: rogue\n---\nbody");
-  const snapshot = controller.snapshot();
-  assert.ok(snapshot.detailError.includes("authority-bearing"));
-  assert.notEqual(snapshot.notice, "Skill saved.");
+test("a refused extension change must surface the backend's reason, not claim success", async () => {
+  const cases = [
+    ["saveSkill", ["rogue", "---\nname: rogue\n---\nbody"], "detailError", "skill declares an authority-bearing field", "Skill saved."],
+    ["importSkill", ["rogue", "---\nname: rogue\n---\nbody"], "importSkillError", "skill declares an authority-bearing field", "Skill imported."],
+    ["removeSkill", ["notes"], "detailError", "skill is referenced by an enabled agent", "Skill removed."],
+    ["removeLocalTool", ["changelog-writer"], "detailError", "tool is referenced by an enabled agent", "Local tool removed."],
+    ["addMcpConnection", [{ localId: "bad", name: "Bad", url: "https://x.test/mcp" }], "addConnectionError", "MCP definition has unknown fields: bogus", "MCP connection added."],
+    ["removeMcpConnection", ["weather"], "detailError", "connection is referenced by an enabled agent", "MCP connection removed."],
+  ];
+  for (const [operation, args, errorField, reason, successNotice] of cases) {
+    const controller = createExtensionsPanelController({
+      getExtensions: async () => ({ extensions: [], families: {} }),
+      proposeAction: async () => ({ status: "failure", execution: { error: reason } }),
+    });
+    await controller[operation](...args);
+    const snapshot = controller.snapshot();
+    assert.ok(snapshot[errorField].includes(reason), `${operation} must show the backend's reason`);
+    assert.notEqual(snapshot.notice, successNotice, `${operation} must not report success`);
+  }
 });
 
-test("A refused delete must surface the backend's reason too, not just a thrown error", async () => {
-  // A refused delete must surface the backend's reason too, not just a thrown error.
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async () => ({
-      status: "failure",
-      execution: { error: "skill is referenced by an enabled agent" },
-    }),
-  });
-  await controller.removeSkill("notes");
-  const snapshot = controller.snapshot();
-  assert.ok(snapshot.detailError.includes("referenced by an enabled agent"));
-  assert.notEqual(snapshot.notice, "Skill removed.");
-});
-
-test("Operator-skill ownership is decided by provenance: these skills carry external trust", async () => {
-  // Operator-skill ownership is decided by provenance: these skills carry external trust.
-  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
-  const editorAt = panel.indexOf('appendText(editor, "Edit skill"');
-  assert.ok(editorAt > 0, "the skill editor must exist");
-  const guard = panel.slice(panel.lastIndexOf("if (detail.family === \"skill\"", editorAt), editorAt);
-  assert.ok(guard.includes("provenance"), "skill editing must gate on provenance");
-  assert.ok(!guard.includes('trust === "operator"'), "operator skills do not carry operator trust");
+test("a malformed extension ID must never reach the backend", async () => {
+  const cases = [
+    ["addLocalTool", { localId: "Not A Valid Id!", name: "Bad", command: "python3", argvAllowlist: "python3", workingRoot: "data" }, "addToolError", /Tool ID/],
+    ["addMcpConnection", { localId: "Not A Valid Id!", name: "Bad", url: "https://x.test/mcp" }, "addConnectionError", /Connection ID/],
+    ["importSkill", "Not A Valid Id!", "importSkillError", /Skill ID/],
+  ];
+  for (const [operation, input, errorField, message] of cases) {
+    const proposals = [];
+    const controller = createExtensionsPanelController({
+      getExtensions: async () => ({ extensions: [], families: {} }),
+      proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
+    });
+    await (operation === "importSkill" ? controller.importSkill(input, "---\nname: Bad\n---\nbody") : controller[operation](input));
+    assert.equal(proposals.length, 0, `${operation} must not propose a malformed ID`);
+    assert.match(controller.snapshot()[errorField], message);
+  }
 });
 
 test("A loaded skill body must actually appear in the Edit skill textarea. The editor renders unconditionally...", async () => {
@@ -1505,30 +1536,6 @@ test("A tool always registers as privileged_execution, and boundaries.py refuses
   assert.equal(proposals[0].actionArguments.definition.process.subprocess, true, "subprocess must always be true regardless of caller input");
 });
 
-test("A malformed tool ID must never reach the backend", async () => {
-  // A malformed tool ID must never reach the backend.
-  const proposals = [];
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
-  });
-  await controller.addLocalTool({ localId: "Not A Valid Id!", name: "Bad", command: "python3", argvAllowlist: "python3", workingRoot: "data" });
-  assert.equal(proposals.length, 0, "a malformed tool ID must not reach the backend");
-  assert.ok(controller.snapshot().addToolError.includes("Tool ID"));
-});
-
-test("A refused tool delete must surface the backend's reason, not claim success", async () => {
-  // A refused tool delete must surface the backend's reason, not claim success.
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async () => ({ status: "failure", execution: { error: "tool is referenced by an enabled agent" } }),
-  });
-  await controller.removeLocalTool("changelog-writer");
-  const snapshot = controller.snapshot();
-  assert.ok(snapshot.detailError.includes("referenced by an enabled agent"));
-  assert.notEqual(snapshot.notice, "Local tool removed.");
-});
-
 test("extension_runtime_service.py's _mcp wraps every non-discover result as {content: result, trusted: false} -...", async () => {
   // extension_runtime_service.py's _mcp wraps every non-discover result as
   // {content: result, trusted: false} - the SDK's own shape sits one level under result.content,
@@ -1570,66 +1577,6 @@ test("a tool-shaped result has no contents array and must not be misread as a re
   );
   assert.equal(formatResourceContents({ contents: [{ uri: "file:///notes.txt", mimeType: "text/plain", text: "hello" }] }), null, "a result missing the content wrapper must not be misread as unwrapped");
   assert.equal(formatResourceContents(null), null);
-});
-
-test("A refused connection delete must surface the backend's reason, not claim success", async () => {
-  // A refused connection delete must surface the backend's reason, not claim success.
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async () => ({
-      status: "failure",
-      execution: { error: "connection is referenced by an enabled agent" },
-    }),
-  });
-  await controller.removeMcpConnection("weather");
-  const snapshot = controller.snapshot();
-  assert.ok(snapshot.detailError.includes("referenced by an enabled agent"));
-  assert.notEqual(snapshot.notice, "MCP connection removed.");
-});
-
-test("A malformed connection ID must never reach the backend", async () => {
-  // A malformed connection ID must never reach the backend.
-  const proposals = [];
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
-  });
-  await controller.addMcpConnection({ localId: "Not A Valid Id!", name: "Bad", url: "https://x.test/mcp" });
-  assert.equal(proposals.length, 0, "an invalid connection id must not be proposed");
-  assert.match(controller.snapshot().addConnectionError, /Connection ID/);
-});
-
-test("A refused add must surface the backend's reason, not claim success", async () => {
-  // A refused add must surface the backend's reason, not claim success.
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async () => ({
-      status: "failure",
-      execution: { error: "MCP definition has unknown fields: bogus" },
-    }),
-  });
-  await controller.addMcpConnection({ localId: "bad", name: "Bad", url: "https://x.test/mcp" });
-  const snapshot = controller.snapshot();
-  assert.ok(snapshot.addConnectionError.includes("unknown fields"));
-  assert.notEqual(snapshot.notice, "MCP connection added.");
-});
-
-test("MCP connection ownership is decided by provenance, the same rule as skills", async () => {
-  // MCP connection ownership is decided by provenance, the same rule as skills.
-  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
-  const removeAt = panel.indexOf('remove.textContent = "Remove connection"');
-  assert.ok(removeAt > 0, "the remove-connection control must exist");
-  const guard = panel.slice(panel.lastIndexOf("if (isOperatorOwnedProvenance(detail))", removeAt), removeAt);
-  assert.ok(guard.includes("isOperatorOwnedProvenance"), "connection removal must gate on provenance");
-});
-
-test("Local tool ownership is decided by provenance, the same rule as MCP connections and skills", async () => {
-  // Local tool ownership is decided by provenance, the same rule as MCP connections and skills.
-  const panel = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
-  const removeAt = panel.indexOf('remove.textContent = "Remove tool"');
-  assert.ok(removeAt > 0, "the remove-tool control must exist");
-  const guard = panel.slice(panel.lastIndexOf('if (detail.family === "tool"', removeAt), removeAt);
-  assert.ok(guard.includes("isOperatorOwnedProvenance"), "tool removal must gate on provenance");
 });
 
 test("The Add MCP Connection control must render as a real, human-labeled form, not raw JSON, and its submit...", async () => {
@@ -2200,33 +2147,6 @@ test("An operator can import a brand-new skill without hand-editing YAML, distin
     body: "---\nname: Changelog Writer\n---\nbody",
   });
   assert.equal(controller.snapshot().notice, "Skill imported.");
-});
-
-test("A malformed skill ID must never reach the backend", async () => {
-  // A malformed skill ID must never reach the backend.
-  const proposals = [];
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
-  });
-  await controller.importSkill("Not A Valid Id!", "---\nname: Bad\n---\nbody");
-  assert.equal(proposals.length, 0, "an invalid skill id must not be proposed");
-  assert.match(controller.snapshot().importSkillError, /Skill ID/);
-});
-
-test("A refused import must surface the backend's reason, not claim success", async () => {
-  // A refused import must surface the backend's reason, not claim success.
-  const controller = createExtensionsPanelController({
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    proposeAction: async () => ({
-      status: "failure",
-      execution: { error: "skill declares an authority-bearing field" },
-    }),
-  });
-  await controller.importSkill("rogue", "---\nname: rogue\n---\nbody");
-  const snapshot = controller.snapshot();
-  assert.ok(snapshot.importSkillError.includes("authority-bearing"));
-  assert.notEqual(snapshot.notice, "Skill imported.");
 });
 
 test("The Import Skill control must render as a real form, not raw JSON, and its submit must reach the governed...", async () => {

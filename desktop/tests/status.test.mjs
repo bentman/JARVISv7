@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { renderConversationDebug } from "../src/components/conversation-debug.js";
 import { renderBackendDiagnostics } from "../src/components/backend-diagnostics.js";
-import { collectDegradedConditions, selectedFamilyBlockers } from "../src/components/degraded-list.js";
+import { collectDegradedConditions, selectedFamilyBlockers, renderDegradedList } from "../src/components/degraded-list.js";
 import { createDesktopState } from "../src/components/desktop-state.js";
 import { createResidentVoicePresenter } from "../src/components/resident-voice.js";
 import { createDesktopPolling, sessionPollingInterval, statusPollingInterval } from "../src/components/desktop-polling.js";
@@ -393,6 +393,17 @@ test("resident voice presenter must not append stale wake completion after lates
     "resident voice presenter must still append current voice completions",
   );
   assert.equal(appendedMessages[1].metadata.search.sources[0].id, "S1");
+  const voiceStatus = {
+    state: "IDLE",
+    invocation_source: "wake",
+    last_transcript: "Hey Jarvis, what is the capital of the United States?",
+    last_response: "The capital of the United States is Washington, D.C.",
+    latest_turn: { turn_id: "voice-turn-123", input_modality: "voice", final_state: "IDLE", failure_reason: null },
+  };
+  residentPresenter.renderResidentVoiceStatus(voiceStatus);
+  assert.equal(appendedMessages.length, 2, "a repeated status for the same voice turn must not append it again");
+  residentPresenter.renderResidentVoiceStatus({ ...voiceStatus, latest_turn: { ...voiceStatus.latest_turn, turn_id: "voice-turn-456" } });
+  assert.equal(appendedMessages.length, 4, "a new voice turn with the same words is still a new completion");
 });
 
 test("the wake indicator must render backend wake state", async () => {
@@ -514,6 +525,65 @@ test("a failed operation must not leave System State stuck at a failure", async 
 
     desktopState.showError("backend exited", "BACKEND_UNAVAILABLE");
     assert.equal(systemValue.textContent, "Backend unavailable", "a lifecycle failure must still set System State");
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+
+test("conversation debug must show the latest voice turn's evidence, not its words", async () => {
+  const detail = { textContent: "" };
+  renderConversationDebug({
+    state: "IDLE",
+    invocation_source: "ptt",
+    last_transcript: "private words",
+    last_response: "private answer",
+    latest_turn: {
+      turn_id: "voice-turn-9",
+      input_modality: "voice",
+      final_state: "IDLE",
+      runtime_context: { stt: "whisper", llm: "llama.cpp", tts: "kokoro" },
+      phase_durations_ms: { stt_ms: 120, llm_ms: 900 },
+      failure_phase: "tts",
+      failure_reason: "device lost",
+      degraded_reason: "cpu fallback",
+      raw_audio_path: "data\\audio\\voice-turn-9.wav",
+      artifact_path: "data\\turns\\s\\voice-turn-9.json",
+    },
+  }, detail);
+  for (const expected of [
+    "turn: ptt voice- IDLE", "runtime: stt=whisper, llm=llama.cpp, tts=kokoro", "timing: stt_ms=120, llm_ms=900",
+    "failure_phase: tts", "failure: device lost", "degraded: tts=cpu fallback",
+    "raw_audio: data\\audio\\voice-turn-9.wav", "artifact: data\\turns\\s\\voice-turn-9.json",
+  ]) {
+    assert.ok(detail.textContent.includes(expected), `debug detail must include ${expected}`);
+  }
+  assert.ok(!detail.textContent.includes("private"), "debug detail must not repeat transcript or response text");
+
+  renderConversationDebug({
+    state: "FAILED", failure_reason: "no speech", failure_phase: "capture", turn_count: 3,
+    latest_turn: { turn_id: "old-turn", input_modality: "voice", final_state: "IDLE" },
+  }, detail);
+  assert.ok(detail.textContent.includes("failure_phase: capture"), "a current capture failure must lead the detail");
+  assert.ok(!detail.textContent.includes("old-tu"), "a stale latest turn must not hide the current failure");
+});
+
+test("the degraded detail must show and hide its collapsed container with the conditions", async () => {
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement };
+  try {
+    const details = { hidden: false, open: true };
+    const container = createElement("div");
+    container.closest = (selector) => (selector === "details" ? details : null);
+
+    renderDegradedList({ status: "ready", families: {}, services: {} }, container);
+    assert.equal(container.hidden, true);
+    assert.deepEqual([details.hidden, details.open], [true, false], "a ready host must collapse and hide the degraded details");
+
+    renderDegradedList({ status: "ready", families: {}, services: { redis: { reachable: false, reason: "connection refused" } } }, container);
+    assert.equal(details.hidden, false, "a degraded condition must reveal the details container");
+    const rows = findElements(container, (node) => node.className === "degraded-condition");
+    assert.deepEqual(rows.map((row) => row.dataset.kind), ["optional-service"]);
+    assert.equal(rows[0].children[0].textContent, "Optional Redis Cache unavailable");
   } finally {
     globalThis.document = previousDocument;
   }

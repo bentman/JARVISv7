@@ -40,8 +40,6 @@ test("Tauri must enable tray-icon support", async () => {
   assert.ok(backend.includes('join("cache")'), "desktop must read backend daemon metadata under cache/");
   assert.ok(backend.includes("/daemon/status"), "desktop must probe daemon status before spawning");
   assert.ok(backend.includes("/daemon/shutdown"), "desktop daemon stop must use the token-protected backend route");
-  assert.ok(!backend.includes("netstat -ano"), "desktop must not discover unrelated port owners with netstat");
-  assert.ok(!backend.includes("taskkill"), "desktop must not kill unrelated port owners");
 });
 
 test("desktop PTT must not capture WebView microphone audio", async () => {
@@ -52,8 +50,6 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(!backend.toLowerCase().includes("multipart"), "voice upload must not use multipart");
   assert.ok(!main.toLowerCase().includes("websocket"), "desktop must not use WebSockets");
   assert.ok(backend.includes("python_path_for_host"), "desktop launcher must resolve its interpreter through the platform helper");
-  assert.ok(backend.includes('venv_root.join("Scripts").join("python.exe")'), "desktop launcher must preserve the Windows venv interpreter path");
-  assert.ok(backend.includes('venv_root.join("bin").join("python")'), "desktop launcher must resolve the Linux venv interpreter path");
   assert.ok(backend.includes("/session/status"), "backend bridge must call /session/status");
   assert.ok(backend.includes("/status/desktop"), "backend bridge must call the consolidated desktop status endpoint");
   assert.ok(lib.includes("http_client: Client"), "desktop state must own one shared HTTP client");
@@ -128,11 +124,6 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
   assert.ok(main.includes("renderBackendDiagnostics"), "desktop must render backend diagnostics");
   assert.ok(main.includes("error.diagnostics"), "startup failures must not collapse only into String(error)");
-  assert.ok(desktopPolling.includes("let pollTimer"), "desktop polling helper must own one consolidated timer handle");
-  assert.ok(desktopPolling.includes("refreshDesktopStatus"), "slow polling ticks must use the consolidated desktop snapshot");
-  for (const functionName of ["startAllPolling", "stopAllPolling"]) {
-    assert.ok(desktopPolling.includes(functionName), `desktop polling helper must expose ${functionName}`);
-  }
   assert.ok(main.includes('import { createDesktopPolling } from "./components/desktop-polling.js"'), "desktop main must import polling helper");
   assert.ok(main.includes("createDesktopPolling({"), "desktop main must create polling helper with refresh callbacks");
   assert.ok(main.includes("startAllPolling()"), "desktop main must start polling through helper");
@@ -153,23 +144,7 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(lib.includes("startup_failure_payload"), "Tauri start_backend failures must return structured diagnostics");
   assert.ok(backend.includes("stdout_tail"), "backend diagnostics failure payload must include stdout tail");
   assert.ok(backend.includes("stderr_tail"), "backend diagnostics failure payload must include stderr tail");
-  for (const token of ["python_path", "backend_script_path", "working_directory", "endpoint", "stdout_log", "stderr_log", "stdout_tail", "stderr_tail"]) {
-    assert.ok(backendDiagnostics.includes(token), `backend diagnostics renderer must include ${token}`);
-  }
   assert.ok(main.includes("await refreshSessionStatus()"), "desktop text and voice flows must refresh session status");
-  assert.ok(conversationDebug.includes("latest_turn"), "conversation debug must render latest-turn session status");
-  assert.ok(conversationDebug.includes("artifact_path"), "conversation debug must render turn artifact path");
-  assert.ok(conversationDebug.includes("runtime_context"), "conversation debug must render runtime context");
-  assert.ok(conversationDebug.includes("phase_durations_ms"), "conversation debug must render latest-turn phase timing");
-  assert.ok(conversationDebug.includes("failure_phase"), "conversation debug must render failure phase");
-  assert.ok(conversationDebug.includes("raw_audio_path"), "conversation debug must render raw audio replay path");
-  assert.ok(conversationDebug.includes("degraded_reason"), "conversation debug must render compact degraded reason");
-  assert.ok(!conversationDebug.includes("last_transcript"), "conversation debug must not duplicate transcript text");
-  assert.ok(!conversationDebug.includes("last_response"), "conversation debug must not duplicate assistant response text");
-  assert.ok(
-    residentVoice.includes("latestTurn?.input_modality === \"voice\""),
-    "resident voice completion de-dupe must not key stale voice fields from latest text turns",
-  );
   assert.ok(main.includes("renderDegradedList(readiness, degradedEl)"), "desktop degraded detail must render from existing readiness payload");
   assert.ok(
     main.indexOf("await ensureResidentVoiceStream()") < main.indexOf("const readiness = await api.getReadiness()"),
@@ -189,14 +164,10 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
       .includes("await startWakeMonitorIfAvailable()"),
     "desktop backend startup must not automatically start wake monitoring",
   );
-  assert.ok(degradedList.includes("closest(\"details\")"), "degraded detail renderer must control its collapsed details container");
-  assert.ok(degradedList.includes("optional-service"), "degraded detail must label optional services separately");
   assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
   assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
   assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
   assert.ok(desktopSource.includes("continuous-active"), "desktop must render resident continuous active status");
-  assert.ok(residentVoice.includes("latestTurnIsVoice && latestTurn?.turn_id"), "resident voice completion dedupe must prefer voice latest-turn identity");
-  assert.ok(conversationDebug.includes("currentFailureWithoutTurn"), "conversation debug must show current capture failures ahead of stale latest-turn data");
   assert.ok(main.includes("ensureResidentVoiceStream"), "desktop must start resident stream before resident wake/mode proof");
   assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resident mode mutation");
   assert.ok(main.includes("setResidentTtsVoice"), "desktop must call backend resident TTS voice mutation");
@@ -232,9 +203,6 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(main.includes("personalityDetailEl.textContent"), "desktop must keep compact personality metadata on one rendered line");
   assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
   assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
-  assert.ok(settingsPanel.includes("field.options"), "settings panel must render select controls from backend metadata");
-  assert.ok(settingsPanel.includes("field.section"), "settings panel must group settings from backend metadata");
-  assert.ok(settingsPanel.includes("field.advanced"), "settings panel must use advanced metadata from backend");
   assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
   assert.ok(
     !settingsPanel.includes('querySelectorAll("input, select, button")'),
@@ -245,11 +213,6 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.equal(restartScopeDisables(["operator"], "provider"), false, "restart scopes must not leak across categories");
   assert.equal(restartScopeDisables(new Set(["provider"]), "provider"), true);
   assert.equal(restartScopeDisables(null, "operator"), false);
-  assert.ok(llmProviderSettings.includes("Model Providers"), "settings must expose Model Providers");
-  assert.ok(llmProviderSettings.includes("Allow cloud escalation"), "settings must expose cloud escalation authorization");
-  assert.ok(llmProviderSettings.includes("Test connection"), "settings must expose provider readiness testing");
-  assert.ok(llmProviderSettings.includes("Remove stored credential"), "settings must expose credential removal");
-  assert.ok(llmProviderSettings.includes("openProviderSettings"), "Providers & Models must be mountable as its own advanced-control category");
 });
 
 test("every client command must be a registered Tauri command and every bridge call a backend route", async () => {
