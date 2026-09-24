@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import sys
 import threading
 import time
@@ -125,6 +124,5 @@ def test_a_descendant_holding_output_pipes_does_not_strand_the_parents_output() 
 
     assert result["exit_code"] == 0
     assert result["stdout"].strip() == "parent"
-    if os.name == "posix":
-        # POSIX process groups also stop the leftover descendant, so the run returns promptly.
-        assert time.monotonic() - started < 0.8
+    # The leftover descendant is stopped (process group or job object), so the run returns promptly.
+    assert time.monotonic() - started < 0.8

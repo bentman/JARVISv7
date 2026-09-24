@@ -14,7 +14,7 @@ Evidence lives in each ADR's Confirmation section; recorded validation runs live
 | [0002](0002-one-honest-interaction-loop.md) | One Honest Interaction Loop | Implemented | Turn/session ownership, one voice+text loop | Met |
 | [0003](0003-mind-with-boundaries.md) | Mind with Boundaries | Implemented | Model/application authority boundary | Met |
 | [0004](0004-memory-with-meaning.md) | Memory with Meaning | Implemented | Memory layers, curation, lifecycle | Met |
-| [0005](0005-governed-ability-to-act.md) | Governed Ability to Act | Accepted | Effect-class risk model, capability contract, execution, audit | Windows leftover-descendant cleanup in Follow-up |
+| [0005](0005-governed-ability-to-act.md) | Governed Ability to Act | Implemented | Effect-class risk model, capability contract, execution, audit | Met |
 | [0006](0006-ways-to-extend-assistant-ability-to-act.md) | Ways to Extend Assistant Ability to Act | Implemented | Extension taxonomy, catalog, governed operations, skills, local tools | Met |
 | [0007](0007-extend-assistant-when-stable.md) | Extend Assistant When Stable | Implemented | Agent identity, invocation modes, agent scope | Met |
 | [0008](0008-operator-experience.md) | Operator Experience | Accepted | Advanced Controls shell, all operator surfaces, native validation | Native desktop session validation |

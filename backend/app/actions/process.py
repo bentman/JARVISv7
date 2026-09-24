@@ -4,6 +4,7 @@ import os
 import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections.abc import Mapping, Sequence
@@ -62,6 +63,7 @@ def run_process(
     except BaseException:
         operation.done.set()
         raise
+    job = _open_job(process.pid)
     stdout = bytearray()
     stderr = bytearray()
     output_lock = threading.Lock()
@@ -105,7 +107,8 @@ def run_process(
             _stop_process_tree(process.pid)
             process.wait(timeout=_STOP_SECONDS)
         if not cancelled and (stdout_thread.is_alive() or stderr_thread.is_alive()):
-            _stop_leftover_process_group(process.pid)
+            _stop_leftover_process_group(process.pid, job)
+        _close_job(job)
         stdout_thread.join(timeout=_STOP_SECONDS)
         stderr_thread.join(timeout=_STOP_SECONDS)
         operation.done.set()
@@ -160,14 +163,65 @@ def _stop_process_tree(pid: int) -> None:
     psutil.wait_procs(alive, timeout=_STOP_SECONDS)
 
 
-def _stop_leftover_process_group(pid: int) -> None:
-    """A successful POSIX parent may leave descendants holding its output pipes."""
-    if os.name != "posix":
+def _stop_leftover_process_group(pid: int, job: int | None) -> None:
+    """A successful parent may leave descendants holding its output pipes.
+
+    POSIX reaches them through the parent's session process group. Windows reaches them
+    through the job object the parent was assigned to, which its descendants inherit.
+    """
+    if sys.platform == "win32":
+        if job is not None:
+            _KERNEL32.TerminateJobObject(job, 1)
         return
     try:
         os.killpg(pid, signal.SIGTERM)
     except ProcessLookupError:
         return
+
+
+if sys.platform == "win32":
+    import ctypes
+    from ctypes import wintypes
+
+    _KERNEL32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    _KERNEL32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+    _KERNEL32.CreateJobObjectW.restype = wintypes.HANDLE
+    _KERNEL32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    _KERNEL32.OpenProcess.restype = wintypes.HANDLE
+    _KERNEL32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+    _KERNEL32.AssignProcessToJobObject.restype = wintypes.BOOL
+    _KERNEL32.TerminateJobObject.argtypes = (wintypes.HANDLE, wintypes.UINT)
+    _KERNEL32.TerminateJobObject.restype = wintypes.BOOL
+    _KERNEL32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    _KERNEL32.CloseHandle.restype = wintypes.BOOL
+    _PROCESS_SET_QUOTA = 0x0100
+    _PROCESS_TERMINATE = 0x0001
+
+
+def _open_job(pid: int) -> int | None:
+    """Place a Windows child in its own job so descendants it starts can be stopped.
+
+    Descendants started before assignment completes are outside the job; the child has
+    only just been created, so that window is the time Popen takes to return.
+    """
+    if sys.platform == "win32":
+        job = _KERNEL32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        handle = _KERNEL32.OpenProcess(_PROCESS_SET_QUOTA | _PROCESS_TERMINATE, False, pid)
+        assigned = bool(handle) and bool(_KERNEL32.AssignProcessToJobObject(job, handle))
+        if handle:
+            _KERNEL32.CloseHandle(handle)
+        if not assigned:
+            _KERNEL32.CloseHandle(job)
+            return None
+        return int(job)
+    return None
+
+
+def _close_job(job: int | None) -> None:
+    if sys.platform == "win32" and job is not None:
+        _KERNEL32.CloseHandle(job)
 
 
 __all__ = ["run_process"]

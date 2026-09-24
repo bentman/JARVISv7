@@ -1,7 +1,7 @@
 # 0005 - Governed Ability to Act
 
 Date: 2026-09-01
-Status: Accepted
+Status: Implemented
 Related: 0002, 0003, 0004, 0008, 0009
 
 ## Context and Problem Statement
@@ -66,7 +66,7 @@ Negative:
 
 `backend/app/actions/boundaries.py` enforces allowed storage roots, deadlines, cancellation, result limits, and process argv/environment/working-directory declarations. Process-bearing capabilities use these controls. They provide application-level containment, not an OS sandbox.
 
-`backend/app/actions/process.py` runs argv without a shell and collects output as it arrives, so a descendant that keeps the output pipes open cannot strand the parent's output. Cancellation and deadline expiry stop the process tree on both host families. After a successful exit, POSIX stops leftover descendants through the process group; Windows does not yet (see Follow-up).
+`backend/app/actions/process.py` runs argv without a shell and collects output as it arrives, so a descendant that keeps the output pipes open cannot strand the parent's output. Cancellation and deadline expiry stop the process tree on both host families. After a successful exit, leftover descendants still holding the output pipes are stopped through the child's process group on POSIX and through the job object the child is assigned to on Windows. A descendant started before the Windows job assignment completes is outside the job.
 
 ### Evidence
 
@@ -106,6 +106,6 @@ Validation commands:
 
 ## Follow-up
 
-- Stop a successful Windows process's leftover descendants, matching the POSIX process-group cleanup, so a descendant cannot outlive its action's deadline; then extend `test_process_execution.py`'s descendant test to assert the prompt return on both host families.
+None for this ADR.
 
 Future effect classes, approval modes, or a change to what a specific operator request authorizes should update this ADR when they preserve the same governance architecture, or create/supersede an ADR when they change it.
