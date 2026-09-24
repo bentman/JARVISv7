@@ -332,8 +332,8 @@ def _command_unit(log_file=None) -> int:
     return _run_pytest(["backend/tests/unit"], log_file=log_file)
 
 
-def _command_integration() -> int:
-    return _run_pytest(["backend/tests/integration"])
+def _command_integration(log_file=None) -> int:
+    return _run_pytest(["backend/tests/integration"], log_file=log_file)
 
 
 def _command_runtime(args: argparse.Namespace) -> int:
@@ -423,7 +423,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         print(json.dumps(payload, sort_keys=True))
         return 0
-    if args.command in ("unit", "ci"):
+    if args.command in ("unit", "integration", "ci"):
         started_at = _current_timestamp()
         report_path = VALIDATION_DIR / f"{_timestamp_slug()}-{args.command}_backend.txt"
 
@@ -442,6 +442,8 @@ def main(argv: list[str] | None = None) -> int:
 
             if args.command == "unit":
                 validator_code = _command_unit(log_file=log_file)
+            elif args.command == "integration":
+                validator_code = _command_integration(log_file=log_file)
             else:
                 validator_code = _command_ci(log_file=log_file)
 
@@ -457,8 +459,6 @@ def main(argv: list[str] | None = None) -> int:
         _clean_old_reports()
         return validator_code
 
-    if args.command == "integration":
-        return _command_integration()
     if args.command == "runtime":
         return _command_runtime(args)
     if args.command == "regression":

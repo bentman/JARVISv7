@@ -154,6 +154,29 @@ def test_unit_subcommand_invokes_pytest_on_unit_dir(monkeypatch, capsys, tmp_pat
     assert any("backend/tests/unit" in part for part in calls[0][0])
 
 
+def test_integration_subcommand_writes_a_validation_report(monkeypatch, capsys, tmp_path) -> None:
+    calls: list[list[str]] = []
+
+    monkeypatch.setattr(validate_backend, "_pytest_available", lambda: True)
+    monkeypatch.setattr(validate_backend, "_clean_old_reports", lambda: None)
+    _patch_context(monkeypatch, tmp_path)
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(validate_backend.subprocess, "run", fake_run)
+
+    exit_code = validate_backend.main(["integration"])
+    capsys.readouterr()
+
+    reports = list(tmp_path.glob("*-integration_backend.txt"))
+    assert exit_code == 0
+    assert any("backend/tests/integration" in part for part in calls[0])
+    assert len(reports) == 1
+    assert "[PASS] JARVISv7 backend integration is validated!" in reports[0].read_text(encoding="utf-8")
+
+
 def test_pytest_command_uses_default_pytest_temp_and_cache_behavior() -> None:
     command = validate_backend._build_pytest_command(["backend/tests/unit"])
 
