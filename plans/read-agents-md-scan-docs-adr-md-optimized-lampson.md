@@ -1,140 +1,126 @@
-# Plan: Close ADR 0007 (Extend Assistant When Stable)
+# Plan: Close ADR 0007's remaining follow-up (router_selected, handoff, live as_tool)
 
 ## Context
 
-ADR 0007 is `Accepted`. Agents defined in files can already be invoked directly, but five follow-up items keep the ADR open:
+ADR 0007 has three open follow-up items:
+1. Wire `router_selected` and `handoff` with selection/fallback evidence, approval boundaries, cancellation, and artifacts.
+2. Demonstrate live model-proposed `as_tool` execution.
+3. Validate every invocation mode, then mark the ADR `Implemented`.
 
-1. Backend-owned profile management
-2. The split between agent identity and runtime
-3. The remaining invocation modes
-4. A typed `delegated_runs` record
-5. Validation
-
-This pass implements four of those pieces:
-
-- Profile CRUD and enable/disable
-- The internal/ACP runtime split
-- `as_tool` invocation proposed by the model, alongside the existing `direct` mode
-- A typed delegated-run record
-
-`router_selected` and `handoff` stay in ADR 0007's decision and Follow-up for a later pass. ADR 0007 stays `Accepted`, with its sections updated to show what this pass completed.
+Your decisions:
+- **Router:** routes only when the user addresses an agent by name.
+- **Handoff:** the user starts it and ends it with a phrase; an agent that needs approval asks "Reply yes to confirm" first.
+- **Live `as_tool`:** diagnose why the local Qwen3-8B (llama.cpp) answered in text instead of calling the tool it was offered, fix whatever is on the app side, and re-run the check.
 
 What exists today:
+- `AgentRouter` (`backend/app/agents/router.py`) matches any purpose word longer than two letters, so it would route almost every turn.
+- `AgentInvoker` has `invoke_direct` and `invoke_as_tool`.
+- The capability handler in `build_agent_handlers` (`backend/app/services/capability_service.py`) treats every call from inside a turn as `as_tool`.
+- Text and voice turns share the same path from `_run_reasoning_path` onward (`backend/app/conversation/engine.py`). Engine state is per session, because `SessionService.start_session` rebuilds the engine.
+- `_pending_tool` with `CONFIRM_REPLY`/`CANCEL_REPLY` (`backend/app/cognition/search_policy.py`) is the existing pattern for asking before acting.
 
-- `TurnEngine.run_agent` (`backend/app/conversation/engine.py:230`) always takes the turn lock through `_admit_turn`. Called from inside a turn, it is refused. That is why `ExtensionRuntimeService.tool_catalog` (`backend/app/services/extension_runtime_service.py:976`) never offers agents or ACP operations to the model.
-- `run_agent` treats `mode` as a label only. It ignores `operation.cancel`, and `prepare_close` cannot cancel it.
-- `delegated_runs` has three different untyped shapes:
-  - Agent runs: `{agent_id, mode, response}` at `engine.py:~262`
-  - Extension/ACP runs: rows keyed by `extension_id`, from `engine.py:226`
-  - `session_mapping.to_delegated_run()`, which nothing calls
-- `AgentRouter`, `AgentInvoker.invoke_as_tool`, `mcp_filter` and `AgentIsolation` exist but no code path uses them.
-- `config/agents/` is the only source of profiles. There is no write path.
+## Step 1: Name-addressed router (reuses the `AgentRouter` scaffold)
 
-## Scope notes
+Rewrite `backend/app/agents/router.py`. It stays pure and deterministic, with no model call.
 
-- `INVOCATION_MODES`, `AgentRouter` (`backend/app/agents/router.py`) and its test are not changed. The runtime still reports profiles that declare only `router_selected` or `handoff` as not reachable.
-- No new ADR.
-- **Scaffolds stay.** Code that has no caller yet is kept for later work, not removed. That covers `AgentRouter`, `AgentInvoker.invoke_as_tool`, `session_mapping.py` (ADR 0013), `mcp_filter.py` and `AgentIsolation`, together with their tests. This pass only connects callers to them.
+- **Eligible agents:** profiles that are enabled, available, use the internal runtime, and declare the mode. ACP-runtime agents stay direct-only, because `run_extension` needs the turn lock.
+- **Names:** an agent is addressed by `display_name` or by `profile_id` with hyphens read as spaces. Matching is case-insensitive and on word boundaries.
+- **`route(text) -> AgentRoute | None`** recognises these address forms:
+  - `"<name>, <task>"` or `"<name>: <task>"`
+  - `"hey <name> <task>"`
+  - `"ask <name> to <task>"`
+  - `"@<id> <task>"`
 
-## Step 2: Typed delegated-run record
+  It returns the profile and the remaining task text. When the name belongs to an agent that is disabled, uses the ACP runtime, or lacks `router_selected`, it returns a route carrying the reason.
+- **`handoff_request(text)`** recognises "hand me over to / hand off to / talk to / switch to `<name>`".
+- **`ends_handoff(text)`** recognises "back to JARVIS", "end handoff", and "stop handoff".
+- Replace the keyword tests in `backend/tests/unit/agents/test_agent_router.py`. Also delete the keyword matcher itself, since this work replaces it.
 
-- Add a frozen, slotted `DelegatedRunRecord` in `backend/app/actions/contracts.py`, following `ActionCancellationRecord`: validate in `__post_init__` and expose `to_dict()` through `_deep_asdict`.
-  - Fields: `run_id`, `kind` (`agent` | `extension`), `target_id` (profile ID or extension ID), `runtime` (`internal` | `acp` | family), `mode` (optional), `status`, `session_id`, `turn_id`, `output`, `error`.
-- Add a `delegated_runs` list to `ActionEvidence`, plus a sink entry in `_EVIDENCE_SINKS` (`contracts.py:~375`).
-- `engine.py`: copy `delegated_runs` into the artifact the same way as the other evidence fields (`engine.py:~1472`).
-  - Convert the extension-run rows (`engine.py:226`) and the agent path to this record.
-- `session_mapping.py` is ADR 0013's scaffold and stays as it is. `DelegatedRunRecord` fields are chosen so `to_delegated_run()`'s keys can map onto the record when ADR 0013 wires it.
-- Update the affected assertions:
-  - `backend/tests/integration/test_extension_runtime.py:242` (`extension_id` becomes `target_id`)
-  - `backend/tests/unit/artifacts/test_turn_artifact.py:202`, which has the comment "no record type yet"
+## Step 2: One way to invoke, with the mode chosen by the engine
 
-## Step 3: Split identity and runtime
+- `AgentInvoker` gets a single `invoke(profile_id, prompt, mode, engine_getter, operation)` that checks the profile declares the mode. It replaces `invoke_direct` and `invoke_as_tool`, so those two are removed and their tests updated.
+- `TurnEngine` records which mode it is delegating in: `_delegation_mode`, set to `as_tool`, `router_selected`, or `handoff` by the path that starts the delegation.
+- `engine.in_turn_mode(turn_id)` returns that mode for the active turn, or `None`. The handler in `build_agent_handlers` uses it instead of assuming `as_tool`; any call from outside a turn stays `direct`. `run_agent` checks that an in-turn mode really is running inside the active turn.
 
-- `AgentProfile` gains an optional `runtime` mapping. It defaults to `{kind: internal}`; the other form is `{kind: acp, adapter_id: <ACP definition local id>}`. It is validated in `schema.py` and is not a required key, so `summarizer.yaml` stays valid.
-- `AgentRegistry.to_capability_records` (`backend/app/agents/registry.py:95`):
-  - The ACP runtime maps to `privileged_execution` / `requires_approval` whatever the `approval_class`. The existing comment at `registry.py:8` already anticipates this.
-  - If the referenced ACP definition is missing or disabled, the agent is reported `unavailable` with a reason.
-- Agent handler in `capability_service.py:1012` (`build_agent_handlers`):
-  - Internal runtime dispatches to `TurnEngine`.
-  - ACP runtime reuses the existing ACP extension execution path (`run_extension` + `backend/app/extensions/acp.py`), the same one `build_extension_handlers` uses. It is not authorized a second time.
-  - The profile's instructions are sent as prompt context, and the result is recorded as a `DelegatedRunRecord` with `runtime="acp"`.
-  - **Check during implementation:** how `build_extension_handlers` exposes ACP work so it can be called for a named adapter.
+## Step 3: `router_selected` in the turn
 
-## Step 4: `as_tool` (model proposes the agent call inside a turn)
+In `_generate_response`, check the steps below in order. All of them come after `_resolve_pending_tool` and apply only when no search operation is open:
+1. Pending handoff confirmation (Step 4).
+2. Active handoff (Step 4).
+3. Handoff request (Step 4).
+4. Router address, handled like this:
+   - The router proposes `agent-invoke-{id}` with `proposed_by="router"` and the task as `prompt`, and authorizes it with `authorize_turn`.
+   - **Allowed:** set the mode to `router_selected` and run it through the existing `_execute_tool`. The agent's `output.response` becomes the turn's response and goes through the normal bounding, style guard, TTS, and artifact steps.
+   - **Approval required:** reuse `PendingToolApproval`. The prompt reads "May I hand this to `<Agent>`? Reply yes to confirm.", and yes, no, and lapse behave as they do for tools today.
+   - **Evidence:** `context.runtime_context["agent_route"] = {outcome, profile_id, reason}`, where outcome is `selected`, `awaiting_approval`, `denied`, `unavailable`, `failed`, or `fallback`. The field is written only when an address matched, so ordinary turns carry no noise.
+   - **Fallback:** if the agent is unavailable, denied, or fails, the normal assistant path answers the turn and the reason is recorded.
 
-- **Refactor `TurnEngine.run_agent`:**
-  - Split it into an admitted wrapper (`direct`: new turn, takes the lock) and an inner `_delegate_agent(context, profile, prompt, mode, operation)`.
-  - The inner method builds the agent prompt envelope and makes one bounded generation, with no nested tool loop.
-  - It checks `operation.cancel` before and after generation. It stores `self._agent_operation` so `prepare_close` (`engine.py:193`) cancels it, the same way `_extension_operation` is handled.
-  - It appends a `DelegatedRunRecord` to `context.action_evidence`.
-- **Choosing the mode inside the handler:**
-  - If `operation.turn_id` matches the engine's active turn, run nested in that turn's context with mode `as_tool`.
-  - Otherwise, admit a new turn with mode `direct`.
-  - Either way, the profile must declare that mode. The handler calls the existing `AgentInvoker.invoke_direct` or `AgentInvoker.invoke_as_tool`, which gain an `operation` parameter. That puts `invoke_as_tool` to use without replacing it.
-- **Offering agents to the model:** extend the tool-definition source (`engine.py:787` `_tool_definitions`) with agent capabilities that are all of:
-  - declaring `as_tool`
-  - enabled and available
-  - using the internal runtime (ACP-runtime agents stay direct-only because `run_extension` needs the turn lock)
+## Step 4: `handoff` (the agent owns the following turns)
 
-  Update the `tool_catalog` docstring to match.
-- **Approval:** the existing ladder in `_run_selected_tool` / `_resolve_pending_tool` applies. `approval_class: none` runs; `standard` / `strict` go through the existing confirmation path. The agent's output comes back as untrusted tool context (ADR 0003).
+- **State:** `TurnEngine._handoff: ActiveHandoff | None` holds `profile_id`, `approval_id`, and `started_turn_id`, alongside `_pending_handoff`. Because both live on the engine, they end automatically when the session closes or a new one starts.
+- **Start:**
+  - `handoff_request` matches a profile that declares `handoff`.
+  - The profile's descriptor is authorized through the capability ladder.
+  - If the rule is `allow`, the handoff starts immediately. If it is `requires_approval`, the engine asks and sets `_pending_handoff`, and yes, no, or lapse resolve it the way `_resolve_pending_tool` does.
+  - The turn replies "You're now talking to `<Agent>`. Say 'back to JARVIS' to return."
+- **While active:** each turn proposes `agent-invoke-{id}` with the transcript as `prompt`. Mode is `handoff`, and the confirmed handoff's `approval_id` carries `operator_approved`. The agent's response is the turn's response, and each turn records its proposal, decision, execution, and a `DelegatedRunRecord` with mode `handoff`. `_run_reasoning_path` does not open a search operation while a handoff is active.
+- **End:** any of these ends the handoff:
+  - an end phrase
+  - `POST /session/handoff/end`, a new route in `backend/app/api/routes/session.py` that calls `engine.end_handoff()`
+  - session close
+  - the agent becoming unavailable (disabled, deleted, or misconfigured), which ends the handoff, falls back for that turn, and says why
 
-## Step 5: Profile management
+  Start and end events are recorded in `runtime_context["agent_handoff"]`.
+- **Cancellation:** a handoff turn runs through the operation path, so `prepare_close` and the deadline cancel it through the existing `_agent_operation` hook.
+- **Status:**
+  - `SessionService.status()` adds `active_agent` (`{profile_id, display_name}` or `None`), following the `active_search` pattern, and `SessionStatusResponse` (`backend/app/api/schemas/session.py`) gains the field.
+  - The desktop main status shows "Talking to `<Agent>`" with an End button, calling the new route through `desktop/src/api-client.js` and new Tauri commands in `desktop/src-tauri/src/backend.rs` and `lib.rs`.
 
-- **Storage:** `config/agents/` stays application-owned and read-only. Operator profiles go in `data/agents/*.yaml`.
-  - `AgentRegistry` observes both directories. Application profiles win, and an ID collision is reported in `errors()` rather than raised.
-  - The change signature covers both directories.
-- **Writes:**
-  - `AgentRegistry.write_profile(data, expected_fingerprint)` and `delete_profile(id, expected_fingerprint)` follow `ExtensionRuntimeService.write_definition` / `delete_definition` (`extension_runtime_service.py:478-578`).
-  - Validate with `AgentProfile.from_dict`, which already rejects authority fields.
-  - Refuse application IDs. Omitting the fingerprint means create-only; a stale fingerprint is a conflict.
-  - Write through `write_text_atomic`, then refresh the registry and capability actions.
-- **Audit:** routes wrap the writes in `CapabilityService.execute_operator_action` (`capability_service.py:543`), as `routes/config.py:48` does. That records proposal, decision and result without making profile edits a tool the model can propose.
-- **Enable/disable:** agents are already the `agent` family in the extension catalog (`backend/app/extensions/catalog.py:77`). Reuse `ExtensionService.set_state` (overlay revision conflict + `extension_event` audit) and make disabled agents unavailable in the capability catalog.
-  - No new state API. The desktop calls the existing extension state route.
-- **Routes** (`backend/app/api/routes/agents.py` + `backend/app/api/schemas/agents.py`):
-  - `POST /agents` (create), `PUT /agents/{id}` (update with `expected_fingerprint`), `DELETE /agents/{id}`.
-  - Profile responses gain `source`, `editable`, `enabled`, `fingerprint`.
-  - Load errors are listed on `GET /agents`.
-- **Desktop:**
-  - `desktop/src/api-client.js` (create/update/delete/state)
-  - `desktop/src-tauri/src/backend.rs` + `lib.rs` commands
-  - `desktop/src/components/agents-panel.js`: an edit form for operator profiles and an enable toggle; application profiles are read-only
-  - Native interaction validation stays with ADR 0008.
+## Step 5: Diagnose live `as_tool` on the local model
 
-## Step 6: Boundary scaffolds
+1. Capture the raw llama.cpp request and response for a tool-offered turn. The capture runs locally with debug logging and is not committed. Check:
+   - Does the `content` hold Qwen `<tool_call>` text that was never parsed?
+   - Is `<think>` output using up the personality's `max_tokens: 120`?
+   - Do the stop strings (`\nUser:`, `\nAssistant:`) cut generation short?
+   - Does the chat template actually carry the tool section?
+2. Fix only what is on the app side, in `backend/app/runtimes/llm/local_runtime.py` (`generate_with_tools`) or `backend/app/cognition/tool_policy.py`. Examples: a token allowance for tool turns, parsing tool-call text, or clearer tool descriptions. Add a runtime test using the existing `test_llm_runtime.py` monkeypatch pattern for whichever failure mode is confirmed.
+3. If the cause is the model itself and not the app, record that honestly and do not add workarounds.
 
-- Nothing is removed.
-- `AgentIsolation`: connect it to the ACP runtime's process boundary only if the ACP path does not already enforce the same roots and environment.
-- `mcp_filter`: left untouched for later work.
+## Step 6: Cleanup and ADR closeout
 
-## Tests (extend the nearest existing tests first)
+- Remove the scaffolds this work replaces: the keyword router logic and `invoke_direct`/`invoke_as_tool`.
+- `mcp_filter.py`: once this pass lands, no remaining ADR 0007 work consumes it, because agents run no MCP tool loop. Remove it, its test, and its ADR mention, since agent-scoped MCP access would be a new decision. Tell me on plan review if you want it kept.
+- ADR 0007:
+  - Rewrite Implementation and Confirmation to cover router, handoff, the mode selection, and the as_tool diagnosis outcome, citing durable files and commands only.
+  - Record that ACP-runtime agents are reachable in `direct` only.
+  - Set Status to `Implemented` only if every mode has passing evidence; otherwise keep `Accepted` and list exactly what is missing.
 
-- `backend/tests/unit/agents/test_agent_schema.py`: runtime field; rejected modes.
-- `test_agent_registry.py`: both directories, application precedence/collision, write/delete conflicts, disabled → unavailable, ACP runtime effect class.
-- `test_agent_invocation.py`: nested (as_tool) vs admitted (direct) selection, mode refused when not declared, cancellation.
-- `backend/tests/unit/artifacts/test_turn_artifact.py`: typed record round-trip.
-- `backend/tests/unit/conversation/test_tool_turn.py`: an agent offered as a tool, the approval path, and a delegated run recorded in the same turn artifact.
-- `backend/tests/unit/services/test_capability_service.py`: internal vs ACP dispatch.
-- Integration: extend `backend/tests/integration/api/test_headless_client.py` with profile CRUD → invoke → evidence through the API using the fake LLM. No integration test covers agents today.
-- `desktop/tests/static.test.mjs`: panel CRUD/state wiring.
+## Tests (extend the nearest existing tests)
+
+- `backend/tests/unit/agents/test_agent_router.py`: the address forms, word boundaries, ineligible-agent reasons, and handoff start/end phrases.
+- `backend/tests/unit/agents/test_agent_invocation.py`: `invoke(mode)` refuses a mode the profile does not declare.
+- `backend/tests/unit/conversation/test_tool_turn.py`, reusing the `_agent_engine` helper:
+  - a routed turn answered by the agent
+  - approval-gated routing: asks first, runs on yes
+  - fallback evidence when the agent is disabled
+  - handoff: start (allow and approval-gated), turns routed to the agent, end phrase, auto-end on disable, and no search while active
+- `backend/tests/unit/services/test_capability_service.py`: the handler takes the mode from `in_turn_mode`.
+- `backend/tests/integration/api/test_headless_client.py`: start a handoff through `/task/text`, check `/session/status` shows `active_agent`, end it through `POST /session/handoff/end`, and confirm the artifacts carry mode `handoff`.
+- `desktop/tests/static.test.mjs`: the active-agent status and End action.
 
 ## Verification
 
 ```
 backend/.venv/Scripts/python scripts/validate_backend.py unit
 backend/.venv/Scripts/python scripts/validate_backend.py integration
-backend/.venv/Scripts/python scripts/validate_desktop.py
+backend/.venv/Scripts/python scripts/validate_desktop.py regression
+cargo check --manifest-path desktop/src-tauri/Cargo.toml
 ```
 
-- Report each run with host class `windows-amd64`.
-- Live check against the running backend with a real provider:
-  - create an operator profile
-  - invoke it directly
-  - have the assistant propose it as a tool in a text turn and approve it
-  - confirm the typed `delegated_runs` entry in the turn artifact
-  - check that a stale-fingerprint update is refused
-- Then update ADR 0007 but keep Status `Accepted`:
-  - Rewrite Implementation and Confirmation for profile management, the runtime split, `as_tool` and the typed record. Confirmation lists durable files and commands only.
-  - Cut Follow-up down to the `router_selected` / `handoff` wiring (selection/fallback evidence, approval, cancellation, artifacts) and final validation of all modes.
-  - Add the one-line ADR 0013 note that ACP runs record `DelegatedRunRecord`.
+Report each run with host class `windows-amd64`.
+
+Live check against a running backend with the local model. Router and handoff do not depend on the model calling tools, so all of these should work locally:
+- **Text:** a name-addressed request ("Notes, tidy these…"), a handoff start, two handed-off turns, and "back to JARVIS". Inspect `agent_route`, `agent_handoff`, and `delegated_runs` in `data/turns/…`.
+- **Voice:** one name-addressed turn through the resident voice path, confirming the same evidence.
+- **`as_tool`:** re-run after the Step 5 fix.
+- **Cleanup:** delete the test profile through the API and stop the backend.

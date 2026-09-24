@@ -11,7 +11,7 @@ import { closeProviderSettings, openProviderSettings, providerSettingsOpen } fro
 import { createMemoryPanel } from "./components/memory-panel.js";
 import { createActionsPanel } from "./components/actions-panel.js";
 import { createExtensionsPanel } from "./components/extensions-panel.js";
-import { createAgentsPanel } from "./components/agents-panel.js";
+import { createAgentsPanel, createHandoffStatus } from "./components/agents-panel.js";
 import { createAdvancedPanelCoordinator } from "./components/advanced-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
@@ -61,6 +61,13 @@ const searchStatus = createSearchStatus({
   label: document.querySelector("#search-status"),
   stopButton: document.querySelector("#search-stop"),
   cancelSearch: (sessionId, turnId) => api.cancelSearch(sessionId, turnId),
+  onError: (error) => showError(String(error)),
+});
+const handoffStatus = createHandoffStatus({
+  label: document.querySelector("#handoff-status"),
+  endButton: document.querySelector("#handoff-end"),
+  endHandoff: (sessionId) => api.endHandoff(sessionId),
+  onEnded: () => refreshSessionStatus(),
   onError: (error) => showError(String(error)),
 });
 const memoryPanel = createMemoryPanel(
@@ -134,6 +141,7 @@ const agentsPanel = createAgentsPanel(
   {
     listAgents: (...args) => api.listAgents(...args),
     listAgentRuns: (...args) => api.listAgentRuns(...args),
+    listAgentTools: (...args) => api.listAgentTools(...args),
     invokeAgent: (...args) => api.invokeAgent(...args),
     cancelAgent: (...args) => api.cancelAgent(...args),
     createAgent: (...args) => api.createAgent(...args),
@@ -306,6 +314,7 @@ function renderSessionStatus(status) {
   residentVoice.renderResidentVoiceStatus(status);
   if (desktopState) desktopState.renderTurnStatus(status.state);
   searchStatus.render(status.active_search);
+  handoffStatus.render(status);
   return status;
 }
 

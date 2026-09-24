@@ -64,5 +64,16 @@ class AgentInvokeResponse(StrictAgentModel):
     error: str | None = None
 
 
+class AgentToolChoice(StrictAgentModel):
+    capability_id: str
+    label: str
+    needs_approval: bool
+    available: bool
+
+
+class AgentToolListResponse(StrictAgentModel):
+    tools: list[AgentToolChoice]
+
+
 class AgentRunResponse(StrictAgentModel):
     records: list[dict[str, Any]]

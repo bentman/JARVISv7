@@ -51,6 +51,7 @@ class SessionStatus:
     voice_capture_diagnostics: dict[str, object] | None = None
     failure_phase: str | None = None
     active_search: dict[str, object] | None = None
+    active_agent: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,7 +225,15 @@ class SessionService:
             voice_capture_diagnostics=self._voice_capture_diagnostics,
             failure_phase=self._failure_phase,
             active_search=self._engine.search_service.snapshot() if self._active and self._engine.search_service else None,
+            active_agent=self._active_agent(),
         )
+
+    def _active_agent(self) -> dict[str, str] | None:
+        active_handoff = getattr(self._engine, "active_handoff", None)
+        handoff = active_handoff() if self._active and active_handoff else None
+        if handoff is None:
+            return None
+        return {"profile_id": handoff.profile_id, "display_name": handoff.display_name}
 
     def _latest_turn_status(self) -> LatestTurnStatus | None:
         if not self._session_manager.turn_artifacts:

@@ -12,6 +12,8 @@ from backend.app.api.schemas.agents import (
     AgentProfileWriteRequest,
     AgentProfileWriteResponse,
     AgentRunResponse,
+    AgentToolChoice,
+    AgentToolListResponse,
 )
 from backend.app.services.capability_service import (
     CapabilityService,
@@ -146,6 +148,29 @@ def delete_agent(
         service, catalog.AGENT_PROFILE_DELETE, arguments,
         lambda: registry.delete_profile(profile_id, expected_fingerprint=expected_fingerprint),
     )
+
+
+@router.get("/tools", response_model=AgentToolListResponse)
+def list_agent_tools(
+    request: Request,
+    service: CapabilityService = Depends(_get_capability_service),
+) -> AgentToolListResponse:
+    """Capabilities an agent profile may allow: the ones the assistant's model may use."""
+    runtime = getattr(request.app.state.jarvis_state, "extension_runtime", None)
+    entries = runtime.tool_catalog() if runtime is not None else []
+    views = {view.capability_id: view for view in service.catalog().capabilities}
+    tools = []
+    for entry in entries:
+        view = views.get(entry["capability_id"])
+        if view is None or view.authorization_rule == "deny":
+            continue
+        tools.append(AgentToolChoice(
+            capability_id=entry["capability_id"],
+            label=f"{entry['extension_id']} {entry['name']}".strip(),
+            needs_approval=view.authorization_rule == "requires_approval",
+            available=view.availability == "available" and view.readiness != "unavailable",
+        ))
+    return AgentToolListResponse(tools=tools)
 
 
 @router.get("/runs", response_model=AgentRunResponse)

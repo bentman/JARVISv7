@@ -61,11 +61,13 @@ import {
   agentCancelNotice,
   agentInvokeEnabled,
   agentInvokeNotice,
-  agentProfileDocument,
+  agentModesSummary,
   agentRunActivityState,
   agentRunProfileId,
+  agentToolLabel,
   createAgentsPanelController,
-  parseAgentProfile,
+  createHandoffStatus,
+  profileIdFromName,
 } from "../src/components/agents-panel.js";
 
 const main = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
@@ -618,6 +620,7 @@ const agentProfile = {
   profile_id: "researcher",
   display_name: "Researcher",
   purpose: "Investigate a question",
+  instructions: "Cite what you find.",
   invocation_modes: ["direct", "as_tool"],
   capability_ids: ["search-public-web"],
   memory_scope: "episodic",
@@ -712,20 +715,27 @@ assert.equal(agentInvokeEnabled(agentProfile, "go", false), true);
     enabled: true,
     fingerprint: "fp-1",
   };
-  const applicationAgent = { ...agentProfile, editable: false, enabled: true, fingerprint: "fp-app" };
-  assert.deepEqual(
-    Object.keys(agentProfileDocument(operatorAgent)).filter((key) => ["source", "editable", "enabled", "fingerprint"].includes(key)),
-    [],
-    "an edited profile must not send response-only fields back as profile content",
-  );
-  assert.throws(() => parseAgentProfile("[]"), /JSON object/);
+  const applicationAgent = {
+    ...agentProfile,
+    output_contract: { type: "object", properties: { summary: { type: "string" } } },
+    editable: false,
+    enabled: true,
+    fingerprint: "fp-app",
+  };
   assert.equal(agentInvokeEnabled({ ...agentProfile, enabled: false }, "go", false), false, "a disabled agent must not be invoked");
+  assert.equal(profileIdFromName("  Meeting Notes! v2 "), "meeting-notes-v2");
+  assert.equal(
+    agentModesSummary(["direct", "handoff"]),
+    "Run it from this panel · Let it take over the conversation",
+    "invocation modes must be described in operator language, not internal ids",
+  );
 
   const calls = [];
+  const created = [];
   const controller = createAgentsPanelController({
     listAgents: async () => ({ agents: [operatorAgent, applicationAgent] }),
     listAgentRuns: async () => ({ records: [] }),
-    createAgent: async (profile) => { calls.push(["create", profile.profile_id]); return { profile_id: profile.profile_id }; },
+    createAgent: async (profile) => { calls.push(["create", profile.profile_id]); created.push(profile); return { profile_id: profile.profile_id }; },
     updateAgent: async (...args) => { calls.push(["update", args[0], args[2]]); return { profile_id: args[0] }; },
     deleteAgent: async (...args) => { calls.push(["delete", ...args]); return { removed: true }; },
     setExtensionState: async (...args) => { calls.push(["state", ...args]); return {}; },
@@ -733,28 +743,75 @@ assert.equal(agentInvokeEnabled(agentProfile, "go", false), true);
   await controller.load();
 
   controller.startEdit(applicationAgent.profile_id);
-  assert.equal(controller.snapshot().editing, "", "an application profile must not open an editor");
+  assert.equal(controller.snapshot().editing, "", "a built-in profile must not open an editor");
 
   controller.startCreate();
-  controller.setDraft("{ not json");
+  controller.setField("display_name", "Meeting Notes");
   await controller.save();
-  assert.equal(controller.snapshot().mutationError, "The profile must be valid JSON.", "an unparseable draft must be reported before any request");
+  assert.equal(controller.snapshot().mutationError, "Say what the agent is for.", "a missing field must be reported before any request");
   assert.deepEqual(calls, []);
 
-  controller.setDraft(JSON.stringify({ ...agentProfileDocument(operatorAgent), profile_id: "fresh" }));
+  controller.setField("purpose", "Tidy meeting notes");
+  controller.setField("instructions", "Answer briefly.");
+  controller.setMode("handoff", true);
+  controller.setField("approval_class", "none");
   await controller.save();
+  assert.deepEqual(
+    [created[0].profile_id, created[0].invocation_modes, created[0].approval_class, created[0].runtime],
+    ["meeting-notes", ["direct", "handoff"], "none", { kind: "internal" }],
+    "a new agent's id comes from its name and its choices become the profile",
+  );
+
+  controller.startDuplicate(applicationAgent.profile_id);
+  assert.equal(controller.snapshot().form.display_name, "Researcher (copy)");
+  controller.setMode("router_selected", true);
+  await controller.save();
+  assert.equal(created[1].profile_id, "researcher-copy", "a duplicate of a built-in agent becomes the operator's own profile");
+  assert.deepEqual(created[1].output_contract, applicationAgent.output_contract, "a duplicate keeps the fields the form does not show");
+  assert.ok(!("fingerprint" in created[1]) && !("editable" in created[1]), "response-only fields must not be sent back as profile content");
+
   controller.startEdit("notes");
   await controller.save();
   await controller.remove("notes");
   await controller.setEnabled("researcher", false);
   assert.deepEqual(calls, [
-    ["create", "fresh"],
+    ["create", "meeting-notes"],
+    ["create", "researcher-copy"],
     ["update", "notes", "fp-1"],
     ["delete", "notes", "fp-1"],
     ["state", "agent:researcher", "disabled"],
   ], "edits and deletes must carry the fingerprint that was read; enablement uses the agent's extension id");
   assert.equal(controller.snapshot().editing, "", "a saved profile must close the editor");
   assert.equal(controller.snapshot().notice, "Agent disabled.");
+}
+
+{
+  assert.equal(
+    agentToolLabel({ label: "mcp:notes tool:save", needs_approval: true, available: false }),
+    "mcp:notes tool:save (asks you first, unavailable now)",
+    "a tool must say when it needs approval or cannot run",
+  );
+  const created = [];
+  const controller = createAgentsPanelController({
+    listAgents: async () => ({ agents: [] }),
+    listAgentRuns: async () => ({ records: [] }),
+    listAgentTools: async () => ({ tools: [{ capability_id: "ext-read", label: "mcp:notes tool:read", needs_approval: false, available: true }] }),
+    createAgent: async (profile) => { created.push(profile); return { profile_id: profile.profile_id }; },
+  });
+  await controller.load();
+  await controller.startCreate();
+  assert.deepEqual(controller.snapshot().tools.map((tool) => tool.capability_id), ["ext-read"], "opening the form loads the tools an agent may be allowed");
+  controller.setField("display_name", "Reader");
+  controller.setField("purpose", "Read notes");
+  controller.setField("instructions", "Answer from the notes.");
+  controller.setField("memory_scope", "semantic");
+  controller.setTool("ext-read", true);
+  await controller.save();
+  assert.deepEqual(
+    [created[0].memory_scope, created[0].capability_ids],
+    ["semantic", ["ext-read"]],
+    "the memory an agent may read and the tools it may use become its profile",
+  );
 }
 
 for (const banned of ["innerHTML", "fetch(", "localStorage", "style.display"]) {
@@ -1380,6 +1437,25 @@ assert.equal(searchLabel.textContent, "Stopping search…");
 searchPresenter.render(null);
 assert.ok(searchStop.hidden);
 assert.equal(sessionPollingInterval({ state: "IDLE", active_search: { stage: "planning" } }), 100);
+const handoffLabel = createElement("span");
+const handoffEnd = createElement("button");
+const endedHandoffs = [];
+let handoffRefreshes = 0;
+const handoffPresenter = createHandoffStatus({
+  label: handoffLabel, endButton: handoffEnd,
+  endHandoff: async (sessionId) => endedHandoffs.push(sessionId),
+  onEnded: async () => { handoffRefreshes += 1; },
+  onError: assert.fail,
+});
+handoffPresenter.render({ session_id: "s", active_agent: { profile_id: "notes", display_name: "Notes" } });
+assert.equal(handoffLabel.textContent, "Talking to Notes", "an active handoff must say which agent owns the conversation");
+assert.equal(handoffEnd.hidden, false);
+await handoffEnd.listeners.click();
+assert.deepEqual(endedHandoffs, ["s"], "ending a handoff must name the session it belongs to");
+assert.equal(handoffRefreshes, 1, "ending a handoff must refresh session status");
+handoffPresenter.render({ session_id: "s", active_agent: null });
+assert.equal(handoffLabel.textContent, "");
+assert.ok(handoffEnd.hidden, "the End control must hide when no agent owns the conversation");
 const shellEl = createElement("main");
 const systemCard = createElement("div");
 const systemLabel = createElement("span");

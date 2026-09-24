@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
 from backend.app.api.app import ApiState, create_app
 from backend.app.cache.manager import CacheManager
 from backend.app.conversation.engine import TurnResult
@@ -367,3 +368,84 @@ def test_headless_client_manages_an_agent_profile_and_records_its_delegated_run(
     )
     assert deleted.status_code == 200
     assert client.get("/agents").json()["agents"] == []
+
+
+def test_headless_client_hands_a_session_to_an_agent_and_ends_the_handoff(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from types import SimpleNamespace
+
+    import yaml
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.agents.registry import AgentRegistry
+    from backend.app.api.routes.session import router as session_router
+    from backend.app.api.routes.task import router as task_router
+    from backend.app.conversation.engine import TurnEngine
+    from backend.app.conversation.session_manager import SessionManager
+    from backend.app.personality.loader import load_default_personality
+    from backend.app.runtimes.llm.base import LLMBase
+    from backend.app.services.capability_service import CapabilityService, build_agent_handlers
+    from fastapi import FastAPI
+
+    class Model(LLMBase):
+        def generate(self, prompt: str, **kwargs: object) -> str:
+            return "agent answer"
+
+        def is_available(self) -> bool:
+            return True
+
+        def runtime_name(self) -> str:
+            return "fake-llm"
+
+    (tmp_path / "config" / "agents").mkdir(parents=True)
+    (tmp_path / "config" / "agents" / "notes.yaml").write_text(yaml.safe_dump({
+        "profile_id": "notes", "display_name": "Notes", "purpose": "Tidy notes",
+        "instructions": "Answer briefly.", "invocation_modes": ["handoff"], "capability_ids": [],
+        "memory_scope": "none", "approval_class": "none", "timeout_ms": 5000,
+        "cancellable": True, "output_contract": {"type": "object"}, "provider_model_policy": {},
+    }), encoding="utf-8")
+    registry = AgentRegistry(tmp_path / "config")
+    capabilities = CapabilityService(
+        observe=lambda: CapabilityObservation(agents=tuple(registry.to_capability_records()))
+    )
+
+    def build_engine(manager: SessionManager) -> TurnEngine:
+        return TurnEngine(
+            stt=None, tts=None, llm=Model(), personality=load_default_personality(),  # type: ignore[arg-type]
+            session_manager=manager, capability_service=capabilities, agent_registry=registry,
+        )
+
+    def new_manager() -> SessionManager:
+        return SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+
+    # Sessions the route creates must land in tmp_path, not the repo's data/ root.
+    monkeypatch.setattr("backend.app.services.session_service.SessionManager", new_manager)
+    manager = new_manager()
+    session_service = SessionService(
+        session_manager=manager, engine=build_engine(manager), engine_factory=build_engine,
+    )
+    capabilities.bind_handler_provider(lambda: build_agent_handlers(
+        agent_registry_provider=lambda: registry, engine_provider=session_service.engine,
+    ))
+    app = FastAPI()
+    app.include_router(session_router)
+    app.include_router(task_router)
+    app.state.jarvis_state = SimpleNamespace(session_service=session_service)
+    client = TestClient(app)
+    session_id = client.post("/session/create", json={}).json()["session_id"]
+
+    started = client.post("/task/text", json={"text": "Talk to Notes"}).json()
+    assert started["response_text"].startswith("You're now talking to Notes.")
+    assert client.get("/session/status").json()["active_agent"] == {
+        "profile_id": "notes", "display_name": "Notes",
+    }
+
+    handed = client.post("/task/text", json={"text": "tidy the agenda"}).json()
+    assert handed["response_text"] == "agent answer"
+    artifact = session_service.engine().session_manager.turn_artifacts[-1]
+    assert [(run["target_id"], run["mode"]) for run in artifact.delegated_runs] == [("notes", "handoff")]
+
+    ended = client.post("/session/handoff/end", json={"session_id": session_id}).json()
+    assert ended == {"ended": True}
+    assert client.get("/session/status").json()["active_agent"] is None
+

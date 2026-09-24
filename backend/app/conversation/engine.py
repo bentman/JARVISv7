@@ -25,6 +25,7 @@ from backend.app.actions.contracts import (
     ModelActionProposal,
 )
 from backend.app.agents.invocation import AgentInvocationResult
+from backend.app.agents.router import AgentRouter, ends_handoff
 from backend.app.agents.schema import AgentProfile
 from backend.app.artifacts.turn_artifact import TurnArtifact
 from backend.app.cache.manager import CacheManager
@@ -135,6 +136,39 @@ class PendingToolApproval:
     definition_claim: dict[str, Any]
     extension_id: str
     operation_name: str
+    # Set when the pending action delegates the turn to an agent (router_selected, handoff).
+    mode: str | None = None
+
+
+@dataclass(slots=True)
+class PendingAgentTool:
+    """A capability an agent chose that waits on the user's approval before the agent resumes."""
+
+    approval: PendingToolApproval
+    profile_id: str
+    display_name: str
+    mode: str
+    envelope: PromptEnvelope
+
+
+# Which memory layers an agent's memory scope lets it read: (working, episodic, semantic).
+_AGENT_MEMORY_LAYERS = {
+    "none": (False, False, False),
+    "working": (True, False, False),
+    "episodic": (True, True, False),
+    "semantic": (True, False, True),
+    "full": (True, True, True),
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ActiveHandoff:
+    """An agent that answers this session's turns until the handoff ends."""
+
+    profile_id: str
+    display_name: str
+    approval_id: str | None
+    started_turn_id: str
 
 
 class TurnEngine:
@@ -184,6 +218,9 @@ class TurnEngine:
         self._extension_operation = None
         self._agent_operation = None
         self._active_context: TurnContext | None = None
+        self._delegation_mode: str | None = None
+        self._pending_agent_tool: PendingAgentTool | None = None
+        self._handoff: ActiveHandoff | None = None
         self._pending_tool: PendingToolApproval | None = None
         self._last_tool_result: tuple[str, Any] | None = None
         self.search_intent = SearchIntentResolver(llm, secret_values=search_secret_values)
@@ -259,22 +296,32 @@ class TurnEngine:
                         tools_invoked=[operation.capability_id],
                     ))
 
-    def is_active_turn(self, turn_id: str) -> bool:
+    def in_turn_mode(self, turn_id: str) -> str | None:
+        """The mode the active turn is delegating in, when `turn_id` is that turn."""
         context = self._active_context
-        return context is not None and context.turn_id == turn_id
+        if context is None or context.turn_id != turn_id:
+            return None
+        return self._delegation_mode
+
+    def active_handoff(self) -> ActiveHandoff | None:
+        return self._handoff
+
+    def end_handoff(self) -> bool:
+        ended, self._handoff = self._handoff is not None, None
+        return ended
 
     def run_agent(
         self, profile: AgentProfile, prompt: str, *, mode: str = "direct", operation: Any = None
     ) -> AgentInvocationResult:
         """Run an internal-runtime agent.
 
-        `as_tool` runs inside the turn that proposed it, which already holds the turn lock;
-        every other mode is admitted as its own turn.
+        `direct` is admitted as its own turn; every other mode runs inside the turn that
+        delegated it, which already holds the turn lock.
         """
-        if mode == "as_tool":
+        if mode != "direct":
             context = self._active_context
             if operation is None or context is None or context.turn_id != operation.turn_id:
-                raise RuntimeError("an as_tool agent call must run inside the turn that proposed it")
+                raise RuntimeError(f"a {mode} agent call must run inside the turn that delegated it")
             return self._delegate_agent(context, profile, prompt, mode, operation)
         with self._admit_turn():
             context = self._create_context("text")
@@ -294,6 +341,13 @@ class TurnEngine:
                         active_personality_profile_id=self.personality.profile_id,
                         profile_epoch=self.session_manager.profile_epoch,
                         failure_reason=failure,
+                        runtime_context=dict(context.runtime_context),
+                        tools_invoked=list(context.tools_invoked),
+                        action_proposals=list(context.action_evidence.proposals),
+                        authorization_decisions=list(context.action_evidence.authorization_decisions),
+                        approval_records=list(context.action_evidence.approvals),
+                        action_execution_results=list(context.action_evidence.executions),
+                        action_cancellations=list(context.action_evidence.cancellations),
                         delegated_runs=list(context.action_evidence.delegated_runs),
                     ))
 
@@ -301,22 +355,22 @@ class TurnEngine:
         self, context: TurnContext, profile: AgentProfile, prompt: str, mode: str, operation: Any
     ) -> AgentInvocationResult:
         self._agent_operation = operation
-        status: ExecutionStatus = "failure"
+        status: str = "failure"
         output: dict[str, Any] = {}
         failure: str | None = None
         try:
             if operation is not None:
                 operation.check()
-            envelope = assemble_prompt_envelope(prompt, self.personality).with_segment(PromptSegment(
-                authority="application",
-                content_type="instruction",
-                trusted=True,
-                text=f"Agent: {profile.display_name}\n{profile.instructions}",
-            ))
-            response = bound_single_turn_response(self.llm.generate_envelope(envelope))
+            envelope = self._agent_envelope(context, profile, prompt)
+            outcome, text = self._agent_answer(context, profile, mode, envelope)
             if operation is not None:
                 operation.check()
-            status, output = "success", {"response": response}
+            if outcome == "success":
+                status, output = "success", {"response": bound_single_turn_response(text)}
+            elif outcome == "awaiting_approval":
+                status, output = "awaiting_approval", {"response": text}
+            else:
+                failure = text
         except ActionCancelledError:
             status = "cancelled"
             raise
@@ -344,6 +398,208 @@ class TurnEngine:
             session_id=context.session_id,
             error=failure,
         )
+
+    def _agent_envelope(
+        self, context: TurnContext, profile: AgentProfile, prompt: str
+    ) -> PromptEnvelope:
+        """The agent's prompt, with only the memory layers its scope allows.
+
+        Agents read memory; they never write it. What a turn teaches is retained only through
+        the host turn's own write path, so retention stays under the operator's policy.
+        """
+        read_working, read_episodic, read_semantic = _AGENT_MEMORY_LAYERS[profile.memory_scope]
+        working_memory = (
+            self.session_manager.get_working_context(self.write_policy)
+            if read_working and self.session_manager is not None
+            else None
+        )
+        episodic = self.episodic if read_episodic else None
+        semantic = self.semantic if read_semantic else None
+        retrieved: list[RetrievedFact] = []
+        if episodic is not None or semantic is not None:
+            try:
+                retrieved = self.retrieval.retrieve(
+                    query=prompt, n=3, cache_manager=self.cache_manager,
+                    episodic=episodic, semantic=semantic,
+                )
+            except Exception:
+                logger.warning("agent memory retrieval failed; continuing without retrieved memory")
+        if profile.memory_scope != "none":
+            context.runtime_context["agent_memory"] = {
+                "profile_id": profile.profile_id,
+                "scope": profile.memory_scope,
+                "retrieved": [fact.to_artifact_evidence() for fact in retrieved],
+            }
+        return assemble_prompt_envelope(
+            prompt, self.personality, working_memory=working_memory, retrieved_context=retrieved,
+        ).with_segment(PromptSegment(
+            authority="application",
+            content_type="instruction",
+            trusted=True,
+            text=f"Agent: {profile.display_name}\n{profile.instructions}",
+        ))
+
+    def _agent_tools(
+        self, profile: AgentProfile, envelope: PromptEnvelope
+    ) -> tuple[tuple[Any, ...], dict[str, dict[str, Any]]]:
+        """The capabilities this agent may use: its allowed IDs among the model-facing ones."""
+        if not profile.capability_ids or self.extension_runtime is None:
+            return (), {}
+        allowed = set(profile.capability_ids)
+        try:
+            entries = [
+                entry for entry in self.extension_runtime.tool_catalog()
+                if entry["capability_id"] in allowed
+            ]
+        except Exception:
+            return (), {}
+        tools = self._offerable_tools(entries, envelope)
+        return tools, {entry["capability_id"]: entry for entry in entries}
+
+    def _agent_answer(
+        self, context: TurnContext, profile: AgentProfile, mode: str, envelope: PromptEnvelope
+    ) -> tuple[str, str]:
+        """Answer as the agent: (`success`, answer), (`awaiting_approval`, ask), or (`failure`, why)."""
+        tools, entries = self._agent_tools(profile, envelope)
+        if not tools:
+            return "success", self.llm.generate_envelope(envelope)
+        try:
+            result = self.llm.generate_with_tools(envelope, tools)
+        except Exception as exc:
+            context.runtime_context["agent_tool_selection_error"] = str(exc)[:300]
+            return "success", self.llm.generate_envelope(envelope)
+        if not isinstance(result, ToolCallResult):
+            return "success", ""
+        if result.call is None:
+            return "success", result.text
+        entry = entries.get(result.call.name)
+        if entry is None:
+            return "failure", f"{profile.display_name} chose a capability it is not allowed to use."
+        return self._agent_tool_call(context, profile, mode, envelope, result.call, entry)
+
+    def _agent_tool_call(
+        self, context: TurnContext, profile: AgentProfile, mode: str,
+        envelope: PromptEnvelope, call: Any, entry: dict[str, Any],
+    ) -> tuple[str, str]:
+        assert self.capability_service is not None
+        label = f"{entry['extension_id']} {entry['name']}".strip()
+        descriptor = self.capability_service.descriptor(call.name)
+        proposal = ModelActionProposal(
+            proposal_id=uuid4().hex,
+            capability_id=call.name,
+            arguments=dict(call.arguments),
+            proposed_by=f"agent:{profile.profile_id}",
+            reason=f"{profile.display_name} selected this capability",
+        )
+        pending = PendingToolApproval(
+            proposal=proposal,
+            approval_id="",
+            definition_claim=dict(descriptor.metadata_claims.get("definition", {})) if descriptor else {},
+            extension_id=entry["extension_id"],
+            operation_name=entry["name"],
+            mode=mode,
+        )
+        decision = self.capability_service.authorize_turn(
+            proposal,
+            AuthorizationContext(session_id=context.session_id, turn_id=context.turn_id, caller="agent"),
+        )
+        context.action_evidence.record(proposal)
+        if decision.outcome == "approval_required":
+            if mode == "direct":
+                context.action_evidence.record(decision)
+                return "failure", (
+                    f"{profile.display_name} needs your approval to run {label}, which the "
+                    "Agents panel cannot give. Ask JARVIS for it in a conversation instead."
+                )
+            pending.approval_id = decision.approval_id or uuid4().hex
+            context.action_evidence.record(replace(decision, approval_id=pending.approval_id))
+            self._pending_agent_tool = PendingAgentTool(
+                pending, profile.profile_id, profile.display_name, mode, envelope
+            )
+            return "awaiting_approval", f"{profile.display_name} wants to run {label}. Reply yes to confirm."
+        context.action_evidence.record(decision)
+        if decision.outcome != "allowed":
+            return "failure", f"{profile.display_name} cannot use {label}. {decision.reason}"
+        return self._finish_agent_tool(context, pending, envelope, approved=False)
+
+    def _finish_agent_tool(
+        self, context: TurnContext, pending: PendingToolApproval, envelope: PromptEnvelope,
+        *, approved: bool,
+    ) -> tuple[str, str]:
+        """Run an agent's authorized capability and let the agent answer from its result."""
+        assert self.capability_service is not None
+        decision, record = self.capability_service.execute_authorized(
+            pending.proposal,
+            AuthorizationContext(
+                session_id=context.session_id,
+                turn_id=context.turn_id,
+                caller="agent",
+                operator_approved=approved,
+                approval_id=pending.approval_id or None,
+            ),
+            definition_claim=pending.definition_claim,
+            interactive_input_allowed=False,
+        )
+        if approved and decision is not None:
+            context.action_evidence.record(decision)
+        context.action_evidence.record(record)
+        context.tools_invoked.append(pending.proposal.capability_id)
+        if record.status != "success":
+            return "failure", self._tool_failure_text(record)
+        grounded = ground_tool_prompt(
+            envelope, tool_name=pending.proposal.capability_id, result=record.result, llm=self.llm
+        )
+        if grounded is None:
+            return "failure", "That action returned more than the agent can reason over in one run."
+        return "success", self.llm.generate_envelope(grounded)
+
+    def _resolve_pending_agent_tool(self, context: TurnContext, transcript: str) -> str | None:
+        """Settle an agent's capability approval and let the paused agent finish."""
+        pending, self._pending_agent_tool = self._pending_agent_tool, None
+        if pending is None or self.capability_service is None:
+            return None
+        approval = pending.approval
+        text = transcript.strip()
+        if CONFIRM_REPLY.fullmatch(text) or CANCEL_REPLY.fullmatch(text):
+            confirmed = bool(CONFIRM_REPLY.fullmatch(text))
+            context.action_evidence.record(ApprovalAuditRecord(
+                approval_id=approval.approval_id,
+                proposal_id=approval.proposal.proposal_id,
+                capability_id=approval.proposal.capability_id,
+                outcome="approved" if confirmed else "denied",
+                decided_by="user",
+                decided_at=utc_now_iso(),
+                reason=(
+                    "the user confirmed the agent's proposed action" if confirmed
+                    else "the user declined the agent's proposed action"
+                ),
+            ))
+            if not confirmed:
+                return "Cancelled."
+            outcome, reply = self._finish_agent_tool(context, approval, pending.envelope, approved=True)
+            succeeded = outcome == "success"
+            response = bound_single_turn_response(reply) if succeeded else ""
+            context.action_evidence.record(DelegatedRunRecord(
+                run_id=uuid4().hex,
+                kind="agent",
+                target_id=pending.profile_id,
+                runtime="internal",
+                status="success" if succeeded else "failure",
+                session_id=context.session_id,
+                turn_id=context.turn_id,
+                mode=pending.mode,
+                output={"response": response} if succeeded else {},
+                error=None if succeeded else reply,
+            ))
+            return response if succeeded else f"{pending.display_name} could not finish. {reply}"
+        context.action_evidence.record(ActionCancellationRecord(
+            proposal_id=approval.proposal.proposal_id,
+            capability_id=approval.proposal.capability_id,
+            cancelled_by="turn_boundary",
+            cancelled_at=utc_now_iso(),
+            reason="approval was not confirmed on the next turn",
+        ))
+        return None
 
     def _emit_hook(self, event: str, context: TurnContext) -> None:
         if self.extension_runtime is None:
@@ -461,7 +717,8 @@ class TurnEngine:
         interactive_ticket: InteractiveTicket | None = None,
     ) -> TurnResult:
         with ExitStack() as stack:
-            if self.search_service and self.search_intent.is_candidate(transcript):
+            # A handed-off conversation belongs to the agent, so no search is opened for it.
+            if self._handoff is None and self.search_service and self.search_intent.is_candidate(transcript):
                 context.search_operation = stack.enter_context(self.search_service.operation(context.session_id, context.turn_id))
             if interactive_ticket is not None:
                 stack.enter_context(interactive_ticket.execution())
@@ -663,8 +920,14 @@ class TurnEngine:
             if grounded is not None:
                 return bound_single_turn_response(self.llm.generate_envelope(grounded)), grounded
             return settled, envelope
+        resumed = self._resolve_pending_agent_tool(context, transcript)
+        if resumed is not None:
+            return resumed, envelope
         operation = context.search_operation
         if operation is None:
+            routed = self._route_agent_turn(context, transcript, envelope)
+            if routed is not None:
+                return routed, envelope
             response, grounded = self._respond_with_tools(context, envelope)
             return bound_single_turn_response(response), grounded
         operation.check()
@@ -729,9 +992,10 @@ class TurnEngine:
         context.runtime_context["tools_offered"] = [tool.name for tool in tools]
         try:
             result = self.llm.generate_with_tools(envelope, tools)
-        except Exception:
+        except Exception as exc:
             # Selection is best-effort: a provider that cannot offer tools must not
-            # cost the user their answer.
+            # cost the user their answer, but the turn records why nothing was selectable.
+            context.runtime_context["tool_selection_error"] = str(exc)[:300]
             return self.llm.generate_envelope(envelope), envelope
         if not isinstance(result, ToolCallResult) or result.call is None:
             return result.text if isinstance(result, ToolCallResult) else "", envelope
@@ -822,6 +1086,7 @@ class TurnEngine:
         """
         assert self.capability_service is not None
         context.advance(ConversationState.ACTING)
+        self._delegation_mode = pending.mode or "as_tool"
         try:
             decision, record = self.capability_service.execute_authorized(
                 pending.proposal,
@@ -836,6 +1101,7 @@ class TurnEngine:
                 interactive_input_allowed=False,
             )
         finally:
+            self._delegation_mode = None
             context.advance(ConversationState.REASONING)
         if approved and decision is not None:
             context.action_evidence.record(decision)
@@ -843,6 +1109,10 @@ class TurnEngine:
         context.tools_invoked.append(pending.proposal.capability_id)
         if record.status != "success":
             return self._tool_failure_text(record)
+        if self._pending_agent_tool is not None:
+            # A delegated agent paused for approval; its question is this turn's answer.
+            output = record.result.get("output") if isinstance(record.result, dict) else None
+            return str(output.get("response", "")) if isinstance(output, dict) else ""
         self._last_tool_result = (pending.proposal.capability_id, record.result)
         return None
 
@@ -866,7 +1136,12 @@ class TurnEngine:
             catalog = self._tool_catalog()
         except Exception:
             return ()
-        if not catalog:
+        return self._offerable_tools(catalog, envelope)
+
+    def _offerable_tools(
+        self, catalog: list[dict[str, Any]], envelope: PromptEnvelope
+    ) -> tuple[Any, ...]:
+        if not catalog or self.capability_service is None or not self.llm.supports_tool_calling():
             return ()
         views = {view.capability_id: view for view in self.capability_service.catalog().capabilities}
         offers = []
@@ -933,7 +1208,12 @@ class TurnEngine:
                 decided_at=utc_now_iso(),
                 reason="the user confirmed the proposed action",
             ))
-            return self._execute_tool(context, pending, approved=True) or ""
+            if pending.mode == "handoff":
+                return self._start_handoff(context, pending.proposal, pending.approval_id)
+            failure = self._execute_tool(context, pending, approved=True)
+            if pending.mode is not None:
+                return failure or self._agent_reply()
+            return failure or ""
         if CANCEL_REPLY.fullmatch(text):
             context.action_evidence.record(ApprovalAuditRecord(
                 approval_id=pending.approval_id,
@@ -953,6 +1233,211 @@ class TurnEngine:
             reason="approval was not confirmed on the next turn",
         ))
         return None
+
+    def _route_agent_turn(
+        self, context: TurnContext, transcript: str, envelope: PromptEnvelope
+    ) -> str | None:
+        """Hand the turn to an agent when a handoff is active or the user addressed one.
+
+        Returns the turn's response, or None when the assistant answers as usual.
+        """
+        if self.agent_registry is None or self.capability_service is None:
+            return None
+        router = AgentRouter(self.agent_registry)
+        if self._handoff is not None:
+            if ends_handoff(transcript):
+                return self._finish_handoff(context, "the user returned to JARVIS", "Back to JARVIS.")
+            return self._handoff_turn(context, router, transcript, envelope)
+        request = router.handoff_request(transcript)
+        if request is not None:
+            return self._request_handoff(context, request, transcript)
+        route = router.route(transcript)
+        if route is None:
+            return None
+        if route.reason:
+            self._note_route(context, "unavailable", route.profile, route.reason)
+            return None
+        proposal = self._agent_proposal(
+            route.profile, route.task, "router", f"the user addressed {route.profile.display_name}"
+        )
+        return self._delegate_in_turn(
+            context, proposal, route.profile, "router_selected",
+            ask=f"May I hand this to {route.profile.display_name}? Reply yes to confirm.",
+        )
+
+    def _agent_proposal(
+        self, profile: AgentProfile, prompt: str, proposed_by: str, reason: str
+    ) -> ModelActionProposal:
+        return ModelActionProposal(
+            proposal_id=uuid4().hex,
+            capability_id=f"{AGENT_CAPABILITY_PREFIX}{profile.profile_id}",
+            arguments={"prompt": prompt},
+            proposed_by=proposed_by,
+            reason=reason,
+        )
+
+    def _authorize_agent(
+        self, context: TurnContext, proposal: ModelActionProposal, approval_id: str | None
+    ) -> AuthorizationDecision:
+        assert self.capability_service is not None
+        context.action_evidence.record(proposal)
+        return self.capability_service.authorize_turn(
+            proposal,
+            AuthorizationContext(
+                session_id=context.session_id,
+                turn_id=context.turn_id,
+                caller="conversation-turn",
+                operator_approved=approval_id is not None,
+                approval_id=approval_id,
+            ),
+        )
+
+    def _park_agent_approval(
+        self, context: TurnContext, decision: AuthorizationDecision,
+        proposal: ModelActionProposal, profile: AgentProfile, mode: str,
+    ) -> None:
+        approval_id = decision.approval_id or uuid4().hex
+        context.action_evidence.record(replace(decision, approval_id=approval_id))
+        self._pending_tool = PendingToolApproval(
+            proposal=proposal,
+            approval_id=approval_id,
+            definition_claim={},
+            extension_id=f"agent:{profile.profile_id}",
+            operation_name=profile.display_name,
+            mode=mode,
+        )
+
+    def _delegate_in_turn(
+        self,
+        context: TurnContext,
+        proposal: ModelActionProposal,
+        profile: AgentProfile,
+        mode: str,
+        *,
+        ask: str | None = None,
+        approval_id: str | None = None,
+    ) -> str | None:
+        """Authorize and run an agent that answers this turn.
+
+        A routed request falls back to the assistant when the agent cannot answer; a
+        handed-off turn reports the failure, since the user is talking to the agent.
+        """
+        decision = self._authorize_agent(context, proposal, approval_id)
+        if decision.outcome == "approval_required" and ask is not None:
+            self._park_agent_approval(context, decision, proposal, profile, mode)
+            self._note_route(context, "awaiting_approval", profile, decision.reason)
+            return ask
+        # An approved call's decision is recorded when execution re-authorizes it.
+        if approval_id is None or decision.outcome != "allowed":
+            context.action_evidence.record(decision)
+        if decision.outcome != "allowed":
+            self._note_route(context, "denied", profile, decision.reason)
+            return None
+        failure = self._execute_tool(
+            context,
+            PendingToolApproval(
+                proposal=proposal,
+                approval_id=approval_id or "",
+                definition_claim={},
+                extension_id=f"agent:{profile.profile_id}",
+                operation_name=profile.display_name,
+                mode=mode,
+            ),
+            approved=approval_id is not None,
+        )
+        if failure is not None and self._pending_agent_tool is not None:
+            self._note_route(context, "awaiting_approval", profile, "the agent asked to use a capability")
+            return failure
+        if failure is not None:
+            self._last_tool_result = None
+            self._note_route(context, "failed", profile, failure)
+            return None if mode == "router_selected" else failure
+        self._note_route(context, "selected", profile, "")
+        return self._agent_reply()
+
+    def _agent_reply(self) -> str:
+        last, self._last_tool_result = self._last_tool_result, None
+        result = last[1] if last is not None else {}
+        output = result.get("output") if isinstance(result, dict) else None
+        return str(output.get("response", "")) if isinstance(output, dict) else ""
+
+    def _request_handoff(self, context: TurnContext, request: Any, transcript: str) -> str:
+        profile = request.profile
+        if request.reason:
+            self._note_handoff(context, "refused", profile.profile_id, request.reason)
+            return f"I can't hand you over to {profile.display_name}. {request.reason}"
+        proposal = self._agent_proposal(
+            profile, transcript, "user",
+            f"the user asked to hand the conversation to {profile.display_name}",
+        )
+        decision = self._authorize_agent(context, proposal, None)
+        if decision.outcome == "approval_required":
+            self._park_agent_approval(context, decision, proposal, profile, "handoff")
+            self._note_handoff(context, "awaiting_approval", profile.profile_id, decision.reason)
+            return f"May I hand you over to {profile.display_name}? Reply yes to confirm."
+        context.action_evidence.record(decision)
+        if decision.outcome != "allowed":
+            self._note_handoff(context, "refused", profile.profile_id, decision.reason)
+            return f"I can't hand you over to {profile.display_name}. {decision.reason}"
+        return self._start_handoff(context, proposal, None)
+
+    def _start_handoff(
+        self, context: TurnContext, proposal: ModelActionProposal, approval_id: str | None
+    ) -> str:
+        profile_id = proposal.capability_id.removeprefix(AGENT_CAPABILITY_PREFIX)
+        profile = self.agent_registry.get(profile_id) if self.agent_registry else None
+        if profile is None:
+            self._note_handoff(context, "refused", profile_id, "agent profile no longer exists")
+            return "That agent is no longer available."
+        self._handoff = ActiveHandoff(profile_id, profile.display_name, approval_id, context.turn_id)
+        self._note_handoff(context, "started", profile_id, "")
+        return f"You're now talking to {profile.display_name}. Say 'back to JARVIS' to return."
+
+    def _handoff_turn(
+        self, context: TurnContext, router: AgentRouter, transcript: str, envelope: PromptEnvelope
+    ) -> str:
+        assert self._handoff is not None
+        handoff = self._handoff
+        profile = self.agent_registry.get(handoff.profile_id)
+        reason = (
+            "its profile no longer exists" if profile is None
+            else router.ineligible_reason(profile, "handoff")
+        )
+        if not reason:
+            proposal = self._agent_proposal(
+                profile, transcript, "user",
+                f"the conversation is handed off to {profile.display_name}",
+            )
+            response = self._delegate_in_turn(
+                context, proposal, profile, "handoff", approval_id=handoff.approval_id
+            )
+            if response is not None:
+                return response
+            reason = "it is no longer authorized to answer"
+        notice = self._finish_handoff(
+            context, reason,
+            f"{handoff.display_name} is no longer available ({reason}), so you're back with JARVIS.",
+        )
+        answer, _ = self._respond_with_tools(context, envelope)
+        return f"{notice} {bound_single_turn_response(answer)}".strip()
+
+    def _finish_handoff(self, context: TurnContext, reason: str, message: str) -> str:
+        if self._handoff is not None:
+            self._note_handoff(context, "ended", self._handoff.profile_id, reason)
+        self._handoff = None
+        return message
+
+    @staticmethod
+    def _note_route(context: TurnContext, outcome: str, profile: AgentProfile, reason: str) -> None:
+        context.runtime_context["agent_route"] = {
+            "outcome": outcome, "profile_id": profile.profile_id, "reason": reason,
+        }
+
+    @staticmethod
+    def _note_handoff(context: TurnContext, event: str, profile_id: str, reason: str) -> None:
+        context.runtime_context.setdefault("agent_handoff", []).append(
+            {"event": event, "profile_id": profile_id, "reason": reason}
+        )
 
     @staticmethod
     def _tool_failure_text(record: ExecutionResultRecord) -> str:

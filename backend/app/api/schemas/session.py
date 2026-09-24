@@ -43,6 +43,7 @@ class SessionStatusResponse(BaseModel):
     voice_capture_diagnostics: dict[str, object] | None = None
     failure_phase: str | None = None
     active_search: dict[str, object] | None = None
+    active_agent: dict[str, str] | None = None
 
 
 class CloseSessionRequest(BaseModel):
@@ -57,6 +58,14 @@ class CancelSearchRequest(BaseModel):
 
 class CancelSearchResponse(BaseModel):
     cancelled: bool
+
+
+class EndHandoffRequest(BaseModel):
+    session_id: str
+
+
+class EndHandoffResponse(BaseModel):
+    ended: bool
 
 
 class CloseSessionResponse(BaseModel):

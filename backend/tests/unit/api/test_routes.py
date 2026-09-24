@@ -808,6 +808,7 @@ def test_session_status_returns_active_session() -> None:
         "voice_capture_diagnostics": None,
         "failure_phase": None,
         "active_search": None,
+        "active_agent": None,
     }
 
 

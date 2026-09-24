@@ -1191,6 +1191,16 @@ pub fn submit_text_turn(
     Ok(body)
 }
 
+pub fn end_handoff(client: &Client, base_url: &str, session_id: &str) -> Result<String, String> {
+    let operation = "POST /session/handoff/end";
+    let response = client
+        .post(format!("{base_url}/session/handoff/end"))
+        .json(&json!({ "session_id": session_id }))
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn cancel_search(client: &Client, base_url: &str, session_id: &str, turn_id: &str) -> Result<String, String> {
     let response = client.post(format!("{base_url}/session/search/cancel"))
         .timeout(Duration::from_secs(5))
@@ -1257,6 +1267,15 @@ pub fn invoke_agent(
     let response = client
         .post(format!("{base_url}/agents/invoke"))
         .json(&body)
+        .send()
+        .map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
+pub fn list_agent_tools(client: &Client, base_url: &str) -> Result<String, String> {
+    let operation = "GET /agents/tools";
+    let response = client
+        .get(format!("{base_url}/agents/tools"))
         .send()
         .map_err(|error| memory_transport_error(operation, error))?;
     memory_response(operation, response)

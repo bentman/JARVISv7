@@ -16,7 +16,7 @@ Evidence lives in each ADR's Confirmation section; recorded validation runs live
 | [0004](0004-memory-with-meaning.md) | Memory with Meaning | Implemented | Memory layers, curation, lifecycle | Met |
 | [0005](0005-governed-ability-to-act.md) | Governed Ability to Act | Implemented | Effect-class risk model, capability contract, execution, audit | Met |
 | [0006](0006-ways-to-extend-assistant-ability-to-act.md) | Ways to Extend Assistant Ability to Act | Implemented | Extension taxonomy, catalog, governed operations, skills, local tools | Met |
-| [0007](0007-extend-assistant-when-stable.md) | Extend Assistant When Stable | Accepted | Agent identity, invocation modes, agent scope | Profile management and non-direct invocation modes |
+| [0007](0007-extend-assistant-when-stable.md) | Extend Assistant When Stable | Implemented | Agent identity, invocation modes, agent scope | Met |
 | [0008](0008-operator-experience.md) | Operator Experience | Accepted | Advanced Controls shell, all operator surfaces, native validation | Native desktop session validation |
 | [0009](0009-shared-session-lifecycle.md) | Shared Session Lifecycle | Implemented | Connection reuse, teardown confirmation, shutdown | Met |
 | [0010](0010-mcp-connection-boundary.md) | MCP Connection Boundary | Accepted | MCP transport, discovery, cache freshness, effect classification | 2026-07-28 conformance gaps in Follow-up |

@@ -35,6 +35,40 @@ def test_schema_generation_preserves_normal_generation(monkeypatch, kind):
     assert "response_format" not in calls[1] and "format" not in calls[1]
 
 
+def test_llama_tool_offer_drops_repetition_bounds_its_grammar_cannot_compile(monkeypatch):
+    # llama.cpp rejects the whole request ("failed to parse grammar") when a tool schema
+    # declares a repetition bound of 2000 or more, which silently cost every tool offer.
+    from backend.app.runtimes.llm.base import ToolDefinition
+
+    calls = []
+
+    def post(url, **kwargs):
+        calls.append(kwargs["json"])
+        message = {"tool_calls": [{"function": {"name": "agent-invoke-notes", "arguments": '{"prompt": "tidy"}'}}]}
+        return httpx.Response(200, json={"choices": [{"message": message}]}, request=httpx.Request("POST", url))
+
+    monkeypatch.setattr(httpx, "post", post)
+    schema = {
+        "type": "object",
+        "properties": {
+            "prompt": {"type": "string", "minLength": 1, "maxLength": 4000},
+            "tags": {"type": "array", "maxItems": 1999},
+        },
+        "required": ["prompt"],
+    }
+    envelope = PromptEnvelope(segments=(PromptSegment("user", "user_input", False, "tidy"),), generation={})
+
+    result = LlamaCppLLM(base_url="http://test").generate_with_tools(
+        envelope, (ToolDefinition(name="agent-invoke-notes", description="d", input_schema=schema),)
+    )
+
+    offered = calls[0]["tools"][0]["function"]["parameters"]["properties"]
+    assert offered["prompt"] == {"type": "string", "minLength": 1}
+    assert offered["tags"] == {"type": "array", "maxItems": 1999}
+    assert schema["properties"]["prompt"]["maxLength"] == 4000, "the declared schema is left intact"
+    assert (result.call.name, result.call.arguments) == ("agent-invoke-notes", {"prompt": "tidy"})
+
+
 def test_local_runtime_is_available_returns_false():
     runtime = LlamaCppLLM(managed=False)
 

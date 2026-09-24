@@ -161,12 +161,14 @@ export function createApiClient(invoke) {
       invokeMemory(invoke, "disconnect_extension", { extensionId }),
     submitText: async (text) => parseJson(await invoke("submit_text", { text })),
     cancelSearch: async (sessionId, turnId) => parseJson(await invoke("cancel_search", { sessionId, turnId })),
+    endHandoff: (sessionId) => invokeMemory(invoke, "end_handoff", { sessionId }),
     openSearchSource: (url) => invoke("open_search_source", { url }),
     listAgents: () => invokeMemory(invoke, "list_agents"),
     getAgent: (profileId) => invokeMemory(invoke, "get_agent", { profileId }),
     invokeAgent: (profileId, prompt) =>
       invokeMemory(invoke, "invoke_agent", { profileId, prompt }),
     listAgentRuns: () => invokeMemory(invoke, "list_agent_runs"),
+    listAgentTools: () => invokeMemory(invoke, "list_agent_tools"),
     cancelAgent: (profileId) => invokeMemory(invoke, "cancel_agent", { profileId }),
     createAgent: (profile) => invokeMemory(invoke, "create_agent", { profile }),
     updateAgent: (profileId, profile, expectedFingerprint) =>

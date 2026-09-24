@@ -26,10 +26,15 @@ _APPROVAL_AUTH = {
     "strict": "requires_approval",
 }
 
-EXECUTABLE_MODES = ("direct", "as_tool")
+# An ACP-runtime agent runs through run_extension, which admits its own turn, so it cannot
+# run inside a turn that already holds the turn lock.
+EXECUTABLE_MODES = {
+    "internal": ("direct", "as_tool", "router_selected", "handoff"),
+    "acp": ("direct",),
+}
 UNSUPPORTED_MODE = (
-    "This agent profile declares no invocation mode the current runtime executes; "
-    "declare 'direct' or 'as_tool'."
+    "This agent profile declares no invocation mode its runtime executes; "
+    "an agent that runs in an external ACP agent must declare 'direct'."
 )
 DISABLED = "Agent is disabled."
 _INACTIVE_STATES = {"disabled", "retired"}
@@ -143,7 +148,9 @@ class AgentRegistry:
     def unavailable_reason(self, profile: AgentProfile) -> str:
         if not self.enabled(profile.profile_id):
             return DISABLED
-        if not any(mode in profile.invocation_modes for mode in EXECUTABLE_MODES):
+        if not any(
+            mode in profile.invocation_modes for mode in EXECUTABLE_MODES[profile.runtime_kind]
+        ):
             return UNSUPPORTED_MODE
         if profile.runtime_kind == "acp":
             return self._acp_adapter(profile.runtime["adapter_id"])[0]

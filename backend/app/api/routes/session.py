@@ -9,6 +9,8 @@ from backend.app.api.schemas.session import (
     CloseSessionResponse,
     CreateSessionRequest,
     CreateSessionResponse,
+    EndHandoffRequest,
+    EndHandoffResponse,
     LatestTurnSummary,
     SessionStatusResponse,
 )
@@ -70,6 +72,15 @@ def cancel_search(request: CancelSearchRequest, session_service: SessionService 
     return CancelSearchResponse(cancelled=session_service.engine().cancel_search(request.session_id, request.turn_id))
 
 
+@router.post("/session/handoff/end", response_model=EndHandoffResponse)
+def end_handoff(request: EndHandoffRequest, session_service: SessionService = Depends(get_session_service)) -> EndHandoffResponse:
+    try:
+        session_service.assert_active_session(request.session_id)
+    except ValueError:
+        return EndHandoffResponse(ended=False)
+    return EndHandoffResponse(ended=session_service.engine().end_handoff())
+
+
 @router.post("/session/ptt", response_model=SessionStatusResponse)
 def invoke_ptt(state: ApiState = Depends(get_api_state)) -> SessionStatusResponse:
     if state.resident_voice is None:
@@ -109,4 +120,5 @@ def build_session_status_response(status) -> SessionStatusResponse:
         voice_capture_diagnostics=status.voice_capture_diagnostics,
         failure_phase=status.failure_phase,
         active_search=status.active_search,
+        active_agent=status.active_agent,
     )

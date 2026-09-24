@@ -79,14 +79,14 @@ def test_invocation_result_with_error() -> None:
     assert result.error == "timeout"
 
 
-# --- AgentInvoker.invoke_direct ---
+# --- AgentInvoker.invoke ---
 
 
-def test_invoke_direct_with_valid_profile() -> None:
-    profile = _profile(invocation_modes=("direct",))
+@pytest.mark.parametrize("mode", ["direct", "as_tool", "router_selected", "handoff"])
+def test_invoke_runs_a_declared_mode_on_the_engine(mode: str) -> None:
+    profile = _profile(invocation_modes=(mode,))
     registry = AgentRegistry()
     registry._profiles = [profile]
-
     expected_result = AgentInvocationResult(
         agent_id="test-agent",
         status="success",
@@ -97,84 +97,38 @@ def test_invoke_direct_with_valid_profile() -> None:
     mock_engine = MagicMock()
     mock_engine.run_agent.return_value = expected_result
 
-    invoker = AgentInvoker(registry)
-    result = invoker.invoke_direct("test-agent", "do something", lambda: mock_engine)
+    result = AgentInvoker(registry).invoke("test-agent", "do something", mode, lambda: mock_engine)
 
     assert result == expected_result
     mock_engine.run_agent.assert_called_once_with(
-        profile, "do something", mode="direct", operation=None
+        profile, "do something", mode=mode, operation=None
     )
 
 
-def test_invoke_direct_rejects_unknown_profile_id() -> None:
+def test_invoke_refuses_a_mode_the_profile_does_not_declare() -> None:
     registry = AgentRegistry()
-    registry._profiles = []
+    registry._profiles = [_profile(invocation_modes=("as_tool",))]
 
-    invoker = AgentInvoker(registry)
-    with pytest.raises(ValueError, match="unknown agent profile"):
-        invoker.invoke_direct("nonexistent", "prompt", lambda: None)
-
-
-def test_invoke_direct_rejects_profile_without_direct_mode() -> None:
-    profile = _profile(invocation_modes=("as_tool",))
-    registry = AgentRegistry()
-    registry._profiles = [profile]
-
-    invoker = AgentInvoker(registry)
     with pytest.raises(ValueError, match="does not support direct invocation"):
-        invoker.invoke_direct("test-agent", "prompt", lambda: None)
+        AgentInvoker(registry).invoke("test-agent", "prompt", "direct", lambda: None)
 
 
-# --- AgentInvoker.invoke_as_tool ---
-
-
-def test_invoke_as_tool_with_valid_profile() -> None:
-    profile = _profile(invocation_modes=("as_tool",))
-    registry = AgentRegistry()
-    registry._profiles = [profile]
-
-    expected_result = AgentInvocationResult(
-        agent_id="test-agent",
-        status="success",
-        output={"response": "tool output"},
-        turn_id="turn-2",
-        session_id="session-1",
-    )
-    mock_engine = MagicMock()
-    mock_engine.run_agent.return_value = expected_result
-
-    invoker = AgentInvoker(registry)
-    result = invoker.invoke_as_tool("test-agent", "analyze this", lambda: mock_engine)
-
-    assert result == expected_result
-    mock_engine.run_agent.assert_called_once_with(
-        profile, "analyze this", mode="as_tool", operation=None
-    )
-
-
-def test_invoke_as_tool_rejects_profile_without_as_tool_mode() -> None:
-    profile = _profile(invocation_modes=("direct",))
-    registry = AgentRegistry()
-    registry._profiles = [profile]
-
-    invoker = AgentInvoker(registry)
-    with pytest.raises(ValueError, match="does not support as_tool invocation"):
-        invoker.invoke_as_tool("test-agent", "prompt", lambda: None)
-
-
-def test_invoke_as_tool_rejects_unknown_profile_id() -> None:
+def test_invoke_rejects_unknown_profile_id() -> None:
     registry = AgentRegistry()
     registry._profiles = []
 
-    invoker = AgentInvoker(registry)
     with pytest.raises(ValueError, match="unknown agent profile"):
-        invoker.invoke_as_tool("nonexistent", "prompt", lambda: None)
+        AgentInvoker(registry).invoke("nonexistent", "prompt", "direct", lambda: None)
 
 
 # --- POST /agents/invoke ---
 
 
-def _invoke_client(result: dict[str, Any], modes: tuple[str, ...] = ("direct",)):
+def _invoke_client(
+    result: dict[str, Any],
+    modes: tuple[str, ...] = ("direct",),
+    runtime: dict[str, Any] | None = None,
+):
     from backend.app.actions.catalog import CapabilityObservation
     from backend.app.api.routes.agents import router
     from backend.app.services.capability_service import (
@@ -184,11 +138,14 @@ def _invoke_client(result: dict[str, Any], modes: tuple[str, ...] = ("direct",))
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
-    profile = _profile(profile_id="summarizer", approval_class="none", invocation_modes=modes)
+    profile = _profile(
+        profile_id="summarizer", approval_class="none", invocation_modes=modes,
+        runtime=runtime or {"kind": "internal"},
+    )
     registry = AgentRegistry()
     registry._profiles = [profile]
     engine = MagicMock()
-    engine.is_active_turn.return_value = False
+    engine.in_turn_mode.return_value = None
     engine.run_agent.return_value = AgentInvocationResult(**result)
     service = CapabilityService(
         observe=lambda: CapabilityObservation(
@@ -253,9 +210,42 @@ def test_invoke_route_reports_why_a_denied_invocation_never_ran() -> None:
     client = _invoke_client(
         {"agent_id": "summarizer", "status": "success", "output": {}, "turn_id": "t", "session_id": "s"},
         modes=("handoff",),
+        runtime={"kind": "acp", "adapter_id": "coder"},
     )
 
     body = client.post("/agents/invoke", json={"profile_id": "summarizer", "prompt": "notes"}).json()
 
     assert body["status"] == "denied"
-    assert "declares no invocation mode the current runtime executes" in body["error"]
+    assert "declares no invocation mode its runtime executes" in body["error"]
+
+
+def test_tools_route_lists_what_an_agent_may_be_allowed_to_use() -> None:
+    from types import SimpleNamespace
+
+    from backend.app.api.routes.agents import router
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    views = [
+        SimpleNamespace(capability_id="ext-read", authorization_rule="allow", availability="available", readiness="ready"),
+        SimpleNamespace(capability_id="ext-write", authorization_rule="requires_approval", availability="disabled", readiness="ready"),
+        SimpleNamespace(capability_id="ext-blocked", authorization_rule="deny", availability="available", readiness="ready"),
+    ]
+    catalog = [
+        {"capability_id": item.capability_id, "extension_id": "mcp:notes", "name": f"tool:{item.capability_id}"}
+        for item in views
+    ]
+    app = FastAPI()
+    app.include_router(router)
+    app.state.jarvis_state = SimpleNamespace(
+        capability_service=SimpleNamespace(catalog=lambda: SimpleNamespace(capabilities=views)),
+        extension_runtime=SimpleNamespace(tool_catalog=lambda: catalog),
+    )
+
+    tools = TestClient(app).get("/agents/tools").json()["tools"]
+
+    assert tools == [
+        {"capability_id": "ext-read", "label": "mcp:notes tool:ext-read", "needs_approval": False, "available": True},
+        {"capability_id": "ext-write", "label": "mcp:notes tool:ext-write", "needs_approval": True, "available": False},
+    ]
+

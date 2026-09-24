@@ -493,6 +493,52 @@ h3 {
   border-radius: var(--radius-sm);
 }
 
+.agents-section > button {
+  justify-self: start;
+}
+
+.agents-form {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.agents-invoke label,
+.agents-field-control {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.agents-invoke textarea,
+.agents-field-control input,
+.agents-field-control textarea,
+.agents-field-control select {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.agents-invoke textarea,
+.agents-field-control textarea {
+  min-height: 4.5rem;
+  resize: vertical;
+}
+
+.agents-choices {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding: var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+}
+
+.agents-choice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .actions-status,
 .agents-status {
   display: inline-flex;

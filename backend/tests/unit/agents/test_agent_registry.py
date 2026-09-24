@@ -187,7 +187,11 @@ def test_capability_records_map_approval_strict_to_an_approval_gated_local_write
 def test_a_profile_without_an_executable_mode_is_explained_instead_of_offered(
     tmp_path: Path,
 ) -> None:
-    _write_agent(tmp_path, "handoff-only", invocation_modes=["handoff"])
+    # An ACP-runtime agent runs through run_extension, so it is reachable only directly.
+    _write_agent(
+        tmp_path, "handoff-only", invocation_modes=["handoff"],
+        runtime={"kind": "acp", "adapter_id": "coder"},
+    )
 
     registry = AgentRegistry(config_dir=tmp_path)
     descriptor = next(

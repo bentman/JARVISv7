@@ -33,6 +33,7 @@ use backend::{
     get_agent as backend_get_agent,
     invoke_agent as backend_invoke_agent,
     list_agent_runs as backend_list_agent_runs,
+    list_agent_tools as backend_list_agent_tools,
     cancel_agent as backend_cancel_agent,
     create_agent as backend_create_agent,
     update_agent as backend_update_agent,
@@ -827,6 +828,12 @@ fn invoke_agent(profile_id: String, prompt: String, state: State<'_, DesktopStat
 }
 
 #[tauri::command]
+fn list_agent_tools(state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_list_agent_tools(&state.http_client, &base_url)
+}
+
+#[tauri::command]
 fn list_agent_runs(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_list_agent_runs(&state.http_client, &base_url)
@@ -891,6 +898,12 @@ async fn submit_text(text: String, state: State<'_, DesktopState>) -> Result<Str
     tauri::async_runtime::spawn_blocking(move || {
         submit_text_turn(&client, &base_url, &trimmed, session_id.as_deref())
     }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+fn end_handoff(session_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend::end_handoff(&state.http_client, &base_url, &session_id)
 }
 
 #[tauri::command]
@@ -997,6 +1010,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             cancel_search,
+            end_handoff,
             open_search_source,
             start_backend,
             stop_backend,
@@ -1058,6 +1072,7 @@ pub fn run() {
             get_agent,
             invoke_agent,
             list_agent_runs,
+            list_agent_tools,
             cancel_agent,
             create_agent,
             update_agent,

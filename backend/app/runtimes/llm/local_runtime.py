@@ -23,6 +23,11 @@ _ORIGINAL_POST = httpx.post
 
 DEFAULT_LLAMA_CPP_BASE_URL = "http://127.0.0.1:8080"
 _HEALTH_PATHS = ("/health", "/healthz")
+# llama.cpp compiles offered tool schemas into a sampling grammar and rejects the whole
+# request when a repetition bound reaches its limit. The application still validates the
+# full schema before a proposed call is authorized.
+_GRAMMAR_REPETITION_LIMIT = 2000
+_REPETITION_BOUNDS = frozenset({"minLength", "maxLength", "minItems", "maxItems"})
 SidecarRecovery = Callable[[], LocalLLMSidecarStatus]
 
 
@@ -145,7 +150,7 @@ class LlamaCppLLM(LLMBase):
                 "function": {
                     "name": tool.name,
                     "description": tool.description,
-                    "parameters": tool.input_schema,
+                    "parameters": _grammar_safe_schema(tool.input_schema),
                 },
             }
             for tool in tools
@@ -275,6 +280,22 @@ class LlamaCppLLM(LLMBase):
         _copy_default(defaults, payload, "stop")
         _copy_default(defaults, payload, "chat_template_kwargs")
         return payload
+
+
+def _grammar_safe_schema(schema: Any) -> Any:
+    if isinstance(schema, dict):
+        return {
+            key: _grammar_safe_schema(value)
+            for key, value in schema.items()
+            if not (
+                key in _REPETITION_BOUNDS
+                and isinstance(value, int)
+                and value >= _GRAMMAR_REPETITION_LIMIT
+            )
+        }
+    if isinstance(schema, list):
+        return [_grammar_safe_schema(item) for item in schema]
+    return schema
 
 
 def _copy_default(source: dict[str, Any], target: dict[str, Any], key: str) -> None:

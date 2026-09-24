@@ -260,7 +260,7 @@ def test_an_agent_capability_outside_a_turn_runs_as_its_own_direct_turn() -> Non
     )
     calls = []
     engine = SimpleNamespace(
-        is_active_turn=lambda turn_id: False,
+        in_turn_mode=lambda turn_id: None,
         run_agent=lambda profile, prompt, mode, operation: calls.append(mode) or SimpleNamespace(
             to_dict=lambda: {"agent_id": profile.profile_id, "status": "success", "output": {"response": prompt}}
         ),

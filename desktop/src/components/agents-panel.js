@@ -42,20 +42,30 @@ export function agentInvokeEnabled(agent, prompt, mutationPending) {
 
 const RESPONSE_ONLY_FIELDS = ["source", "editable", "enabled", "fingerprint"];
 
-export const NEW_AGENT_PROFILE = {
-  profile_id: "new-agent",
-  display_name: "New agent",
-  purpose: "Describe what this agent is for",
-  instructions: "Describe how this agent should work.",
-  invocation_modes: ["direct"],
-  capability_ids: [],
-  memory_scope: "none",
-  approval_class: "standard",
-  timeout_ms: 30000,
-  cancellable: true,
+export const INVOCATION_MODE_LABELS = {
+  direct: "Run it from this panel",
+  as_tool: "Let JARVIS use it when helpful",
+  router_selected: "Answer when I address it by name",
+  handoff: "Let it take over the conversation",
+};
+
+export const APPROVAL_LABELS = {
+  none: "Runs without asking",
+  standard: "Ask me before it runs",
+  strict: "Always ask me before it runs",
+};
+
+export const MEMORY_SCOPE_LABELS = {
+  none: "No memory",
+  working: "This conversation",
+  episodic: "This conversation and past conversations",
+  semantic: "This conversation and known facts",
+  full: "All memory",
+};
+
+const PROFILE_DEFAULTS = {
   output_contract: { type: "object" },
   provider_model_policy: {},
-  runtime: { kind: "internal" },
 };
 
 export function agentProfileDocument(agent) {
@@ -64,21 +74,126 @@ export function agentProfileDocument(agent) {
   return document;
 }
 
-export function parseAgentProfile(text) {
-  let parsed;
-  try {
-    parsed = JSON.parse(text);
-  } catch {
-    throw new Error("The profile must be valid JSON.");
+export function agentModesSummary(modes) {
+  return (modes || []).map((mode) => INVOCATION_MODE_LABELS[mode] || mode).join(" · ") || "Not reachable";
+}
+
+export function profileIdFromName(name) {
+  return String(name || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64);
+}
+
+function formFromDocument(document, overrides = {}) {
+  return {
+    profile_id: document.profile_id || "",
+    display_name: document.display_name || "",
+    purpose: document.purpose || "",
+    instructions: document.instructions || "",
+    modes: [...(document.invocation_modes || [])],
+    approval_class: document.approval_class || "standard",
+    memory_scope: document.memory_scope || "none",
+    capability_ids: [...(document.capability_ids || [])],
+    timeout_seconds: Math.round((document.timeout_ms || 30000) / 1000),
+    cancellable: document.cancellable !== false,
+    runtime_kind: document.runtime?.kind || "internal",
+    adapter_id: document.runtime?.adapter_id || "",
+    base: document,
+    ...overrides,
+  };
+}
+
+export function newAgentForm() {
+  return formFromDocument({ invocation_modes: ["direct"] });
+}
+
+export function agentFormFromProfile(agent) {
+  return formFromDocument(agentProfileDocument(agent));
+}
+
+export function duplicateAgentForm(agent) {
+  const document = agentProfileDocument(agent);
+  return formFromDocument(document, {
+    profile_id: profileIdFromName(`${document.profile_id}-copy`),
+    display_name: `${document.display_name} (copy)`,
+  });
+}
+
+export function agentFormErrors(form) {
+  if (!form.display_name.trim()) return "Give the agent a name.";
+  if (!(form.profile_id.trim() || profileIdFromName(form.display_name))) {
+    return "The name needs at least one letter or number.";
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    throw new Error("The profile must be a JSON object.");
+  if (!form.purpose.trim()) return "Say what the agent is for.";
+  if (!form.instructions.trim()) return "Tell the agent how to work.";
+  if (!form.modes.length) return "Choose at least one way to reach the agent.";
+  const seconds = Number(form.timeout_seconds);
+  if (!Number.isInteger(seconds) || seconds < 1 || seconds > 600) {
+    return "The time limit must be a whole number of seconds from 1 to 600.";
   }
-  return parsed;
+  if (form.runtime_kind === "acp" && !form.adapter_id.trim()) {
+    return "Name the external agent definition it runs in.";
+  }
+  return "";
+}
+
+export function agentProfileFromForm(form) {
+  return {
+    ...PROFILE_DEFAULTS,
+    ...form.base,
+    profile_id: form.profile_id.trim() || profileIdFromName(form.display_name),
+    display_name: form.display_name.trim(),
+    purpose: form.purpose.trim(),
+    instructions: form.instructions.trim(),
+    invocation_modes: Object.keys(INVOCATION_MODE_LABELS).filter((mode) => form.modes.includes(mode)),
+    approval_class: form.approval_class,
+    memory_scope: form.memory_scope,
+    capability_ids: [...form.capability_ids],
+    timeout_ms: Number(form.timeout_seconds) * 1000,
+    cancellable: form.runtime_kind === "acp" ? true : Boolean(form.cancellable),
+    runtime: form.runtime_kind === "acp"
+      ? { kind: "acp", adapter_id: form.adapter_id.trim() }
+      : { kind: "internal" },
+  };
+}
+
+export function agentToolLabel(tool) {
+  const notes = [tool.needs_approval ? "asks you first" : "", tool.available ? "" : "unavailable now"].filter(Boolean);
+  return notes.length ? `${tool.label} (${notes.join(", ")})` : tool.label;
 }
 
 export function agentStateNotice(enabled) {
   return enabled ? "Agent enabled." : "Agent disabled.";
+}
+
+export function handoffStatusText(activeAgent) {
+  return activeAgent ? `Talking to ${activeAgent.display_name || activeAgent.profile_id}` : "";
+}
+
+export function createHandoffStatus({ label, endButton, endHandoff, onEnded, onError }) {
+  let sessionId = "";
+  endButton.addEventListener("click", async () => {
+    if (!sessionId) return;
+    endButton.disabled = true;
+    try {
+      await endHandoff(sessionId);
+      await onEnded?.();
+    } catch (error) {
+      endButton.disabled = false;
+      onError(error);
+    }
+  });
+  return {
+    render(status) {
+      const activeAgent = status?.active_agent || null;
+      sessionId = activeAgent ? status.session_id || "" : "";
+      label.textContent = handoffStatusText(activeAgent);
+      endButton.hidden = !activeAgent;
+      endButton.disabled = false;
+    },
+  };
 }
 
 function copyState(state) {
@@ -103,7 +218,9 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     mutationError: "",
     notice: "",
     editing: "",
-    draft: "",
+    form: null,
+    tools: [],
+    toolsError: "",
   };
   let agentsSequence = 0;
   let runsSequence = 0;
@@ -206,43 +323,76 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     return state.agents.find((agent) => agent.profile_id === profileId) || null;
   }
 
-  function startCreate() {
-    state.editing = "new";
-    state.draft = JSON.stringify(NEW_AGENT_PROFILE, null, 2);
+  async function refreshTools() {
+    if (!handlers.listAgentTools) return;
+    try {
+      const payload = await handlers.listAgentTools();
+      state.tools = payload?.tools || [];
+      state.toolsError = "";
+    } catch (error) {
+      state.toolsError = errorMessage(error, "The list of tools is unavailable.");
+    }
+    if (state.form) emit();
+  }
+
+  function openForm(editing, form) {
+    state.editing = editing;
+    state.form = form;
     state.notice = "";
     state.mutationError = "";
     emit();
+    return refreshTools();
+  }
+
+  function startCreate() {
+    return openForm("new", newAgentForm());
+  }
+
+  function startDuplicate(profileId) {
+    const agent = agentById(profileId);
+    return agent ? openForm("new", duplicateAgentForm(agent)) : null;
   }
 
   function startEdit(profileId) {
     const agent = agentById(profileId);
-    if (!agent?.editable) return;
-    state.editing = profileId;
-    state.draft = JSON.stringify(agentProfileDocument(agent), null, 2);
-    state.notice = "";
-    state.mutationError = "";
-    emit();
+    return agent?.editable ? openForm(profileId, agentFormFromProfile(agent)) : null;
   }
 
-  function setDraft(value) {
-    state.draft = value;
+  // Text fields update the form without re-rendering, so typing never loses the caret; only
+  // choices that change which fields are shown re-render.
+  function setField(name, value, { rerender = false } = {}) {
+    if (!state.form) return;
+    state.form = { ...state.form, [name]: value };
+    if (rerender) emit();
+  }
+
+  function setMode(mode, checked) {
+    if (!state.form) return;
+    const modes = state.form.modes.filter((item) => item !== mode);
+    state.form = { ...state.form, modes: checked ? [...modes, mode] : modes };
+  }
+
+  function setTool(capabilityId, checked) {
+    if (!state.form) return;
+    const tools = state.form.capability_ids.filter((item) => item !== capabilityId);
+    state.form = { ...state.form, capability_ids: checked ? [...tools, capabilityId] : tools };
   }
 
   function cancelEdit() {
     state.editing = "";
-    state.draft = "";
+    state.form = null;
     emit();
   }
 
   async function save() {
-    let profile;
-    try {
-      profile = parseAgentProfile(state.draft);
-    } catch (error) {
-      state.mutationError = error.message;
+    if (!state.form) return null;
+    const problem = agentFormErrors(state.form);
+    if (problem) {
+      state.mutationError = problem;
       emit();
       return null;
     }
+    const profile = agentProfileFromForm(state.form);
     const editing = state.editing;
     const payload = await mutate(
       () => (editing === "new"
@@ -253,7 +403,7 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     );
     if (payload) {
       state.editing = "";
-      state.draft = "";
+      state.form = null;
       state.selectedProfileId = payload.profile_id || state.selectedProfileId;
       emit();
     }
@@ -299,8 +449,11 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     invoke,
     cancel,
     startCreate,
+    startDuplicate,
     startEdit,
-    setDraft,
+    setField,
+    setMode,
+    setTool,
     cancelEdit,
     save,
     remove,
@@ -370,7 +523,7 @@ function renderCatalog(state) {
     row.setAttribute("aria-pressed", agent.profile_id === state.selectedProfileId ? "true" : "false");
     appendText(row, agent.display_name || agent.profile_id, "strong");
     appendText(row, agent.purpose, "span", "agents-row-meta");
-    appendText(row, formatValue(agent.invocation_modes), "span", "agents-row-meta");
+    appendText(row, agentModesSummary(agent.invocation_modes), "span", "agents-row-meta");
     if (agent.enabled === false) appendText(row, "disabled", "span", "agents-row-meta");
     row.addEventListener("click", () => state.actions.selectAgent(agent.profile_id));
     item.appendChild(row);
@@ -393,14 +546,13 @@ function renderDetail(state) {
   appendText(section, agent.purpose, "p", "agents-help");
   const facts = document.createElement("dl");
   facts.className = "agents-facts";
-  labeledValue(facts, "Profile", agent.profile_id);
-  labeledValue(facts, "Invocation", agent.invocation_modes);
-  labeledValue(facts, "Approval", agent.approval_class);
-  labeledValue(facts, "Capabilities", agent.capability_ids);
-  labeledValue(facts, "Memory scope", agent.memory_scope);
-  labeledValue(facts, "Cancellable", agent.cancellable);
+  labeledValue(facts, "Reached by", agentModesSummary(agent.invocation_modes));
+  labeledValue(facts, "Approval", APPROVAL_LABELS[agent.approval_class] || agent.approval_class);
+  labeledValue(facts, "Memory it can read", MEMORY_SCOPE_LABELS[agent.memory_scope] || agent.memory_scope);
+  labeledValue(facts, "Tools it may use", agent.capability_ids?.length ? `${agent.capability_ids.length} allowed` : "None");
+  labeledValue(facts, "Can be stopped", agent.cancellable);
   labeledValue(facts, "Runs in", agentRuntimeLabel(agent.runtime));
-  labeledValue(facts, "Owner", agent.editable ? "Operator" : "Application (read-only)");
+  labeledValue(facts, "Owner", agent.editable ? "You (editable)" : "Built in (duplicate it to change it)");
   labeledValue(facts, "Enabled", agent.enabled !== false);
   section.appendChild(facts);
 
@@ -465,6 +617,13 @@ function renderDetail(state) {
     remove.disabled = state.mutationPending;
     remove.addEventListener("click", () => state.actions.remove(agent.profile_id));
     buttons.appendChild(remove);
+  } else {
+    const duplicate = document.createElement("button");
+    duplicate.type = "button";
+    duplicate.textContent = "Duplicate as my agent";
+    duplicate.disabled = state.mutationPending || Boolean(state.editing);
+    duplicate.addEventListener("click", () => state.actions.startDuplicate(agent.profile_id));
+    buttons.appendChild(duplicate);
   }
   section.appendChild(buttons);
   return section;
@@ -475,26 +634,145 @@ function agentRuntimeLabel(runtime) {
   return "JARVIS";
 }
 
+function formField(parent, labelText, control, help = "") {
+  const label = document.createElement("label");
+  label.className = "agents-field-control";
+  appendText(label, labelText);
+  label.appendChild(control);
+  if (help) appendText(label, help, "span", "agents-help");
+  parent.appendChild(label);
+  return control;
+}
+
+function textControl(state, name, { multiline = false, rows = 3 } = {}) {
+  const control = document.createElement(multiline ? "textarea" : "input");
+  if (multiline) control.rows = rows;
+  else control.type = "text";
+  control.name = name;
+  control.value = state.form[name];
+  control.addEventListener("input", (event) => state.actions.setField(name, event.target.value));
+  return control;
+}
+
+function selectControl(state, name, labels, { rerender = false } = {}) {
+  const control = document.createElement("select");
+  control.name = name;
+  for (const [value, text] of Object.entries(labels)) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    option.selected = state.form[name] === value;
+    control.appendChild(option);
+  }
+  control.addEventListener("change", (event) => state.actions.setField(name, event.target.value, { rerender }));
+  return control;
+}
+
+function renderToolChoices(state) {
+  const tools = document.createElement("fieldset");
+  tools.className = "agents-choices";
+  appendText(tools, "Tools it may use", "legend");
+  const known = new Set(state.tools.map((tool) => tool.capability_id));
+  // A tool already allowed but no longer offered stays listed, so saving never drops it silently.
+  const choices = [
+    ...state.tools,
+    ...state.form.capability_ids
+      .filter((id) => !known.has(id))
+      .map((id) => ({ capability_id: id, label: id, needs_approval: false, available: false })),
+  ];
+  if (state.toolsError) appendText(tools, state.toolsError, "p", "agents-error");
+  if (!choices.length) {
+    appendText(tools, "No tools are available. Add them in Extensions.", "p", "agents-help");
+    return tools;
+  }
+  for (const tool of choices) {
+    const option = document.createElement("label");
+    option.className = "agents-choice";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.name = `tool-${tool.capability_id}`;
+    box.checked = state.form.capability_ids.includes(tool.capability_id);
+    box.addEventListener("change", (event) => state.actions.setTool(tool.capability_id, event.target.checked));
+    option.append(box, document.createTextNode(agentToolLabel(tool)));
+    tools.appendChild(option);
+  }
+  return tools;
+}
+
 function renderEditor(state) {
+  const form = state.form;
   const section = document.createElement("section");
   section.className = "agents-section";
-  appendText(section, state.editing === "new" ? "New agent profile" : "Edit agent profile", "h3");
-  const form = document.createElement("form");
-  form.className = "agents-invoke";
-  const label = document.createElement("label");
-  appendText(label, "Profile (JSON)");
-  const draft = document.createElement("textarea");
-  draft.name = "profile";
-  draft.rows = 16;
-  draft.value = state.draft;
-  draft.addEventListener("input", (event) => state.actions.setDraft(event.target.value));
-  label.appendChild(draft);
-  form.appendChild(label);
+  appendText(section, state.editing === "new" ? "New agent" : `Edit ${form.display_name}`, "h3");
+  const element = document.createElement("form");
+  element.className = "agents-form";
+
+  formField(element, "Name", textControl(state, "display_name"));
+  if (state.editing === "new") {
+    const id = textControl(state, "profile_id");
+    id.placeholder = "made from the name";
+    formField(element, "ID", id, "Lowercase letters, numbers, and hyphens. Leave blank to use the name.");
+  }
+  formField(element, "What it is for", textControl(state, "purpose"));
+  formField(element, "How it should work", textControl(state, "instructions", { multiline: true, rows: 5 }));
+
+  const modes = document.createElement("fieldset");
+  modes.className = "agents-choices";
+  appendText(modes, "How it can be reached", "legend");
+  for (const [mode, text] of Object.entries(INVOCATION_MODE_LABELS)) {
+    const option = document.createElement("label");
+    option.className = "agents-choice";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.name = `mode-${mode}`;
+    box.checked = form.modes.includes(mode);
+    box.addEventListener("change", (event) => state.actions.setMode(mode, event.target.checked));
+    option.append(box, document.createTextNode(text));
+    modes.appendChild(option);
+  }
+  element.appendChild(modes);
+
+  formField(element, "Approval", selectControl(state, "approval_class", APPROVAL_LABELS));
+  formField(
+    element,
+    "Memory it can read",
+    selectControl(state, "memory_scope", MEMORY_SCOPE_LABELS),
+    "Agents only read memory. What is retained follows your Memory settings.",
+  );
+  element.appendChild(renderToolChoices(state));
+  const timeout = document.createElement("input");
+  timeout.type = "number";
+  timeout.name = "timeout_seconds";
+  timeout.min = "1";
+  timeout.max = "600";
+  timeout.value = String(form.timeout_seconds);
+  timeout.addEventListener("input", (event) => state.actions.setField("timeout_seconds", event.target.value));
+  formField(element, "Time limit (seconds)", timeout);
+  formField(
+    element,
+    "Runs in",
+    selectControl(state, "runtime_kind", { internal: "JARVIS", acp: "An external agent" }, { rerender: true }),
+    form.runtime_kind === "acp" ? "An external agent can only be run from this panel." : "",
+  );
+  if (form.runtime_kind === "acp") {
+    formField(element, "External agent definition", textControl(state, "adapter_id"), "The ID of its ACP definition in Extensions.");
+  } else {
+    const stop = document.createElement("label");
+    stop.className = "agents-choice";
+    const box = document.createElement("input");
+    box.type = "checkbox";
+    box.name = "cancellable";
+    box.checked = form.cancellable;
+    box.addEventListener("change", (event) => state.actions.setField("cancellable", event.target.checked));
+    stop.append(box, document.createTextNode("Can be stopped while it runs"));
+    element.appendChild(stop);
+  }
+
   const buttons = document.createElement("div");
   buttons.className = "agents-buttons";
   const save = document.createElement("button");
   save.type = "submit";
-  save.textContent = "Save profile";
+  save.textContent = "Save agent";
   save.disabled = state.mutationPending;
   buttons.appendChild(save);
   const discard = document.createElement("button");
@@ -502,13 +780,12 @@ function renderEditor(state) {
   discard.textContent = "Discard changes";
   discard.addEventListener("click", () => state.actions.cancelEdit());
   buttons.appendChild(discard);
-  form.appendChild(buttons);
-  form.addEventListener("submit", (event) => {
+  element.appendChild(buttons);
+  element.addEventListener("submit", (event) => {
     event.preventDefault();
-    state.actions.setDraft(draft.value);
     state.actions.save();
   });
-  section.appendChild(form);
+  section.appendChild(element);
   return section;
 }
 
@@ -570,8 +847,11 @@ export function createAgentsPanel(container, handlers, options = {}) {
     invoke: (profileId, prompt) => controller.invoke(profileId, prompt),
     cancel: (profileId) => controller.cancel(profileId),
     startCreate: () => controller.startCreate(),
+    startDuplicate: (profileId) => controller.startDuplicate(profileId),
     startEdit: (profileId) => controller.startEdit(profileId),
-    setDraft: (value) => controller.setDraft(value),
+    setField: (name, value, options) => controller.setField(name, value, options),
+    setMode: (mode, checked) => controller.setMode(mode, checked),
+    setTool: (capabilityId, checked) => controller.setTool(capabilityId, checked),
     cancelEdit: () => controller.cancelEdit(),
     save: () => controller.save(),
     remove: (profileId) => controller.remove(profileId),

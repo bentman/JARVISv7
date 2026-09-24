@@ -1023,9 +1023,10 @@ def build_agent_handlers(
 ) -> dict[str, CapabilityHandler]:
     """Executors for the `agent-invoke-*` descriptors the catalog builds from the registry.
 
-    An internal-runtime agent runs through TurnEngine: inside the proposing turn when the
-    call comes from that turn (as_tool), otherwise as its own turn (direct). An ACP-runtime
-    agent runs through its ACP definition's already-authorized prompt operation.
+    An internal-runtime agent runs through TurnEngine: inside the proposing turn, in the mode
+    that turn is delegating in (as_tool, router_selected, or handoff), or otherwise as its
+    own turn (direct). An ACP-runtime agent runs through its ACP definition's
+    already-authorized prompt operation.
     """
     from backend.app.actions import catalog
     from backend.app.agents.invocation import AgentInvoker
@@ -1061,18 +1062,16 @@ def build_agent_handlers(
                 raise ValueError(f"unknown agent profile: {profile_id}")
             if profile.runtime_kind == "acp":
                 return invoke_acp(profile, arguments["prompt"], operation)
-            if engine_provider().is_active_turn(operation.turn_id):
-                result = invoker.invoke_as_tool(
-                    profile_id, arguments["prompt"], engine_provider, operation
-                )
-                # Inside a turn a failed delegation is a failed action, so the turn explains
-                # it instead of grounding an empty answer.
-                if result.status != "success":
-                    raise RuntimeError(result.error or "agent run failed")
-                return result.to_dict()
-            return invoker.invoke_direct(
-                profile_id, arguments["prompt"], engine_provider, operation
-            ).to_dict()
+            mode = engine_provider().in_turn_mode(operation.turn_id)
+            result = invoker.invoke(
+                profile_id, arguments["prompt"], mode or "direct", engine_provider, operation
+            )
+            # Inside a turn a failed delegation is a failed action, so the turn explains it
+            # instead of answering from an empty result. An agent paused for approval is not
+            # a failure: its question becomes the turn's answer.
+            if mode is not None and result.status not in {"success", "awaiting_approval"}:
+                raise RuntimeError(result.error or "agent run failed")
+            return result.to_dict()
 
         return handler
 
