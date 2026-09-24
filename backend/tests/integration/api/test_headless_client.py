@@ -179,14 +179,21 @@ def test_headless_client_can_create_and_close_session() -> None:
     assert closed.json()["closed"] is True
 
 
-def test_headless_client_drives_three_text_turns_in_one_active_session(tmp_path: Path) -> None:
+def test_headless_client_drives_three_text_turns_in_one_active_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from backend.app.conversation.session_manager import SessionManager
+
     profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-integration")
     flags = CapabilityFlags(supports_local_stt=True, supports_local_tts=True, supports_wake_word=True)
     runtime = _FakeRuntime()
-    manager = __import__("backend.app.conversation.session_manager", fromlist=["SessionManager"]).SessionManager(
-        turns_base_dir=tmp_path / "turns",
-        sessions_base_dir=tmp_path / "sessions",
-    )
+
+    def new_manager() -> SessionManager:
+        return SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+
+    # Sessions the route creates must land in tmp_path, not the repo's data/ root.
+    monkeypatch.setattr("backend.app.services.session_service.SessionManager", new_manager)
+    manager = new_manager()
 
     def build_engine(session_manager):
         return __import__("backend.app.conversation.engine", fromlist=["TurnEngine"]).TurnEngine(
