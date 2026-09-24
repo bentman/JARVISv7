@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -374,6 +375,32 @@ def test_headless_client_manages_an_agent_profile_and_records_its_delegated_run(
 
     audit = [record["capability_id"] for record in capabilities.audit(limit=100).records]
     assert {"agent-profile-write", "agent-invoke-notes"} <= set(audit)
+    runs = client.get("/agents/runs").json()["records"]
+    assert runs and {record["capability_id"] for record in runs} == {"agent-invoke-notes"}
+    assert client.post("/agents/notes/cancel").json() == {"profile_id": "notes", "cancelled": False}
+
+    # The operator's stop control reaches a run that is still working.
+    started, release = threading.Event(), threading.Event()
+
+    def slow_generate(prompt: str, **kwargs: object) -> str:
+        started.set()
+        release.wait(timeout=5)
+        return "late answer"
+
+    engine.llm.generate = slow_generate  # type: ignore[method-assign]
+    running: list[dict] = []
+    worker = threading.Thread(target=lambda: running.append(
+        client.post("/agents/invoke", json={"profile_id": "notes", "prompt": "tidy again"}).json()
+    ))
+    worker.start()
+    assert started.wait(timeout=5)
+    assert client.post("/agents/notes/cancel").json() == {"profile_id": "notes", "cancelled": True}
+    release.set()
+    worker.join(timeout=5)
+    [cancelled] = running
+    assert cancelled["status"] == "cancelled"
+    assert manager.turn_artifacts[-1].delegated_runs[0]["status"] == "cancelled"
+
     deleted = client.delete(
         "/agents/notes", params={"expected_fingerprint": updated.json()["fingerprint"]}
     )
@@ -455,3 +482,71 @@ def test_headless_client_hands_a_session_to_an_agent_and_ends_the_handoff(
     assert ended == {"ended": True}
     assert client.get("/session/status").json()["active_agent"] is None
 
+
+def test_production_wiring_runs_an_operator_extension_on_the_current_sessions_engine(
+    tmp_path: Path, new_manager, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # create_app installs the extension executor and bind_session rebuilds the engine per
+    # session; both are the production functions here, not test-assembled stand-ins.
+    from unittest.mock import MagicMock
+
+    import backend.app.extensions.acp as acp
+    from backend.app.actions import boundaries
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.api.app import bind_session
+    from backend.app.personality.loader import load_default_personality
+    from backend.app.services.capability_service import CapabilityService
+    from backend.app.services.extension_runtime_service import ExtensionRuntimeService
+
+    repo = tmp_path / "repo"
+    (repo / "data").mkdir(parents=True)
+    monkeypatch.setattr(boundaries, "REPO_ROOT", repo)
+    (tmp_path / "config" / "extensions" / "acp").mkdir(parents=True)
+    (tmp_path / "config" / "extensions" / "acp" / "agent.yaml").write_text(
+        "id: agent\nname: Agent\nversion: '1'\ndefinition:\n  command: [agent-bin, serve]\n"
+        "  process:\n    subprocess: true\n    argv_allowlist: [agent-bin]\n"
+        "    env_passthrough: []\n    working_root: data\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(acp, "run_acp", lambda _manager, definition, prompt, operation, **_kwargs: {
+        "agent_id": definition.agent_id, "prompt": prompt,
+    })
+    runtime = ExtensionRuntimeService(
+        CapabilityService(observe=lambda: CapabilityObservation(extension_catalog_present=True)),
+        config_dir=tmp_path / "config", data_dir=repo / "data", db_path=repo / "data" / "operator.sqlite",
+    )
+    profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-integration")
+    state = ApiState(
+        report=FullCapabilityReport(profile=profile, flags=CapabilityFlags()),
+        profile=profile, extras=["dev"],
+        preflight=PreflightResult(tokens=[], dll_discovery_log=[], probe_errors={}),
+        readiness={}, personality=load_default_personality(),
+        stt=_FakeRuntime(), tts=_FakeRuntime(), llm=_FakeRuntime(),  # type: ignore[arg-type]
+        session_manager=new_manager(), engine=None,  # type: ignore[arg-type]
+        session_service=None,  # type: ignore[arg-type]
+        wake_monitor=MagicMock(), cache_manager=CacheManager(), extension_runtime=runtime,
+    )
+    first_engine = bind_session(state, state.session_manager)
+    state.session_service = SessionService(
+        session_manager=state.session_manager, engine=first_engine,
+        engine_factory=lambda manager: bind_session(state, manager),
+    )
+    client = TestClient(create_app(state))
+    capability_id = runtime.detail("acp:agent")["operations"][0]["capability_id"]
+    invoke = {"capability_id": capability_id, "arguments": {"prompt": "summarize"}}
+
+    session_id = client.post("/session/create", json={}).json()["session_id"]
+    executed = client.post("/extensions/acp:agent/invoke", json=invoke).json()
+
+    assert executed["status"] == "success"
+    assert state.engine is not first_engine
+    assert state.engine is state.session_service.engine()
+    [artifact] = state.session_manager.turn_artifacts
+    assert artifact.session_id == session_id
+    assert [run["target_id"] for run in artifact.delegated_runs] == ["acp:agent"]
+    assert first_engine.session_manager.turn_artifacts == []
+
+    client.post("/session/close", json={"session_id": session_id})
+    refused = client.post("/extensions/acp:agent/invoke", json=invoke).json()
+    assert refused["status"] == "failure"
+    assert state.session_manager.turn_artifacts == [artifact]

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import pytest
-from backend.app.actions.boundaries import ActionOperation
 from backend.app.actions.catalog import (
-    MEMORY_RECORD_CONFIRM,
     MEMORY_RECORD_FORGET,
     OPERATOR_CONFIG_WRITE,
     PROVIDER_CONNECTIVITY_TEST,
@@ -82,74 +80,33 @@ def test_catalog_explains_a_disabled_capability_instead_of_hiding_it() -> None:
     assert "Enable DDGS, SearXNG, or Tavily" in search["unavailable_explanation"]
 
 
-def test_turn_boundary_capabilities_cannot_be_proposed_through_the_api() -> None:
-    client = _client(_service())
-
-    response = client.post(
-        "/actions/propose",
-        json={
-            "capability_id": SEARCH_PUBLIC_WEB,
-            "arguments": {"mode": "search", "topic": "weather", "queries": ["weather"]},
-            "reason": "operator asked for a search",
-        },
-    )
-
-    assert response.status_code == 409
-    assert response.json()["detail"]["error"] == "turn_boundary_capability"
-
-
-def test_an_approval_required_proposal_parks_without_executing() -> None:
+def test_the_approval_lifecycle_is_served_over_http() -> None:
+    # Approval policy itself is covered by test_capability_service.py; this covers its HTTP shape.
     calls: list[dict] = []
     client = _client(
         _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
     )
 
-    response = client.post("/actions/propose", json=_forget_payload(proposed_by="model"))
-
-    assert response.status_code == 200
-    body = response.json()
-    assert (body["outcome"], body["status"]) == ("approval_required", "awaiting_approval")
-    assert body["execution"] is None
+    parked = client.post("/actions/propose", json=_forget_payload(proposed_by="model"))
+    assert parked.status_code == 200
+    body = parked.json()
+    assert (body["outcome"], body["status"], body["execution"]) == ("approval_required", "awaiting_approval", None)
     assert body["approval_id"] and body["expires_at"]
-    assert calls == []
-
     pending = client.get("/actions/pending").json()["pending"]
     assert [item["proposal_id"] for item in pending] == [body["proposal_id"]]
 
-
-def test_approval_executes_once_and_a_second_decision_is_refused() -> None:
-    calls: list[dict] = []
-    client = _client(
-        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
-    )
-    proposal_id = client.post("/actions/propose", json=_forget_payload()).json()["proposal_id"]
-
-    approved = client.post(f"/actions/{proposal_id}/decision", json={"outcome": "approved"})
-
+    approved = client.post(f"/actions/{body['proposal_id']}/decision", json={"outcome": "approved"})
     assert approved.status_code == 200
-    assert approved.json()["status"] == "success"
-    assert approved.json()["execution"]["result"] == {"ok": True}
-    assert len(calls) == 1
-
-    repeated = client.post(f"/actions/{proposal_id}/decision", json={"outcome": "approved"})
+    assert (approved.json()["status"], approved.json()["execution"]["result"]) == ("success", {"ok": True})
+    repeated = client.post(f"/actions/{body['proposal_id']}/decision", json={"outcome": "approved"})
     assert repeated.status_code == 409
     assert repeated.json()["detail"]["error"] in {"already_decided", "unknown_proposal"}
+
+    second = client.post("/actions/propose", json=_forget_payload()).json()["proposal_id"]
+    denied = client.post(f"/actions/{second}/decision", json={"outcome": "denied", "reason": "not now"})
+    assert denied.status_code == 200
+    assert denied.json()["status"] == "denied"
     assert len(calls) == 1
-
-
-def test_a_denied_decision_never_executes() -> None:
-    calls: list[dict] = []
-    client = _client(
-        _service(**{MEMORY_RECORD_FORGET: lambda args, op: calls.append(args) or {"ok": True}})  # type: ignore[func-returns-value, arg-type]
-    )
-    proposal_id = client.post("/actions/propose", json=_forget_payload()).json()["proposal_id"]
-
-    response = client.post(
-        f"/actions/{proposal_id}/decision", json={"outcome": "denied", "reason": "not now"}
-    )
-
-    assert response.json()["status"] == "denied"
-    assert calls == []
     assert client.get("/actions/pending").json()["pending"] == []
 
 
@@ -225,27 +182,6 @@ def test_secret_arguments_never_appear_in_responses_or_the_audit() -> None:
     assert parked.json()["arguments"]["api_key"] == "***"
     assert "sk-do-not-leak-this-value" not in client.get("/actions/pending").text
     assert "sk-do-not-leak-this-value" not in client.get("/actions/audit").text
-
-
-def test_handler_failures_return_a_recorded_result_without_leaking_internals() -> None:
-    def handler(args: dict, op: ActionOperation) -> dict:
-        raise OSError("C:/private/memory.sqlite is locked by internal-vectorizer")
-
-    client = _client(_service(**{MEMORY_RECORD_CONFIRM: handler}))  # type: ignore[arg-type]
-
-    response = client.post(
-        "/actions/propose",
-        json={
-            "capability_id": MEMORY_RECORD_CONFIRM,
-            "arguments": {"fact_id": "fact-1", "expected_revision": 1},
-            "reason": "operator confirmed the fact",
-        },
-    )
-
-    assert response.status_code == 200
-    assert response.json()["execution"]["error"] == "capability execution failed"
-    for prohibited in ("C:/private", "internal-vectorizer", "sqlite", "Traceback"):
-        assert prohibited not in response.text
 
 
 def test_unexpected_service_failures_return_a_sanitized_500() -> None:

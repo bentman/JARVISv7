@@ -67,6 +67,50 @@ def _service(tmp_path: Path) -> tuple[MemoryService, SemanticMemory]:
     return MemoryService(semantic_memory=memory, curation_service=None), memory
 
 
+def test_governed_memory_capabilities_reach_the_matching_lifecycle_operation(tmp_path: Path) -> None:
+    from backend.app.actions import catalog
+    from backend.app.actions.catalog import CapabilityObservation
+    from backend.app.services.capability_service import CapabilityService, build_capability_handlers
+
+    service, memory = _service(tmp_path)
+    capabilities = CapabilityService(
+        observe=lambda: CapabilityObservation(memory_service_present=True),
+        handlers=build_capability_handlers(memory_service_provider=lambda: service),
+    )
+
+    def run(capability_id: str, **arguments: object) -> dict:
+        view = capabilities.invoke_operator_capability(
+            capability_id=capability_id, arguments=arguments, reason="operator memory action"
+        )
+        assert view.status == "success", view
+        return view.execution["result"]  # type: ignore[index]
+
+    pending = _create(memory, key="profile.city", state=LifecycleState.PENDING_REVIEW)
+    confirmed = run(catalog.MEMORY_RECORD_CONFIRM, fact_id=pending.fact_id,
+                    expected_revision=pending.revision)
+    assert confirmed["lifecycle_state"] == "active"
+
+    disputed = run(catalog.MEMORY_RECORD_DISPUTE, fact_id=pending.fact_id,
+                   expected_revision=confirmed["revision"], reason="not sure")
+    assert disputed["lifecycle_state"] == "disputed"
+
+    corrected = run(catalog.MEMORY_RECORD_CORRECT, fact_id=pending.fact_id,
+                    expected_revision=disputed["revision"], replacement_text="The user lives in Oslo.",
+                    replacement_value="Oslo")
+    assert corrected["replacement"]["value"] == "Oslo"
+
+    replacement_id = corrected["replacement"]["fact_id"]
+    forgotten = run(catalog.MEMORY_RECORD_FORGET, fact_id=replacement_id,
+                    expected_revision=corrected["replacement"]["revision"])
+    assert forgotten["record"]["lifecycle_state"] == "forgotten"
+    assert service.read_record(replacement_id).record.lifecycle_state == "forgotten"
+
+    policy = service.read_policy()
+    updated = run(catalog.MEMORY_POLICY_UPDATE, automatic_curation_enabled=True,
+                  expected_revision=policy.revision)
+    assert updated["automatic_curation_enabled"] is True
+
+
 def test_policy_is_opt_in_persisted_and_stale_conflict_is_actionable(tmp_path: Path) -> None:
     service, _memory = _service(tmp_path)
 

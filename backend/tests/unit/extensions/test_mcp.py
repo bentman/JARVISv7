@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from backend.app.actions import ActionCancelledError, ActionOperation, ExecutionBoundary
@@ -438,7 +439,6 @@ def test_stale_mcp_snapshot_keeps_detail_data_but_hides_dynamic_operations() -> 
             },
         }
     }
-    service.mcp_credentials = lambda _definition, _local_id: {}  # type: ignore[method-assign]
 
     snapshot = service._fresh_mcp_snapshot("mcp:example", definition(), "example")
 
@@ -448,18 +448,45 @@ def test_stale_mcp_snapshot_keeps_detail_data_but_hides_dynamic_operations() -> 
     assert snapshot["cache_metadata"]["resources"]["freshness"] == "unknown"
 
 
-def test_private_mcp_snapshot_is_not_reused_after_credential_context_changes() -> None:
+def test_private_mcp_snapshot_is_reused_only_under_the_credential_it_was_discovered_with() -> None:
+    secrets = {("extension:mcp:example", "API_TOKEN"): "first"}
     service = ExtensionRuntimeService.__new__(ExtensionRuntimeService)
+    service.runs = SimpleNamespace(store=SimpleNamespace(read_secret=lambda owner, name: secrets.get((owner, name))))  # type: ignore[assignment]
+    connection = definition(credential_ref="API_TOKEN")
+    discovered_under = service._mcp_credential_context_hash(connection, "example")
     service._snapshots = {
         "mcp:example": {
             "tools": [{"name": "safe", "inputSchema": {"type": "object"}}],
-            "credential_context_hash": "previous",
+            "credential_context_hash": discovered_under,
             "cache_metadata": {"tools": {"ttlMs": 60000, "cacheScope": "private"}},
         }
     }
-    service.mcp_credentials = lambda _definition, _local_id: {"Authorization": "Bearer changed"}  # type: ignore[method-assign]
 
-    assert service._fresh_mcp_snapshot("mcp:example", definition(), "example") == {}
+    assert service._fresh_mcp_snapshot("mcp:example", connection, "example")["tools"]
+
+    secrets[("extension:mcp:example", "API_TOKEN")] = "rotated"
+    assert service._fresh_mcp_snapshot("mcp:example", connection, "example") == {}
+
+    del secrets[("extension:mcp:example", "API_TOKEN")]
+    assert service._fresh_mcp_snapshot("mcp:example", connection, "example") == {}
+
+
+def test_an_unauthorized_oauth_connection_has_no_credential_context_to_discover_under() -> None:
+    service = ExtensionRuntimeService.__new__(ExtensionRuntimeService)
+    service.runs = SimpleNamespace(store=SimpleNamespace(read_secret=lambda owner, name: None))  # type: ignore[assignment]
+    connection = McpConnectionDefinition.from_mapping("example", {
+        "transport": "streamable_http",
+        "url": "https://mcp.example.test/mcp",
+        "oauth": {
+            "client_id": "c",
+            "authorization_url": "https://auth.example.test/authorize",
+            "token_url": "https://auth.example.test/token",
+        },
+    })
+
+    with pytest.raises(ValueError, match="not authorized"):
+        service._mcp_credential_context_hash(connection, "example")
+    assert service._mcp_credential_context_hash(connection, "example", tolerate_missing=True) is None
 
 
 def test_private_mcp_snapshot_without_stored_credential_context_is_not_reused() -> None:

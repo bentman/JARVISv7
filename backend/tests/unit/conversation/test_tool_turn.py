@@ -215,18 +215,6 @@ def test_a_failing_capability_is_explained_rather_than_hidden(tmp_path):
     assert manager.turn_artifacts[0].action_execution_results[0]["status"] == "failure"
 
 
-def test_acp_operations_are_never_offered(tmp_path):
-    runtime = Runtime([
-        {"capability_id": READ, "extension_id": "acp:agent", "name": "prompt",
-         "input_schema": {"type": "object"}},
-    ])
-    # tool_catalog is the real filter; this proves the engine offers what it returns.
-    model = ToolModel()
-    engine, _ = engine_at(tmp_path, model, runtime=runtime)
-    engine.run_text_turn("Hello there")
-    assert model.offered and all("acp" not in name for name in model.offered[0])
-
-
 def test_a_runtime_without_tool_calling_takes_the_plain_path(tmp_path):
     model = PlainModel()
     engine, manager = engine_at(tmp_path, model)

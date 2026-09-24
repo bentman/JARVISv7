@@ -1185,6 +1185,59 @@ def test_streaming_playback_resolves_and_closes_fresh_interruption_source():
     assert sources[0].closed is True
 
 
+def test_barge_in_during_streamed_playback_stops_the_player_and_the_synthesis(tmp_path):
+    import time
+
+    synthesized: list[int] = []
+    players: list[FakePlayback.IterablePlayer] = []
+
+    class StreamingTTS(FakeTTS):
+        @property
+        def supports_streaming(self) -> bool:
+            return True
+
+        def synthesize_stream(self, text: str) -> Iterator[tuple[np.ndarray, int]]:
+            for index in range(200):
+                synthesized.append(index)
+                time.sleep(0.005)
+                yield np.zeros(800, dtype=np.float32), 16000
+
+    class RecordingPlayback(FakePlayback):
+        def IterablePlayer(self, sample_rate: int) -> FakePlayback.IterablePlayer:  # type: ignore[override]
+            player = FakePlayback.IterablePlayer(sample_rate)
+            players.append(player)
+            return player
+
+    def speech_after_a_moment() -> Iterator[np.ndarray]:
+        for _ in range(3):
+            time.sleep(0.01)
+            yield np.zeros(8, dtype=np.float32)
+        while True:
+            yield np.full(8, 0.1, dtype=np.float32)
+
+    manager = SessionManager(session_id="session-1", turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+    result = _engine(
+        tts=StreamingTTS(available=True),
+        session_manager=manager,
+        barge_in_detector=BargeInDetector(
+            energy_threshold=0.02, guard_time_s=0.0, min_speech_s=0.0, time_source=lambda: 1.0,
+        ),
+        interruption_audio_chunks=speech_after_a_moment,
+        playback_api=RecordingPlayback(),
+    ).run_voice_turn(np.zeros(1600, dtype=np.float32), 16000)
+    synthesized_at_return = len(synthesized)
+
+    [player] = players
+    assert player.stopped is True
+    assert result.interrupted is True
+    assert result.final_state == ConversationState.IDLE
+    assert [event["type"] for event in result.interruption_events] == ["barge_in"]
+    assert manager.turn_artifacts[0].interruption_events[0]["recovery_state"] == "RECOVERING"
+    time.sleep(0.1)
+    # The synthesis worker may finish the chunk it was producing, then must stop.
+    assert 0 < len(synthesized) <= synthesized_at_return + 1, "synthesis must stop once the user barges in"
+
+
 def test_streaming_playback_start_failure_reports_playback_failure_phase():
     class TrackingInterruptionIterator(Iterator[np.ndarray]):
         def __init__(self) -> None:

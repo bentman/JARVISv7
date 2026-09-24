@@ -476,3 +476,46 @@ class TestTcpIntegration:
             assert prompt_resp["result"]["response"] == "pong"
         finally:
             server.stop()
+
+
+class TestServerRoutes:
+    def test_the_operator_starts_inspects_and_stops_the_server_over_http(self) -> None:
+        from backend.app.api.routes.acp_server import router
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        engine = MagicMock()
+        engine.run_text_turn.return_value = SimpleNamespace(
+            turn_id="route-turn", response_text="pong", final_state="IDLE"
+        )
+        app = FastAPI()
+        app.include_router(router)
+        app.state.jarvis_state = SimpleNamespace(engine=None)
+        client = TestClient(app)
+
+        assert client.get("/acp/server/status").json()["running"] is False
+        assert client.post("/acp/server/stop").json() == {"running": False, "closed_sessions": 0}
+
+        started = client.post("/acp/server/start", json={"max_sessions": 2}).json()
+        try:
+            port = started["port"]
+            assert started["running"] is True and port > 0
+            assert client.post("/acp/server/start", json={}).status_code == 409
+            status = client.get("/acp/server/status").json()
+            assert (status["running"], status["port"], status["max_sessions"]) == (True, port, 2)
+
+            sid = _send_json_rpc(port, {"jsonrpc": "2.0", "id": 1, "method": "initialize",
+                                        "params": {"client_info": {"name": "route-test"}}})["result"]["session_id"]
+            # The engine is resolved per prompt, so a session rebuilt after start is the one used.
+            app.state.jarvis_state.engine = engine
+            prompt = _send_json_rpc(port, {"jsonrpc": "2.0", "id": 2, "method": "prompt",
+                                           "params": {"session_id": sid, "message": {"text": "ping"}}})
+            assert prompt["result"]["response"] == "pong"
+            [session] = client.get("/acp/server/sessions").json()["sessions"]
+            assert (session["session_id"], session["turn_ids"]) == (sid, ["route-turn"])
+        finally:
+            stopped = client.post("/acp/server/stop").json()
+
+        assert stopped == {"running": False, "closed_sessions": 1}
+        assert client.get("/acp/server/status").json()["running"] is False
+        assert client.get("/acp/server/sessions").json()["sessions"] == []

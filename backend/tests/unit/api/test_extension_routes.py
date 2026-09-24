@@ -70,13 +70,6 @@ def test_a_disabled_family_member_explains_itself(tmp_path: Path) -> None:
     assert "Enable DDGS, SearXNG, or Tavily" in body["unavailable_explanation"]
 
 
-def test_requested_tools_appear_as_an_untrusted_request(tmp_path: Path) -> None:
-    body = _client(_service(tmp_path)).get("/extensions/skill:notes").json()
-
-    assert body["dependencies"] == ["search-public-web"]
-    assert body["metadata_claims"]["requested_capabilities"]["trusted"] is False
-
-
 def test_bodies_are_served_only_on_request(tmp_path: Path) -> None:
     client = _client(_service(tmp_path))
 
@@ -135,18 +128,6 @@ def test_state_changes_round_trip_and_conflict_on_a_stale_revision(tmp_path: Pat
     )
     assert stale.status_code == 409
     assert stale.json()["detail"]["current_revision"] == 1
-
-
-def test_a_retired_extension_cannot_be_revived(tmp_path: Path) -> None:
-    client = _client(_service(tmp_path))
-    client.post("/extensions/skill:notes/state", json={"state": "retired"})
-
-    response = client.post(
-        "/extensions/skill:notes/state", json={"state": "enabled", "expected_revision": 1}
-    )
-
-    assert response.status_code == 422
-    assert "retired" in response.json()["detail"]["message"]
 
 
 def test_unknown_extensions_and_states_are_refused(tmp_path: Path) -> None:

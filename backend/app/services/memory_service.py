@@ -379,7 +379,7 @@ class MemoryService:
         )
 
     def confirm(
-        self, fact_id: str, *, expected_revision: int, reason: str | None
+        self, fact_id: str, *, expected_revision: int, reason: str | None = None
     ) -> MemoryRecordView:
         evidence, selected_reason = self._user_action(reason, "user_confirmed")
         result = self._memory.confirm_fact(
@@ -391,7 +391,7 @@ class MemoryService:
         return self._record_view(self._value(result, operation="confirm memory", fact_id=fact_id))
 
     def dispute(
-        self, fact_id: str, *, expected_revision: int, reason: str | None
+        self, fact_id: str, *, expected_revision: int, reason: str | None = None
     ) -> MemoryRecordView:
         evidence, selected_reason = self._user_action(reason, "user_disputed")
         result = self._memory.dispute_fact(
@@ -403,7 +403,7 @@ class MemoryService:
         return self._record_view(self._value(result, operation="dispute memory", fact_id=fact_id))
 
     def forget(
-        self, fact_id: str, *, expected_revision: int, reason: str | None
+        self, fact_id: str, *, expected_revision: int, reason: str | None = None
     ) -> MemoryDetailView:
         evidence, selected_reason = self._user_action(reason, "user_forgotten")
         result = self._memory.forget_fact(
@@ -421,8 +421,8 @@ class MemoryService:
         *,
         expected_revision: int,
         replacement_text: str,
-        replacement_value: str | None,
-        reason: str | None,
+        replacement_value: str | None = None,
+        reason: str | None = None,
     ) -> MemoryCorrectionView:
         current = self._value(
             self._memory.read_fact(fact_id),

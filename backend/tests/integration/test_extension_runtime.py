@@ -245,6 +245,86 @@ def test_acp_run_uses_turn_admission_and_persists_a_delegated_run(
     )
 
 
+def test_the_model_tool_catalog_offers_available_operations_but_never_acp(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # ACP operations execute through TurnEngine.run_extension, which takes the turn lock
+    # the proposing turn already holds, so offering one to the model would deadlock.
+    runtime = _runtime(tmp_path, monkeypatch)
+    _write_tool_definition(runtime.config_dir)
+    _write_acp_definition(runtime.config_dir)
+    tool_id = _operation_id(runtime, "tool:writer")
+    acp_id = _operation_id(runtime, "acp:agent")
+
+    offered = {entry["capability_id"]: entry for entry in runtime.tool_catalog()}
+
+    assert acp_id not in offered
+    assert offered[tool_id]["extension_id"] == "tool:writer"
+    assert offered[tool_id]["input_schema"]["type"] == "object"
+
+    runtime.overlay.set_state(extension_id="tool:writer", state="disabled", expected_revision=None)
+
+    assert tool_id not in {entry["capability_id"] for entry in runtime.tool_catalog()}
+
+
+def _wait_for_input(runtime: ExtensionRuntimeService, previous: str | None = None) -> dict:
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        runs = runtime.runs.list()
+        if (runs and runs[0]["status"] == "awaiting_input"
+                and runs[0]["request"]["request_id"] != previous):
+            return runs[0]
+        time.sleep(0.01)
+    raise AssertionError("the run never asked for operator input")
+
+
+def test_operator_input_must_answer_what_the_run_actually_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime = _runtime(tmp_path, monkeypatch)
+    _write_acp_definition(runtime.config_dir)
+    _acp_engine(runtime, tmp_path)
+    import backend.app.extensions.acp as acp
+
+    def ask_twice(_session_manager, _definition, _prompt, _operation, *, request_permission, **_kwargs):
+        permission = request_permission({
+            "kind": "permission_request", "options": [{"optionId": "allow-once", "name": "Allow"}],
+        })
+        details = request_permission({
+            "kind": "elicitation",
+            "requestedSchema": {"type": "object", "properties": {"path": {"type": "string"}},
+                                "required": ["path"]},
+        })
+        return {"permission": permission, "details": details}
+
+    monkeypatch.setattr(acp, "run_acp", ask_twice)
+    capability_id = _operation_id(runtime, "acp:agent")
+    completed: list[object] = []
+    thread = threading.Thread(
+        target=lambda: completed.append(runtime.invoke("acp:agent", capability_id, {"prompt": "work"})),
+    )
+    thread.start()
+
+    run = _wait_for_input(runtime)
+    request_id = run["request"]["request_id"]
+    with pytest.raises(ValueError, match="option was not offered"):
+        runtime.answer(run["run_id"], request_id, {"action": "accept", "option_id": "allow-always"})
+    runtime.answer(run["run_id"], request_id, {"action": "accept", "option_id": "allow-once"})
+
+    run = _wait_for_input(runtime, previous=request_id)
+    request_id = run["request"]["request_id"]
+    with pytest.raises(ValueError, match="does not satisfy its schema"):
+        runtime.answer(run["run_id"], request_id, {"action": "accept", "content": {}})
+    runtime.answer(run["run_id"], request_id, {"action": "accept", "content": {"path": "notes.md"}})
+
+    thread.join(timeout=2)
+    assert not thread.is_alive()
+    [executed] = completed
+    output = executed.execution["result"]["output"]  # type: ignore[attr-defined]
+    assert output["permission"]["option_id"] == "allow-once"
+    assert output["details"]["content"] == {"path": "notes.md"}
+
+
 def test_cancelled_acp_input_returns_conflict_from_the_input_route(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
