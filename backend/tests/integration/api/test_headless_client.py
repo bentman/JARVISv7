@@ -20,6 +20,19 @@ from backend.app.services.session_service import SessionService
 from fastapi.testclient import TestClient
 
 
+@pytest.fixture
+def new_manager(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """Build session managers under tmp_path, including those /session/create builds."""
+    from backend.app.conversation.session_manager import SessionManager
+
+    def build() -> SessionManager:
+        return SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
+
+    # Sessions the route creates must land in tmp_path, not the repo's data/ root.
+    monkeypatch.setattr("backend.app.services.session_service.SessionManager", build)
+    return build
+
+
 class _FakeRuntime:
     device = "cpu"
     model_path = Path("models/fake")
@@ -169,6 +182,7 @@ def test_headless_client_can_drive_text_turn_with_stubbed_llm() -> None:
     assert response.json()["response_text"] == "integrated response"
 
 
+@pytest.mark.usefixtures("new_manager")
 def test_headless_client_can_create_and_close_session() -> None:
     client = _client()
     created = client.post("/session/create", json={})
@@ -179,20 +193,10 @@ def test_headless_client_can_create_and_close_session() -> None:
     assert closed.json()["closed"] is True
 
 
-def test_headless_client_drives_three_text_turns_in_one_active_session(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    from backend.app.conversation.session_manager import SessionManager
-
+def test_headless_client_drives_three_text_turns_in_one_active_session(new_manager) -> None:
     profile = HardwareProfile(os_name="windows", arch="amd64", profile_id="profile-integration")
     flags = CapabilityFlags(supports_local_stt=True, supports_local_tts=True, supports_wake_word=True)
     runtime = _FakeRuntime()
-
-    def new_manager() -> SessionManager:
-        return SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
-
-    # Sessions the route creates must land in tmp_path, not the repo's data/ root.
-    monkeypatch.setattr("backend.app.services.session_service.SessionManager", new_manager)
     manager = new_manager()
 
     def build_engine(session_manager):
@@ -378,7 +382,7 @@ def test_headless_client_manages_an_agent_profile_and_records_its_delegated_run(
 
 
 def test_headless_client_hands_a_session_to_an_agent_and_ends_the_handoff(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, new_manager
 ) -> None:
     from types import SimpleNamespace
 
@@ -422,11 +426,6 @@ def test_headless_client_hands_a_session_to_an_agent_and_ends_the_handoff(
             session_manager=manager, capability_service=capabilities, agent_registry=registry,
         )
 
-    def new_manager() -> SessionManager:
-        return SessionManager(turns_base_dir=tmp_path / "turns", sessions_base_dir=tmp_path / "sessions")
-
-    # Sessions the route creates must land in tmp_path, not the repo's data/ root.
-    monkeypatch.setattr("backend.app.services.session_service.SessionManager", new_manager)
     manager = new_manager()
     session_service = SessionService(
         session_manager=manager, engine=build_engine(manager), engine_factory=build_engine,

@@ -111,8 +111,7 @@ def test_output_over_the_action_bound_is_rejected() -> None:
         )
 
 
-@pytest.mark.skipif(os.name != "posix", reason="POSIX process groups provide orphan cleanup")
-def test_successful_parent_does_not_leave_a_descendant_holding_output_pipes() -> None:
+def test_a_descendant_holding_output_pipes_does_not_strand_the_parents_output() -> None:
     started = time.monotonic()
     result, _ = run_process(
         _operation(),
@@ -125,4 +124,7 @@ def test_successful_parent_does_not_leave_a_descendant_holding_output_pipes() ->
     )
 
     assert result["exit_code"] == 0
-    assert time.monotonic() - started < 0.8
+    assert result["stdout"].strip() == "parent"
+    if os.name == "posix":
+        # POSIX process groups also stop the leftover descendant, so the run returns promptly.
+        assert time.monotonic() - started < 0.8

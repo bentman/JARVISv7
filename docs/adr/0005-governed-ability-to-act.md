@@ -1,7 +1,7 @@
 # 0005 - Governed Ability to Act
 
 Date: 2026-09-01
-Status: Implemented
+Status: Accepted
 Related: 0002, 0003, 0004, 0008, 0009
 
 ## Context and Problem Statement
@@ -66,6 +66,8 @@ Negative:
 
 `backend/app/actions/boundaries.py` enforces allowed storage roots, deadlines, cancellation, result limits, and process argv/environment/working-directory declarations. Process-bearing capabilities use these controls. They provide application-level containment, not an OS sandbox.
 
+`backend/app/actions/process.py` runs argv without a shell and collects output as it arrives, so a descendant that keeps the output pipes open cannot strand the parent's output. Cancellation and deadline expiry stop the process tree on both host families. After a successful exit, POSIX stops leftover descendants through the process group; Windows does not yet (see Follow-up).
+
 ### Evidence
 
 Action records are persisted and fsynced to `data/actions/action-log.jsonl`, with bounded rotation. Turn artifacts retain proposals, decisions, approvals, execution results, cancellations, search evidence, and delegated runs. Tool results enter prompts as untrusted context. `SessionCallOutcomeUnknownError` is preserved as `outcome_unknown` by capability execution.
@@ -91,6 +93,7 @@ Test coverage:
 - `backend/tests/unit/actions/test_action_contracts.py`
 - `backend/tests/unit/actions/test_action_catalog.py`
 - `backend/tests/unit/actions/test_action_boundaries.py`
+- `backend/tests/unit/actions/test_process_execution.py`
 - `backend/tests/unit/services/test_capability_service.py`
 - `backend/tests/unit/artifacts/test_turn_artifact.py`
 - `backend/tests/integration/test_extension_runtime.py` for operator-versus-model authorization through application services
@@ -103,6 +106,6 @@ Validation commands:
 
 ## Follow-up
 
-None for this ADR.
+- Stop a successful Windows process's leftover descendants, matching the POSIX process-group cleanup, so a descendant cannot outlive its action's deadline; then extend `test_process_execution.py`'s descendant test to assert the prompt return on both host families.
 
 Future effect classes, approval modes, or a change to what a specific operator request authorizes should update this ADR when they preserve the same governance architecture, or create/supersede an ADR when they change it.

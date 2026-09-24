@@ -68,7 +68,9 @@ def run_process(
     output_exceeded = threading.Event()
 
     def collect(stream: Any, target: bytearray) -> None:
-        while chunk := stream.read(4096):
+        # read1 returns what the pipe holds now; read(n) would wait for n bytes, so output
+        # would be stranded when a descendant keeps the pipe open past the parent's exit.
+        while chunk := stream.read1(4096):
             with output_lock:
                 remaining = operation.boundary.max_result_bytes - len(stdout) - len(stderr)
                 if remaining <= 0:
