@@ -143,7 +143,7 @@ Test coverage:
 - `backend/tests/runtime/voice/`
 - `backend/tests/runtime/desktop/`
 - `backend/tests/runtime/acceleration_matrix/test_acceleration_matrix.py`
-- `desktop/tests/static.test.mjs`
+- `desktop/tests/status.test.mjs`
 
 Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_backend.py unit`

@@ -83,28 +83,46 @@ function createTurnStatusRail(stateEl) {
   };
 }
 
-export function createDesktopState(containerEl, turnStateContainerEl) {
+export function createDesktopState(containerEl, turnStateContainerEl, errorEl = null) {
   const systemStateEl = containerEl.querySelector("#startup-state")?.parentElement;
   const turnStatus = createTurnStatusRail(turnStateContainerEl);
 
+  function renderSystemState(status, degraded = false) {
+    if (!systemStateEl) return;
+
+    const rawState = String(status || "BOOTSTRAP");
+    const stateInfo = SYSTEM_STATES[rawState] || { label: rawState, color: "degraded" };
+
+    const labelEl = systemStateEl.querySelector(".label");
+    if (labelEl) labelEl.textContent = "System State";
+
+    const valueEl = systemStateEl.querySelector("strong");
+    if (valueEl) {
+      valueEl.textContent = stateInfo.label;
+      valueEl.dataset.state = rawState;
+    }
+
+    systemStateEl.dataset.systemState = stateInfo.color;
+    systemStateEl.dataset.degraded = degraded ? "true" : "false";
+  }
+
   return {
-    renderSystemState: (status, degraded = false) => {
-      if (!systemStateEl) return;
+    renderSystemState,
 
-      const rawState = String(status || "BOOTSTRAP");
-      const stateInfo = SYSTEM_STATES[rawState] || { label: rawState, color: "degraded" };
-
-      const labelEl = systemStateEl.querySelector(".label");
-      if (labelEl) labelEl.textContent = "System State";
-
-      const valueEl = systemStateEl.querySelector("strong");
-      if (valueEl) {
-        valueEl.textContent = stateInfo.label;
-        valueEl.dataset.state = rawState;
+    // System State reports backend lifecycle and readiness; a failed operation is shown in the
+    // error panel and the turn rail, and changes System State only when the caller names one.
+    showError: (message, systemState = null) => {
+      if (errorEl) {
+        errorEl.textContent = message;
+        errorEl.classList.remove("hidden");
       }
+      if (systemState) renderSystemState(systemState);
+    },
 
-      systemStateEl.dataset.systemState = stateInfo.color;
-      systemStateEl.dataset.degraded = degraded ? "true" : "false";
+    clearError: () => {
+      if (!errorEl) return;
+      errorEl.textContent = "";
+      errorEl.classList.add("hidden");
     },
 
     renderTurnStatus: (backendState, pendingState = null) => {

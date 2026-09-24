@@ -147,7 +147,7 @@ Test coverage:
 - `backend/tests/unit/actions/test_action_contracts.py` and `backend/tests/unit/artifacts/test_turn_artifact.py` for the typed delegated-run record
 - `backend/tests/integration/api/test_headless_client.py` for profile create/update/delete, direct invocation, audit, persisted delegated-run evidence, and a handoff through the session API
 - `backend/tests/integration/test_extension_runtime.py` for extension delegated-run records
-- `desktop/tests/static.test.mjs` for the profile form including memory and tool choices, duplication of built-in profiles, fingerprinted edits and deletes, enablement, and handoff status
+- `desktop/tests/agents.test.mjs` for the profile form including memory and tool choices, duplication of built-in profiles, fingerprinted edits and deletes, and enablement, and `desktop/tests/status.test.mjs` for handoff status
 
 Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_backend.py unit`

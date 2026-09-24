@@ -185,15 +185,6 @@ where
 }
 
 #[tauri::command]
-fn health_check(state: State<'_, DesktopState>) -> Result<String, String> {
-    let base_url = backend_base_url(&state)?;
-    match get_json(&state.http_client, &base_url, "/health") {
-        Ok(body) => Ok(body),
-        Err(error) => Ok(json!({"status": "error", "error": error}).to_string()),
-    }
-}
-
-#[tauri::command]
 fn get_readiness(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     get_json(&state.http_client, &base_url, "/readiness")
@@ -1014,7 +1005,6 @@ pub fn run() {
             open_search_source,
             start_backend,
             stop_backend,
-            health_check,
             get_readiness,
             get_session_status,
             get_desktop_status,

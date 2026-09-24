@@ -260,7 +260,7 @@ backend/.venv/bin/python scripts/validate_backend.py profile
 ```
 
 
-Validation reports for unit, ci, and regression (for both backend and desktop) are written to reports/validation/ and automatically cleaned up after 30 days.
+Validation reports for unit, integration, ci, and regression (for both backend and desktop) are written to reports/validation/ and automatically cleaned up after 30 days. Desktop regression runs the renderer tests (`npm --prefix desktop test`) and the Tauri shell tests (`cargo test --manifest-path desktop/src-tauri/Cargo.toml`).
 
 Repository validation:
 

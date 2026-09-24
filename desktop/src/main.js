@@ -222,15 +222,13 @@ function setState(value, degraded = false) {
   document.body.dataset.degraded = degraded ? "true" : "false";
 }
 
-function showError(message, systemState = "FAILED") {
-  errorEl.textContent = message;
-  errorEl.classList.remove("hidden");
-  setState(systemState);
+function showError(message, systemState = null) {
+  desktopState.showError(message, systemState);
+  if (systemState) document.body.dataset.degraded = "false";
 }
 
 function clearError() {
-  errorEl.textContent = "";
-  errorEl.classList.add("hidden");
+  desktopState.clearError();
 }
 
 function appendMessage(role, text, metadata = {}) {
@@ -296,7 +294,7 @@ const residentVoice = createResidentVoicePresenter({
   appendMessage,
 });
 
-desktopState = createDesktopState(document.querySelector(".shell"), turnStatusAnchorEl);
+desktopState = createDesktopState(document.querySelector(".shell"), turnStatusAnchorEl, errorEl);
 
 function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);

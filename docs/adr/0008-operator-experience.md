@@ -89,6 +89,9 @@ Layout:
 - The Personality block moves to the right operator sidebar directly above Resident Voice. Its `dl.facts` markup is replaced by `<label class="selector-label" for="personality-select">Current</label>`, so Personality `CURRENT`, Resident Voice `VOICE SELECTOR`, and `MODE` are the same element and class. The `#personality-select`, `#personality-current`, and `#personality-detail` ids are unchanged.
 - The right-side Memory/Actions/Extensions/Settings icon-button row and the four inline mount sections are removed, along with the `.icon-button`, `.settings-trigger-group`, and `.operator-trigger-group` rules in `desktop/src/style.css`.
 
+System state:
+- `desktop/src/components/desktop-state.js` owns the error panel as well as System State and the Turn Status rail. A failed operation is shown in the error panel and the rail; System State reports backend lifecycle and readiness, and an error changes it only when the caller names a lifecycle state such as `BACKEND_UNAVAILABLE`. `desktop/src/main.js` delegates `showError` and `clearError` to it.
+
 Advanced-control surface:
 - `desktop/src/index.html` adds a native `<dialog id="advanced-panel">` outside `.shell`, holding a header, a `#advanced-panel-rail` category rail of six buttons, and six hidden mounts: `#providers-panel`, `#settings-panel`, `#memory-panel`, `#actions-panel`, `#extensions-panel`, `#agents-panel`.
 - `showModal()` supplies modal focus containment, Escape dismissal, `::backdrop`, and focus return to the launch button. `desktop/src/main.js` adds only backdrop-click dismissal and routes Escape, the Close button, and a backdrop click through a single `close`-event hook.
@@ -140,15 +143,22 @@ Implementation files:
 - `desktop/src/components/llm-provider-settings.js`
 - `desktop/src/components/settings-panel.js`
 - `desktop/src/components/appearance-controls.js`
+- `desktop/src/components/desktop-state.js`
 - `desktop/src-tauri/src/lib.rs`
+- `scripts/validate_desktop.py`
 
 Test coverage:
-- `desktop/tests/static.test.mjs` for advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, agent list/run envelope unwrapping, honest invoke/cancel reporting, stale-response ordering, provider default selection and post-mutation reselection, built-in read-only messaging, restart-scope isolation, relocated layout and source ordering, wrapped-result rendering, Disconnect refresh, connection status, and unknown-outcome presentation
+- `desktop/tests/layout.test.mjs` for advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, and relocated layout and source ordering
+- `desktop/tests/agents.test.mjs` for agent list/run envelope unwrapping, honest invoke/cancel reporting, stale-response ordering, and the profile form against the backend `AgentProfile` fields
+- `desktop/tests/settings.test.mjs` for provider default selection and post-mutation reselection, built-in read-only messaging, and restart-scope isolation
+- `desktop/tests/extensions.test.mjs` and `desktop/tests/actions.test.mjs` for wrapped-result rendering, Disconnect refresh, connection status, unknown-outcome presentation, and the extension id rule shared with the backend
+- `desktop/tests/status.test.mjs` for System State, Turn Status, and operation errors that must not replace System State
+- `desktop/tests/shell.test.mjs` for client commands matching registered Tauri commands and bridge calls matching backend routes
+- `desktop/src-tauri/src/backend.rs` and `desktop/src-tauri/src/lib.rs` unit tests for backend launch, shutdown drain, port-owner safety, and citation destinations
 - `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions
 
 Validation commands:
-- `npm --prefix desktop test`
-- `cargo check --manifest-path desktop/src-tauri/Cargo.toml`
+- `backend/.venv/Scripts/python scripts/validate_desktop.py regression` (runs `npm --prefix desktop test` and `cargo test --manifest-path desktop/src-tauri/Cargo.toml`)
 - `backend/.venv/Scripts/python scripts/validate_backend.py unit` when provider or action classification changes
 
 Native desktop interaction is not covered by any of the above and remains this ADR's open closeout obligation.
