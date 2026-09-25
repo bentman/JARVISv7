@@ -4,6 +4,30 @@ import { strict as assert } from "node:assert";
 import { createExtensionsPanel, createExtensionsPanelController, extensionActivityState, extensionStateEnabled, formatExtensionOrigin, formatPromptMessages, formatResourceContents, formatRunStarted, operationDisplayName, operationKind, operationShortLabel, operationSubmitLabel, parseAllowlist, parseCommandLines, requestedCapabilities, extensionLocalIdValid, extensionRunTitle, formatToolResult } from "../src/components/extensions-panel.js";
 import { main, apiClient, memoryPanel, actionsPanel, extensionsPanel, agentsPanel, backend, createElement, deferred, findElement, findElements } from "./support.mjs";
 
+// Mounts the extensions panel on the test DOM with empty-catalog defaults; done() closes it and
+// restores the globals it replaced.
+function mountExtensionsPanel(handlers) {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  const container = createElement("div");
+  const panel = createExtensionsPanel(container, {
+    getExtensions: async () => ({ extensions: [], families: {} }),
+    getExtensionErrors: async () => ({ errors: [] }),
+    ...handlers,
+  });
+  return {
+    container,
+    panel,
+    done() {
+      panel.close();
+      globalThis.document = previousDocument;
+      globalThis.window = previousWindow;
+    },
+  };
+}
+
 test("the extension controller must route invoke, answer, and decide to their handlers", async () => {
   const extensionCalls = [];
   const extensionController = createExtensionsPanelController({
@@ -118,17 +142,11 @@ test("only the first colon marks the group prefix", async () => {
 test("Discovered tools, resources, and prompts must render as separate labeled groups, not one flat \"Operations\"...", async () => {
   // Discovered tools, resources, and prompts must render as separate labeled groups, not
   // one flat "Operations" list mixing internal capability shapes together.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({
       operations: [
@@ -159,9 +177,7 @@ test("Discovered tools, resources, and prompts must render as separate labeled g
     "each operation kind must submit with its own verb, in the same order as its group",
   );
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("A stdio (or any privileged_execution) discover is approval-gated, so it resolves through decide(), not...", async () => {
@@ -169,19 +185,13 @@ test("A stdio (or any privileged_execution) discover is approval-gated, so it re
   // decide(), not through invoke()'s own post-invocation refresh. Approving it must still pick
   // up the newly discovered tools instead of leaving the operator staring at an empty runtime
   // until they navigate away from the extension and back.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   let runStatus = "awaiting_approval";
   let runtimeFetches = 0;
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:fixture", display_name: "Fixture", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({ extension_id: "mcp:fixture", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => {
       runtimeFetches += 1;
@@ -211,22 +221,13 @@ test("A stdio (or any privileged_execution) discover is approval-gated, so it re
     "the newly discovered tool must reach state without navigating away and back",
   );
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Source (a raw file/module path) and revision (a concurrency counter) are backend/audit internals; they...", async () => {
   // Source (a raw file/module path) and revision (a concurrency counter) are backend/audit
   // internals; they must sit behind an explicit "Details" disclosure, not the primary facts.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensionDetail: async () => ({
       extension_id: "mcp:weather",
       family: "mcp",
@@ -261,22 +262,13 @@ test("Source (a raw file/module path) and revision (a concurrency counter) are b
   const revisionField = findElement(details, (node) => node.tagName === "dt" && node.textContent === "Revision").parentElement;
   assert.equal(findElement(revisionField, (node) => node.tagName === "dd").textContent, "3");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Run polling re-renders this panel roughly once a second while it is open; a scrolled list must not snap...", async () => {
   // Run polling re-renders this panel roughly once a second while it is open; a scrolled
   // list must not snap back to the top on every poll tick.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensionRuns: async () => ({ runs: [] }),
   });
   await panel.open();
@@ -295,26 +287,18 @@ test("Run polling re-renders this panel roughly once a second while it is open; 
   assert.equal(rerenderedList.scrollTop, 240, "the catalog list must keep its scroll position across a run-poll re-render");
   assert.equal(rerenderedDetail.scrollTop, 80, "the detail column must keep its scroll position across a run-poll re-render");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("A focused catalog row must keep focus across a re-render it did not itself invalidate (an unrelated action...", async () => {
   // A focused catalog row must keep focus across a re-render it did not itself invalidate
   // (an unrelated action calling refreshCatalog(), the same call a save/remove/add mutation
   // triggers), rather than silently dropping focus back to nothing.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
   });
   await panel.open();
 
@@ -329,26 +313,18 @@ test("A focused catalog row must keep focus across a re-render it did not itself
   assert.notEqual(rerenderedRow, row, "the re-render must have produced a fresh element, not reused the old one");
   assert.equal(globalThis.document.activeElement, rerenderedRow, "the same row must regain focus after the re-render");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Focus restoration is a generic mechanism, but each tagged control is its own rendering branch - a...", async () => {
   // Focus restoration is a generic mechanism, but each tagged control is its own rendering
   // branch - a state-transition button, "Show body", and "Remove connection" each need their
   // own proof that the focus key is actually wired, not just that the mechanism works once.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({
       extension_id: "mcp:weather",
       family: "mcp",
@@ -381,25 +357,17 @@ test("Focus restoration is a generic mechanism, but each tagged control is its o
   await assertFocusSurvives("credential-submit:mcp:weather", "the Store credential submit button");
   await assertFocusSurvives("operation-submit:mcp:weather:tool:get_forecast", "an operation's submit button");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("A run's id and proposal id are backend correlation identifiers; they must not appear in the run's primary...", async () => {
   // A run's id and proposal id are backend correlation identifiers; they must not appear in
   // the run's primary heading, only behind an explicit "Run details" disclosure.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [] }),
     getExtensionRuns: async () => ({
@@ -427,26 +395,18 @@ test("A run's id and proposal id are backend correlation identifiers; they must 
   const proposalField = findElement(runDetails, (node) => node.tagName === "dt" && node.textContent === "Proposal").parentElement;
   assert.equal(findElement(proposalField, (node) => node.tagName === "dd").textContent, "prop-123");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("A \"get prompt\" result is a list of role-tagged messages, not the tool-shaped result every other operation...", async () => {
   // A "get prompt" result is a list of role-tagged messages, not the tool-shaped result every
   // other operation produces - it must render as readable message text, not the same raw JSON
   // block a tool result falls back to.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [] }),
     getExtensionRuns: async () => ({
@@ -479,25 +439,17 @@ test("A \"get prompt\" result is a list of role-tagged messages, not the tool-sh
   const evidence = findElements(container, (node) => node.tagName === "details");
   assert.ok(evidence.some((node) => findElement(node, (child) => child.tagName === "pre" && child.textContent.includes('"trusted": false'))));
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("A \"read resource\" result ({contents: [...]}) must render as a content preview - text inline, an image...", async () => {
   // A "read resource" result ({contents: [...]}) must render as a content preview - text
   // inline, an image inline - instead of the same raw JSON block a tool result falls back to.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({ extension_id: "mcp:weather", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [] }),
     getExtensionRuns: async () => ({
@@ -533,9 +485,7 @@ test("A \"read resource\" result ({contents: [...]}) must render as a content pr
   assert.ok(audioFallback, "a resource kind with no rendering support must still fall back to the raw JSON block");
   assert.ok(audioFallback.textContent.startsWith("{"), "the fallback must be the raw JSON result, not silently dropped");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("extensions response fields must be read by the panel", async () => {
@@ -837,14 +787,7 @@ test("\"Disconnect\" ends the held session without touching the definition or st
 test("Disconnect is offered for any MCP connection regardless of current health, unlike \"Forget authorization\"...", async () => {
   // Disconnect is offered for any MCP connection regardless of current health, unlike
   // "Forget authorization" which only appears once OAuth is configured and authorized.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
     getExtensionRuns: async () => ({ runs: [] }),
@@ -855,9 +798,7 @@ test("Disconnect is offered for any MCP connection regardless of current health,
   const buttons = findElements(container, (node) => node.tagName === "button").map((node) => node.textContent);
   assert.ok(buttons.includes("Disconnect"), "an MCP connection must always offer Disconnect regardless of its current health");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("A probe reproduced the panel displaying the cached discovery snapshot's \"ready\" health as if it were...", async () => {
@@ -865,14 +806,7 @@ test("A probe reproduced the panel displaying the cached discovery snapshot's \"
   // health as if it were current, even after Disconnect had already closed the live
   // session (`connected: false`). The rendered label must reflect the live signal, not
   // the stale cached one.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [], snapshot: { health: "ready" }, connected: false }),
     getExtensionRuns: async () => ({ runs: [] }),
@@ -890,22 +824,13 @@ test("A probe reproduced the panel displaying the cached discovery snapshot's \"
     "the cached snapshot's health must not be shown once the live connection is known closed",
   );
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("The \"Forget authorization\" control only appears once authorized - there is nothing to forget before then,...", async () => {
   // The "Forget authorization" control only appears once authorized - there is nothing to
   // forget before then, and Connect/Reconnect already cover that state.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
     getExtensionRuns: async () => ({ runs: [] }),
@@ -918,20 +843,11 @@ test("The \"Forget authorization\" control only appears once authorized - there 
   assert.ok(authorizedButtons.includes("Forget authorization"), "an authorized OAuth connection must offer to forget its authorization");
   assert.ok(authorizedButtons.includes("Reconnect"), "an authorized connection still offers Reconnect, distinct from forgetting authorization");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("an unauthorized OAuth connection has no stored authorization to forget", async () => {
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensionDetail: async () => ({ extension_id: "mcp:probe", family: "mcp", state: "enabled" }),
     getExtensionRuntime: async () => ({ operations: [], snapshot: null }),
     getExtensionRuns: async () => ({ runs: [] }),
@@ -944,9 +860,7 @@ test("an unauthorized OAuth connection has no stored authorization to forget", a
   assert.ok(!unauthorizedButtons.includes("Forget authorization"), "an unauthorized OAuth connection has no stored authorization to forget");
   assert.ok(unauthorizedButtons.includes("Connect"));
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Completing without a started flow must not invent a state value", async () => {
@@ -981,50 +895,41 @@ test("Cancelling a run is confirmed, and declining leaves the run alone", async 
 });
 
 test("owner controls must follow provenance, and the MCP credential form must not wait for discovery", async () => {
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
   async function controlsFor(family, localId, provenance, trust) {
     const extensionId = `${family}:${localId}`;
-    const container = createElement("div");
-    const panel = createExtensionsPanel(container, {
+    const { container, panel, done } = mountExtensionsPanel({
       getExtensions: async () => ({
         extensions: [{ extension_id: extensionId, display_name: localId, family, trust, provenance, version: "1" }],
         families: { [family]: 1 },
       }),
-      getExtensionErrors: async () => ({ errors: [] }),
       getExtensionDetail: async () => ({
         extension_id: extensionId, family, local_id: localId, trust, provenance, state: "enabled",
       }),
       getExtensionRuntime: async () => ({ operations: [] }),
       getExtensionOauth: async () => ({ configured: false, authorized: false }),
     });
-    await panel.open();
-    await panel.controller.selectExtension(extensionId);
-    const texts = findElements(container, (node) => typeof node.textContent === "string").map((node) => node.textContent);
-    panel.close();
-    return texts;
+    try {
+      await panel.open();
+      await panel.controller.selectExtension(extensionId);
+      return findElements(container, (node) => typeof node.textContent === "string").map((node) => node.textContent);
+    } finally {
+      done();
+    }
   }
-  try {
-    const operatorConnection = await controlsFor("mcp", "weather", "data/extensions/mcp", "external");
-    assert.ok(operatorConnection.includes("Credential"), "a connection with no discovered operations must still offer its credential form");
-    assert.ok(operatorConnection.includes("Remove connection"), "an operator-owned connection must be removable");
-    assert.ok(!(await controlsFor("mcp", "builtin", "config/extensions/mcp", "application")).includes("Remove connection"),
-      "an application connection must not be removable");
+  const operatorConnection = await controlsFor("mcp", "weather", "data/extensions/mcp", "external");
+  assert.ok(operatorConnection.includes("Credential"), "a connection with no discovered operations must still offer its credential form");
+  assert.ok(operatorConnection.includes("Remove connection"), "an operator-owned connection must be removable");
+  assert.ok(!(await controlsFor("mcp", "builtin", "config/extensions/mcp", "application")).includes("Remove connection"),
+    "an application connection must not be removable");
 
-    assert.ok((await controlsFor("tool", "writer", "data/extensions/tools", "external")).includes("Remove tool"));
-    assert.ok(!(await controlsFor("tool", "writer", "config/extensions/tools", "application")).includes("Remove tool"),
-      "an application tool must not be removable");
+  assert.ok((await controlsFor("tool", "writer", "data/extensions/tools", "external")).includes("Remove tool"));
+  assert.ok(!(await controlsFor("tool", "writer", "config/extensions/tools", "application")).includes("Remove tool"),
+    "an application tool must not be removable");
 
-    assert.ok((await controlsFor("skill", "notes", "data/extensions/skills", "external")).includes("Edit skill"),
-      "an operator skill carries external trust and must still be editable");
-    assert.ok(!(await controlsFor("skill", "notes", "config/extensions/skills", "operator")).includes("Edit skill"),
-      "ownership follows provenance, not trust");
-  } finally {
-    globalThis.document = previousDocument;
-    globalThis.window = previousWindow;
-  }
+  assert.ok((await controlsFor("skill", "notes", "data/extensions/skills", "external")).includes("Edit skill"),
+    "an operator skill carries external trust and must still be editable");
+  assert.ok(!(await controlsFor("skill", "notes", "config/extensions/skills", "operator")).includes("Edit skill"),
+    "ownership follows provenance, not trust");
 });
 
 test("the desktop must never handle a PKCE verifier", async () => {
@@ -1099,17 +1004,11 @@ test("A loaded skill body must actually appear in the Edit skill textarea. The e
   // unconditionally (before any body is loaded) with an empty draft-keyed value, so the
   // capture-then-restore re-render mechanism must not stomp the freshly loaded body back to
   // that pre-load empty value on the very re-render that first populates it.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "skill:notes", display_name: "Notes", family: "skill", trust: "operator", provenance: "data/extensions", version: "1" }],
       families: { skill: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({ extension_id: "skill:notes", family: "skill", provenance: "data/extensions", body_available: true }),
     getExtensionRuntime: async () => ({ operations: [] }),
     getExtensionBody: async () => ({ extension_id: "skill:notes", body: "the loaded body" }),
@@ -1130,9 +1029,7 @@ test("A loaded skill body must actually appear in the Edit skill textarea. The e
   const after = editorTextarea();
   assert.equal(after.value, "the loaded body", "the editor must show the loaded body, not the stale pre-load draft");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("An operator can add an MCP connection without hand-editing YAML: the same governed capability path as...", async () => {
@@ -1582,15 +1479,8 @@ test("a tool-shaped result has no contents array and must not be misread as a re
 test("The Add MCP Connection control must render as a real, human-labeled form, not raw JSON, and its submit...", async () => {
   // The Add MCP Connection control must render as a real, human-labeled form, not raw
   // JSON, and its submit must reach the governed capability with typed arguments.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     proposeAction: async (request) => {
       proposals.push(request);
       return { status: "success" };
@@ -1634,27 +1524,19 @@ test("The Add MCP Connection control must render as a real, human-labeled form, 
     },
   });
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Edit MCP Connection: clicking \"Edit connection\" loads the stored definition and renders a form prefilled...", async () => {
   // Edit MCP Connection: clicking "Edit connection" loads the stored definition and renders a
   // form prefilled from it (not the empty Add form), and submitting reaches the governed
   // capability carrying the fingerprint the definition was read with.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", provenance: "data/extensions", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({
       extension_id: "mcp:weather", family: "mcp", local_id: "weather",
       provenance: "data/extensions", definition_available: true, state: "enabled",
@@ -1689,9 +1571,7 @@ test("Edit MCP Connection: clicking \"Edit connection\" loads the stored definit
   assert.equal(proposals[0]?.actionArguments.expected_fingerprint, "fingerprint-1");
   assert.equal(proposals[0]?.actionArguments.definition.url, "https://weather.example.test/mcp/v2");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Edit MCP Connection must prefill credential reference and OAuth fields from the loaded definition, and an...", async () => {
@@ -1699,18 +1579,12 @@ test("Edit MCP Connection must prefill credential reference and OAuth fields fro
   // definition, and an unrelated field edit (display name) must leave an untouched
   // credential/OAuth configuration intact - the round trip that makes these fields safe to
   // expose without an operator accidentally erasing authentication on every save.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:weather", display_name: "Weather", family: "mcp", trust: "operator", provenance: "data/extensions", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({
       extension_id: "mcp:weather", family: "mcp", local_id: "weather",
       provenance: "data/extensions", definition_available: true, state: "enabled",
@@ -1750,23 +1624,14 @@ test("Edit MCP Connection must prefill credential reference and OAuth fields fro
     client_id: "abc", authorization_url: "https://a.test", token_url: "https://t.test", scopes: ["read"],
   }, "an unrelated edit must not clear the OAuth configuration");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Add MCP Connection must also expose credential reference and OAuth fields, so a new connection can be...", async () => {
   // Add MCP Connection must also expose credential reference and OAuth fields, so a new
   // connection can be fully configured without a follow-up edit.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
   });
   await panel.open();
@@ -1788,9 +1653,7 @@ test("Add MCP Connection must also expose credential reference and OAuth fields,
   assert.equal(proposals[0]?.actionArguments.definition.credential_ref, "weather-api-key");
   assert.deepEqual(proposals[0]?.actionArguments.definition.oauth, { client_id: "abc" });
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Add MCP Connection for a stdio transport must build the same command/process shape Add Local Tool already...", async () => {
@@ -1875,15 +1738,8 @@ test("The Add MCP Connection form's transport select must toggle between the str
   // The Add MCP Connection form's transport select must toggle between the streamable_http and
   // stdio field sets, and submitting with stdio selected must reach the governed capability
   // with the argv-shaped definition instead of the URL-shaped one.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
   });
   await panel.open();
@@ -1952,26 +1808,18 @@ test("The Add MCP Connection form's transport select must toggle between the str
   assert.deepEqual(proposals[0]?.actionArguments.definition.command, ["python3", "-m", "mymcp.server"]);
   assert.equal(proposals[0]?.actionArguments.definition.url, undefined, "a stdio connection must not carry a url");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Edit MCP Connection for a stdio connection must render the stdio field set (command, argv allowlist,...", async () => {
   // Edit MCP Connection for a stdio connection must render the stdio field set (command, argv
   // allowlist, environment passthrough, working root), not the streamable_http url field.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "mcp:local-tool-server", display_name: "Local tool server", family: "mcp", trust: "operator", provenance: "data/extensions", version: "1" }],
       families: { mcp: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({
       extension_id: "mcp:local-tool-server", family: "mcp", local_id: "local-tool-server",
       provenance: "data/extensions", definition_available: true, state: "enabled",
@@ -2015,23 +1863,14 @@ test("Edit MCP Connection for a stdio connection must render the stdio field set
   assert.deepEqual(proposals[0]?.actionArguments.definition.command, ["python3", "-m", "mymcp.server", "--verbose"]);
   assert.equal(proposals[0]?.actionArguments.definition.credential_ref, "MY_API_KEY", "an unrelated field edit must not clear credential_ref");
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("The Add Local Tool control must render as a real, human-labeled form, not raw JSON, and its submit must...", async () => {
   // The Add Local Tool control must render as a real, human-labeled form, not raw JSON,
   // and its submit must reach the governed capability with typed, argv-shaped arguments.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     proposeAction: async (request) => {
       proposals.push(request);
       return { status: "success" };
@@ -2069,26 +1908,18 @@ test("The Add Local Tool control must render as a real, human-labeled form, not 
     },
   });
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("Edit Local Tool: clicking \"Edit tool\" loads the stored definition and renders a form prefilled from it,...", async () => {
   // Edit Local Tool: clicking "Edit tool" loads the stored definition and renders a form
   // prefilled from it, and submitting reaches the governed capability with the fingerprint.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
+  const { container, panel, done } = mountExtensionsPanel({
     getExtensions: async () => ({
       extensions: [{ extension_id: "tool:changelog-writer", display_name: "Changelog writer", family: "tool", trust: "operator", provenance: "data/extensions", version: "1" }],
       families: { tool: 1 },
     }),
-    getExtensionErrors: async () => ({ errors: [] }),
     getExtensionDetail: async () => ({
       extension_id: "tool:changelog-writer", family: "tool", local_id: "changelog-writer",
       provenance: "data/extensions", definition_available: true, state: "enabled",
@@ -2124,9 +1955,7 @@ test("Edit Local Tool: clicking \"Edit tool\" loads the stored definition and re
   assert.equal(proposals[0]?.actionArguments.expected_fingerprint, "fingerprint-1");
   assert.deepEqual(proposals[0]?.actionArguments.definition.command, ["python3", "-m", "scripts.changelog", "--verbose"]);
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("An operator can import a brand-new skill without hand-editing YAML, distinct from saveSkill's...", async () => {
@@ -2152,15 +1981,8 @@ test("An operator can import a brand-new skill without hand-editing YAML, distin
 test("The Import Skill control must render as a real form, not raw JSON, and its submit must reach the governed...", async () => {
   // The Import Skill control must render as a real form, not raw JSON, and its submit
   // must reach the governed capability with typed arguments.
-  const previousDocument = globalThis.document;
-  const previousWindow = globalThis.window;
-  globalThis.document = { createElement };
-  globalThis.window = { setInterval: () => 0, clearInterval() {} };
-  const container = createElement("div");
   const proposals = [];
-  const panel = createExtensionsPanel(container, {
-    getExtensions: async () => ({ extensions: [], families: {} }),
-    getExtensionErrors: async () => ({ errors: [] }),
+  const { container, panel, done } = mountExtensionsPanel({
     proposeAction: async (request) => {
       proposals.push(request);
       return { status: "success" };
@@ -2187,9 +2009,7 @@ test("The Import Skill control must render as a real form, not raw JSON, and its
     body: "---\nname: Changelog Writer\n---\nbody",
   });
 
-  panel.close();
-  globalThis.document = previousDocument;
-  globalThis.window = previousWindow;
+  done();
 });
 
 test("main.js must wire every handler extensions-panel.js actually calls. getExtensionDefinition was missing...", async () => {

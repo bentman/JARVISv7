@@ -92,6 +92,10 @@ Layout:
 System state:
 - `desktop/src/components/desktop-state.js` owns the error panel as well as System State and the Turn Status rail. A failed operation is shown in the error panel and the rail; System State reports backend lifecycle and readiness, and an error changes it only when the caller names a lifecycle state such as `BACKEND_UNAVAILABLE`. `desktop/src/main.js` delegates `showError` and `clearError` to it.
 
+Rendered shell evidence:
+- `desktop/tests/app.test.mjs` boots the real `desktop/src/index.html` and `desktop/src/main.js` in jsdom through `bootDesktop` in `desktop/tests/support.mjs`, standing in only the Tauri `invoke` bridge. jsdom is a `desktop/package.json` devDependency. It covers startup rendering from backend payloads, startup failure diagnostics, text turns rendered as text, personality switching and saved-preference restore, voice-mode selection with the wake PTT fallback, and Advanced Controls category switching, mount/unmount, last-category retention, and backdrop and Close dismissal.
+- jsdom implements no modal dialog behavior, so the harness models `showModal` and `close` from the HTML specification. Escape, focus containment, focus return, layout, and fonts need the native Tauri WebView and remain native validation.
+
 Advanced-control surface:
 - `desktop/src/index.html` adds a native `<dialog id="advanced-panel">` outside `.shell`, holding a header, a `#advanced-panel-rail` category rail of six buttons, and six hidden mounts: `#providers-panel`, `#settings-panel`, `#memory-panel`, `#actions-panel`, `#extensions-panel`, `#agents-panel`.
 - `showModal()` supplies modal focus containment, Escape dismissal, `::backdrop`, and focus return to the launch button. `desktop/src/main.js` adds only backdrop-click dismissal and routes Escape, the Close button, and a backdrop click through a single `close`-event hook.
@@ -144,6 +148,7 @@ Implementation files:
 - `desktop/src/components/settings-panel.js`
 - `desktop/src/components/appearance-controls.js`
 - `desktop/src/components/desktop-state.js`
+- `desktop/package.json`
 - `desktop/src-tauri/src/lib.rs`
 - `scripts/validate_desktop.py`
 
@@ -154,6 +159,7 @@ Test coverage:
 - `desktop/tests/extensions.test.mjs` and `desktop/tests/actions.test.mjs` for wrapped-result rendering, Disconnect refresh, connection status, unknown-outcome presentation, and the extension id rule shared with the backend
 - `desktop/tests/status.test.mjs` for System State, Turn Status, and operation errors that must not replace System State
 - `desktop/tests/shell.test.mjs` for client commands matching registered Tauri commands and bridge calls matching backend routes
+- `desktop/tests/app.test.mjs` for the rendered desktop shell described under Rendered shell evidence
 - `desktop/src-tauri/src/backend.rs` and `desktop/src-tauri/src/lib.rs` unit tests for backend launch, shutdown drain, port-owner safety, and citation destinations
 - `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions
 

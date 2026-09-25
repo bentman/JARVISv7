@@ -1,10 +1,7 @@
 import { test } from "node:test";
-import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
-import { selectedFamilyBlockers } from "../src/components/degraded-list.js";
-import { createDesktopState } from "../src/components/desktop-state.js";
 import { createAdvancedPanelCoordinator } from "../src/components/advanced-panel.js";
-import { main, index, style } from "./support.mjs";
+import { index, style } from "./support.mjs";
 
 test("desktop markup must not use inline styles", async () => {
   const tokenStart = "/* JARVIS_V7_TOKENS_START */";
@@ -90,35 +87,10 @@ test("Personality must share the operator-panel selector sizing once it moves to
     !style.includes(".status-panel #personality-select"),
     "Personality must share the operator-panel selector sizing once it moves to the right sidebar",
   );
-  for (const snippet of [
-    'document.createElement("article")',
-    'document.createElement("span")',
-    'document.createElement("strong")',
-    'document.createElement("p")',
-    'bodyEl.textContent = text || "(no text returned)"',
-    "entry.append(stampEl, roleEl, bodyEl)",
-  ]) {
-    assert.ok(main.includes(snippet), `message rendering contract missing: ${snippet}`);
-  }
-  assert.ok(!main.includes("entry.innerHTML"), "message rendering must use DOM text APIs");
 });
 
-test("desktop must display System State label", async () => {
-  assert.ok(index.includes("System State"), "desktop must display System State label");
-  assert.ok(index.includes("turn-status-anchor"), "desktop must include turn status anchor container");
+test("System State must be sized to the operator column", async () => {
   assert.ok(index.includes("system-state-card"), "desktop must size System State to Operator column");
-  assert.ok(main.includes("createDesktopState"), "desktop must create desktop state coordinator");
-  assert.ok(main.includes("desktopState.renderSystemState"), "desktop must render system state from readiness");
-  assert.ok(
-    main.includes("selectedFamilyBlockers(readiness)"),
-    "desktop System State must consider selected required-family readiness",
-  );
-  assert.ok(main.includes("desktopState.renderTurnStatus"), "desktop must render turn status from session");
-  const readinessPanelContent = readFileSync(new URL("../src/components/readiness-panel.js", import.meta.url), "utf8");
-  assert.ok(!readinessPanelContent.includes('["Status"'), "desktop must not include Status fact in readiness summary");
-  assert.ok(readinessPanelContent.includes('["Arch"'), "desktop must include Arch fact in readiness summary");
-  assert.ok(readinessPanelContent.includes('["Profile"'), "desktop must include Profile fact in readiness summary");
-  assert.ok(readinessPanelContent.includes('["LLM"'), "desktop must include LLM fact in readiness summary");
 });
 
 test("every advanced-control category must be registered, including Agents and Providers & Models", async () => {
@@ -222,12 +194,4 @@ test("A category's own Close button reports through onClose, which asks the host
   reentrantCoordinator.closeActive();
   assert.deepEqual(reentrantEvents, ["close-agents"], "teardown must close each category exactly once");
   assert.equal(reentrantDismissals, 0, "an onClose report during teardown must not re-enter as a new dismissal");
-});
-
-test("operator area must include one hidden Actions panel", async () => {
-  assert.ok(index.includes('id="actions-panel"'), "operator area must include one hidden Actions panel");
-});
-
-test("operator area must include one hidden Extensions panel", async () => {
-  assert.ok(index.includes('id="extensions-panel"'), "operator area must include one hidden Extensions panel");
 });

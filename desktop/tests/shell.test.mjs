@@ -2,11 +2,8 @@ import { test } from "node:test";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
 import { createApiClient } from "../src/api-client.js";
-import { renderConversationDebug } from "../src/components/conversation-debug.js";
-import { renderBackendDiagnostics } from "../src/components/backend-diagnostics.js";
-import { createDesktopPolling } from "../src/components/desktop-polling.js";
 import { restartScopeDisables } from "../src/components/settings-panel.js";
-import { main, apiClient, residentVoice, conversationDebug, backendDiagnostics, desktopPolling, degradedList, settingsPanel, llmProviderSettings, memoryPanel, actionsPanel, extensionsPanel, agentsPanel, backend, lib, index, style, cargoToml, tauriConfig, desktopSource } from "./support.mjs";
+import { main, apiClient, settingsPanel, llmProviderSettings, memoryPanel, actionsPanel, extensionsPanel, agentsPanel, backend, lib, index, style, cargoToml, tauriConfig, desktopSource } from "./support.mjs";
 
 test("operator panels must render through DOM text APIs and the api client only", async () => {
   for (const [panel, source] of Object.entries({ agentsPanel, memoryPanel, actionsPanel, extensionsPanel, llmProviderSettings })) {
@@ -55,16 +52,9 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(lib.includes("http_client: Client"), "desktop state must own one shared HTTP client");
   assert.ok(!backend.includes("Client::new()"), "backend requests must reuse the shared HTTP client");
   assert.ok(backend.includes("timeout(Duration::from_millis(700))"), "startup health probes must retain their request timeout");
-  assert.ok(index.includes("session-turn-count"), "desktop must display session turn count");
   assert.ok(backend.includes("/status/wake"), "backend bridge must call /status/wake");
   assert.ok(backend.includes("/status/resident-voice"), "backend bridge must call /status/resident-voice");
-  assert.ok(desktopSource.includes("PTT-only fallback"), "desktop must display PTT-only fallback state");
-  assert.ok(index.includes("wake-indicator"), "desktop must display wake status");
-  assert.ok(index.includes("wake-toggle"), "desktop must expose wake toggle");
-  assert.ok(index.includes("resident-mode"), "desktop must expose resident voice mode control");
-  assert.ok(index.includes("resident-tts-voice"), "desktop must expose resident voice selector");
   assert.ok(index.includes("Voice Selector"), "desktop must label resident voice selector");
-  assert.ok(index.includes("ptt-only"), "desktop must include PTT-only resident mode");
   assert.ok(index.indexOf("resident-voice-panel") < index.indexOf("wake-monitor-panel"), "Resident Voice must render above Wake in the operator panel");
   assert.ok(
     index.indexOf("personality-panel") < index.indexOf("resident-voice-panel"),
@@ -78,9 +68,6 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
     index.indexOf("service-status") < index.indexOf("advanced-controls-trigger"),
     "Backend, Readiness and Services must stay above the advanced-control launch button",
   );
-  assert.ok(index.includes('<dialog id="advanced-panel"'), "advanced controls must open one dialog surface");
-  assert.ok(index.includes('id="advanced-panel-rail"'), "the advanced-control dialog must carry a category rail");
-  assert.ok(index.includes('id="advanced-panel-close"'), "the advanced-control dialog must expose an explicit close control");
   for (const category of ["providers", "settings", "memory", "actions", "extensions", "agents"]) {
     assert.ok(
       index.includes(`data-category="${category}"`),
@@ -94,25 +81,7 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   for (const label of ["Providers &amp; Models", "Operator Settings", "Actions &amp; Capabilities", "Agents"]) {
     assert.ok(index.includes(label), `advanced-control rail missing label: ${label}`);
   }
-  assert.ok(
-    index.indexOf("<dialog") > index.indexOf("</main>"),
-    "the advanced-control dialog must sit outside the overflow-hidden shell",
-  );
-  assert.ok(main.includes("showModal()"), "the advanced-control surface must use native modal dismissal and focus handling");
-  assert.ok(
-    main.includes('advancedDialogEl.addEventListener("close"'),
-    "Escape, the close button and a backdrop click must all tear down through one close hook",
-  );
-  assert.ok(
-    main.includes("event.target === advancedDialogEl"),
-    "a backdrop click must dismiss the advanced-control surface",
-  );
   assert.ok(main.includes("advancedDialogEl.open"), "the restart badge must reflect whether the advanced surface is showing");
-  assert.ok(main.includes('aria-selected'), "the rail must mark the showing category");
-  assert.ok(main.includes("createAgentsPanel"), "Agents must be mounted in the desktop surface");
-  assert.ok(main.includes("openProviderSettings"), "Providers & Models must be mounted as its own category");
-  assert.ok(index.includes("hands-free"), "desktop must include hands-free resident mode");
-  assert.ok(index.includes("continuous"), "desktop must include continuous resident mode");
   assert.ok(index.includes("resident-voice-status"), "desktop must display resident voice diagnostics");
   assert.ok(index.includes("degraded-detail"), "desktop must include collapsed degraded detail surface");
   assert.ok(index.includes("Degraded list detail"), "desktop degraded detail surface must use the required title");
@@ -121,16 +90,7 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(index.includes("backend-diagnostics"), "desktop must include backend diagnostics target element");
   assert.ok(index.indexOf("Conversation debug details") < index.indexOf("Backend diagnostics"), "backend diagnostics must follow conversation debug details");
   assert.ok(index.indexOf("Backend diagnostics") < index.indexOf("Degraded list detail"), "backend diagnostics must precede degraded list detail");
-  assert.ok(main.includes("renderConversationDebug(status, voiceDetailEl)"), "desktop must render conversation debug from session status");
-  assert.ok(main.includes("renderBackendDiagnostics"), "desktop must render backend diagnostics");
-  assert.ok(main.includes("error.diagnostics"), "startup failures must not collapse only into String(error)");
-  assert.ok(main.includes('import { createDesktopPolling } from "./components/desktop-polling.js"'), "desktop main must import polling helper");
-  assert.ok(main.includes("createDesktopPolling({"), "desktop main must create polling helper with refresh callbacks");
-  assert.ok(main.includes("startAllPolling()"), "desktop main must start polling through helper");
   assert.ok(main.includes("stopAllPolling()"), "desktop main must stop polling through helper");
-  for (const timerName of ["wakePollTimer", "sessionPollTimer", "residentVoicePollTimer"]) {
-    assert.ok(!main.includes(timerName), `desktop main must not own ${timerName}`);
-  }
   assert.ok(main.includes("async function completeBackendStart(startPayload)"), "desktop main must define shared backend-start postlude helper");
   assert.equal(
     [...main.matchAll(/await completeBackendStart\(startPayload\)/g)].length,
@@ -144,65 +104,21 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(lib.includes("startup_failure_payload"), "Tauri start_backend failures must return structured diagnostics");
   assert.ok(backend.includes("stdout_tail"), "backend diagnostics failure payload must include stdout tail");
   assert.ok(backend.includes("stderr_tail"), "backend diagnostics failure payload must include stderr tail");
-  assert.ok(main.includes("await refreshSessionStatus()"), "desktop text and voice flows must refresh session status");
-  assert.ok(main.includes("renderDegradedList(readiness, degradedEl)"), "desktop degraded detail must render from existing readiness payload");
-  assert.ok(
-    main.indexOf("await ensureResidentVoiceStream()") < main.indexOf("const readiness = await api.getReadiness()"),
-    "desktop must fetch readiness after resident stream startup settles",
-  );
-  assert.ok(
-    main.indexOf("async function completeBackendStart") < main.indexOf("const readiness = await api.getReadiness()"),
-    "desktop backend-start postlude must own readiness fetch",
-  );
-  assert.ok(
-    main.indexOf("await startWakeMonitorIfAvailable()") > main.indexOf("async function setResidentVoiceMode"),
-    "desktop must start wake only through explicit resident mode selection",
-  );
-  assert.ok(
-    !main
-      .slice(main.indexOf("async function completeBackendStart"), main.indexOf("const readiness = await api.getReadiness()"))
-      .includes("await startWakeMonitorIfAvailable()"),
-    "desktop backend startup must not automatically start wake monitoring",
-  );
   assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
   assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
   assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
   assert.ok(desktopSource.includes("continuous-active"), "desktop must render resident continuous active status");
-  assert.ok(main.includes("ensureResidentVoiceStream"), "desktop must start resident stream before resident wake/mode proof");
-  assert.ok(main.includes("setResidentVoiceMode"), "desktop must call backend resident mode mutation");
-  assert.ok(main.includes("setResidentTtsVoice"), "desktop must call backend resident TTS voice mutation");
-  assert.ok(main.includes("renderResidentTtsVoiceSelector"), "desktop must render TTS voice options from backend status");
-  assert.ok(main.includes("tts_supported_voices"), "desktop voice selector must use backend-supported voice options");
-  assert.ok(main.includes("jarvisv7_active_tts_voice"), "desktop voice selector must persist the selected voice locally");
-  assert.ok(main.includes("applyStoredTtsVoiceIfAvailable"), "desktop voice selector must restore a valid cached voice");
-  assert.ok(main.includes("removeItem(TTS_VOICE_STORAGE_KEY"), "desktop voice selector must clear invalid cached voices");
   const settingsRestartPath = main.slice(main.indexOf("async function restartBackendForSettings"), main.indexOf("function updateSettingsRestartRequired"));
   assert.ok(settingsRestartPath.includes("ttsVoicePreferenceRestored = false"), "desktop settings restart must reset TTS voice restore guard");
   assert.ok(
     settingsRestartPath.indexOf("ttsVoicePreferenceRestored = false") < settingsRestartPath.indexOf("await completeBackendStart(startPayload)"),
     "desktop settings restart must reset TTS voice guard before backend-start postlude",
   );
-  assert.ok(index.includes("Selected voice is saved locally and applies to runtime."), "desktop voice hint must describe local runtime persistence");
   assert.ok(desktopSource.includes("status.stream"), "desktop must read backend resident stream object");
   assert.ok(desktopSource.includes("stream_present"), "desktop must keep flat resident stream fallback fields");
   assert.ok(desktopSource.includes("degraded_reasons"), "desktop must render resident degraded reasons");
   assert.ok(backend.includes("/personality/list"), "backend bridge must call /personality/list");
   assert.ok(backend.includes("/personality/select"), "backend bridge must call /personality/select");
-  assert.ok(index.includes("personality-select"), "desktop must display personality selector");
-  assert.ok(index.includes("personality-current"), "desktop must display active personality");
-  assert.ok(main.includes("profile_errors"), "desktop must render backend personality profile diagnostics");
-  assert.ok(main.includes("Profile diagnostics"), "desktop must label skipped personality profile diagnostics");
-  assert.ok(main.includes("personalitySelectionPending"), "desktop must guard sends while profile selection is pending");
-  assert.ok(main.includes("Active personality confirmed"), "desktop must show backend-confirmed active personality");
-  assert.ok(main.includes("active_personality_profile_id"), "desktop must render backend-reported turn profile metadata");
-  assert.ok(main.includes("jarvisv7_active_personality"), "desktop must persist the backend-confirmed active personality");
-  assert.ok(main.includes("dataset.profileId"), "desktop must attach turn profile metadata without appending it to assistant text");
-  assert.ok(!main.includes("[profile:"), "desktop must not append profile metadata into assistant message text");
-  assert.ok(main.includes("Description"), "desktop must display profile description");
-  assert.ok(main.includes("Locale"), "desktop must display profile locale");
-  assert.ok(main.includes("personalityDetailEl.textContent"), "desktop must keep compact personality metadata on one rendered line");
-  assert.ok(main.includes("appendPresence"), "desktop must append UI-only presence messages");
-  assert.ok(main.includes("presenceByProfile"), "desktop must map profile-specific presence messages");
   assert.ok(!settingsPanel.includes("http://127.0.0.1:8765/config/operator"), "settings panel must not call backend URL directly");
   assert.ok(
     !settingsPanel.includes('querySelectorAll("input, select, button")'),

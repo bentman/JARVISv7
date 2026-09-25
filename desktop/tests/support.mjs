@@ -146,3 +146,108 @@ export function memoryDetail(record = memoryRecord()) {
     events_returned: 0,
   };
 }
+
+// Backend responses shaped like the Tauri bridge returns them; a test overrides only what it exercises.
+export function desktopResponses() {
+  const residentVoice = {
+    mode: "ptt+wake", available: true, vad_configured: true, barge_in_supported: true, barge_in_wired: true,
+    degraded_reasons: [], stream: { present: true, running: true, subscribers: 1, buffer_chunks: 0, dropped_chunks: 0, last_error: null },
+    tts_voice: "bf_isabella", tts_supported_voices: ["bf_isabella", "am_adam"], tts_voice_restart_required: false,
+  };
+  const session = { session_id: "session-1", state: "IDLE", turn_count: 0, active: true };
+  const wake = { provider: "openwakeword", available: true, monitoring: false, active: false, enabled: true, reason: "" };
+  return {
+    start_backend: { session_id: "session-1", turn_count: 0, diagnostics: {} },
+    stop_backend: "",
+    get_resident_voice_status: residentVoice,
+    start_resident_voice_stream: residentVoice,
+    set_resident_voice_mode: (args) => Object.assign(residentVoice, { mode: args.mode }),
+    set_resident_voice_tts_voice: (args) => Object.assign(residentVoice, { tts_voice: args.voice }),
+    get_readiness: {
+      status: "ready", arch: "amd64", profile_id: "profile-1", active_llm_runtime: "llama.cpp",
+      families: { stt: { family: "stt", ready: true }, tts: { family: "tts", ready: true }, llm: { family: "llm", ready: true } },
+      services: {},
+    },
+    get_personality_list: {
+      active_profile_id: "default",
+      profiles: [
+        { profile_id: "default", display_name: "JARVIS", locale: "en", description: "Balanced assistant." },
+        { profile_id: "concise", display_name: "Concise", locale: "en", description: "Short answers." },
+      ],
+      profile_errors: [],
+    },
+    select_personality: (args) => ({ active: { profile_id: args.profileId, locale: "en", description: "Short answers." } }),
+    get_session_status: session,
+    get_desktop_status: { session, resident_voice: residentVoice, wake },
+    get_wake_status: wake,
+    start_wake_monitor: { ...wake, monitoring: true, active: true },
+    stop_wake_monitor: "",
+    submit_text: { final_state: "IDLE", response_text: "Hello.", active_personality_profile_id: "default", profile_epoch: 1 },
+    get_llm_config: { profiles: [], selection: {} },
+    list_agents: { agents: [] },
+    list_agent_runs: { records: [] },
+    list_agent_tools: { tools: [] },
+  };
+}
+
+let bootCount = 0;
+
+// Boots the real index.html and main.js in jsdom; only the Tauri invoke bridge is stood in.
+export async function bootDesktop({ responses = {}, storage = {}, bridge = true } = {}) {
+  const { JSDOM } = await import("jsdom");
+  const html = readFileSync(new URL("../src/index.html", import.meta.url), "utf8");
+  const dom = new JSDOM(html, { url: "http://localhost/" });
+  const { window } = dom;
+  // jsdom has no modal dialog support; model the open state and close event the HTML spec defines.
+  window.HTMLDialogElement.prototype.showModal = function showModal() { this.setAttribute("open", ""); };
+  window.HTMLDialogElement.prototype.close = function close() {
+    if (!this.hasAttribute("open")) return;
+    this.removeAttribute("open");
+    this.dispatchEvent(new window.Event("close"));
+  };
+  for (const [key, value] of Object.entries(storage)) window.localStorage.setItem(key, value);
+
+  const calls = [];
+  const table = { ...desktopResponses(), ...responses };
+  if (bridge) {
+    window.__TAURI__ = {
+      core: {
+        invoke: async (command, args = {}) => {
+          calls.push({ command, args });
+          if (!(command in table)) throw new Error(`no bridge response for ${command}`);
+          const entry = table[command];
+          const value = typeof entry === "function" ? await entry(args) : entry;
+          if (value instanceof Error) throw value;
+          return typeof value === "string" ? value : JSON.stringify(value);
+        },
+      },
+    };
+  }
+
+  const previous = { window: globalThis.window, document: globalThis.document };
+  globalThis.window = window;
+  globalThis.document = window.document;
+  await import(new URL(`../src/main.js?boot=${++bootCount}`, import.meta.url));
+
+  async function until(predicate, message) {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (predicate()) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    throw new Error(`timed out waiting for ${message}`);
+  }
+
+  return {
+    window,
+    document: window.document,
+    calls,
+    commands: () => calls.map((call) => call.command),
+    $: (selector) => window.document.querySelector(selector),
+    until,
+    close() {
+      window.close();
+      globalThis.window = previous.window;
+      globalThis.document = previous.document;
+    },
+  };
+}
