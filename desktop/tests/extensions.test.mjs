@@ -4,6 +4,19 @@ import { strict as assert } from "node:assert";
 import { createExtensionsPanel, createExtensionsPanelController, extensionActivityState, extensionStateEnabled, formatExtensionOrigin, formatPromptMessages, formatResourceContents, formatRunStarted, operationDisplayName, operationKind, operationShortLabel, operationSubmitLabel, parseAllowlist, parseCommandLines, requestedCapabilities, extensionLocalIdValid, extensionRunTitle, formatToolResult } from "../src/components/extensions-panel.js";
 import { main, apiClient, memoryPanel, actionsPanel, extensionsPanel, agentsPanel, backend, createElement, deferred, findElement, findElements } from "./support.mjs";
 
+// Returns the control inside the labeled field whose visible label is `text`.
+function field(form, text) {
+  const label = findElement(form, (node) => node.className === "extensions-field-control" && node.children[0]?.textContent === text);
+  return label ? label.children[1] : null;
+}
+
+// Opens one of the catalog's Add forms the way an operator does, through its button.
+function openAddForm(container, buttonText) {
+  const button = findElement(container, (node) => node.tagName === "button" && node.textContent === buttonText);
+  assert.ok(button, `the catalog must offer ${buttonText}`);
+  button.listeners.click();
+}
+
 // Mounts the extensions panel on the test DOM with empty-catalog defaults; done() closes it and
 // restores the globals it replaced.
 function mountExtensionsPanel(handlers) {
@@ -287,6 +300,11 @@ test("Run polling re-renders this panel roughly once a second while it is open; 
   assert.equal(rerenderedList.scrollTop, 240, "the catalog list must keep its scroll position across a run-poll re-render");
   assert.equal(rerenderedDetail.scrollTop, 80, "the detail column must keep its scroll position across a run-poll re-render");
 
+  panel.close();
+  await panel.open();
+  const reopenedList = findElement(container, (node) => node.dataset?.scrollKey === "list");
+  assert.equal(reopenedList.scrollTop, 240, "switching Advanced Controls away and back must restore the list position");
+
   done();
 });
 
@@ -352,8 +370,8 @@ test("Focus restoration is a generic mechanism, but each tagged control is its o
   await assertFocusSurvives("state:mcp:weather:disabled", "the Set disabled button");
   await assertFocusSurvives("show-body:mcp:weather", "the Show body button");
   await assertFocusSurvives("remove-connection:mcp:weather", "the Remove connection button");
-  await assertFocusSurvives("add-mcp:submit", "the Add connection submit button");
-  await assertFocusSurvives("import-skill:submit", "the Import skill submit button");
+  await assertFocusSurvives("add:mcp", "the Add MCP connection button");
+  await assertFocusSurvives("add:skill", "the Import skill button");
   await assertFocusSurvives("credential-submit:mcp:weather", "the Store credential submit button");
   await assertFocusSurvives("operation-submit:mcp:weather:tool:get_forecast", "an operation's submit button");
 
@@ -925,6 +943,10 @@ test("owner controls must follow provenance, and the MCP credential form must no
   assert.ok((await controlsFor("tool", "writer", "data/extensions/tools", "external")).includes("Remove tool"));
   assert.ok(!(await controlsFor("tool", "writer", "config/extensions/tools", "application")).includes("Remove tool"),
     "an application tool must not be removable");
+  assert.ok((await controlsFor("acp", "coder", "data/extensions/acp", "external")).includes("Remove agent"),
+    "an operator-owned external agent definition must be removable");
+  assert.ok(!(await controlsFor("acp", "coder", "config/extensions/acp", "application")).includes("Remove agent"),
+    "an application external agent definition must not be removable");
 
   assert.ok((await controlsFor("skill", "notes", "data/extensions/skills", "external")).includes("Edit skill"),
     "an operator skill carries external trust and must still be editable");
@@ -1132,6 +1154,37 @@ test("An operator can add a governed local tool without hand-editing YAML, the s
   assert.equal(proposals[1].capabilityId, "extension-definition-delete");
   assert.deepEqual(proposals[1].actionArguments, { family: "tool", local_id: "changelog-writer" });
   assert.equal(controller.snapshot().selectedExtensionId, "");
+
+  // An external (ACP) agent is declared the same way - a fixed argv plus a process boundary -
+  // through the same governed definition write, under its own family.
+  controller.startAdd("acp");
+  assert.equal(controller.snapshot().adding, "acp", "the chosen add form must take the detail column");
+  await controller.addLocalTool({
+    family: "acp",
+    localId: "coding-agent",
+    name: "Coding agent",
+    command: "npx\n-y\nexample-acp-agent",
+    argvAllowlist: "npx",
+    envPassthrough: "PATH",
+    workingRoot: "data",
+  });
+  assert.deepEqual(proposals[2].actionArguments, {
+    family: "acp",
+    local_id: "coding-agent",
+    name: "Coding agent",
+    version: "1.0.0",
+    definition: {
+      command: ["npx", "-y", "example-acp-agent"],
+      process: { subprocess: true, argv_allowlist: ["npx"], env_passthrough: ["PATH"], working_root: "data" },
+    },
+  });
+  assert.equal(controller.snapshot().notice, "External agent added.");
+  assert.equal(controller.snapshot().adding, "", "a successful add must close its form");
+  await controller.addLocalTool({ family: "acp", localId: "Bad Id", name: "Bad", command: "npx", argvAllowlist: "npx", workingRoot: "data" });
+  assert.match(controller.snapshot().addToolError, /^Agent ID must start/);
+  await controller.removeLocalTool("coding-agent", "acp");
+  assert.deepEqual(proposals[3].actionArguments, { family: "acp", local_id: "coding-agent" });
+  assert.equal(controller.snapshot().notice, "External agent removed.");
 });
 
 test("Editing an MCP connection reuses the same write capability Add uses, but must carry the fingerprint the...", async () => {
@@ -1487,21 +1540,19 @@ test("The Add MCP Connection control must render as a real, human-labeled form, 
     },
   });
   await panel.open();
+  openAddForm(container, "Add MCP connection");
 
   const form = findElement(container, (node) => node.className === "extensions-add-connection");
   assert.ok(form, "the Add MCP connection form must render");
-  const name = findElement(form, (node) => node.placeholder === "Display name");
-  const localId = findElement(form, (node) => node.placeholder === "Connection ID (e.g. weather)");
-  const url = findElement(form, (node) => node.placeholder === "https://server.example/mcp");
-  const toolAllowlist = findElement(form, (node) => node.placeholder === "Allowed tools (comma-separated, optional)");
-  const resourceAllowlist = findElement(form, (node) => node.placeholder === "Allowed resources (comma-separated, optional)");
-  const promptAllowlist = findElement(form, (node) => node.placeholder === "Allowed prompts (comma-separated, optional)");
-  assert.equal(name.placeholder, "Display name");
-  assert.equal(localId.placeholder, "Connection ID (e.g. weather)");
-  assert.equal(url.placeholder, "https://server.example/mcp");
-  assert.equal(toolAllowlist.placeholder, "Allowed tools (comma-separated, optional)");
-  assert.equal(resourceAllowlist.placeholder, "Allowed resources (comma-separated, optional)");
-  assert.equal(promptAllowlist.placeholder, "Allowed prompts (comma-separated, optional)");
+  const name = field(form, "Name");
+  const localId = field(form, "Connection ID");
+  const url = field(form, "Server URL");
+  const toolAllowlist = field(form, "Allowed tools");
+  const resourceAllowlist = field(form, "Allowed resources");
+  const promptAllowlist = field(form, "Allowed prompts");
+  for (const [control, label] of [[name, "Name"], [localId, "Connection ID"], [url, "Server URL"], [toolAllowlist, "Allowed tools"], [resourceAllowlist, "Allowed resources"], [promptAllowlist, "Allowed prompts"]]) {
+    assert.ok(control, `the ${label} field must carry a visible label`);
+  }
   const submit = findElement(form, (node) => node.tagName === "button" && node.textContent === "Add connection");
   assert.ok(submit, "the form must offer an Add connection control");
 
@@ -1559,8 +1610,8 @@ test("Edit MCP Connection: clicking \"Edit connection\" loads the stored definit
 
   const editForm = findElement(container, (node) => node.className === "extensions-edit-connection");
   assert.ok(editForm, "editing must render a distinct form, not reuse the empty Add form");
-  const nameField = findElement(editForm, (node) => node.placeholder === "Display name");
-  const urlField = findElement(editForm, (node) => node.placeholder === "https://server.example/mcp");
+  const nameField = field(editForm, "Name");
+  const urlField = field(editForm, "Server URL");
   assert.equal(nameField.value, "Weather", "the form must be prefilled from the loaded definition");
   assert.equal(urlField.value, "https://weather.example.test/mcp");
 
@@ -1608,14 +1659,14 @@ test("Edit MCP Connection must prefill credential reference and OAuth fields fro
   await editButton.listeners.click();
 
   const editForm = findElement(container, (node) => node.className === "extensions-edit-connection");
-  const credentialRefField = findElement(editForm, (node) => node.placeholder?.startsWith("Credential reference"));
-  const oauthClientIdField = findElement(editForm, (node) => node.placeholder === "OAuth client ID (optional)");
-  const oauthScopesField = findElement(editForm, (node) => node.placeholder === "OAuth scopes (comma-separated, optional)");
+  const credentialRefField = field(editForm, "Credential reference");
+  const oauthClientIdField = field(editForm, "Client ID");
+  const oauthScopesField = field(editForm, "Scopes");
   assert.equal(credentialRefField.value, "weather-api-key", "credential reference must be prefilled from the loaded definition");
   assert.equal(oauthClientIdField.value, "abc", "OAuth client ID must be prefilled from the loaded definition");
   assert.equal(oauthScopesField.value, "read", "OAuth scopes must be prefilled from the loaded definition");
 
-  const nameField = findElement(editForm, (node) => node.placeholder === "Display name");
+  const nameField = field(editForm, "Name");
   nameField.value = "Weather HQ";
   await editForm.listeners.submit({ preventDefault() {} });
 
@@ -1635,10 +1686,11 @@ test("Add MCP Connection must also expose credential reference and OAuth fields,
     proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
   });
   await panel.open();
+  openAddForm(container, "Add MCP connection");
 
   const form = findElement(container, (node) => node.className === "extensions-add-connection");
-  const credentialRefField = findElement(form, (node) => node.placeholder?.startsWith("Credential reference"));
-  const oauthClientIdField = findElement(form, (node) => node.placeholder === "OAuth client ID (optional)");
+  const credentialRefField = field(form, "Credential reference");
+  const oauthClientIdField = field(form, "Client ID");
   assert.ok(credentialRefField, "the Add form must offer a credential reference field");
   assert.ok(oauthClientIdField, "the Add form must offer an OAuth client ID field");
 
@@ -1743,12 +1795,13 @@ test("The Add MCP Connection form's transport select must toggle between the str
     proposeAction: async (request) => { proposals.push(request); return { status: "success" }; },
   });
   await panel.open();
+  openAddForm(container, "Add MCP connection");
 
   function currentForm() {
     return findElement(container, (node) => node.className === "extensions-add-connection");
   }
   function urlField(form) {
-    return findElement(form, (node) => node.placeholder === "https://server.example/mcp");
+    return field(form, "Server URL");
   }
   function commandField(form) {
     return findElement(form, (node) => node.tagName === "textarea");
@@ -1757,9 +1810,9 @@ test("The Add MCP Connection form's transport select must toggle between the str
   let form = currentForm();
   let url = urlField(form);
   let command = commandField(form);
-  assert.equal(url.parentElement.hidden, false, "streamable_http fields must be visible by default");
+  assert.equal(url.parentElement.parentElement.hidden, false, "streamable_http fields must be visible by default");
   assert.equal(url.required, true, "url must be required by default");
-  assert.equal(command.parentElement.hidden, true, "stdio fields must be hidden by default");
+  assert.equal(command.parentElement.parentElement.hidden, true, "stdio fields must be hidden by default");
   assert.equal(command.required, false, "command must not be required by default");
 
   const transport = findElement(form, (node) => node.tagName === "select" && findElement(node, (opt) => opt.value === "stdio"));
@@ -1773,10 +1826,10 @@ test("The Add MCP Connection form's transport select must toggle between the str
   form = currentForm();
   url = urlField(form);
   command = commandField(form);
-  const argvAllowlist = findElement(form, (node) => node.placeholder === "Allowed executable (comma-separated, e.g. python3)");
-  assert.equal(url.parentElement.hidden, true, "streamable_http fields must hide once stdio is selected");
+  const argvAllowlist = field(form, "Allowed executables");
+  assert.equal(url.parentElement.parentElement.hidden, true, "streamable_http fields must hide once stdio is selected");
   assert.equal(url.required, false, "url must not be required once stdio is selected");
-  assert.equal(command.parentElement.hidden, false, "stdio fields must become visible once stdio is selected");
+  assert.equal(command.parentElement.parentElement.hidden, false, "stdio fields must become visible once stdio is selected");
   assert.equal(command.required, true, "command must be required once stdio is selected");
 
   // A re-render this form did not cause - the exact class of bug reported: a poll tick or an
@@ -1790,14 +1843,14 @@ test("The Add MCP Connection form's transport select must toggle between the str
   command = commandField(form);
   const transportAfterRefresh = findElement(form, (node) => node.tagName === "select" && findElement(node, (opt) => opt.value === "stdio"));
   assert.equal(transportAfterRefresh.value, "stdio", "the transport selection must survive an unrelated re-render");
-  assert.equal(url.parentElement.hidden, true, "streamable_http fields must stay hidden after an unrelated re-render");
+  assert.equal(url.parentElement.parentElement.hidden, true, "streamable_http fields must stay hidden after an unrelated re-render");
   assert.equal(url.required, false, "url must stay non-required after an unrelated re-render");
-  assert.equal(command.parentElement.hidden, false, "stdio fields must stay visible after an unrelated re-render");
+  assert.equal(command.parentElement.parentElement.hidden, false, "stdio fields must stay visible after an unrelated re-render");
   assert.equal(command.required, true, "command must stay required after an unrelated re-render");
 
-  const name = findElement(form, (node) => node.placeholder === "Display name");
-  const localId = findElement(form, (node) => node.placeholder === "Connection ID (e.g. weather)");
-  const argvAllowlistFinal = findElement(form, (node) => node.placeholder === "Allowed executable (comma-separated, e.g. python3)");
+  const name = field(form, "Name");
+  const localId = field(form, "Connection ID");
+  const argvAllowlistFinal = field(form, "Allowed executables");
   name.value = "Local tool server";
   localId.value = "local-tool-server";
   command.value = "python3\n-m\nmymcp.server";
@@ -1850,8 +1903,8 @@ test("Edit MCP Connection for a stdio connection must render the stdio field set
   const editForm = findElement(container, (node) => node.className === "extensions-edit-connection");
   assert.ok(editForm, "editing a stdio connection must render the edit form, not a fallback notice");
   const commandField = findElement(editForm, (node) => node.tagName === "textarea");
-  const urlField = findElement(editForm, (node) => node.placeholder === "https://server.example/mcp");
-  const oauthField = findElement(editForm, (node) => node.placeholder === "OAuth client ID (optional)");
+  const urlField = field(editForm, "Server URL");
+  const oauthField = field(editForm, "Client ID");
   assert.equal(commandField.value, "python3\n-m\nmymcp.server", "the form must be prefilled from the loaded stdio definition");
   assert.equal(urlField, null, "a stdio connection's edit form must not offer a url field");
   assert.equal(oauthField, null, "a stdio connection's edit form must not offer OAuth fields");
@@ -1877,13 +1930,14 @@ test("The Add Local Tool control must render as a real, human-labeled form, not 
     },
   });
   await panel.open();
+  openAddForm(container, "Add local tool");
 
   const form = findElement(container, (node) => node.className === "extensions-add-tool");
   assert.ok(form, "the Add Local Tool form must render");
-  const name = findElement(form, (node) => node.placeholder === "Display name");
-  const localId = findElement(form, (node) => node.placeholder === "Tool ID (e.g. changelog-writer)");
+  const name = field(form, "Name");
+  const localId = field(form, "Tool ID");
   const command = findElement(form, (node) => node.tagName === "textarea");
-  const argvAllowlist = findElement(form, (node) => node.placeholder === "Allowed executable (comma-separated, e.g. python3)");
+  const argvAllowlist = field(form, "Allowed executables");
   const workingRoot = findElement(form, (node) => node.tagName === "select");
   assert.ok(name && localId && command && argvAllowlist && workingRoot, "the form must expose command, argv allowlist, and working root controls");
   const submit = findElement(form, (node) => node.tagName === "button" && node.textContent === "Add tool");
@@ -1989,12 +2043,13 @@ test("The Import Skill control must render as a real form, not raw JSON, and its
     },
   });
   await panel.open();
+  openAddForm(container, "Import skill");
 
   const form = findElement(container, (node) => node.className === "extensions-import-skill");
   assert.ok(form, "the Import skill form must render");
-  const localId = findElement(form, (node) => node.tagName === "input");
-  const body = findElement(form, (node) => node.tagName === "textarea");
-  assert.equal(localId.placeholder, "Skill ID (e.g. changelog-writer)");
+  const localId = field(form, "Skill ID");
+  const body = field(form, "Skill file");
+  assert.ok(localId && body, "the skill fields must carry visible labels");
   assert.ok(body.placeholder.includes("name:"));
   const submit = findElement(form, (node) => node.tagName === "button" && node.textContent === "Import skill");
   assert.ok(submit, "the form must offer an Import skill control");
@@ -2012,22 +2067,28 @@ test("The Import Skill control must render as a real form, not raw JSON, and its
   done();
 });
 
-test("main.js must wire every handler extensions-panel.js actually calls. getExtensionDefinition was missing...", async () => {
+test("main.js must wire every handler each operator panel actually calls", async () => {
   // main.js must wire every handler extensions-panel.js actually calls. getExtensionDefinition
   // was missing this way once: loadDefinition() returned immediately because
   // handlers.getExtensionDefinition was undefined in the real mounted app, yet every isolated
   // controller/DOM test in this file passed anyway because each one supplies its own mock
   // handlers directly - only the real wiring in main.js could go silently stale like this.
-  const panelSource = readFileSync(new URL("../src/components/extensions-panel.js", import.meta.url), "utf8");
   const mainSource = readFileSync(new URL("../src/main.js", import.meta.url), "utf8");
-  const usedHandlers = new Set([...panelSource.matchAll(/handlers\.([a-zA-Z]+)/g)].map((match) => match[1]));
-  assert.ok(usedHandlers.size > 10, "sanity check: the extraction must find the panel's known handler calls");
-  const callStart = mainSource.indexOf("createExtensionsPanel(");
-  assert.ok(callStart > 0, "main.js must mount the extensions panel");
-  const callEnd = mainSource.indexOf("\n);", callStart);
-  const wired = mainSource.slice(callStart, callEnd);
-  const missing = [...usedHandlers].filter((name) => !wired.includes(`${name}:`));
-  assert.deepEqual(missing, [], `main.js must wire every handler extensions-panel.js calls; missing: ${missing.join(", ")}`);
+  for (const [file, factory] of [
+    ["extensions-panel.js", "createExtensionsPanel("],
+    ["actions-panel.js", "createActionsPanel("],
+    ["agents-panel.js", "createAgentsPanel("],
+  ]) {
+    const panelSource = readFileSync(new URL(`../src/components/${file}`, import.meta.url), "utf8");
+    const usedHandlers = new Set([...panelSource.matchAll(/handlers\.([a-zA-Z]+)/g)].map((match) => match[1]));
+    assert.ok(usedHandlers.size > 5, `sanity check: the extraction must find ${file}'s known handler calls`);
+    const callStart = mainSource.indexOf(factory);
+    assert.ok(callStart > 0, `main.js must mount ${file}`);
+    const callEnd = mainSource.indexOf("\n);", callStart);
+    const wired = mainSource.slice(callStart, callEnd);
+    const missing = [...usedHandlers].filter((name) => !wired.includes(`${name}:`));
+    assert.deepEqual(missing, [], `main.js must wire every handler ${file} calls; missing: ${missing.join(", ")}`);
+  }
 });
 
 test("extension ids must follow the backend's local id rule", async () => {

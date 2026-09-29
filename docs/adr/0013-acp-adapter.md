@@ -46,6 +46,8 @@ Negative:
 
 `backend/app/extensions/acp.py` consumes ADR 0006 adapter definitions and ADR 0009's shared session lifecycle. Definition edit/delete closes every connection for that agent through prefix matching.
 
+A permission answer is returned to the agent as an SDK-valid `RequestPermissionResponse`: a selected option carries `outcome="selected"` with its option id, and anything else is a cancelled denial. Because connections are namespaced by host conversation, `SessionManager.is_open_prefix` answers whether any connection under a definition is open, and the extension runtime reports that as the definition's `connected` state.
+
 An open connection holds its subprocess and SDK transport through an `AsyncExitStack`. Initialization and session creation or resume occur once per connection; subsequent work sends prompts. Event and permission callbacks bind before initialization/resume and again for each prompt, attributing replayed updates and new events to the current call.
 
 A remembered protocol session ID can be resumed after process replacement when the agent advertises `sessionCapabilities.resume`. Remembered IDs are host-memory state; recovery across a JARVIS restart is not implemented. The SDK fixture requires the agent process to enable `use_unstable_protocol` for resume routing, so advertised capability alone does not establish real-agent compatibility.
@@ -68,11 +70,13 @@ Implementation files:
 - `backend/app/extensions/acp.py`
 - `backend/app/extensions/acp_server.py`
 - `backend/app/api/routes/acp_server.py`
+- `backend/app/actions/sessions.py`
+- `backend/app/services/extension_runtime_service.py`
 
 Test coverage:
 - `backend/tests/unit/extensions/test_acp_bridge.py` for adapter callbacks, resume negotiation, and unsupported/failed resume fallback
 - `backend/tests/unit/extensions/test_acp_server.py` for the local inbound bridge
-- `backend/tests/integration/test_acp_sdk.py` for real process/session reuse, separate host-conversation isolation, current-call callbacks, cancellation, dead-process eviction, and resume after process replacement. The resume fixture persists history and emits recovered content, establishing content continuity rather than only matching session IDs
+- `backend/tests/integration/test_acp_sdk.py` for real process/session reuse, separate host-conversation isolation and per-definition connection accounting, accepted and declined permission answers reaching a real agent, current-call callbacks, cancellation, dead-process eviction, and resume after process replacement. The resume fixture persists history and emits recovered content, establishing content continuity rather than only matching session IDs
 - `backend/tests/integration/test_extension_runtime.py` for ACP turn admission, permission/input handling, and delegated-run persistence
 
 Validation commands:

@@ -290,7 +290,7 @@ class _JarvisAcpClient:
         )
         if selected in option_ids:
             _emit(self._on_event, "permission_selected", {"session_id": session_id, "option_id": selected})
-            return RequestPermissionResponse(outcome=AllowedOutcome(option_id=selected))
+            return RequestPermissionResponse(outcome=AllowedOutcome(outcome="selected", option_id=selected))
         _emit(self._on_event, "permission_denied", {"session_id": session_id})
         return RequestPermissionResponse(outcome=DeniedOutcome(outcome="cancelled"))
 

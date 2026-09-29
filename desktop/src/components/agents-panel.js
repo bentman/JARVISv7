@@ -1,3 +1,7 @@
+import { capabilityTitle, describeAuditRecord, auditRecordState, formatActionTime, groupAuditRecords } from "./actions-panel.js";
+import { createRenderStateKeeper } from "./render-state.js";
+import { ACTIVE_RUN_STATUSES, appendRunControls } from "./run-request.js";
+
 const AGENT_CAPABILITY_PREFIX = "agent-invoke-";
 
 function errorMessage(error, fallback) {
@@ -38,6 +42,57 @@ export function agentInvokeEnabled(agent, prompt, mutationPending) {
     && agent?.enabled !== false
     && Boolean(prompt.trim())
     && !mutationPending;
+}
+
+export const CONNECTION_TEST_PROMPT = "Connection test from JARVIS. Reply with the single word: ready.";
+
+// The newest invocation of an agent, read from its capability audit (newest first). While a run
+// is in flight its proposal has no execution result or cancellation yet; that proposal id is what
+// targets a specific run for cancellation and links it to its external-agent run.
+export function agentProposalId(records, profileId, { unfinished = false } = {}) {
+  const capabilityId = `${AGENT_CAPABILITY_PREFIX}${profileId}`;
+  const finished = new Set((records || [])
+    .filter((record) => record.kind === "execution_result" || record.kind === "action_cancellation")
+    .map((record) => record.proposal_id));
+  const proposal = (records || []).find((record) => record.capability_id === capabilityId
+    && record.kind === "action_proposal"
+    && !(unfinished && finished.has(record.proposal_id)));
+  return proposal?.proposal_id || "";
+}
+
+// An ACP agent's reply arrives as streamed agent_message_chunk session updates on its run, not
+// in the prompt response, which carries only the stop reason.
+export function acpMessageText(events) {
+  let text = "";
+  for (const event of events || []) {
+    const update = event?.update;
+    const kind = update?.sessionUpdate || update?.session_update;
+    if (event?.kind === "session_update" && kind === "agent_message_chunk" && typeof update.content?.text === "string") {
+      text += update.content.text;
+    }
+  }
+  return text.trim();
+}
+
+export function agentOutputText(payload, linkedRun = null) {
+  const response = payload?.output?.response;
+  if (typeof response === "string" && response.trim()) return response.trim();
+  return acpMessageText(linkedRun?.events);
+}
+
+export function acpDefinitionId(extension) {
+  return String(extension?.extension_id || "").replace(/^acp:/, "");
+}
+
+export function acpDefinitionStatus(extension, runtime = null) {
+  if (!extension) return "Not found in Extensions";
+  if (extension.state === "disabled") return "Disabled in Extensions";
+  if (extension.state === "retired") return "Retired";
+  if (extension.availability !== "available") return "Unavailable";
+  if (extension.readiness === "degraded") return "Degraded";
+  if (extension.readiness === "unavailable") return "Not ready";
+  if (runtime?.connected === true) return "Ready · connected";
+  return "Ready";
 }
 
 const RESPONSE_ONLY_FIELDS = ["source", "editable", "enabled", "fingerprint"];
@@ -134,7 +189,7 @@ export function agentFormErrors(form) {
     return "The time limit must be a whole number of seconds from 1 to 600.";
   }
   if (form.runtime_kind === "acp" && !form.adapter_id.trim()) {
-    return "Name the external agent definition it runs in.";
+    return "Choose the external agent definition it runs in.";
   }
   return "";
 }
@@ -201,6 +256,14 @@ function copyState(state) {
     ...state,
     agents: [...state.agents],
     runs: [...state.runs],
+    problems: [...state.problems],
+    acpDefinitions: [...state.acpDefinitions],
+    runtimes: { ...state.runtimes },
+    extensionRuns: [...state.extensionRuns],
+    pendingApprovals: [...state.pendingApprovals],
+    activeRun: state.activeRun ? { ...state.activeRun } : null,
+    lastResult: state.lastResult ? { ...state.lastResult } : null,
+    test: state.test ? { ...state.test } : null,
   };
 }
 
@@ -221,6 +284,16 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     form: null,
     tools: [],
     toolsError: "",
+    problems: [],
+    acpDefinitions: [],
+    acpError: "",
+    runtimes: {},
+    extensionRuns: [],
+    pendingApprovals: [],
+    invokePending: false,
+    activeRun: null,
+    lastResult: null,
+    test: null,
   };
   let agentsSequence = 0;
   let runsSequence = 0;
@@ -239,6 +312,7 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
       const payload = await handlers.listAgents();
       if (request !== agentsSequence) return null;
       state.agents = payload?.agents || [];
+      state.problems = payload?.problems || [];
       if (!state.agents.some((agent) => agent.profile_id === state.selectedProfileId)) {
         state.selectedProfileId = "";
       }
@@ -255,16 +329,20 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     }
   }
 
-  async function refreshRuns() {
+  // A quiet refresh is a poll during a live run: it must not flash the list into its loading state.
+  async function refreshRuns({ quiet = false } = {}) {
     if (!handlers.listAgentRuns) return null;
     const request = ++runsSequence;
-    state.runsLoading = true;
-    state.runsError = "";
-    emit();
+    if (!quiet) {
+      state.runsLoading = true;
+      state.runsError = "";
+      emit();
+    }
     try {
       const payload = await handlers.listAgentRuns();
       if (request !== runsSequence) return null;
       state.runs = payload?.records || [];
+      state.runsError = "";
       return payload;
     } catch (error) {
       if (request !== runsSequence) return null;
@@ -278,10 +356,80 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     }
   }
 
+  async function refreshAcpDefinitions() {
+    if (!handlers.getExtensions) return;
+    try {
+      const payload = await handlers.getExtensions();
+      state.acpDefinitions = (payload?.extensions || []).filter((extension) => extension.family === "acp");
+      state.acpError = "";
+    } catch (error) {
+      state.acpError = errorMessage(error, "External agent definitions are unavailable.");
+    }
+    emit();
+  }
+
+  async function refreshRuntime(adapterId) {
+    if (!handlers.getExtensionRuntime || !adapterId) return null;
+    try {
+      const runtime = await handlers.getExtensionRuntime(`acp:${adapterId}`);
+      state.runtimes = { ...state.runtimes, [adapterId]: runtime };
+      return runtime;
+    } catch (error) {
+      state.runtimes = { ...state.runtimes, [adapterId]: { error: errorMessage(error, "Its status is unavailable.") } };
+      return null;
+    } finally {
+      emit();
+    }
+  }
+
+  async function refreshExtensionRuns() {
+    if (!handlers.getExtensionRuns) return;
+    try {
+      const payload = await handlers.getExtensionRuns();
+      state.extensionRuns = (payload?.runs || []).filter((run) => String(run.extension_id || "").startsWith("acp:"));
+    } catch {
+      // Keep the last known runs; the agent audit remains the record of what happened.
+    }
+  }
+
+  async function refreshPendingApprovals() {
+    if (!handlers.getPendingActions) return;
+    try {
+      state.pendingApprovals = (await handlers.getPendingActions())?.pending || [];
+    } catch (error) {
+      state.mutationError = errorMessage(error, "Pending approvals are unavailable.");
+    }
+  }
+
+  function selectedAcpAdapter() {
+    const agent = agentById(state.selectedProfileId);
+    return agent?.runtime?.kind === "acp" ? agent.runtime.adapter_id : "";
+  }
+
   function selectAgent(profileId) {
     state.selectedProfileId = profileId;
     state.notice = "";
     state.mutationError = "";
+    emit();
+    const adapterId = selectedAcpAdapter();
+    if (adapterId) {
+      refreshRuntime(adapterId);
+      refreshExtensionRuns().then(emit);
+    }
+  }
+
+  function hasLiveRun() {
+    const adapterId = selectedAcpAdapter();
+    return state.invokePending
+      || Boolean(state.test?.pending)
+      || Boolean(adapterId && state.extensionRuns.some((run) => run.extension_id === `acp:${adapterId}` && ACTIVE_RUN_STATUSES.includes(run.status)));
+  }
+
+  async function poll() {
+    await Promise.all([refreshRuns({ quiet: true }), refreshExtensionRuns()]);
+    if (state.activeRun && !state.activeRun.proposalId) {
+      state.activeRun = { ...state.activeRun, proposalId: agentProposalId(state.runs, state.activeRun.profileId, { unfinished: true }) };
+    }
     emit();
   }
 
@@ -309,14 +457,122 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     }
   }
 
+  // An invocation holds its own pending flag rather than the shared mutation lock, so the run can
+  // still be cancelled, and its permission or input requests answered, while it is in flight.
   async function invoke(profileId, prompt) {
-    const payload = await mutate(() => handlers.invokeAgent(profileId, prompt), agentInvokeNotice);
-    if (payload) state.prompt = "";
-    return payload;
+    if (state.invokePending) return null;
+    state.invokePending = true;
+    state.activeRun = { profileId, proposalId: "" };
+    state.lastResult = null;
+    state.notice = "";
+    state.mutationError = "";
+    emit();
+    let payload = null;
+    try {
+      payload = await handlers.invokeAgent(profileId, prompt);
+      state.notice = agentInvokeNotice(payload);
+      state.prompt = "";
+      if (payload?.status === "awaiting_approval") await refreshPendingApprovals();
+      return payload;
+    } catch (error) {
+      state.mutationError = errorMessage(error, "The agent could not be run.");
+      return null;
+    } finally {
+      const knownProposalId = state.activeRun?.proposalId || "";
+      state.invokePending = false;
+      state.activeRun = null;
+      const agent = agentById(profileId);
+      await Promise.all([
+        refreshRuns({ quiet: true }),
+        refreshExtensionRuns(),
+        agent?.runtime?.kind === "acp" ? refreshRuntime(agent.runtime.adapter_id) : null,
+      ]);
+      if (payload) {
+        state.lastResult = { profileId, proposalId: knownProposalId || agentProposalId(state.runs, profileId), payload };
+      }
+      emit();
+    }
   }
 
   async function cancel(profileId) {
+    const proposalId = state.activeRun?.profileId === profileId ? state.activeRun.proposalId : "";
+    if (proposalId && handlers.cancelAction) {
+      return mutate(() => handlers.cancelAction(proposalId), (payload) => agentCancelNotice(payload));
+    }
     return mutate(() => handlers.cancelAgent(profileId), agentCancelNotice);
+  }
+
+  async function decide(proposalId, outcome) {
+    if (!handlers.decideAction) return null;
+    const payload = await mutate(
+      () => handlers.decideAction(proposalId, outcome, null),
+      () => (outcome === "approved" ? "Approved." : "Declined."),
+    );
+    await Promise.all([refreshPendingApprovals(), refreshExtensionRuns()]);
+    emit();
+    return payload;
+  }
+
+  async function answer(runId, requestId, answerValue) {
+    if (!handlers.answerExtensionInput) return;
+    try {
+      await handlers.answerExtensionInput(runId, requestId, answerValue);
+      state.notice = answerValue?.action === "decline" ? "Request declined." : "Answer sent.";
+    } catch (error) {
+      state.mutationError = errorMessage(error, "The answer was not accepted.");
+    }
+    await refreshExtensionRuns();
+    emit();
+  }
+
+  async function cancelLinkedRun(proposalId) {
+    if (!handlers.cancelAction) return null;
+    return mutate(() => handlers.cancelAction(proposalId), agentCancelNotice);
+  }
+
+  function notice(message) {
+    state.notice = message;
+    emit();
+  }
+
+  function testMessage(result, run) {
+    const status = result?.status;
+    if (status === "success") {
+      const text = acpMessageText(run?.events);
+      return text ? `Connected. It replied: ${text}` : "Connected. It answered with no text.";
+    }
+    if (status === "awaiting_approval") return "The test is waiting for approval.";
+    if (status === "outcome_unknown") return "The test outcome is unknown; the agent may not have answered.";
+    return `The test failed: ${result?.execution?.error || run?.error || status || "no result was returned"}.`;
+  }
+
+  // A connection test sends one short prompt through the definition's own prompt operation: it
+  // proves the process starts, the protocol session opens, and the agent answers.
+  async function testConnection(adapterId) {
+    if (!handlers.getExtensionRuntime || !handlers.invokeExtension || state.test?.pending) return null;
+    const extensionId = `acp:${adapterId}`;
+    state.test = { adapterId, pending: true, ok: false, message: "" };
+    emit();
+    let ok = false;
+    let message;
+    try {
+      const runtime = await refreshRuntime(adapterId);
+      const operation = (runtime?.operations || []).find((item) => item.name === "prompt");
+      if (!operation) {
+        throw new Error(runtime?.unavailable_reason || "This definition cannot be prompted. Check that it is enabled and valid in Extensions.");
+      }
+      const result = await handlers.invokeExtension(extensionId, operation.capability_id, { prompt: CONNECTION_TEST_PROMPT });
+      await refreshExtensionRuns();
+      const run = state.extensionRuns.find((item) => item.extension_id === extensionId
+        && (!result?.proposal_id || item.proposal_id === result.proposal_id));
+      ok = result?.status === "success";
+      message = testMessage(result, run);
+    } catch (error) {
+      message = errorMessage(error, "The connection test failed.");
+    }
+    state.test = { adapterId, pending: false, ok, message };
+    await refreshRuntime(adapterId);
+    return ok;
   }
 
   function agentById(profileId) {
@@ -341,7 +597,7 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     state.notice = "";
     state.mutationError = "";
     emit();
-    return refreshTools();
+    return Promise.all([refreshTools(), refreshAcpDefinitions()]);
   }
 
   function startCreate() {
@@ -406,6 +662,8 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
       state.form = null;
       state.selectedProfileId = payload.profile_id || state.selectedProfileId;
       emit();
+      const adapterId = selectedAcpAdapter();
+      if (adapterId) await refreshRuntime(adapterId);
     }
     return payload;
   }
@@ -429,7 +687,9 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
   }
 
   async function load() {
-    await Promise.all([refreshAgents(), refreshRuns()]);
+    await Promise.all([refreshAgents(), refreshRuns(), refreshAcpDefinitions(), refreshExtensionRuns()]);
+    const adapterId = selectedAcpAdapter();
+    if (adapterId) await refreshRuntime(adapterId);
   }
 
   function cancelPendingReads() {
@@ -448,6 +708,14 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     setPrompt,
     invoke,
     cancel,
+    decide,
+    answer,
+    cancelLinkedRun,
+    notice,
+    testConnection,
+    refreshRuntime,
+    hasLiveRun,
+    poll,
     startCreate,
     startDuplicate,
     startEdit,
@@ -487,6 +755,119 @@ function labeledValue(parent, label, value) {
   return field;
 }
 
+function detailsDisclosure(facts, raw = null) {
+  const details = document.createElement("details");
+  appendText(details, "Details", "summary");
+  const list = document.createElement("dl");
+  list.className = "agents-facts";
+  for (const [label, value] of facts) {
+    if (value !== null && value !== undefined && value !== "") labeledValue(list, label, value);
+  }
+  details.appendChild(list);
+  if (raw !== null && raw !== undefined) appendText(details, JSON.stringify(raw, null, 2), "pre");
+  return details;
+}
+
+function actionButton(text, focusKey, onClick, disabled = false) {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.textContent = text;
+  button.disabled = disabled;
+  button.dataset.focusKey = focusKey;
+  button.addEventListener("click", onClick);
+  return button;
+}
+
+function acpDefinition(state, adapterId) {
+  return state.acpDefinitions.find((extension) => acpDefinitionId(extension) === adapterId) || null;
+}
+
+function renderExternalAgent(state, agent) {
+  const adapterId = agent.runtime.adapter_id;
+  const extension = acpDefinition(state, adapterId);
+  const runtime = state.runtimes[adapterId] || null;
+  const block = document.createElement("div");
+  block.className = "agents-external";
+  appendText(block, "External agent", "h4");
+  const facts = document.createElement("dl");
+  facts.className = "agents-facts";
+  labeledValue(facts, "Definition", extension?.display_name || adapterId);
+  labeledValue(facts, "Status", acpDefinitionStatus(extension, runtime));
+  if (runtime && !runtime.error) labeledValue(facts, "Connected now", runtime.connected === true);
+  block.appendChild(facts);
+  if (state.acpError) appendText(block, state.acpError, "p", "agents-error");
+  if (runtime?.error) appendText(block, runtime.error, "p", "agents-error");
+  const testing = state.test?.adapterId === adapterId ? state.test : null;
+  block.appendChild(actionButton(
+    testing?.pending ? "Testing…" : "Test connection",
+    `agent:${agent.profile_id}:test`,
+    () => state.actions.testConnection(adapterId),
+    Boolean(testing?.pending) || !extension,
+  ));
+  if (testing?.message) appendText(block, testing.message, "p", testing.ok ? "agents-notice" : "agents-error");
+
+  const runs = state.extensionRuns.filter((run) => run.extension_id === `acp:${adapterId}`).slice(0, 3);
+  for (const run of runs) {
+    const item = document.createElement("div");
+    item.className = "agents-linked-run";
+    const status = appendText(item, `${formatActionTime(run.started_at)} · ${String(run.status || "unknown").replaceAll("_", " ")}`, "span", "agents-status");
+    status.dataset.state = agentRunActivityState({ record: { status: run.status } });
+    const text = acpMessageText(run.events);
+    if (text) appendText(item, text, "p", "agents-help");
+    if (run.error) appendText(item, run.error, "p", "agents-error");
+    appendRunControls(item, run, {
+      answer: (runId, requestId, answerValue) => state.actions.answer(runId, requestId, answerValue),
+      decide: (proposalId, outcome) => state.actions.decide(proposalId, outcome),
+      cancel: (proposalId) => state.actions.cancelLinkedRun(proposalId),
+      notice: (message) => state.actions.notice(message),
+    });
+    item.appendChild(detailsDisclosure([["Run", run.run_id], ["Proposal", run.proposal_id]], { events: run.events, result: run.result }));
+    block.appendChild(item);
+  }
+  return block;
+}
+
+function renderPendingApprovals(state) {
+  const block = document.createElement("div");
+  block.className = "agents-approvals";
+  appendText(block, "Waiting for your approval", "h4");
+  for (const pending of state.pendingApprovals) {
+    const row = document.createElement("div");
+    appendText(row, `${capabilityTitle(pending.capability_id)}: ${pending.reason}`, "p", "agents-help");
+    const buttons = document.createElement("div");
+    buttons.className = "agents-buttons";
+    buttons.append(
+      actionButton("Approve", `approval:${pending.proposal_id}:approved`, () => state.actions.decide(pending.proposal_id, "approved"), state.mutationPending),
+      actionButton("Decline", `approval:${pending.proposal_id}:denied`, () => state.actions.decide(pending.proposal_id, "denied"), state.mutationPending),
+    );
+    row.appendChild(buttons);
+    row.appendChild(detailsDisclosure([["Capability", pending.capability_id], ["Proposal", pending.proposal_id]], pending.arguments));
+    block.appendChild(row);
+  }
+  return block;
+}
+
+function renderLastResult(state, agent) {
+  const result = state.lastResult;
+  const block = document.createElement("div");
+  block.className = "agents-result";
+  appendText(block, "Last run", "h4");
+  const payload = result.payload || {};
+  const linked = state.extensionRuns.find((run) => run.proposal_id && run.proposal_id === result.proposalId) || null;
+  const status = appendText(block, agentInvokeNotice(payload), "p", "agents-status");
+  status.dataset.state = agentRunActivityState({ record: { status: payload.status } });
+  const text = agentOutputText(payload, linked);
+  if (text) appendText(block, text, "p", "agents-output");
+  if (payload.error) appendText(block, payload.error, "p", "agents-error");
+  block.appendChild(detailsDisclosure([
+    ["Agent", agent.profile_id],
+    ["Proposal", result.proposalId],
+    ["Turn", payload.turn_id],
+    ["Session", payload.session_id],
+  ], payload.output));
+  return block;
+}
+
 function selectedAgent(state) {
   return state.agents.find((agent) => agent.profile_id === state.selectedProfileId) || null;
 }
@@ -509,6 +890,12 @@ function renderCatalog(state) {
     appendText(section, state.agentsError, "p", "agents-error");
     return section;
   }
+  for (const problem of state.problems) {
+    const row = document.createElement("div");
+    appendText(row, `Could not load ${capabilityTitle(problem.capability_id).replace(/^Run agent /, "")}: ${problem.reason}`, "p", "agents-error");
+    row.appendChild(detailsDisclosure([["Capability", problem.capability_id]]));
+    section.appendChild(row);
+  }
   if (!state.agents.length) {
     appendText(section, "No agent profiles are registered.", "p", "agents-help");
     return section;
@@ -520,6 +907,7 @@ function renderCatalog(state) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "agents-row";
+    row.dataset.focusKey = `agent:${agent.profile_id}`;
     row.setAttribute("aria-pressed", agent.profile_id === state.selectedProfileId ? "true" : "false");
     appendText(row, agent.display_name || agent.profile_id, "strong");
     appendText(row, agent.purpose, "span", "agents-row-meta");
@@ -551,7 +939,7 @@ function renderDetail(state) {
   labeledValue(facts, "Memory it can read", MEMORY_SCOPE_LABELS[agent.memory_scope] || agent.memory_scope);
   labeledValue(facts, "Tools it may use", agent.capability_ids?.length ? `${agent.capability_ids.length} allowed` : "None");
   labeledValue(facts, "Can be stopped", agent.cancellable);
-  labeledValue(facts, "Runs in", agentRuntimeLabel(agent.runtime));
+  labeledValue(facts, "Runs in", agentRuntimeLabel(agent.runtime, acpDefinition(state, agent.runtime?.adapter_id)));
   labeledValue(facts, "Owner", agent.editable ? "You (editable)" : "Built in (duplicate it to change it)");
   labeledValue(facts, "Enabled", agent.enabled !== false);
   section.appendChild(facts);
@@ -569,6 +957,7 @@ function renderDetail(state) {
     prompt.name = "prompt";
     prompt.required = true;
     prompt.value = state.prompt;
+    prompt.dataset.focusKey = `agent:${agent.profile_id}:prompt`;
     // The prompt draft lives in controller state so a run refresh does not discard it, and it is
     // not re-emitted on input so typing never re-renders the textarea out from under the caret.
     prompt.addEventListener("input", (event) => state.actions.setPrompt(event.target.value));
@@ -576,24 +965,30 @@ function renderDetail(state) {
     form.appendChild(label);
     const submit = document.createElement("button");
     submit.type = "submit";
-    submit.textContent = "Invoke agent";
-    submit.disabled = state.mutationPending;
+    submit.textContent = state.invokePending ? "Running…" : "Invoke agent";
+    submit.disabled = state.invokePending;
+    submit.dataset.focusKey = `agent:${agent.profile_id}:invoke`;
     form.appendChild(submit);
     form.addEventListener("submit", (event) => {
       event.preventDefault();
-      if (!agentInvokeEnabled(agent, prompt.value, state.mutationPending)) return;
+      if (!agentInvokeEnabled(agent, prompt.value, state.invokePending)) return;
       state.actions.setPrompt(prompt.value);
       state.actions.invoke(agent.profile_id, prompt.value);
     });
     section.appendChild(form);
   }
+  if (state.lastResult?.profileId === agent.profile_id) section.appendChild(renderLastResult(state, agent));
+  if (state.pendingApprovals.length) section.appendChild(renderPendingApprovals(state));
+  if (agent.runtime?.kind === "acp") section.appendChild(renderExternalAgent(state, agent));
 
   const buttons = document.createElement("div");
   buttons.className = "agents-buttons";
   const cancelButton = document.createElement("button");
   cancelButton.type = "button";
   cancelButton.textContent = "Cancel run";
-  cancelButton.disabled = !agent.cancellable || state.mutationPending;
+  cancelButton.dataset.focusKey = `agent:${agent.profile_id}:cancel`;
+  cancelButton.disabled = !agent.cancellable || state.mutationPending
+    || (state.invokePending && state.activeRun?.profileId !== agent.profile_id);
   if (!agent.cancellable) cancelButton.title = "This agent profile is not cancellable.";
   cancelButton.addEventListener("click", () => state.actions.cancel(agent.profile_id));
   buttons.appendChild(cancelButton);
@@ -601,7 +996,7 @@ function renderDetail(state) {
   const toggle = document.createElement("button");
   toggle.type = "button";
   toggle.textContent = enabled ? "Disable" : "Enable";
-  toggle.disabled = state.mutationPending;
+  toggle.disabled = state.mutationPending || state.invokePending;
   toggle.addEventListener("click", () => state.actions.setEnabled(agent.profile_id, !enabled));
   buttons.appendChild(toggle);
   if (agent.editable) {
@@ -614,7 +1009,7 @@ function renderDetail(state) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "Delete profile";
-    remove.disabled = state.mutationPending;
+    remove.disabled = state.mutationPending || state.invokePending;
     remove.addEventListener("click", () => state.actions.remove(agent.profile_id));
     buttons.appendChild(remove);
   } else {
@@ -629,8 +1024,8 @@ function renderDetail(state) {
   return section;
 }
 
-function agentRuntimeLabel(runtime) {
-  if (runtime?.kind === "acp") return `External agent (${runtime.adapter_id})`;
+function agentRuntimeLabel(runtime, definition = null) {
+  if (runtime?.kind === "acp") return `External agent (${definition?.display_name || runtime.adapter_id})`;
   return "JARVIS";
 }
 
@@ -665,6 +1060,27 @@ function selectControl(state, name, labels, { rerender = false } = {}) {
     control.appendChild(option);
   }
   control.addEventListener("change", (event) => state.actions.setField(name, event.target.value, { rerender }));
+  return control;
+}
+
+function acpDefinitionPicker(state) {
+  const control = document.createElement("select");
+  control.name = "adapter_id";
+  const choices = [["", "Choose a definition…"]];
+  for (const extension of state.acpDefinitions) {
+    choices.push([acpDefinitionId(extension), `${extension.display_name || acpDefinitionId(extension)} (${acpDefinitionStatus(extension)})`]);
+  }
+  // A saved definition that no longer exists stays selectable, so an edit never drops it silently.
+  const current = state.form.adapter_id;
+  if (current && !choices.some(([value]) => value === current)) choices.push([current, `${current} (${acpDefinitionStatus(null)})`]);
+  for (const [value, text] of choices) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = text;
+    option.selected = current === value;
+    control.appendChild(option);
+  }
+  control.addEventListener("change", (event) => state.actions.setField("adapter_id", event.target.value));
   return control;
 }
 
@@ -755,7 +1171,13 @@ function renderEditor(state) {
     form.runtime_kind === "acp" ? "An external agent can only be run from this panel." : "",
   );
   if (form.runtime_kind === "acp") {
-    formField(element, "External agent definition", textControl(state, "adapter_id"), "The ID of its ACP definition in Extensions.");
+    formField(
+      element,
+      "External agent definition",
+      acpDefinitionPicker(state),
+      state.acpDefinitions.length ? "Definitions are added and edited in Extensions." : "No external agent definitions exist yet. Add one in Extensions.",
+    );
+    if (state.acpError) appendText(element, state.acpError, "p", "agents-error");
   } else {
     const stop = document.createElement("label");
     stop.className = "agents-choice";
@@ -805,22 +1227,28 @@ function renderRuns(state) {
     appendText(section, "No agent evidence has been recorded.", "p", "agents-help");
     return section;
   }
+  const names = new Map(state.agents.map((agent) => [agent.profile_id, agent.display_name || agent.profile_id]));
   const list = document.createElement("ul");
   list.className = "agents-list";
-  for (const record of state.runs) {
+  for (const group of groupAuditRecords(state.runs)) {
     const item = document.createElement("li");
-    appendText(item, `${record.kind} · ${agentRunProfileId(record) || record.capability_id}`, "strong");
-    const status = appendText(item, formatValue(record.record?.status), "span", "agents-status");
-    status.dataset.state = agentRunActivityState(record);
-    appendText(item, formatValue(record.recorded_at), "span", "agents-row-meta");
-    if (record.record?.error) appendText(item, record.record.error, "p", "agents-error");
+    const profileId = agentRunProfileId({ capability_id: group.capabilityId });
+    appendText(item, names.get(profileId) || profileId || capabilityTitle(group.capabilityId), "strong");
+    const steps = document.createElement("ol");
+    steps.className = "actions-audit-steps";
+    for (const record of group.records) {
+      const step = appendText(steps, `${formatActionTime(record.recorded_at)} · ${describeAuditRecord(record)}`, "li", "agents-status");
+      step.dataset.state = auditRecordState(record);
+    }
+    item.appendChild(steps);
+    item.appendChild(detailsDisclosure([["Capability", group.capabilityId], ["Proposal", group.proposalId]], group.records));
     list.appendChild(item);
   }
   section.appendChild(list);
   return section;
 }
 
-function renderPanel(container, state, actions) {
+function renderPanel(keeper, state, actions) {
   const view = { ...state, actions };
   const header = document.createElement("div");
   header.className = "agents-panel-header";
@@ -834,18 +1262,25 @@ function renderPanel(container, state, actions) {
 
   const sections = [renderCatalog(view)];
   sections.push(state.editing ? renderEditor(view) : renderDetail(view));
-  container.replaceChildren(header, messages, ...sections, renderRuns(view));
+  keeper.render(header, messages, ...sections, renderRuns(view));
 }
 
 export function createAgentsPanel(container, handlers, options = {}) {
   let open = false;
+  let polling = null;
   let controller;
+  const keeper = createRenderStateKeeper(container);
   const actions = {
     close: () => close(),
     selectAgent: (profileId) => controller.selectAgent(profileId),
     setPrompt: (value) => controller.setPrompt(value),
     invoke: (profileId, prompt) => controller.invoke(profileId, prompt),
     cancel: (profileId) => controller.cancel(profileId),
+    decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
+    answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
+    cancelLinkedRun: (proposalId) => controller.cancelLinkedRun(proposalId),
+    notice: (message) => controller.notice(message),
+    testConnection: (adapterId) => controller.testConnection(adapterId),
     startCreate: () => controller.startCreate(),
     startDuplicate: (profileId) => controller.startDuplicate(profileId),
     startEdit: (profileId) => controller.startEdit(profileId),
@@ -858,14 +1293,23 @@ export function createAgentsPanel(container, handlers, options = {}) {
     setEnabled: (profileId, enabled) => controller.setEnabled(profileId, enabled),
   };
   controller = createAgentsPanelController(handlers, (state) => {
-    if (open) renderPanel(container, state, actions);
+    if (open) renderPanel(keeper, state, actions);
   });
 
   async function show() {
     open = true;
     container.hidden = false;
-    renderPanel(container, controller.snapshot(), actions);
+    renderPanel(keeper, controller.snapshot(), actions);
     await controller.load();
+    keeper.release();
+    // A live run streams progress and may stop to ask for permission or input, so the panel
+    // follows it while one is in flight; a focused field is left alone so typing is not disturbed.
+    polling = window.setInterval(() => {
+      if (!controller.hasLiveRun()) return;
+      const active = document.activeElement;
+      if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
+      controller.poll();
+    }, 1000);
     container.querySelector("h2")?.focus();
   }
 
@@ -873,6 +1317,8 @@ export function createAgentsPanel(container, handlers, options = {}) {
     if (!open) return;
     open = false;
     controller.cancelPendingReads();
+    if (polling) { window.clearInterval(polling); polling = null; }
+    keeper.retain();
     container.hidden = true;
     container.replaceChildren();
     options.onClose?.();

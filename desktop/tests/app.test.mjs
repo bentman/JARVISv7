@@ -219,11 +219,32 @@ test("Advanced Controls must open one dialog, switch categories through the rail
     await app.until(() => selected().join() === "providers", "the providers category");
     assert.ok(app.commands().includes("get_llm_config"), "Providers & Models must mount from the backend config");
     assert.equal(app.$("#providers-panel").hidden, false);
+    const detailPane = app.document.querySelector(".advanced-panel-detail");
+    const choose = async (category) => {
+      app.document.querySelector(`#advanced-panel-rail button[data-category="${category}"]`).click();
+      await app.until(() => selected().join() === category, `the ${category} category`);
+    };
+    detailPane.scrollTop = 150;
 
-    app.document.querySelector('#advanced-panel-rail button[data-category="agents"]').click();
-    await app.until(() => selected().join() === "agents", "the agents category");
+    await choose("extensions");
+    assert.equal(detailPane.scrollTop, 0, "a category must not inherit another category's scroll position");
+    const draft = () => app.document.querySelector('#extensions-panel [data-draft-key="add-tool:name"]');
+    const addTool = () => app.document.querySelector('#extensions-panel [data-focus-key="add:tool"]');
+    await app.until(() => addTool(), "the Add local tool button");
+    addTool().click();
+    await app.until(() => draft(), "the Add local tool form");
+    draft().value = "Changelog writer";
+
+    await choose("agents");
     assert.ok(app.commands().includes("list_agents"), "the Agents category must mount");
     assert.equal(app.$("#providers-panel").hidden, true, "switching must close the previous category");
+    assert.equal(app.$("#extensions-panel").hidden, true);
+
+    await choose("extensions");
+    await app.until(() => draft()?.value === "Changelog writer", "the unsent draft to survive a category switch");
+    await choose("providers");
+    assert.equal(detailPane.scrollTop, 150, "returning to a category must restore where it was scrolled");
+    await choose("agents");
 
     dialog.dispatchEvent(new app.window.MouseEvent("click", { bubbles: true }));
     assert.equal(dialog.open, false, "a backdrop click must close the dialog");

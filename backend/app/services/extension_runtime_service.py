@@ -856,8 +856,13 @@ class ExtensionRuntimeService:
             # closed the session, with nothing in the response distinguishing history
             # from the current state. `is_open` is safe to call for any identifier
             # (including one with no session concept, or one never opened) - reports
-            # `False` rather than raising.
-            "connected": self._sessions.is_open(extension_id),
+            # `False` rather than raising. ACP connections are namespaced by host
+            # conversation, so an ACP definition is connected when any of them is open.
+            "connected": (
+                self._sessions.is_open_prefix(f"{extension_id}:")
+                if extension_id.startswith("acp:")
+                else self._sessions.is_open(extension_id)
+            ),
         }
 
     def _fresh_mcp_snapshot(self, identifier: str, definition: Any, local_id: str) -> dict[str, Any]:

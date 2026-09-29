@@ -164,6 +164,15 @@ class SessionManager:
             connection = self._connections.get(connection_id)
             return connection is not None and connection.resource is not None
 
+    def is_open_prefix(self, prefix: str) -> bool:
+        """Whether any connection whose id starts with `prefix` is open - see `close_prefix`."""
+        with self._registry_lock:
+            return any(
+                connection.resource is not None
+                for connection_id, connection in self._connections.items()
+                if connection_id.startswith(prefix)
+            )
+
     def call(
         self,
         connection_id: str,

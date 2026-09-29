@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import { readFileSync } from "node:fs";
 import { strict as assert } from "node:assert";
-import { agentCancelNotice, agentInvokeEnabled, agentInvokeNotice, agentModesSummary, agentRunActivityState, agentRunProfileId, agentToolLabel, createAgentsPanelController, profileIdFromName, agentFormErrors, agentFormFromProfile, agentProfileFromForm, duplicateAgentForm, newAgentForm } from "../src/components/agents-panel.js";
-import { agentProfile, agentRunRecord, deferred } from "./support.mjs";
+import { CONNECTION_TEST_PROMPT, acpDefinitionStatus, acpMessageText, agentOutputText, agentProposalId, agentCancelNotice, agentInvokeEnabled, agentInvokeNotice, agentModesSummary, agentRunActivityState, agentRunProfileId, agentToolLabel, createAgentsPanel, createAgentsPanelController, profileIdFromName, agentFormErrors, agentFormFromProfile, agentProfileFromForm, duplicateAgentForm, newAgentForm } from "../src/components/agents-panel.js";
+import { agentProfile, agentRunRecord, createElement, deferred, findElement } from "./support.mjs";
 
 test("agent runs must derive the profile from the capability id", async () => {
   assert.equal(agentRunProfileId(agentRunRecord), "researcher", "agent runs must derive the profile from the capability id");
@@ -231,9 +231,157 @@ test("the agent form must refuse incomplete input with the field to fix", async 
   for (const seconds of [0, 601, 1.5, "x"]) {
     assert.equal(agentFormErrors({ ...valid, timeout_seconds: seconds }), "The time limit must be a whole number of seconds from 1 to 600.");
   }
-  assert.equal(agentFormErrors({ ...valid, runtime_kind: "acp" }), "Name the external agent definition it runs in.");
+  assert.equal(agentFormErrors({ ...valid, runtime_kind: "acp" }), "Choose the external agent definition it runs in.");
 
   const acp = agentProfileFromForm({ ...valid, runtime_kind: "acp", adapter_id: " agent ", cancellable: false });
   assert.deepEqual(acp.runtime, { kind: "acp", adapter_id: "agent" });
   assert.equal(acp.cancellable, true, "an ACP-run agent is always cancellable");
+});
+
+test("agent output and linked runs must be read from where the backend puts them", async () => {
+  const records = [
+    { kind: "action_proposal", capability_id: "agent-invoke-coder", proposal_id: "p2" },
+    { kind: "execution_result", capability_id: "agent-invoke-coder", proposal_id: "p1" },
+    { kind: "action_proposal", capability_id: "agent-invoke-coder", proposal_id: "p1" },
+    { kind: "action_proposal", capability_id: "agent-invoke-other", proposal_id: "p0" },
+  ];
+  assert.equal(agentProposalId(records, "coder"), "p2", "the newest invocation of that agent");
+  assert.equal(agentProposalId(records.slice(1), "coder", { unfinished: true }), "", "a finished run is not in flight");
+  assert.equal(agentProposalId(records, "coder", { unfinished: true }), "p2");
+  const events = [
+    { kind: "session_update", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "rea" } } },
+    { kind: "session_update", update: { sessionUpdate: "tool_call", title: "read" } },
+    { kind: "session_update", update: { session_update: "agent_message_chunk", content: { type: "text", text: "dy" } } },
+    { kind: "permission_selected", option_id: "allow" },
+  ];
+  assert.equal(acpMessageText(events), "ready", "an external agent's reply is its streamed message chunks");
+  assert.equal(agentOutputText({ output: { response: " done " } }), "done", "an internal agent's reply is its response");
+  assert.equal(agentOutputText({ output: { stopReason: "end_turn" } }, { events }), "ready");
+  const definition = { extension_id: "acp:coder", state: "enabled", availability: "available", readiness: "ready" };
+  assert.equal(acpDefinitionStatus(definition, { connected: true }), "Ready · connected");
+  assert.equal(acpDefinitionStatus({ ...definition, state: "disabled" }), "Disabled in Extensions");
+  assert.equal(acpDefinitionStatus(null), "Not found in Extensions");
+});
+
+test("a running agent must stay cancellable, answerable, and linked to its external run", async () => {
+  const calls = [];
+  const running = deferred();
+  const acpAgent = { ...agentProfile, profile_id: "coder", runtime: { kind: "acp", adapter_id: "coder" }, enabled: true };
+  let agentRecords = [];
+  let extensionRuns = [];
+  const controller = createAgentsPanelController({
+    listAgents: async () => ({ agents: [acpAgent], problems: [{ capability_id: "agent-invoke-broken", reason: "unknown ACP definition" }] }),
+    listAgentRuns: async () => ({ records: agentRecords }),
+    getExtensions: async () => ({ extensions: [
+      { extension_id: "acp:coder", family: "acp", display_name: "Coder", state: "enabled", availability: "available", readiness: "ready" },
+      { extension_id: "mcp:notes", family: "mcp", name: "Notes" },
+    ] }),
+    getExtensionRuntime: async () => ({ connected: false, operations: [] }),
+    getExtensionRuns: async () => ({ runs: extensionRuns }),
+    invokeAgent: (...args) => { calls.push(["invoke", ...args]); return running.promise; },
+    cancelAction: async (...args) => { calls.push(["cancelAction", ...args]); return { proposal_id: args[0], cancelled: true }; },
+    cancelAgent: async (...args) => { calls.push(["cancelAgent", ...args]); return { cancelled: false }; },
+    answerExtensionInput: async (...args) => { calls.push(["answer", ...args]); },
+  });
+  await controller.load();
+  const loaded = controller.snapshot();
+  assert.deepEqual(loaded.problems.map((problem) => problem.reason), ["unknown ACP definition"], "profiles the registry refused must be reported");
+  assert.deepEqual(loaded.acpDefinitions.map((item) => item.extension_id), ["acp:coder"], "only ACP definitions can host an external agent");
+  controller.selectAgent("coder");
+
+  const invocation = controller.invoke("coder", "fix the build");
+  assert.equal(controller.snapshot().invokePending, true);
+  assert.equal(controller.snapshot().mutationPending, false, "a running invocation must not hold the lock that disables Cancel");
+  assert.equal(controller.hasLiveRun(), true, "the panel must follow a run while it is in flight");
+
+  agentRecords = [{ kind: "action_proposal", capability_id: "agent-invoke-coder", proposal_id: "p7", record: {} }];
+  extensionRuns = [{ run_id: "r1", extension_id: "acp:coder", proposal_id: "p7", status: "awaiting_input",
+    request: { kind: "permission_request", request_id: "q1", options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }] } }];
+  await controller.poll();
+  assert.equal(controller.snapshot().activeRun.proposalId, "p7", "polling must discover the in-flight run's proposal");
+  assert.equal(controller.snapshot().extensionRuns[0].request.kind, "permission_request", "the external agent's permission request must reach the panel");
+
+  await controller.answer("r1", "q1", { action: "accept", option_id: "allow" });
+  await controller.cancel("coder");
+  assert.deepEqual(calls.filter(([name]) => ["answer", "cancelAction", "cancelAgent"].includes(name)), [
+    ["answer", "r1", "q1", { action: "accept", option_id: "allow" }],
+    ["cancelAction", "p7"],
+  ], "cancel must target the specific in-flight run, not guess from the audit");
+
+  agentRecords = [{ kind: "execution_result", capability_id: "agent-invoke-coder", proposal_id: "p7", record: { status: "success" } }, ...agentRecords];
+  extensionRuns = [{ ...extensionRuns[0], status: "success", request: null,
+    events: [{ kind: "session_update", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "Build fixed." } } }] }];
+  running.resolve({ agent_id: "coder", status: "success", output: { stopReason: "end_turn" }, turn_id: "t1", session_id: "s1" });
+  await invocation;
+  const finished = controller.snapshot();
+  assert.equal(finished.invokePending, false);
+  assert.equal(finished.lastResult.proposalId, "p7", "the finished run must stay linked to its evidence");
+  assert.equal(agentOutputText(finished.lastResult.payload, finished.extensionRuns[0]), "Build fixed.");
+});
+
+test("the rendered agent detail must expose connection testing, permission answers, and a definition picker", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement, createTextNode: (text) => ({ textContent: text, children: [], dataset: {} }) };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  try {
+    const acpAgent = { ...agentProfile, profile_id: "coder", display_name: "Coder", runtime: { kind: "acp", adapter_id: "coder" }, enabled: true, editable: true };
+    const container = createElement("div");
+    const panel = createAgentsPanel(container, {
+      listAgents: async () => ({ agents: [acpAgent], problems: [{ capability_id: "agent-invoke-broken", reason: "unknown ACP definition" }] }),
+      listAgentRuns: async () => ({ records: [{ ...agentRunRecord, capability_id: "agent-invoke-coder" }] }),
+      listAgentTools: async () => ({ tools: [] }),
+      getExtensions: async () => ({ extensions: [{ extension_id: "acp:coder", family: "acp", display_name: "Coder CLI", state: "enabled", availability: "available", readiness: "ready" }] }),
+      getExtensionRuntime: async () => ({ connected: true, operations: [] }),
+      getExtensionRuns: async () => ({ runs: [{ run_id: "r1", extension_id: "acp:coder", proposal_id: "p7", status: "awaiting_input",
+        request: { kind: "permission_request", request_id: "q1", options: [{ optionId: "allow", name: "Allow", kind: "allow_once" }] } }] }),
+    });
+    await panel.open();
+    assert.ok(findElement(container, (node) => node.textContent === "Could not load broken: unknown ACP definition"), "refused profiles must be listed");
+    panel.controller.selectAgent("coder");
+    await panel.controller.refreshRuntime("coder");
+    const text = (value) => findElement(container, (node) => node.textContent === value);
+    assert.ok(text("Ready · connected"), "an external agent must show its definition status");
+    assert.ok(text("Test connection"), "an external agent must offer a connection test");
+    assert.ok(text("Accept") && text("Allow (allow_once)"), "a pending permission request must be answerable from the agent detail");
+    assert.ok(
+      findElement(container, (node) => node.tagName === "li" && node.children[0]?.tagName === "strong" && node.children[0].textContent === "Coder"
+        && node.children[1]?.className === "actions-audit-steps"),
+      "a run must be titled by its agent's name and read as a timeline",
+    );
+    await panel.controller.startEdit("coder");
+    const picker = findElement(container, (node) => node.tagName === "select" && node.name === "adapter_id");
+    assert.deepEqual(picker.children.map((option) => [option.value, option.textContent]),
+      [["", "Choose a definition…"], ["coder", "Coder CLI (Ready)"]], "the definition must be chosen from Extensions, not typed");
+    panel.close();
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("testing an external agent connection must report the reply or a readable failure", async () => {
+  const replied = [{ extension_id: "acp:coder", proposal_id: "t1", status: "success",
+    events: [{ kind: "session_update", update: { sessionUpdate: "agent_message_chunk", content: { type: "text", text: "ready" } } }] }];
+  for (const [invokeResult, runs, expected, ok] of [
+    [{ proposal_id: "t1", status: "success" }, replied, "Connected. It replied: ready", true],
+    [{ proposal_id: "t2", status: "failure", execution: { error: "configured executable is unavailable" } }, [],
+      "The test failed: configured executable is unavailable.", false],
+  ]) {
+    const sent = [];
+    const controller = createAgentsPanelController({
+      getExtensionRuntime: async () => ({ connected: false, operations: [{ name: "prompt", capability_id: "extension-abc" }] }),
+      invokeExtension: async (...args) => { sent.push(args); return invokeResult; },
+      getExtensionRuns: async () => ({ runs }),
+    });
+    assert.equal(await controller.testConnection("coder"), ok);
+    assert.deepEqual(sent, [["acp:coder", "extension-abc", { prompt: CONNECTION_TEST_PROMPT }]], "the test must use the definition's own prompt operation");
+    assert.deepEqual(controller.snapshot().test, { adapterId: "coder", pending: false, ok, message: expected });
+  }
+  const unpromptable = createAgentsPanelController({
+    getExtensionRuntime: async () => ({ operations: [] }),
+    invokeExtension: async () => { throw new Error("must not invoke"); },
+  });
+  assert.equal(await unpromptable.testConnection("coder"), false);
+  assert.match(unpromptable.snapshot().test.message, /cannot be prompted/, "a definition with no prompt operation must say why");
 });

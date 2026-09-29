@@ -40,7 +40,7 @@ def _write_agent(tmp_path: Path) -> Path:
 import asyncio
 
 import acp
-from acp.schema import InitializeResponse, NewSessionResponse, PromptResponse
+from acp.schema import InitializeResponse, NewSessionResponse, PermissionOption, PromptResponse, ToolCallUpdate
 
 
 class FixtureAgent:
@@ -56,6 +56,13 @@ class FixtureAgent:
 
     async def prompt(self, session_id, prompt, **_kwargs):
         text = prompt[0].text
+        if text == "permission":
+            response = await self.connection.request_permission(
+                session_id=session_id,
+                tool_call=ToolCallUpdate(tool_call_id="write-1", title="Write notes"),
+                options=[PermissionOption(option_id="allow", name="Allow", kind="allow_once")],
+            )
+            text = "permission:" + (getattr(response.outcome, "option_id", None) or "denied")
         await self.connection.session_update(
             session_id, acp.update_agent_message_text("update:" + text)
         )
@@ -177,6 +184,38 @@ def test_acp_sdk_stdio_round_trip_reports_update_and_end_turn(
     assert any(event["kind"] == "session_update" for event in events)
 
 
+@pytest.mark.parametrize(
+    ("answer", "agent_saw", "event_kind"),
+    [
+        ({"action": "accept", "option_id": "allow"}, "permission:allow", "permission_selected"),
+        ({"action": "decline"}, "permission:denied", "permission_denied"),
+    ],
+)
+def test_acp_sdk_permission_answer_reaches_the_agent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: dict[str, str], agent_saw: str, event_kind: str
+) -> None:
+    # The response sent back to a real agent must satisfy the SDK schema; an accepted option
+    # once failed there and surfaced to the operator only as a generic run failure.
+    _prepare_working_root(tmp_path, monkeypatch)
+    events: list[dict[str, object]] = []
+    sessions = SessionManager()
+
+    result = run_acp(
+        sessions, _definition(_write_agent(tmp_path)), "permission", _operation(),
+        on_event=events.append,
+        request_permission=lambda _request: answer,
+    )
+    sessions.close_all()
+
+    assert result["stop_reason"] == "end_turn"
+    assert any(event["kind"] == event_kind for event in events)
+    texts = [
+        event["update"]["content"]["text"] for event in events
+        if event["kind"] == "session_update" and event["update"].get("sessionUpdate") == "agent_message_chunk"
+    ]
+    assert texts == [f"update:{agent_saw}"]
+
+
 def test_acp_sdk_stdio_cancellation_stops_the_pending_prompt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -275,6 +314,11 @@ def test_acp_sdk_isolates_separate_host_conversations_against_the_same_agent(
     )
     assert sessions.is_open(f"acp:{definition.agent_id}:conv-1") is True
     assert sessions.is_open(f"acp:{definition.agent_id}:conv-2") is True
+    assert sessions.is_open(f"acp:{definition.agent_id}") is False, "the definition id itself names no connection"
+    assert sessions.is_open_prefix(f"acp:{definition.agent_id}:") is True, (
+        "a definition is connected when any host conversation holds an open connection to it"
+    )
+    assert sessions.is_open_prefix(f"acp:{definition.agent_id}-other:") is False
 
     # A second prompt within conversation one must still reuse conversation one's own
     # process (the existing reuse guarantee), not conversation two's.

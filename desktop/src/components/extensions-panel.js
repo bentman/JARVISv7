@@ -1,3 +1,6 @@
+import { createRenderStateKeeper } from "./render-state.js";
+import { appendRunControls } from "./run-request.js";
+
 function errorMessage(error, fallback) {
   return error?.detail?.message || error?.message || fallback;
 }
@@ -200,6 +203,9 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     importSkillError: "",
     addToolPending: false,
     addToolError: "",
+    addToolFamily: "tool",
+    // Which add form, if any, occupies the detail column: "mcp", "skill", "tool", or "acp".
+    adding: "",
     definition: null,
     editConnectionPending: false,
     editConnectionError: "",
@@ -264,6 +270,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     if (!handlers.getExtensionDetail) return null;
     const request = ++detailSequence;
     state.selectedExtensionId = extensionId;
+    state.adding = "";
     state.detailLoading = true;
     state.detailError = "";
     state.body = "";
@@ -430,6 +437,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
         return null;
       }
       state.notice = "Skill imported.";
+      state.adding = "";
       await refreshCatalog();
       return true;
     } catch (error) {
@@ -624,6 +632,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
         return null;
       }
       state.notice = "MCP connection added.";
+      state.adding = "";
       await refreshCatalog();
       return true;
     } catch (error) {
@@ -732,10 +741,12 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     };
   }
 
-  async function addLocalTool({ localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
+  async function addLocalTool({ family = "tool", localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
     if (!handlers.proposeAction || state.addToolPending) return null;
+    const labels = COMMAND_FAMILIES[family];
+    state.addToolFamily = family;
     if (!extensionLocalIdValid(localId)) {
-      state.addToolError = "Tool ID must start with a letter or digit and use only lowercase letters, digits, '_', '.', or '-'.";
+      state.addToolError = `${labels.idLabel} must start with a letter or digit and use only lowercase letters, digits, '_', '.', or '-'.`;
       emit();
       return null;
     }
@@ -746,24 +757,25 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       const result = await handlers.proposeAction({
         capabilityId: "extension-definition-write",
         actionArguments: {
-          family: "tool",
+          family,
           local_id: localId,
           name,
           version: "1.0.0",
           definition: toolDefinition({}, { command, argvAllowlist, envPassthrough, workingRoot }),
         },
-        reason: `Add local tool ${name}`,
+        reason: `Add ${labels.title} ${name}`,
         proposedBy: "operator",
       });
       if (result?.status !== "success") {
-        state.addToolError = result?.execution?.error || "The tool was not added.";
+        state.addToolError = result?.execution?.error || `The ${labels.noun} was not added.`;
         return null;
       }
-      state.notice = "Local tool added.";
+      state.notice = `${labels.heading} added.`;
+      state.adding = "";
       await refreshCatalog();
       return true;
     } catch (error) {
-      state.addToolError = errorMessage(error, "The tool was not added.");
+      state.addToolError = errorMessage(error, `The ${labels.noun} was not added.`);
       return null;
     } finally {
       state.addToolPending = false;
@@ -771,8 +783,9 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     }
   }
 
-  async function updateLocalTool({ localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
+  async function updateLocalTool({ family = "tool", localId, name, command, argvAllowlist, envPassthrough, workingRoot }) {
     if (!handlers.proposeAction || state.editToolPending || !state.definition) return null;
+    const labels = COMMAND_FAMILIES[family];
     state.editToolPending = true;
     state.editToolError = "";
     emit();
@@ -780,7 +793,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       const result = await handlers.proposeAction({
         capabilityId: "extension-definition-write",
         actionArguments: {
-          family: "tool",
+          family,
           local_id: localId,
           name,
           version: state.definition.version,
@@ -790,20 +803,20 @@ export function createExtensionsPanelController(handlers, render = () => undefin
           enabled: state.definition.enabled,
           expected_fingerprint: state.definition.fingerprint,
         },
-        reason: `Update local tool ${name}`,
+        reason: `Update ${labels.title} ${name}`,
         proposedBy: "operator",
       });
       if (result?.status !== "success") {
-        state.editToolError = result?.execution?.error || "The tool was not saved.";
+        state.editToolError = result?.execution?.error || `The ${labels.noun} was not saved.`;
         return null;
       }
-      state.notice = "Local tool saved.";
+      state.notice = `${labels.heading} saved.`;
       state.definition = null;
       await refreshCatalog();
-      await selectExtension(`tool:${localId}`);
+      await selectExtension(`${family}:${localId}`);
       return true;
     } catch (error) {
-      state.editToolError = errorMessage(error, "The tool was not saved.");
+      state.editToolError = errorMessage(error, `The ${labels.noun} was not saved.`);
       return null;
     } finally {
       state.editToolPending = false;
@@ -811,27 +824,28 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     }
   }
 
-  async function removeLocalTool(localId) {
+  async function removeLocalTool(localId, family = "tool") {
     if (!handlers.proposeAction) return;
+    const labels = COMMAND_FAMILIES[family];
     let result;
     try {
       result = await handlers.proposeAction({
         capabilityId: "extension-definition-delete",
-        actionArguments: { family: "tool", local_id: localId },
-        reason: `Remove local tool ${localId}`,
+        actionArguments: { family, local_id: localId },
+        reason: `Remove ${labels.title} ${localId}`,
         proposedBy: "operator",
       });
     } catch (error) {
-      state.detailError = errorMessage(error, "The tool was not removed.");
+      state.detailError = errorMessage(error, `The ${labels.noun} was not removed.`);
       emit();
       return;
     }
     if (result?.status !== "success") {
-      state.detailError = result?.execution?.error || "The tool was not removed.";
+      state.detailError = result?.execution?.error || `The ${labels.noun} was not removed.`;
       emit();
       return;
     }
-    state.notice = "Local tool removed.";
+    state.notice = `${labels.heading} removed.`;
     state.detail = null;
     state.selectedExtensionId = "";
     await refreshCatalog();
@@ -948,6 +962,19 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     emit();
   }
 
+  function startAdd(kind) {
+    state.adding = kind;
+    state.addConnectionError = "";
+    state.addToolError = "";
+    state.importSkillError = "";
+    emit();
+  }
+
+  function cancelAdd() {
+    state.adding = "";
+    emit();
+  }
+
   function notice(message) {
     state.notice = message;
     emit();
@@ -978,6 +1005,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     setAddConnectionTransport,
     setState,
     filterFamily,
+    startAdd,
+    cancelAdd,
     invoke,
     answer,
     credential,
@@ -1032,15 +1061,49 @@ function labeledValue(parent, label, value) {
   return field;
 }
 
+function labeled(text, control) {
+  const label = document.createElement("label");
+  label.className = "extensions-field-control";
+  appendText(label, text);
+  label.appendChild(control);
+  return label;
+}
+
+function buttonRow(...buttons) {
+  const row = document.createElement("div");
+  row.className = "extensions-buttons";
+  row.append(...buttons);
+  return row;
+}
+
+// The command and process boundary fields shared by stdio MCP connections, local tools, and
+// external agents.
+function processFields({ command, argvAllowlist, envPassthrough, workingRoot }) {
+  return [
+    labeled("Command", command),
+    labeled("Allowed executables", argvAllowlist),
+    labeled("Environment passthrough", envPassthrough),
+    labeled("Working root", workingRoot),
+  ];
+}
+
+function renderCancelAdd(state) {
+  const cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", () => state.actions.cancelAdd());
+  return cancel;
+}
+
 // Shared by every MCP connection field set (Add/Edit, streamable_http/stdio) so `credential_ref`
 // - a plain reference name into the operator secret store, never the secret itself, which is
 // stored only through the separate Store credential form - is declared once.
 function appendCredentialRefField(form, prefix, value = "") {
   const credentialRef = document.createElement("input");
-  credentialRef.placeholder = "Credential reference (optional, e.g. weather-api-key)";
+  credentialRef.placeholder = "Optional, e.g. weather-api-key";
   credentialRef.dataset.draftKey = `${prefix}:credential-ref`;
   credentialRef.value = value || "";
-  form.appendChild(credentialRef);
+  form.appendChild(labeled("Credential reference", credentialRef));
   return credentialRef;
 }
 
@@ -1053,37 +1116,42 @@ function appendCredentialRefField(form, prefix, value = "") {
 // inline secret is refused before it reaches disk.
 function appendOauthFieldset(form, prefix, oauth = {}) {
   const oauthClientId = document.createElement("input");
-  oauthClientId.placeholder = "OAuth client ID (optional)";
+  oauthClientId.placeholder = "Optional";
   oauthClientId.dataset.draftKey = `${prefix}:oauth-client-id`;
   oauthClientId.value = oauth.client_id || "";
   const oauthAuthorizationUrl = document.createElement("input");
   oauthAuthorizationUrl.type = "url";
-  oauthAuthorizationUrl.placeholder = "OAuth authorization URL (optional, discovered if blank)";
+  oauthAuthorizationUrl.placeholder = "Optional, discovered if blank";
   oauthAuthorizationUrl.dataset.draftKey = `${prefix}:oauth-authorization-url`;
   oauthAuthorizationUrl.value = oauth.authorization_url || "";
   const oauthTokenUrl = document.createElement("input");
   oauthTokenUrl.type = "url";
-  oauthTokenUrl.placeholder = "OAuth token URL (optional, discovered if blank)";
+  oauthTokenUrl.placeholder = "Optional, discovered if blank";
   oauthTokenUrl.dataset.draftKey = `${prefix}:oauth-token-url`;
   oauthTokenUrl.value = oauth.token_url || "";
   const oauthScopes = document.createElement("input");
-  oauthScopes.placeholder = "OAuth scopes (comma-separated, optional)";
+  oauthScopes.placeholder = "Comma-separated, optional";
   oauthScopes.dataset.draftKey = `${prefix}:oauth-scopes`;
   oauthScopes.value = (oauth.scopes || []).join(", ");
   const oauthRedirectPort = document.createElement("input");
   oauthRedirectPort.type = "number";
-  oauthRedirectPort.placeholder = "OAuth redirect port (optional, default 19823)";
+  oauthRedirectPort.placeholder = "Optional, default 19823";
   oauthRedirectPort.dataset.draftKey = `${prefix}:oauth-redirect-port`;
   oauthRedirectPort.value = oauth.redirect_port != null ? String(oauth.redirect_port) : "";
   const oauthResource = document.createElement("input");
   oauthResource.type = "url";
-  oauthResource.placeholder = "OAuth resource URL (optional)";
+  oauthResource.placeholder = "Optional";
   oauthResource.dataset.draftKey = `${prefix}:oauth-resource`;
   oauthResource.value = oauth.resource || "";
   const oauthFields = document.createElement("fieldset");
   appendText(oauthFields, "OAuth (optional)", "legend");
   oauthFields.append(
-    oauthClientId, oauthAuthorizationUrl, oauthTokenUrl, oauthScopes, oauthRedirectPort, oauthResource,
+    labeled("Client ID", oauthClientId),
+    labeled("Authorization URL", oauthAuthorizationUrl),
+    labeled("Token URL", oauthTokenUrl),
+    labeled("Scopes", oauthScopes),
+    labeled("Redirect port", oauthRedirectPort),
+    labeled("Resource URL", oauthResource),
   );
   form.appendChild(oauthFields);
   return {
@@ -1108,11 +1176,10 @@ function renderAddMcpConnection(state) {
   form.className = "extensions-add-connection";
   appendText(form, "Add MCP connection", "strong");
   const name = document.createElement("input");
-  name.placeholder = "Display name";
-  name.required = true;
+    name.required = true;
   name.dataset.draftKey = "add-mcp:name";
   const localId = document.createElement("input");
-  localId.placeholder = "Connection ID (e.g. weather)";
+  localId.placeholder = "e.g. weather";
   localId.required = true;
   localId.dataset.draftKey = "add-mcp:local-id";
   // Visibility/required state is derived from state.addConnectionTransport, not from the
@@ -1126,15 +1193,15 @@ function renderAddMcpConnection(state) {
   // field set is right the first time, on every render, with nothing to resynchronize.
   const isStdio = state.addConnectionTransport === "stdio";
   const transport = document.createElement("select");
-  for (const value of ["streamable_http", "stdio"]) {
+  for (const [value, text] of [["streamable_http", "HTTP server"], ["stdio", "Local process (stdio)"]]) {
     const option = document.createElement("option");
     option.value = value;
-    option.textContent = value;
+    option.textContent = text;
     transport.appendChild(option);
   }
   transport.value = state.addConnectionTransport;
   transport.addEventListener("change", () => state.actions.setAddConnectionTransport(transport.value));
-  form.append(name, localId, transport);
+  form.append(labeled("Name", name), labeled("Connection ID", localId), labeled("Transport", transport));
 
   const httpFields = document.createElement("div");
   httpFields.hidden = isStdio;
@@ -1143,22 +1210,22 @@ function renderAddMcpConnection(state) {
   url.placeholder = "https://server.example/mcp";
   url.required = !isStdio;
   url.dataset.draftKey = "add-mcp:url";
-  httpFields.appendChild(url);
+  httpFields.appendChild(labeled("Server URL", url));
   const oauthFields = appendOauthFieldset(httpFields, "add-mcp");
   form.appendChild(httpFields);
 
   const stdioFields = document.createElement("div");
   stdioFields.hidden = !isStdio;
   const command = document.createElement("textarea");
-  command.placeholder = "Command, one argv token per line, e.g.\npython3\n-m\nmymcp.server";
+  command.placeholder = "One argv token per line, e.g.\npython3\n-m\nmymcp.server";
   command.required = isStdio;
   command.dataset.draftKey = "add-mcp:command";
   const argvAllowlist = document.createElement("input");
-  argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+  argvAllowlist.placeholder = "Comma-separated, e.g. python3";
   argvAllowlist.required = isStdio;
   argvAllowlist.dataset.draftKey = "add-mcp:argv-allowlist";
   const envPassthrough = document.createElement("input");
-  envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+  envPassthrough.placeholder = "Comma-separated, optional";
   envPassthrough.dataset.draftKey = "add-mcp:env-passthrough";
   const workingRoot = document.createElement("select");
   workingRoot.dataset.draftKey = "add-mcp:working-root";
@@ -1168,26 +1235,26 @@ function renderAddMcpConnection(state) {
     option.textContent = root;
     workingRoot.appendChild(option);
   }
-  stdioFields.append(command, argvAllowlist, envPassthrough, workingRoot);
+  stdioFields.append(...processFields({ command, argvAllowlist, envPassthrough, workingRoot }));
   form.appendChild(stdioFields);
 
   const toolAllowlist = document.createElement("input");
-  toolAllowlist.placeholder = "Allowed tools (comma-separated, optional)";
+  toolAllowlist.placeholder = "Comma-separated, optional";
   toolAllowlist.dataset.draftKey = "add-mcp:tool-allowlist";
   const resourceAllowlist = document.createElement("input");
-  resourceAllowlist.placeholder = "Allowed resources (comma-separated, optional)";
+  resourceAllowlist.placeholder = "Comma-separated, optional";
   resourceAllowlist.dataset.draftKey = "add-mcp:resource-allowlist";
   const promptAllowlist = document.createElement("input");
-  promptAllowlist.placeholder = "Allowed prompts (comma-separated, optional)";
+  promptAllowlist.placeholder = "Comma-separated, optional";
   promptAllowlist.dataset.draftKey = "add-mcp:prompt-allowlist";
-  form.append(toolAllowlist, resourceAllowlist, promptAllowlist);
+  form.append(labeled("Allowed tools", toolAllowlist), labeled("Allowed resources", resourceAllowlist), labeled("Allowed prompts", promptAllowlist));
   const credentialRef = appendCredentialRefField(form, "add-mcp");
   const submit = document.createElement("button");
   submit.type = "submit";
   submit.textContent = "Add connection";
   submit.disabled = state.addConnectionPending;
   submit.dataset.focusKey = "add-mcp:submit";
-  form.appendChild(submit);
+  form.appendChild(buttonRow(submit, renderCancelAdd(state)));
   if (state.addConnectionError) appendText(form, state.addConnectionError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1225,7 +1292,7 @@ function renderImportSkill(state) {
   form.className = "extensions-import-skill";
   appendText(form, "Import skill", "strong");
   const localId = document.createElement("input");
-  localId.placeholder = "Skill ID (e.g. changelog-writer)";
+  localId.placeholder = "e.g. changelog-writer";
   localId.required = true;
   localId.dataset.draftKey = "import-skill:local-id";
   const body = document.createElement("textarea");
@@ -1237,7 +1304,7 @@ function renderImportSkill(state) {
   submit.textContent = "Import skill";
   submit.disabled = state.importSkillPending;
   submit.dataset.focusKey = "import-skill:submit";
-  form.append(localId, body, submit);
+  form.append(labeled("Skill ID", localId), labeled("Skill file", body), buttonRow(submit, renderCancelAdd(state)));
   if (state.importSkillError) appendText(form, state.importSkillError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1246,33 +1313,75 @@ function renderImportSkill(state) {
   return form;
 }
 
+const ADD_FORMS = [
+  ["mcp", "Add MCP connection"],
+  ["skill", "Import skill"],
+  ["tool", "Add local tool"],
+  ["acp", "Add external agent"],
+];
+
+function renderAddForm(state) {
+  const section = document.createElement("section");
+  section.className = "extensions-section";
+  const form = state.adding === "mcp"
+    ? renderAddMcpConnection(state)
+    : state.adding === "skill"
+      ? renderImportSkill(state)
+      : renderAddLocalTool(state, state.adding);
+  section.appendChild(form);
+  return section;
+}
+
 const STORAGE_ROOTS = ["data", "cache", "reports", "models", "runtimes"];
 
-function renderAddLocalTool(state) {
+// Local tools and external (ACP) agents are both declared as a fixed argv command plus a process
+// boundary, so they share one add/edit/remove workflow and differ only in wording.
+const COMMAND_FAMILIES = {
+  tool: {
+    noun: "tool",
+    title: "local tool",
+    heading: "Local tool",
+    idLabel: "Tool ID",
+    idExample: "changelog-writer",
+    commandExample: "python3\n-m\nscripts.changelog",
+    allowExample: "python3",
+  },
+  acp: {
+    noun: "agent",
+    title: "external agent",
+    heading: "External agent",
+    idLabel: "Agent ID",
+    idExample: "coding-agent",
+    commandExample: "npx\n-y\nexample-acp-agent",
+    allowExample: "npx",
+  },
+};
+
+function renderAddLocalTool(state, family = "tool") {
+  const labels = COMMAND_FAMILIES[family];
   const form = document.createElement("form");
-  form.className = "extensions-add-tool";
-  appendText(form, "Add local tool", "strong");
+  form.className = `extensions-add-${family}`;
+  appendText(form, `Add ${labels.title}`, "strong");
   const name = document.createElement("input");
-  name.placeholder = "Display name";
-  name.required = true;
-  name.dataset.draftKey = "add-tool:name";
+    name.required = true;
+  name.dataset.draftKey = `add-${family}:name`;
   const localId = document.createElement("input");
-  localId.placeholder = "Tool ID (e.g. changelog-writer)";
+  localId.placeholder = `e.g. ${labels.idExample}`;
   localId.required = true;
-  localId.dataset.draftKey = "add-tool:local-id";
+  localId.dataset.draftKey = `add-${family}:local-id`;
   const command = document.createElement("textarea");
-  command.placeholder = "Command, one argv token per line, e.g.\npython3\n-m\nscripts.changelog";
+  command.placeholder = `One argv token per line, e.g.\n${labels.commandExample}`;
   command.required = true;
-  command.dataset.draftKey = "add-tool:command";
+  command.dataset.draftKey = `add-${family}:command`;
   const argvAllowlist = document.createElement("input");
-  argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+  argvAllowlist.placeholder = `Comma-separated, e.g. ${labels.allowExample}`;
   argvAllowlist.required = true;
-  argvAllowlist.dataset.draftKey = "add-tool:argv-allowlist";
+  argvAllowlist.dataset.draftKey = `add-${family}:argv-allowlist`;
   const envPassthrough = document.createElement("input");
-  envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
-  envPassthrough.dataset.draftKey = "add-tool:env-passthrough";
+  envPassthrough.placeholder = "Comma-separated, optional";
+  envPassthrough.dataset.draftKey = `add-${family}:env-passthrough`;
   const workingRoot = document.createElement("select");
-  workingRoot.dataset.draftKey = "add-tool:working-root";
+  workingRoot.dataset.draftKey = `add-${family}:working-root`;
   for (const root of STORAGE_ROOTS) {
     const option = document.createElement("option");
     option.value = root;
@@ -1281,14 +1390,20 @@ function renderAddLocalTool(state) {
   }
   const submit = document.createElement("button");
   submit.type = "submit";
-  submit.textContent = "Add tool";
+  submit.textContent = `Add ${labels.noun}`;
   submit.disabled = state.addToolPending;
-  submit.dataset.focusKey = "add-tool:submit";
-  form.append(name, localId, command, argvAllowlist, envPassthrough, workingRoot, submit);
-  if (state.addToolError) appendText(form, state.addToolError, "p", "extensions-error");
+  submit.dataset.focusKey = `add-${family}:submit`;
+  form.append(
+    labeled("Name", name),
+    labeled(labels.idLabel, localId),
+    ...processFields({ command, argvAllowlist, envPassthrough, workingRoot }),
+    buttonRow(submit, renderCancelAdd(state)),
+  );
+  if (state.addToolError && state.addToolFamily === family) appendText(form, state.addToolError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.actions.addLocalTool({
+      family,
       localId: localId.value.trim(),
       name: name.value.trim(),
       command: command.value,
@@ -1320,11 +1435,10 @@ function renderEditMcpConnection(state) {
   form.className = "extensions-edit-connection";
   appendText(form, "Edit MCP connection", "strong");
   const name = document.createElement("input");
-  name.placeholder = "Display name";
-  name.required = true;
+    name.required = true;
   name.dataset.draftKey = `edit-mcp:${info.extension_id}:name`;
   name.value = info.name;
-  form.appendChild(name);
+  form.appendChild(labeled("Name", name));
 
   let url = null;
   let oauthFields = null;
@@ -1334,17 +1448,17 @@ function renderEditMcpConnection(state) {
   let workingRoot = null;
   if (isStdio) {
     command = document.createElement("textarea");
-    command.placeholder = "Command, one argv token per line";
+    command.placeholder = "One argv token per line";
     command.required = true;
     command.dataset.draftKey = `edit-mcp:${info.extension_id}:command`;
     command.value = (info.definition.command || []).join("\n");
     argvAllowlist = document.createElement("input");
-    argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+    argvAllowlist.placeholder = "Comma-separated, e.g. python3";
     argvAllowlist.required = true;
     argvAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:argv-allowlist`;
     argvAllowlist.value = (info.definition.process?.argv_allowlist || []).join(", ");
     envPassthrough = document.createElement("input");
-    envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+    envPassthrough.placeholder = "Comma-separated, optional";
     envPassthrough.dataset.draftKey = `edit-mcp:${info.extension_id}:env-passthrough`;
     envPassthrough.value = (info.definition.process?.env_passthrough || []).join(", ");
     workingRoot = document.createElement("select");
@@ -1356,7 +1470,7 @@ function renderEditMcpConnection(state) {
       workingRoot.appendChild(option);
     }
     workingRoot.value = info.definition.process?.working_root || STORAGE_ROOTS[0];
-    form.append(command, argvAllowlist, envPassthrough, workingRoot);
+    form.append(...processFields({ command, argvAllowlist, envPassthrough, workingRoot }));
   } else {
     url = document.createElement("input");
     url.type = "url";
@@ -1364,22 +1478,22 @@ function renderEditMcpConnection(state) {
     url.required = true;
     url.dataset.draftKey = `edit-mcp:${info.extension_id}:url`;
     url.value = info.definition.url || "";
-    form.appendChild(url);
+    form.appendChild(labeled("Server URL", url));
   }
 
   const toolAllowlist = document.createElement("input");
-  toolAllowlist.placeholder = "Allowed tools (comma-separated, optional)";
+  toolAllowlist.placeholder = "Comma-separated, optional";
   toolAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:tool-allowlist`;
   toolAllowlist.value = (info.definition.tool_allowlist || []).join(", ");
   const resourceAllowlist = document.createElement("input");
-  resourceAllowlist.placeholder = "Allowed resources (comma-separated, optional)";
+  resourceAllowlist.placeholder = "Comma-separated, optional";
   resourceAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:resource-allowlist`;
   resourceAllowlist.value = (info.definition.resource_allowlist || []).join(", ");
   const promptAllowlist = document.createElement("input");
-  promptAllowlist.placeholder = "Allowed prompts (comma-separated, optional)";
+  promptAllowlist.placeholder = "Comma-separated, optional";
   promptAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:prompt-allowlist`;
   promptAllowlist.value = (info.definition.prompt_allowlist || []).join(", ");
-  form.append(toolAllowlist, resourceAllowlist, promptAllowlist);
+  form.append(labeled("Allowed tools", toolAllowlist), labeled("Allowed resources", resourceAllowlist), labeled("Allowed prompts", promptAllowlist));
   const credentialRef = appendCredentialRefField(form, `edit-mcp:${info.extension_id}`, info.definition.credential_ref);
   if (!isStdio) oauthFields = appendOauthFieldset(form, `edit-mcp:${info.extension_id}`, info.definition.oauth);
   const submit = document.createElement("button");
@@ -1387,7 +1501,7 @@ function renderEditMcpConnection(state) {
   submit.textContent = "Save connection";
   submit.disabled = state.editConnectionPending;
   submit.dataset.focusKey = `edit-mcp-submit:${info.extension_id}`;
-  form.append(submit, renderCancelEdit(state, `edit-mcp-cancel:${info.extension_id}`));
+  form.append(buttonRow(submit, renderCancelEdit(state, `edit-mcp-cancel:${info.extension_id}`)));
   if (state.editConnectionError) appendText(form, state.editConnectionError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1420,26 +1534,27 @@ function renderEditMcpConnection(state) {
 
 function renderEditLocalTool(state) {
   const info = state.definition;
+  const family = String(info.extension_id).split(":")[0];
+  const labels = COMMAND_FAMILIES[family];
   const form = document.createElement("form");
-  form.className = "extensions-edit-tool";
-  appendText(form, "Edit local tool", "strong");
+  form.className = `extensions-edit-${family}`;
+  appendText(form, `Edit ${labels.title}`, "strong");
   const name = document.createElement("input");
-  name.placeholder = "Display name";
-  name.required = true;
+    name.required = true;
   name.dataset.draftKey = `edit-tool:${info.extension_id}:name`;
   name.value = info.name;
   const command = document.createElement("textarea");
-  command.placeholder = "Command, one argv token per line";
+  command.placeholder = "One argv token per line";
   command.required = true;
   command.dataset.draftKey = `edit-tool:${info.extension_id}:command`;
   command.value = (info.definition.command || []).join("\n");
   const argvAllowlist = document.createElement("input");
-  argvAllowlist.placeholder = "Allowed executable (comma-separated, e.g. python3)";
+  argvAllowlist.placeholder = "Comma-separated, e.g. python3";
   argvAllowlist.required = true;
   argvAllowlist.dataset.draftKey = `edit-tool:${info.extension_id}:argv-allowlist`;
   argvAllowlist.value = (info.definition.process?.argv_allowlist || []).join(", ");
   const envPassthrough = document.createElement("input");
-  envPassthrough.placeholder = "Environment passthrough (comma-separated, optional)";
+  envPassthrough.placeholder = "Comma-separated, optional";
   envPassthrough.dataset.draftKey = `edit-tool:${info.extension_id}:env-passthrough`;
   envPassthrough.value = (info.definition.process?.env_passthrough || []).join(", ");
   const workingRoot = document.createElement("select");
@@ -1453,17 +1568,19 @@ function renderEditLocalTool(state) {
   workingRoot.value = info.definition.process?.working_root || STORAGE_ROOTS[0];
   const submit = document.createElement("button");
   submit.type = "submit";
-  submit.textContent = "Save tool";
+  submit.textContent = `Save ${labels.noun}`;
   submit.disabled = state.editToolPending;
   submit.dataset.focusKey = `edit-tool-submit:${info.extension_id}`;
   form.append(
-    name, command, argvAllowlist, envPassthrough, workingRoot, submit,
-    renderCancelEdit(state, `edit-tool-cancel:${info.extension_id}`),
+    labeled("Name", name),
+    ...processFields({ command, argvAllowlist, envPassthrough, workingRoot }),
+    buttonRow(submit, renderCancelEdit(state, `edit-tool-cancel:${info.extension_id}`)),
   );
   if (state.editToolError) appendText(form, state.editToolError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.actions.updateLocalTool({
+      family,
       localId: info.local_id,
       name: name.value.trim(),
       command: command.value,
@@ -1479,9 +1596,18 @@ function renderCatalog(state) {
   const section = document.createElement("section");
   section.className = "extensions-section";
   appendText(section, "Installed extensions", "h3");
-  section.appendChild(renderAddMcpConnection(state));
-  section.appendChild(renderImportSkill(state));
-  section.appendChild(renderAddLocalTool(state));
+  const add = document.createElement("div");
+  add.className = "extensions-buttons";
+  for (const [kind, text] of ADD_FORMS) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.dataset.focusKey = `add:${kind}`;
+    button.setAttribute("aria-pressed", String(state.adding === kind));
+    button.addEventListener("click", () => state.actions.startAdd(kind));
+    add.appendChild(button);
+  }
+  section.appendChild(add);
   if (state.catalogLoading) {
     appendText(section, "Loading extensions…", "p", "extensions-help");
     return section;
@@ -1498,17 +1624,17 @@ function renderCatalog(state) {
 
   const families = Object.entries(state.catalog?.families || {});
   if (families.length) {
-    const filters = document.createElement("div");
-    filters.className = "extensions-buttons";
+    const filter = document.createElement("select");
+    filter.dataset.focusKey = "filter:family";
     for (const [family, count] of [["", extensions.length], ...families]) {
-      const button = document.createElement("button");
-      button.type = "button";
-      button.textContent = family ? `${family} (${count})` : `all (${count})`;
-      button.setAttribute("aria-pressed", String(state.familyFilter === family));
-      button.addEventListener("click", () => state.actions.filterFamily(family));
-      filters.appendChild(button);
+      const option = document.createElement("option");
+      option.value = family;
+      option.textContent = family ? `${family} (${count})` : `All (${count})`;
+      option.selected = state.familyFilter === family;
+      filter.appendChild(option);
     }
-    section.appendChild(filters);
+    filter.addEventListener("change", () => state.actions.filterFamily(filter.value));
+    section.appendChild(labeled("Show", filter));
   }
 
   const list = document.createElement("ul");
@@ -1523,7 +1649,6 @@ function renderCatalog(state) {
     row.dataset.state = extensionActivityState(extension);
     row.setAttribute("aria-pressed", String(state.selectedExtensionId === extension.extension_id));
     appendText(row, extension.display_name, "strong");
-    appendText(row, extension.extension_id, "span", "extensions-row-meta");
     appendText(row, formatExtensionOrigin(extension), "span", "extensions-row-meta");
     row.addEventListener("click", () => state.actions.selectExtension(extension.extension_id));
     item.appendChild(row);
@@ -1542,7 +1667,7 @@ function renderCatalog(state) {
 function renderDetail(state) {
   const section = document.createElement("section");
   section.className = "extensions-section";
-  appendText(section, "Detail", "h3");
+  appendText(section, "Extension detail", "h3");
   if (state.detailLoading) {
     appendText(section, "Loading extension…", "p", "extensions-help");
     return section;
@@ -1556,29 +1681,30 @@ function renderDetail(state) {
     return section;
   }
   const detail = state.detail;
+  appendText(section, detail.display_name || detail.extension_id, "strong");
   const status = appendText(section, detail.state, "p", "extensions-status");
   status.dataset.state = extensionActivityState(detail);
 
   const facts = document.createElement("dl");
   facts.className = "extensions-facts";
-  labeledValue(facts, "Identifier", detail.extension_id);
   labeledValue(facts, "Family", detail.family);
   labeledValue(facts, "Version", detail.version);
-  labeledValue(facts, "Provenance", detail.provenance);
   labeledValue(facts, "Trust", detail.trust);
   labeledValue(facts, "Readiness", detail.readiness);
   labeledValue(facts, "Availability", detail.availability);
   section.appendChild(facts);
 
-  // Source (a raw file/module path) and revision (an optimistic-concurrency counter) are
-  // backend/audit internals, not operator-meaningful state - they belong in an explicit
-  // detail disclosure, not the primary facts an operator reads at a glance.
+  // Identifier, provenance, source (a raw file/module path), and revision (an
+  // optimistic-concurrency counter) are backend/audit internals, not operator-meaningful state -
+  // they belong in an explicit detail disclosure, not the primary facts read at a glance.
   const advanced = document.createElement("details");
   const advancedSummary = document.createElement("summary");
   advancedSummary.textContent = "Details";
   advanced.appendChild(advancedSummary);
   const advancedFacts = document.createElement("dl");
   advancedFacts.className = "extensions-facts";
+  labeledValue(advancedFacts, "Identifier", detail.extension_id);
+  labeledValue(advancedFacts, "Provenance", detail.provenance);
   labeledValue(advancedFacts, "Source", detail.source);
   labeledValue(advancedFacts, "Revision", detail.revision);
   advanced.appendChild(advancedFacts);
@@ -1653,9 +1779,8 @@ function renderDetail(state) {
         if (complex) {
           const json = document.createElement("textarea");
           json.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:$json`;
-          json.placeholder = "Advanced JSON arguments";
           json.required = true;
-          form.appendChild(json);
+          form.appendChild(labeled("Arguments (JSON)", json));
           inputs.push(["$json", json, { type: "json" }]);
         }
         for (const [name, schema] of complex ? [] : Object.entries(fields)) {
@@ -1663,10 +1788,9 @@ function renderDetail(state) {
           input.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:${name}`;
           input.name = name;
           input.required = (operation.input_schema?.required || []).includes(name);
-          if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(select); continue; }
+          if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(labeled(name, select)); continue; }
           input.type = schema.type === "boolean" ? "checkbox" : schema.type === "number" || schema.type === "integer" ? "number" : "text";
-          input.placeholder = name;
-          form.appendChild(input);
+          form.appendChild(labeled(name, input));
           inputs.push([name, input, schema]);
         }
         const submit = document.createElement("button");
@@ -1696,24 +1820,24 @@ function renderDetail(state) {
     const credential = document.createElement("form");
     appendText(credential, "Credential", "strong");
     const name = document.createElement("input");
-    name.placeholder = "name";
     name.required = true;
     name.dataset.draftKey = `${detail.extension_id}:credential:name`;
     const secret = document.createElement("input");
     secret.type = "password";
-    secret.placeholder = "secret";
     secret.required = true;
     const save = document.createElement("button");
     save.type = "submit";
     save.textContent = "Store credential";
     save.dataset.focusKey = `credential-submit:${detail.extension_id}`;
-    credential.append(name, secret, save);
+    credential.append(labeled("Name", name), labeled("Secret", secret), buttonRow(save));
     credential.addEventListener("submit", (event) => {
       event.preventDefault();
       state.actions.credential(detail.extension_id, name.value, secret.value);
       secret.value = "";
     });
     runtime.appendChild(credential);
+    const manage = buttonRow();
+    runtime.appendChild(manage);
     // Ends the held session without touching the definition or stored credentials -
     // distinct from "Remove connection" (deletes the definition) and "Forget
     // authorization" (clears a stored OAuth token) below. Safe to click regardless of
@@ -1724,7 +1848,7 @@ function renderDetail(state) {
     disconnect.textContent = "Disconnect";
     disconnect.disabled = state.mutationPending;
     disconnect.addEventListener("click", () => state.actions.disconnect(detail.extension_id));
-    runtime.appendChild(disconnect);
+    manage.appendChild(disconnect);
     if (detail.definition_available) {
       if (state.definition?.extension_id === detail.extension_id) {
         runtime.appendChild(renderEditMcpConnection(state));
@@ -1735,7 +1859,7 @@ function renderDetail(state) {
         edit.textContent = "Edit connection";
         edit.disabled = state.mutationPending;
         edit.addEventListener("click", () => state.actions.loadDefinition(detail.extension_id));
-        runtime.appendChild(edit);
+        manage.appendChild(edit);
       }
     }
     if (isOperatorOwnedProvenance(detail)) {
@@ -1745,7 +1869,7 @@ function renderDetail(state) {
       remove.textContent = "Remove connection";
       remove.disabled = state.mutationPending;
       remove.addEventListener("click", () => state.actions.removeMcpConnection(detail.local_id));
-      runtime.appendChild(remove);
+      manage.appendChild(remove);
     }
     // snapshot.health is a cached fact from the last discover call, not a live read - a
     // probe reproduced it still reading "ready" after Disconnect closed the session.
@@ -1776,12 +1900,11 @@ function renderDetail(state) {
         oauth.appendChild(link);
         const finish = document.createElement("form");
         const code = document.createElement("input");
-        code.placeholder = "authorization code";
         code.required = true;
         const submit = document.createElement("button");
         submit.type = "submit";
         submit.textContent = "Complete authorization";
-        finish.append(code, submit);
+        finish.append(labeled("Authorization code", code), buttonRow(submit));
         finish.addEventListener("submit", (event) => {
           event.preventDefault();
           state.actions.completeOauth(detail.extension_id, code.value);
@@ -1810,27 +1933,30 @@ function renderDetail(state) {
       runtime.appendChild(oauth);
     }
   }
-  if (detail.family === "tool" && isOperatorOwnedProvenance(detail)) {
+  const commandFamily = COMMAND_FAMILIES[detail.family];
+  if (commandFamily && isOperatorOwnedProvenance(detail)) {
+    const manage = buttonRow();
+    runtime.appendChild(manage);
     if (detail.definition_available) {
       if (state.definition?.extension_id === detail.extension_id) {
         runtime.appendChild(renderEditLocalTool(state));
       } else {
         const edit = document.createElement("button");
         edit.type = "button";
-        edit.dataset.focusKey = `edit-tool:${detail.extension_id}`;
-        edit.textContent = "Edit tool";
+        edit.dataset.focusKey = `edit-${detail.family}:${detail.extension_id}`;
+        edit.textContent = `Edit ${commandFamily.noun}`;
         edit.disabled = state.mutationPending;
         edit.addEventListener("click", () => state.actions.loadDefinition(detail.extension_id));
-        runtime.appendChild(edit);
+        manage.appendChild(edit);
       }
     }
     const remove = document.createElement("button");
     remove.type = "button";
-    remove.dataset.focusKey = `remove-tool:${detail.extension_id}`;
-    remove.textContent = "Remove tool";
+    remove.dataset.focusKey = `remove-${detail.family}:${detail.extension_id}`;
+    remove.textContent = `Remove ${commandFamily.noun}`;
     remove.disabled = state.mutationPending;
-    remove.addEventListener("click", () => state.actions.removeLocalTool(detail.local_id));
-    runtime.appendChild(remove);
+    remove.addEventListener("click", () => state.actions.removeLocalTool(detail.local_id, detail.family));
+    manage.appendChild(remove);
   }
   if (detail.family === "skill" && String(detail.provenance || "").startsWith("data/extensions")) {
     // Operator-authored skills live under data/extensions and carry external trust;
@@ -1856,7 +1982,7 @@ function renderDetail(state) {
     remove.textContent = "Remove skill";
     remove.disabled = state.mutationPending;
     remove.addEventListener("click", () => state.actions.removeSkill(detail.local_id));
-    editor.append(body, save, remove);
+    editor.append(labeled("Skill file", body), buttonRow(save, remove));
     editor.addEventListener("submit", (event) => {
       event.preventDefault();
       state.actions.saveSkill(detail.local_id, body.value);
@@ -1897,37 +2023,7 @@ function renderDetail(state) {
       if (run.result) appendText(runDetails, JSON.stringify(run.result, null, 2), "pre");
       block.appendChild(runDetails);
       if (run.error) appendText(block, run.error, "p", "extensions-row-meta");
-      if (run.request) {
-        const form = document.createElement("form");
-        const request = run.request;
-        if (request.kind === "permission_request") {
-          const options = document.createElement("select"); options.dataset.draftKey = `${run.run_id}:${request.request_id}:option`;
-          for (const option of request.options || []) {
-            const entry = document.createElement("option"); entry.value = option.optionId; entry.textContent = `${option.name} (${option.kind})`; options.appendChild(entry);
-          }
-          const accept = document.createElement("button"); accept.type = "submit"; accept.textContent = "Accept";
-          const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Decline";
-          decline.addEventListener("click", () => state.actions.answer(run.run_id, request.request_id, { action: "decline" }));
-          form.append(options, accept, decline);
-          form.addEventListener("submit", (event) => { event.preventDefault(); state.actions.answer(run.run_id, request.request_id, { action: "accept", option_id: options.value }); });
-        } else {
-          const schema = request.requestedSchema || {};
-          const fields = schema.properties || {};
-          const complex = Object.values(fields).some((item) => ["object", "array"].includes(item.type));
-          const inputs = [];
-          if (complex) { const json = document.createElement("textarea"); json.dataset.draftKey = `${run.run_id}:${request.request_id}:$json`; json.placeholder = "Advanced JSON response"; json.required = true; form.appendChild(json); inputs.push(["$json", json, { type: "json" }]); }
-          appendText(form, request.message || "This operation needs your input.", "p", "extensions-row-meta");
-          for (const [name, item] of complex ? [] : Object.entries(fields)) { const input = Array.isArray(item.enum) ? document.createElement("select") : document.createElement("input"); input.dataset.draftKey = `${run.run_id}:${request.request_id}:${name}`; input.placeholder = name; input.required = (schema.required || []).includes(name); if (Array.isArray(item.enum)) for (const value of item.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; input.appendChild(option); } else input.type = item.type === "boolean" ? "checkbox" : item.type === "number" || item.type === "integer" ? "number" : "text"; form.appendChild(input); inputs.push([name, input, item]); }
-          const submit = document.createElement("button"); submit.type = "submit"; submit.textContent = "Send"; const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Cancel"; decline.addEventListener("click", () => state.actions.answer(run.run_id, request.request_id, { action: "decline" })); form.append(submit, decline);
-          form.addEventListener("submit", (event) => { event.preventDefault(); try { const content = inputs[0]?.[0] === "$json" ? JSON.parse(inputs[0][1].value) : Object.fromEntries(inputs.map(([name, input, item]) => [name, item.type === "boolean" ? input.checked : item.type === "number" || item.type === "integer" ? Number(input.value) : input.value])); state.actions.answer(run.run_id, request.request_id, { action: "accept", content }); } catch { state.actions.notice("Response must be valid JSON."); } });
-        }
-        block.appendChild(form);
-      }
-      if (run.status === "awaiting_approval" && run.proposal_id) {
-        const approve = document.createElement("button"); approve.type = "button"; approve.textContent = "Approve"; approve.addEventListener("click", () => state.actions.decide(run.proposal_id, "approved"));
-        const decline = document.createElement("button"); decline.type = "button"; decline.textContent = "Decline"; decline.addEventListener("click", () => state.actions.decide(run.proposal_id, "denied")); block.append(approve, decline);
-      }
-      if (["running", "awaiting_input", "awaiting_approval"].includes(run.status) && run.proposal_id) { const cancel = document.createElement("button"); cancel.type = "button"; cancel.textContent = "Cancel"; cancel.addEventListener("click", () => state.actions.cancel(run.proposal_id)); block.appendChild(cancel); }
+      appendRunControls(block, run, state.actions);
       if (run.events?.length) {
         const event = run.events.at(-1);
         appendText(block, `Latest event: ${String(event.type || event.kind || "update").replaceAll("_", " ")}`, "p", "extensions-row-meta");
@@ -2004,17 +2100,7 @@ function renderErrors(state) {
   return section;
 }
 
-function renderPanel(container, state, actions) {
-  // Run polling re-renders this panel roughly once a second while it is open, and every
-  // render fully replaces the DOM - so scroll position, like draft values, must be captured
-  // from the outgoing tree and reapplied to the incoming one, or a scrolled list snaps back
-  // to the top on every poll tick.
-  const drafts = new Map([...container.querySelectorAll("[data-draft-key]")].map((field) => [field.dataset.draftKey, { value: field.value, checked: field.checked, focused: document.activeElement === field }]));
-  const scrollPositions = new Map([...container.querySelectorAll("[data-scroll-key]")].map((node) => [node.dataset.scrollKey, node.scrollTop]));
-  // A focused non-form control (a catalog row, or the very state/action button an operator
-  // just clicked, since clicking it is what triggers the refreshCatalog() re-render that would
-  // otherwise unfocus it) needs the same capture-then-restore treatment as scroll and drafts.
-  const focusedKey = document.activeElement?.dataset?.focusKey;
+function renderPanel(keeper, state, actions) {
   const view = { ...state, actions };
   const header = document.createElement("div");
   header.className = "extensions-panel-header";
@@ -2042,38 +2128,16 @@ function renderPanel(container, state, actions) {
   const detailColumn = document.createElement("div");
   detailColumn.className = "extensions-panel-detail";
   detailColumn.dataset.scrollKey = "detail";
-  detailColumn.appendChild(renderDetail(view));
+  detailColumn.appendChild(state.adding ? renderAddForm(view) : renderDetail(view));
   layout.append(listColumn, detailColumn);
 
-  container.replaceChildren(
-    header,
-    messages,
-    layout,
-  );
-  for (const field of container.querySelectorAll("[data-draft-key]")) {
-    const draft = drafts.get(field.dataset.draftKey);
-    if (!draft) continue;
-    field.value = draft.value;
-    if (field.type === "checkbox") field.checked = draft.checked;
-    if (draft.focused) field.focus();
-  }
-  if (focusedKey) {
-    for (const node of container.querySelectorAll("[data-focus-key]")) {
-      if (node.dataset.focusKey === focusedKey) {
-        node.focus();
-        break;
-      }
-    }
-  }
-  for (const node of container.querySelectorAll("[data-scroll-key]")) {
-    const saved = scrollPositions.get(node.dataset.scrollKey);
-    if (saved !== undefined) node.scrollTop = saved;
-  }
+  keeper.render(header, messages, layout);
 }
 
 export function createExtensionsPanel(container, handlers, options = {}) {
   let open = false;
   let controller;
+  const keeper = createRenderStateKeeper(container);
   const confirmCancel = options.confirmCancel || ((message) => window.confirm(message));
   const actions = {
     close: () => close(),
@@ -2084,6 +2148,8 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     setAddConnectionTransport: (transport) => controller.setAddConnectionTransport(transport),
     setState: (extensionId, next) => controller.setState(extensionId, next),
     filterFamily: (family) => controller.filterFamily(family),
+    startAdd: (kind) => controller.startAdd(kind),
+    cancelAdd: () => controller.cancelAdd(),
     invoke: (extensionId, capabilityId, argumentsValue) => controller.invoke(extensionId, capabilityId, argumentsValue),
     answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
     credential: (extensionId, name, secret) => controller.credential(extensionId, name, secret),
@@ -2095,7 +2161,7 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     removeMcpConnection: (localId) => controller.removeMcpConnection(localId),
     addLocalTool: (payload) => controller.addLocalTool(payload),
     updateLocalTool: (payload) => controller.updateLocalTool(payload),
-    removeLocalTool: (localId) => controller.removeLocalTool(localId),
+    removeLocalTool: (localId, family) => controller.removeLocalTool(localId, family),
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
     forgetOauth: (extensionId) => controller.forgetOauth(extensionId),
@@ -2105,14 +2171,15 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     notice: (message) => controller.notice(message),
   };
   controller = createExtensionsPanelController(handlers, (state) => {
-    if (open) renderPanel(container, state, actions);
+    if (open) renderPanel(keeper, state, actions);
   });
 
   async function show() {
     open = true;
     container.hidden = false;
-    renderPanel(container, controller.snapshot(), actions);
+    renderPanel(keeper, controller.snapshot(), actions);
     await controller.load();
+    keeper.release();
     polling = window.setInterval(() => {
       const active = document.activeElement;
       if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
@@ -2126,6 +2193,7 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     open = false;
     controller.cancelPendingReads();
     if (polling) { window.clearInterval(polling); polling = null; }
+    keeper.retain();
     container.hidden = true;
     container.replaceChildren();
     options.onClose?.();

@@ -82,7 +82,7 @@ Negative:
 
 ## Implementation
 
-This ADR is partially implemented.
+This ADR is implemented in code and contract tests; native operator validation remains open.
 
 Layout:
 - `desktop/src/index.html` keeps Backend, Readiness, and Services in the left status sidebar and adds a single `#advanced-controls-trigger` button, with the `#settings-restart-required` badge, in an `.operator-actions` section directly below Services.
@@ -102,24 +102,38 @@ Advanced-control surface:
 - `desktop/src/components/advanced-panel.js` introduces `createAdvancedPanelCoordinator`, a DOM-free single-select sequencer over `{ id, isOpen, open, close }` categories exposing `openCategory`, `closeActive`, `requestClose`, and `activeCategoryId`. It suppresses dismissal while a category switch or teardown is in progress, so a panel's own `onClose` report cannot re-enter as a new dismissal.
 - `createOperatorPanelCoordinator` is removed from `desktop/src/components/memory-panel.js`; the coordinator above replaces it as the single owner of category switching.
 - `desktop/src/style.css` adds `.advanced-panel`, `::backdrop`, `.advanced-panel-rail` with an `[aria-selected="true"]` state, and `.advanced-panel-detail`, sized with `min()` and collapsing to a single column inside the existing 820px breakpoint. A `--color-backdrop` token is added inside the token block.
+- `.advanced-panel-detail` is shared by every category, so `desktop/src/main.js` records its scroll position per category before a switch and before the dialog closes (Close, backdrop, and the dialog's `cancel` event for Escape), and restores it when that category reopens.
+
+Draft, scroll, and focus preservation:
+- `desktop/src/components/render-state.js` owns capture and restore of `data-draft-key` field values, `data-scroll-key` scroll positions, and the focused `data-focus-key` control across a panel's full re-render. `createRenderStateKeeper` also retains that state when a category closes and reapplies it on the next open until the reopened panel has loaded.
+- Extensions, Actions, and Agents render through the keeper; Actions and Agents key their buttons and prompt/propose controls so a click that triggers a refresh keeps focus.
 
 Agents:
 - `desktop/src/components/agents-panel.js` is rewritten to the panel contract used by Actions and Extensions: a DOM-free `createAgentsPanelController(handlers, onState)` plus `createAgentsPanel(container, handlers, options)` returning `{ open, close, isOpen, controller }`, mounted from `desktop/src/main.js` through the existing `apiClient` agent methods.
 - It unwraps `AgentListResponse.agents` and `AgentRunResponse.records`, uses separate sequence counters for the catalog and runs, and renders runs from their capability-audit envelope (`kind`, `capability_id`, `recorded_at`, nested `record`) rather than assuming top-level run fields. `agentRunProfileId` derives the agent from the `agent-invoke-` capability prefix.
 - Governed outcomes are reported honestly: an `awaiting_approval` invocation is not shown as success, a refused cancel is reported as refused, and the Cancel control is gated on the profile's `cancellable` flag.
+- Profile problems from `AgentListResponse.problems` are listed as agents that could not be loaded. The external-agent definition is chosen from the catalog's `acp` extensions with their status, not typed.
+- An invocation holds its own pending state, so Cancel and permission/input answers stay available while it runs. While a run is live the panel polls agent runs and extension runs; `agentProposalId` finds the in-flight invocation's proposal, Cancel targets it through `cancelAction`, and the existing `cancelAgent` route is the fallback before that proposal is known.
+- An ACP-runtime agent's detail shows its definition's status and live connection, and a Test connection control that sends one fixed prompt through the definition's own `prompt` operation (`invokeExtension`) and reports the streamed reply or a readable failure. The linked extension runs render their permission and input requests through `desktop/src/components/run-request.js`, the same controls the Extensions panel uses.
+- The last run's output is read from `output.response` for internal agents and from the linked run's streamed `agent_message_chunk` updates for ACP agents. An invocation paused for approval lists pending approvals with Approve and Decline. Runs render as per-proposal timelines named by agent, with identifiers and records behind Details.
+- `invoke_agent` in `desktop/src-tauri/src/lib.rs` is async and dispatches through `spawn_blocking`, like `invoke_extension`, so a run waiting on an operator answer does not hold the blocking pool that answering and cancelling use. `desktop/src-tauri/src/backend.rs` gives `POST /agents/invoke` a timeout covering the 600 s profile maximum.
+
+Action audit:
+- `desktop/src/components/actions-panel.js` presents capabilities, pending approvals, execution status, and audit in operator language: `capabilityTitle`, `formatCapabilityRisk`, `capabilityReadinessText` (including degraded and unavailable readiness), `actionStatusText`, and `describeAuditRecord`, which reads the nested record of each kind - proposal, authorization decision, approval, execution result (including failure error and `outcome_unknown`), and cancellation. `groupAuditRecords` renders one timeline per proposal.
+- Capability, proposal, and approval IDs, the execution owner, raw arguments, and raw records appear only inside explicit Details disclosures. Descriptor problems are grouped under Could not load. The generic runner remains as Run manually for audit and fallback use.
 
 Provider and settings state:
 - `desktop/src/components/llm-provider-settings.js` exposes the `openProviderSettings` / `closeProviderSettings` mount for the Providers & Models category. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
 - `desktop/src/components/settings-panel.js` replaces its boolean `restartRequired` with a `restartScopes` set of `operator` and `provider`. The badge, restart notice, and Restart button reflect the union; operator fields are disabled only by the operator scope and provider controls only by the provider scope. Provider controls remain enabled after unrelated operator-config saves. Both mounts carry a generation guard so a resolved load cannot repopulate a container that was switched away.
 
-No backend route, Tauri command, or API-client route change was made. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
+No backend route or API-client route change was made, and no Tauri command was added; `invoke_agent` changed only from a synchronous to an async command. `backend/app/api/app.py` installs one `CapabilityServiceError` handler, so a direct operator request its capability refuses - for example a provider profile timeout below the argument schema minimum - returns the capability service's status and readable message instead of a 500. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
 
 ### Family workflow surfaces
 
 This ADR owns the operator presentation of every family whose behavior another ADR owns. Backend policy, execution, and evidence stay with the owning ADR; only the surface is decided here.
 
 - Actions: `desktop/src/components/actions-panel.js` exposes catalog availability, descriptor problems, typed invocation, pending decisions, cancellation, and selectable audit records. Route-owned credential and input-answer operations identify their execution owner. ADR 0005 owns the underlying governance.
-- Extensions: `desktop/src/components/extensions-panel.js` provides MCP Add/Edit/Remove for stdio and HTTP, discovery, grouped Tools/Resources/Prompts, invocation, Disconnect, credentials, and OAuth controls; Skill Import/Edit/Remove with progressive body disclosure and provenance-based editability; and Local Tool Add/Edit/Remove for fixed argv commands. Edits preserve hidden manifest fields and use fingerprints; transport is fixed at creation. ADR 0006 owns the taxonomy and catalog, ADR 0010 and ADR 0011 the MCP behavior.
+- Extensions: `desktop/src/components/extensions-panel.js` provides MCP Add/Edit/Remove for stdio and HTTP, discovery, grouped Tools/Resources/Prompts, invocation, Disconnect, credentials, and OAuth controls; Skill Import/Edit/Remove with progressive body disclosure and provenance-based editability; and Local Tool and External Agent (ACP) Add/Edit/Remove for fixed argv commands with a process boundary, sharing one workflow keyed by family. Edits preserve hidden manifest fields and use fingerprints; transport is fixed at creation. The panel follows the other Advanced Controls surfaces: the catalog offers Add MCP connection, Import skill, Add local tool, and Add external agent buttons that open their form in the detail column (as Agents opens its editor), every control sits in a labeled field with placeholders reserved for examples, the family filter is a labeled select, and the detail leads with the extension name while identifier, provenance, source, and revision stay under Details. ADR 0006 owns the taxonomy and catalog, ADR 0010 and ADR 0011 the MCP behavior.
 - Runs: run identity, masked requested inputs, progress, readable event/failure summaries, cancellation, structured elicitation, model-proposal decisions, and explicit unknown-outcome warnings. Text tool results, prompt messages, and text/image resources render from their actual wrapped result. Discovery shows counts and artifacts are listed when present; full results, unsupported content, events, and correlation IDs remain in Run details. Records created before operation metadata was retained still render their status and existing evidence.
 - Agents: `desktop/src/components/agents-panel.js` as described above. ADR 0007 owns agent identity; ADR 0013 owns external runtime behavior.
 - Preserved drafts, scroll, and keyed control focus across panel refreshes; source, revision, and internal identifiers remain available through detail disclosure.
@@ -140,6 +154,8 @@ Implementation files:
 - `desktop/src/style.css`
 - `desktop/src/api-client.js`
 - `desktop/src/components/advanced-panel.js`
+- `desktop/src/components/render-state.js`
+- `desktop/src/components/run-request.js`
 - `desktop/src/components/actions-panel.js`
 - `desktop/src/components/extensions-panel.js`
 - `desktop/src/components/agents-panel.js`
@@ -150,31 +166,31 @@ Implementation files:
 - `desktop/src/components/desktop-state.js`
 - `desktop/package.json`
 - `desktop/src-tauri/src/lib.rs`
+- `desktop/src-tauri/src/backend.rs`
+- `backend/app/api/app.py`
 - `scripts/validate_desktop.py`
 
 Test coverage:
 - `desktop/tests/layout.test.mjs` for advanced-control category registration and switching, single-select rail semantics, idempotent dismissal, re-entrant `onClose` suppression, and relocated layout and source ordering
-- `desktop/tests/agents.test.mjs` for agent list/run envelope unwrapping, honest invoke/cancel reporting, stale-response ordering, and the profile form against the backend `AgentProfile` fields
+- `desktop/tests/agents.test.mjs` for agent list/run envelope unwrapping, honest invoke/cancel reporting, stale-response ordering, the profile form against the backend `AgentProfile` fields, profile problems, the ACP definition picker, in-flight cancellation by proposal, permission answers, output from internal and ACP agents, connection testing, and the rendered external-agent detail
 - `desktop/tests/settings.test.mjs` for provider default selection and post-mutation reselection, built-in read-only messaging, and restart-scope isolation
-- `desktop/tests/extensions.test.mjs` and `desktop/tests/actions.test.mjs` for wrapped-result rendering, Disconnect refresh, connection status, unknown-outcome presentation, and the extension id rule shared with the backend
+- `desktop/tests/extensions.test.mjs` for wrapped-result rendering, Disconnect refresh, connection status, the extension id rule shared with the backend, local tool and ACP definition add/remove, scroll retention across polling and category close, and main.js wiring every handler each operator panel calls
+- `desktop/tests/actions.test.mjs` for unknown-outcome presentation, operator-language risk/readiness/titles, one sentence per audit record kind, per-proposal timelines, and raw identifiers appearing only inside Details
 - `desktop/tests/status.test.mjs` for System State, Turn Status, and operation errors that must not replace System State
 - `desktop/tests/shell.test.mjs` for client commands matching registered Tauri commands and bridge calls matching backend routes
-- `desktop/tests/app.test.mjs` for the rendered desktop shell described under Rendered shell evidence
+- `desktop/tests/app.test.mjs` for the rendered desktop shell described under Rendered shell evidence, including per-category scroll restoration and an unsent draft surviving a category switch
 - `desktop/src-tauri/src/backend.rs` and `desktop/src-tauri/src/lib.rs` unit tests for backend launch, shutdown drain, port-owner safety, and citation destinations
-- `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions
+- `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions; `test_llm_config_routes.py` also covers a refused profile write returning its readable reason
 
 Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_desktop.py regression` (runs `npm --prefix desktop test` and `cargo test --manifest-path desktop/src-tauri/Cargo.toml`)
 - `backend/.venv/Scripts/python scripts/validate_backend.py unit` when provider or action classification changes
+- Native visible-session validation on `windows-amd64` through `npm --prefix desktop run dev`, with results recorded under `reports/validation/`
 
-Native desktop interaction is not covered by any of the above and remains this ADR's open closeout obligation.
+Native validation has covered the shell layout and sizing, Close, backdrop, focus return, per-category scroll retention, the Extensions split, the provider-profile create/select/error/delete workflow, ACP definition add/edit/remove, the agent workflows (definition picker, Test connection, invocation, a permission request answered from the Agents panel, in-flight cancellation, last-run output), and the readable action audit with its Details disclosures. The items under Follow-up remain open.
 
 ## Follow-up
 
-- Validate the operator desktop in a native visible session on `windows-amd64`: right sidebar startup fit, selector font size, compact Personality metadata, advanced dialog sizing, Extensions list/detail split, single Close control, Escape, backdrop click, and focus return. Report the exact command or manual run path and observable result.
-- Run a native desktop provider-profile smoke test against the running backend: create an editable `openai_compatible` profile with endpoint, model, context window, timeout, and credential; verify save succeeds, the created profile remains selected, and backend validation or storage failures surface as specific operator-readable errors.
-- Validate category switching, mount/unmount behavior, selected category retention, focus return, and draft/scroll preservation at the shared Advanced Controls shell level.
-- Complete operator-readable action audit and detail presentation for proposals, decisions, results, cancellations, descriptor problems, and unavailable states. Keep raw IDs and backend records in explicit detail controls, with the generic runner available for audit and fallback use.
-- Obtain native interaction evidence for direct execution, required model-proposal approvals, cancellation, and inspectable action evidence.
-- Verify extension invocation, nested elicitation, answering input, cancellation, Disconnect, and session failure (`outcome_unknown`) recovery in the actual native Tauri application.
-- Complete named desktop agent workflows for profile management, external connection/testing, invocation, cancellation, evidence, and permission/elicitation input.
+- Confirm Escape dismissal of the Advanced Controls dialog with a physical keypress in the native window; injected Escape did not reach the window during automated validation.
+- Obtain native evidence for a model-proposed approval-required action decided from the Actions panel.
+- Verify MCP extension invocation, nested elicitation, answering input, cancellation, Disconnect, and session failure (`outcome_unknown`) recovery in the native application against a configured MCP server.

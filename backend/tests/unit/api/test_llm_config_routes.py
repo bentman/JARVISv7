@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from backend.app.actions.catalog import CapabilityObservation
+from backend.app.api.app import install_capability_error_handler
 from backend.app.api.routes import llm_config
 from backend.app.services.capability_service import CapabilityService
 from backend.app.services.llm_provider_profiles import LLMProviderProfileStore
@@ -18,6 +19,7 @@ def _client(tmp_path, monkeypatch) -> tuple[TestClient, LLMProviderProfileStore]
     store = LLMProviderProfileStore(tmp_path / "operator.sqlite", env_path)
     monkeypatch.setattr(llm_config, "PROFILE_STORE_FACTORY", lambda: store)
     app = FastAPI()
+    install_capability_error_handler(app)
     app.include_router(llm_config.router)
     return TestClient(app), store
 
@@ -90,6 +92,22 @@ def test_llm_profile_api_authorizes_full_profile_payload_with_capability_service
     proposal = next(item for item in audit if item["kind"] == "action_proposal")
     assert proposal["record"]["arguments"]["api_key"] == "***"
     assert proposal["record"]["arguments"]["endpoint"] == "http://127.0.0.1:8888/v1"
+
+    # The capability's own argument schema refuses this before the store sees it; the operator
+    # must get that reason, not a bare 500.
+    refused = client.put(
+        f"/config/llm/profiles/{profile['profile_id']}",
+        json={
+            "name": "Local Qwen",
+            "kind": "openai_compatible",
+            "endpoint": "http://127.0.0.1:8888/v1",
+            "model": "qwen2.5-gpro-gsm8k-rtx3060",
+            "context_window": 32768,
+            "timeout_seconds": 0,
+        },
+    )
+    assert refused.status_code == 403
+    assert "timeout_seconds" in refused.json()["detail"]["message"]
 
 
 def test_llm_profile_api_supports_secret_delete_discovery_and_rotation(tmp_path, monkeypatch):

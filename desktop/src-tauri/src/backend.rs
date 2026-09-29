@@ -1264,8 +1264,11 @@ pub fn invoke_agent(
 ) -> Result<String, String> {
     let operation = "POST /agents/invoke";
     let body = json!({ "profile_id": profile_id, "prompt": prompt });
+    // An agent profile may run for up to 600 s; the client's default timeout would abandon a
+    // run the backend is still executing and report it as a transport failure.
     let response = client
         .post(format!("{base_url}/agents/invoke"))
+        .timeout(Duration::from_secs(660))
         .json(&body)
         .send()
         .map_err(|error| memory_transport_error(operation, error))?;

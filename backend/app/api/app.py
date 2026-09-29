@@ -36,6 +36,7 @@ from backend.app.runtimes.wake.wake_runtime import select_wake_runtime
 from backend.app.services.audio_stream import ResidentAudioStream
 from backend.app.services.capability_service import (
     CapabilityService,
+    CapabilityServiceError,
     build_agent_handlers,
     build_capability_handlers,
     build_extension_handlers,
@@ -66,7 +67,8 @@ from backend.app.services.utterance_segmenter import (
     UtteranceSegmenter,
 )
 from backend.app.services.wake_monitor import WakeMonitorService
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 
 
 @dataclass(slots=True)
@@ -387,6 +389,14 @@ async def lifespan(app: FastAPI):
             stop_managed_local_llm(state)
 
 
+def install_capability_error_handler(app: FastAPI) -> None:
+    # A direct operator request that its capability refuses (schema, policy) keeps the
+    # capability service's status and readable message rather than surfacing as a 500.
+    @app.exception_handler(CapabilityServiceError)
+    async def capability_error(_request: Request, exc: CapabilityServiceError) -> JSONResponse:
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail()})
+
+
 def create_app(startup_state: ApiState | None = None) -> FastAPI:
     from backend.app.api.routes import (
         acp_server,
@@ -410,6 +420,8 @@ def create_app(startup_state: ApiState | None = None) -> FastAPI:
     app = FastAPI(title="JARVISv7 Backend API", version="0.0.1", lifespan=lifespan)
     install_state(app, startup_state or build_startup_state())
     app.state.daemon_registry = DaemonRegistry()
+    install_capability_error_handler(app)
+
     app.include_router(health.router)
     app.include_router(actions.router)
     app.include_router(acp_server.router)

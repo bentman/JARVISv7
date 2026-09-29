@@ -41,6 +41,7 @@ const advancedTriggerEl = document.querySelector("#advanced-controls-trigger");
 const advancedDialogEl = document.querySelector("#advanced-panel");
 const advancedRailEl = document.querySelector("#advanced-panel-rail");
 const advancedCloseEl = document.querySelector("#advanced-panel-close");
+const advancedDetailEl = document.querySelector(".advanced-panel-detail");
 const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
@@ -148,12 +149,20 @@ const agentsPanel = createAgentsPanel(
     updateAgent: (...args) => api.updateAgent(...args),
     deleteAgent: (...args) => api.deleteAgent(...args),
     setExtensionState: (...args) => api.setExtensionState(...args),
+    getExtensions: (...args) => api.getExtensions(...args),
+    getExtensionRuntime: (...args) => api.getExtensionRuntime(...args),
+    getExtensionRuns: (...args) => api.getExtensionRuns(...args),
+    invokeExtension: (...args) => api.invokeExtension(...args),
+    answerExtensionInput: (...args) => api.answerExtensionInput(...args),
+    getPendingActions: (...args) => api.getPendingActions(...args),
+    decideAction: (...args) => api.decideAction(...args),
+    cancelAction: (...args) => api.cancelAction(...args),
   },
   { onClose: () => advancedPanel.requestClose() },
 );
 
 const advancedPanel = createAdvancedPanelCoordinator({
-  dismiss: () => advancedDialogEl.close(),
+  dismiss: () => closeAdvancedDialog(),
   categories: [
     {
       id: "providers",
@@ -197,6 +206,20 @@ const advancedPanel = createAdvancedPanelCoordinator({
 });
 
 let lastAdvancedCategoryId = "providers";
+const advancedScrollPositions = new Map();
+
+// The detail pane is shared by every category, so its scroll position belongs to whichever
+// category is showing. It is recorded while that content is still laid out - before a switch
+// and before the dialog closes, since a closed dialog reports no scroll - and restored on return.
+function rememberAdvancedScroll() {
+  const active = advancedPanel.activeCategoryId();
+  if (active && advancedDetailEl) advancedScrollPositions.set(active, advancedDetailEl.scrollTop);
+}
+
+function closeAdvancedDialog() {
+  rememberAdvancedScroll();
+  advancedDialogEl.close();
+}
 
 function renderAdvancedRail() {
   const active = advancedPanel.activeCategoryId();
@@ -206,8 +229,12 @@ function renderAdvancedRail() {
 }
 
 async function openAdvancedCategory(categoryId) {
+  rememberAdvancedScroll();
   const opened = await advancedPanel.openCategory(categoryId);
-  if (opened) lastAdvancedCategoryId = opened;
+  if (opened) {
+    lastAdvancedCategoryId = opened;
+    if (advancedDetailEl) advancedDetailEl.scrollTop = advancedScrollPositions.get(opened) || 0;
+  }
   renderAdvancedRail();
 }
 
@@ -716,11 +743,13 @@ advancedTriggerEl.addEventListener("click", () => {
   openAdvancedCategory(lastAdvancedCategoryId).catch((error) => showError(String(error)));
 });
 
-advancedCloseEl.addEventListener("click", () => advancedDialogEl.close());
+advancedCloseEl.addEventListener("click", () => closeAdvancedDialog());
+// Escape closes a modal dialog natively; its cancel event is the last moment its content is laid out.
+advancedDialogEl.addEventListener("cancel", () => rememberAdvancedScroll());
 
 advancedDialogEl.addEventListener("click", (event) => {
   // A click reported against the dialog itself landed on the backdrop, not on panel content.
-  if (event.target === advancedDialogEl) advancedDialogEl.close();
+  if (event.target === advancedDialogEl) closeAdvancedDialog();
 });
 
 // showModal() gives Escape dismissal, focus containment and focus return for free; this single

@@ -503,7 +503,8 @@ h3 {
 }
 
 .agents-invoke label,
-.agents-field-control {
+.agents-field-control,
+.extensions-field-control {
   display: grid;
   gap: var(--space-1);
   min-width: 0;
@@ -512,19 +513,36 @@ h3 {
 .agents-invoke textarea,
 .agents-field-control input,
 .agents-field-control textarea,
-.agents-field-control select {
+.agents-field-control select,
+.extensions-field-control input:not([type="checkbox"]),
+.extensions-field-control textarea,
+.extensions-field-control select {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
 
 .agents-invoke textarea,
-.agents-field-control textarea {
+.agents-field-control textarea,
+.extensions-field-control textarea {
   min-height: 4.5rem;
   resize: vertical;
 }
 
-.agents-choices {
+.extensions-panel form,
+.extensions-panel form > div:not([hidden]):not(.extensions-buttons) {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.extensions-requested form + form {
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-border);
+}
+
+.agents-choices,
+.extensions-panel fieldset {
   display: grid;
   gap: var(--space-1);
   margin: 0;
@@ -761,8 +779,24 @@ h3 {
   overflow-wrap: anywhere;
 }
 
-.actions-section details p {
+.actions-section details p,
+.agents-section details p {
   overflow-wrap: anywhere;
+}
+
+.actions-section details pre,
+.agents-section details pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.actions-audit-steps {
+  display: grid;
+  gap: var(--space-1);
+  margin: 0;
+  padding-left: var(--space-4);
+  font-size: var(--text-sm);
 }
 
 .memory-detail details p,

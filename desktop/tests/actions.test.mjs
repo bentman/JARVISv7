@@ -1,7 +1,14 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { actionApprovalEnabled, capabilityActivityState, capabilityArgumentFields, coerceArguments, createActionsPanel, createActionsPanelController, proposeEnabled, proposeTriggerLabel, executionActivityState, formatCapabilityApproval, formatCapabilityRisk } from "../src/components/actions-panel.js";
+import { actionApprovalEnabled, capabilityActivityState, capabilityArgumentFields, capabilityReadinessText, capabilityTitle, coerceArguments, createActionsPanel, createActionsPanelController, describeAuditRecord, groupAuditRecords, proposeEnabled, proposeTriggerLabel, executionActivityState, formatCapabilityApproval, formatCapabilityRisk } from "../src/components/actions-panel.js";
 import { apiClient, actionsPanel, backend, createElement, deferred, findElement, findElements } from "./support.mjs";
+
+function insideDetails(node) {
+  for (let current = node; current; current = current.parentElement) {
+    if (current.tagName === "details") return true;
+  }
+  return false;
+}
 
 test("an allow capability must offer a Run control, not a self-approval Propose control", async () => {
   const previousDocument = globalThis.document;
@@ -77,13 +84,20 @@ test("an allow capability must offer a Run control, not a self-approval Propose 
       "a turn-boundary capability must not offer a drivable control",
     );
     assert.ok(
-      findElement(container, (node) => String(node.textContent).includes("agent-invoke-coder")),
+      findElement(container, (node) => String(node.textContent).includes("Run agent coder: privileged_execution capabilities must declare boundaries")),
       "a descriptor the registry refused must be explained in the panel",
     );
     assert.ok(
-      findElement(container, (node) => String(node.textContent).includes("backend.app.services.search_service.SearchService")),
-      "a capability with no proposable executor must name its owner",
+      findElement(container, (node) => node.textContent === "Driven by its own control"),
+      "a capability with no proposable executor must say it is driven elsewhere",
     );
+    for (const raw of ["agent-invoke-coder", "backend.app.services.search_service.SearchService", "memory-policy-update", "p3"]) {
+      const shown = findElements(container, (node) => node.tagName !== "pre" && !node.children?.length && String(node.textContent).includes(raw));
+      assert.ok(shown.length, `${raw} must stay reachable for audit`);
+      for (const node of shown) {
+        assert.ok(insideDetails(node), `${raw} must appear only inside an explicit Details disclosure`);
+      }
+    }
 
     runTrigger.listeners.click();
     const form = findElement(container, (node) => node.className === "actions-propose");
@@ -291,11 +305,52 @@ test("capability readiness and risk must render their backend state", async () =
   }
 });
 
-test("destructive_action · approval required", async () => {
+test("capability risk, readiness, and title must read as operator language", async () => {
   assert.equal(
     formatCapabilityRisk({ effect_class: "destructive_action", authorization_rule: "requires_approval" }),
-    "destructive_action · approval required",
+    "Deletes or replaces data · approval required",
   );
+  assert.equal(formatCapabilityRisk({ effect_class: "local_write", authorization_rule: "allow" }), "Changes local data");
+  for (const [capability, expected] of [
+    [{ availability: "available", readiness: "ready" }, ""],
+    [{ availability: "available", readiness: "degraded", unavailable_explanation: "" }, "Degraded - results may be incomplete."],
+    [{ availability: "available", readiness: "unavailable", unavailable_explanation: "" }, "Not ready to run."],
+    [{ availability: "misconfigured", readiness: "unavailable", unavailable_explanation: "" }, "Misconfigured."],
+    [{ availability: "disabled", readiness: "unavailable", unavailable_explanation: "No web search provider is enabled." }, "No web search provider is enabled."],
+  ]) {
+    assert.equal(capabilityReadinessText(capability), expected);
+  }
+  assert.equal(capabilityTitle("agent-invoke-coder"), "Run agent coder");
+  assert.equal(capabilityTitle("extension-0a1b2c"), "Extension operation");
+  assert.equal(capabilityTitle("memory-record-forget"), "Memory record forget");
+});
+
+test("every audit record kind must read as what happened, grouped into one timeline per action", async () => {
+  const envelope = (kind, record) => ({ kind, capability_id: "memory-record-forget", proposal_id: "p1", recorded_at: "2026-09-07T10:00:00+00:00", record });
+  for (const [kind, record, expected] of [
+    ["action_proposal", { proposed_by: "model", reason: "stale fact" }, "Proposed by the assistant: stale fact"],
+    ["action_proposal", { proposed_by: "operator", reason: "" }, "Requested by the operator"],
+    ["authorization_decision", { outcome: "allowed" }, "Allowed to run"],
+    ["authorization_decision", { outcome: "approval_required" }, "Waiting for approval"],
+    ["authorization_decision", { outcome: "denied", reason: "policy forbids it" }, "Denied: policy forbids it"],
+    ["approval_record", { outcome: "approved", decided_by: "operator" }, "Approved by operator"],
+    ["approval_record", { outcome: "denied", decided_by: "operator", reason: "not now" }, "Declined by operator: not now"],
+    ["execution_result", { status: "success" }, "Completed"],
+    ["execution_result", { status: "failure", error: "disk full" }, "Failed: disk full"],
+    ["execution_result", { status: "cancelled" }, "Cancelled while running"],
+    ["execution_result", { status: "outcome_unknown" }, "Outcome unknown - it may have taken effect; check before repeating it"],
+    ["action_cancellation", { cancelled_by: "operator", reason: "approval cancelled before execution" }, "Cancelled by operator: approval cancelled before execution"],
+  ]) {
+    assert.equal(describeAuditRecord(envelope(kind, record)), expected, kind);
+  }
+  const groups = groupAuditRecords([
+    { ...envelope("execution_result", { status: "success" }), proposal_id: "p2" },
+    envelope("approval_record", { outcome: "approved" }),
+    envelope("action_proposal", {}),
+    { kind: "execution_result", capability_id: "x", recorded_at: "now", record: {} },
+  ]);
+  assert.deepEqual(groups.map((group) => group.proposalId), ["p2", "p1", ""]);
+  assert.deepEqual(groups[1].records.map((record) => record.kind), ["action_proposal", "approval_record"], "a timeline must read oldest to newest");
 });
 
 test("a turn-boundary capability must not look operator-drivable", async () => {
@@ -455,7 +510,7 @@ test("the capability catalog must report descriptors it could not register", asy
     "a capability driven by its own operator surface must not read as broken",
   );
   assert.ok(
-    actionsPanel.includes("state.actions.selectProposal(record.proposal_id)"),
+    actionsPanel.includes("state.actions.selectProposal(group.proposalId)"),
     "an audit record must be inspectable",
   );
 });

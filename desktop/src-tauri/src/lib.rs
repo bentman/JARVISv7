@@ -813,9 +813,14 @@ fn get_agent(profile_id: String, state: State<'_, DesktopState>) -> Result<Strin
 }
 
 #[tauri::command]
-fn invoke_agent(profile_id: String, prompt: String, state: State<'_, DesktopState>) -> Result<String, String> {
+async fn invoke_agent(profile_id: String, prompt: String, state: State<'_, DesktopState>) -> Result<String, String> {
+    // A run can wait on a permission or input answer from the operator; like invoke_extension it
+    // must not hold Tauri's blocking pool that answering and cancelling also need.
     let base_url = backend_base_url(&state)?;
-    backend_invoke_agent(&state.http_client, &base_url, &profile_id, &prompt)
+    let client = state.http_client.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        backend_invoke_agent(&client, &base_url, &profile_id, &prompt)
+    }).await.map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
