@@ -44,6 +44,33 @@ class SessionStatusResponse(BaseModel):
     failure_phase: str | None = None
     active_search: dict[str, object] | None = None
     active_agent: dict[str, str] | None = None
+    pending_approval: dict[str, str] | None = None
+
+
+class TurnAction(BaseModel):
+    proposal_id: str
+    capability_id: str
+    status: str
+
+
+class TurnSummary(BaseModel):
+    turn_id: str
+    origin: str
+    input_modality: str
+    transcript: str | None = None
+    response_text: str | None = None
+    agent: dict[str, str] | None = None
+    final_state: str
+    failure_reason: str | None = None
+    started_at: str | None = None
+    personality_profile_id: str = "unknown"
+    search: dict[str, object] | None = None
+    actions: list[TurnAction] = []
+
+
+class TurnHistoryResponse(BaseModel):
+    session_id: str | None
+    turns: list[TurnSummary]
 
 
 class CloseSessionRequest(BaseModel):

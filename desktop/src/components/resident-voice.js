@@ -1,3 +1,5 @@
+import { formatValue, humanize } from "./ui/format.js";
+
 export function createResidentVoicePresenter(options) {
   const {
     pttButton,
@@ -7,6 +9,7 @@ export function createResidentVoicePresenter(options) {
     setState,
     showError,
     appendMessage,
+    syncConversation = null,
   } = options;
   let lastRenderedResidentTurnKey = "";
   const modeLabels = {
@@ -17,13 +20,13 @@ export function createResidentVoicePresenter(options) {
   };
 
   function boolText(value) {
-    return value ? "true" : "false";
+    return formatValue(Boolean(value));
   }
 
   function valueKind(value) {
     const normalized = String(value ?? "").trim().toLowerCase();
-    if (["true", "running", "enabled", "ready", "reachable", "wake"].includes(normalized)) return "positive";
-    if (["false", "stopped", "disabled", "unavailable"].includes(normalized)) return "negative";
+    if (["yes", "running", "enabled", "ready", "reachable", "wake"].includes(normalized)) return "positive";
+    if (["no", "stopped", "disabled", "unavailable"].includes(normalized)) return "negative";
     return "neutral";
   }
 
@@ -63,21 +66,19 @@ export function createResidentVoicePresenter(options) {
     };
     const degradedReasons = Array.isArray(status.degraded_reasons) ? status.degraded_reasons : [];
     const rows = [
-      ["mode", modeLabels[status.mode] || status.mode || "unknown"],
-      ["available", boolText(status.available)],
-      ["stream-present", boolText(stream.present)],
-      ["stream", stream.running ? "running" : "stopped"],
-      ["subscribers", String(stream.subscribers ?? 0)],
-      ["drops", String(stream.dropped_chunks ?? 0)],
-      ["vad", boolText(status.vad_configured)],
-      ["barge-in", boolText(status.barge_in_supported)],
-      ["barge-in-wired", boolText(status.barge_in_wired)],
-      ["follow-up-listening", boolText(status.follow_up_listening)],
-      ["follow-up-source", status.follow_up_source || ""],
-      ["continuous-active", boolText(status.continuous_active)],
+      ["Mode", modeLabels[status.mode] || status.mode || "Unknown"],
+      ["Available", boolText(status.available)],
+      ["Audio stream", stream.present ? (stream.running ? "Running" : "Stopped") : "Not started"],
+      ["Listeners", String(stream.subscribers ?? 0)],
+      ["Dropped audio", String(stream.dropped_chunks ?? 0)],
+      ["Speech detection", boolText(status.vad_configured)],
+      ["Interrupt while speaking", status.barge_in_supported ? (status.barge_in_wired ? "Yes" : "Supported, not wired") : "No"],
+      ["Listening for a follow-up", boolText(status.follow_up_listening)],
+      ["Continuous", boolText(status.continuous_active)],
     ];
+    if (status.follow_up_listening && status.follow_up_source) rows.push(["Follow-up after", humanize(status.follow_up_source)]);
     if (degradedReasons.length > 0) {
-      rows.push(["degraded", degradedReasons.join("; ")]);
+      rows.push(["Degraded", degradedReasons.join("; ")]);
     }
     residentStatusEl.replaceChildren(
       ...rows.map(([label, value]) => {
@@ -127,6 +128,11 @@ export function createResidentVoicePresenter(options) {
         ].join("|");
     if (key === lastRenderedResidentTurnKey) return;
     lastRenderedResidentTurnKey = key;
+    // With a conversation feed the voice turn arrives with every other turn, attributed and deduped.
+    if (syncConversation && latestTurnIsVoice) {
+      syncConversation();
+      return;
+    }
     if (status.last_transcript) appendMessage("user", status.last_transcript);
     appendMessage("assistant", status.last_response || status.failure_reason, { search: latestTurn?.search });
   }

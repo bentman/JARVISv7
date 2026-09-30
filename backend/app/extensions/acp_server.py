@@ -201,7 +201,7 @@ class AcpServer:
             }
 
         try:
-            turn_result = engine.run_text_turn(text)
+            turn_result = engine.run_text_turn(text, origin="acp")
         except Exception as exc:
             logger.exception("ACP server turn error")
             return {

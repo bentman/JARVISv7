@@ -141,6 +141,66 @@ test("a text turn must render as text with its profile metadata, and a failed tu
   }
 });
 
+test("the conversation must show every interface's turns and let the approval it waits on be decided from the card or Actions", async () => {
+  const turn = (fields) => ({ input_modality: "text", agent: null, final_state: "IDLE", failure_reason: null, actions: [], ...fields });
+  const history = [
+    turn({ turn_id: "t1", origin: "desktop", transcript: "hello", response_text: "Hi.", personality_profile_id: "default" }),
+    turn({
+      turn_id: "t2", origin: "acp", transcript: "write the notes", response_text: "Shall I run it?",
+      actions: [{ proposal_id: "p-1", capability_id: "fs.write_file", status: "pending" }],
+    }),
+  ];
+  const pending = { proposal_id: "p-1", capability_id: "fs.write_file", label: "Run notes write_file", reason: "" };
+  let session = { session_id: "session-1", state: "IDLE", turn_count: 2, active: true, pending_approval: pending };
+  const app = await started({
+    responses: {
+      get_session_status: () => session,
+      get_desktop_status: () => ({ session, resident_voice: desktopResponses().get_resident_voice_status, wake: desktopResponses().get_wake_status }),
+      get_session_turns: (args) => ({ session_id: "session-1", turns: history.slice(history.findIndex((item) => item.turn_id === args.after) + 1) }),
+      decide_action: () => {
+        history.push(turn({
+          turn_id: "t3", origin: "panel", transcript: "Confirm", response_text: "Done.",
+          actions: [{ proposal_id: "p-1", capability_id: "fs.write_file", status: "success" }],
+        }));
+        session = { ...session, turn_count: 3, pending_approval: null };
+        return { proposal_id: "p-1", status: "succeeded" };
+      },
+      get_action_status: (args) => ({ proposal_id: args.proposalId, capability_id: "fs.write_file", status: "pending", records: [] }),
+    },
+  });
+  try {
+    const entries = () => [...app.document.querySelectorAll("#conversation-log .message")];
+    const said = (kind) => entries().filter((node) => node.classList.contains(kind)).map((node) => node.querySelector("p").textContent);
+    assert.deepEqual(said("user"), ["hello", "write the notes"], "turns from every interface must load at startup");
+    assert.deepEqual(said("assistant"), ["Hi.", "Shall I run it?"]);
+    const acpReply = entries().find((node) => node.dataset.turnId === "t2");
+    assert.equal(acpReply.querySelector(".message-meta strong").textContent, "JARVIS", "the reply must name its speaker");
+    const acpAsk = entries().find((node) => node.querySelector("p").textContent === "write the notes");
+    assert.ok(acpAsk.textContent.includes("ACP client"), "a bridge turn must carry its origin");
+
+    const card = () => app.$("#conversation-log .message.approval");
+    await app.until(() => card(), "the approval card");
+    assert.equal(card().querySelector("p").textContent, "Run notes write_file");
+
+    const actionChip = [...acpReply.querySelectorAll("button.chip")].find((node) => node.textContent.includes("Pending"));
+    actionChip.click();
+    await app.until(() => app.calls.some((call) => call.command === "get_action_status"), "the linked action");
+    assert.equal(app.$("#advanced-panel").open, true, "an action chip must open Advanced Controls");
+    assert.deepEqual(app.calls.find((call) => call.command === "get_action_status").args, { proposalId: "p-1" });
+    app.$("#advanced-panel-close").click();
+
+    [...card().querySelectorAll("button")].find((node) => node.textContent === "Approve").click();
+    await app.until(() => !card() && said("user").length === 3, "the decision and the turn it ran");
+    assert.deepEqual(app.calls.find((call) => call.command === "decide_action").args, { proposalId: "p-1", outcome: "approved", reason: null });
+    assert.equal(said("user").at(-1), "Approved", "a panel decision must read as the operator's answer");
+    assert.equal(said("assistant").at(-1), "Done.");
+    assert.equal(entries().filter((node) => node.dataset.turnId === "t2").length, 1, "a turn must render once however often it is synced");
+    assert.ok(actionChip.textContent.includes("Completed"), "the turn that asked must show how its action ended, not that it is still waiting");
+  } finally {
+    app.close();
+  }
+});
+
 test("switching personality must apply through the backend, persist, and hold sends until confirmed", async () => {
   let confirmSelection;
   const app = await started({

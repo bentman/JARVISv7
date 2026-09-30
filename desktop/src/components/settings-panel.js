@@ -1,8 +1,13 @@
 import { createAppearanceControls } from "./appearance-controls.js";
+import { createRenderStateKeeper } from "./render-state.js";
+import { appendText, button, buttonRow, field as labeledField } from "./ui/dom.js";
+import { errorMessage } from "./ui/format.js";
+import { renderPanelHeader } from "./ui/panel.js";
 
 const restartScopes = new Set();
 
 let activeContainer = null;
+let keeper = null;
 let loadedFields = [];
 let fieldControls = new Map();
 let statusEl = null;
@@ -85,8 +90,10 @@ function updateDirtyState() {
   }
 }
 
-function setStatus(message) {
-  if (statusEl) statusEl.textContent = message;
+function setStatus(message, kind = "notice") {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.className = kind === "error" ? "panel-error" : "panel-notice";
 }
 
 function notifyRestartRequiredChange() {
@@ -95,22 +102,13 @@ function notifyRestartRequiredChange() {
   }
 }
 
-function appendText(parent, text, tagName = "span") {
-  const el = document.createElement(tagName);
-  el.textContent = text;
-  parent.appendChild(el);
-  return el;
-}
-
 function renderField(field) {
-  const row = document.createElement("div");
-  const label = document.createElement("label");
   const input = Array.isArray(field.options) && field.options.length > 0 ? document.createElement("select") : document.createElement("input");
-  const meta = document.createElement("div");
 
-  label.textContent = fieldLabel(field);
   input.name = field.key;
   input.disabled = !field.editable || operatorRestartRequired();
+  // Secrets are never kept as drafts; everything else survives a re-render.
+  if (!field.secret) input.dataset.draftKey = `setting:${field.key}`;
 
   if (field.secret) {
     input.type = "password";
@@ -136,13 +134,23 @@ function renderField(field) {
   input.addEventListener("change", updateDirtyState);
   fieldControls.set(field.key, input);
 
-  appendText(meta, field.key);
-  appendText(meta, field.secret ? (field.has_value ? " · value stored" : " · not set") : ` · ${field.value || "—"}`);
-  if (field.advanced) appendText(meta, " · advanced");
-  if (field.restart_required) appendText(meta, " · restart required");
-
-  row.append(label, input, meta);
-  return row;
+  const help = [
+    field.key,
+    field.secret ? (field.has_value ? "value stored" : "not set") : `current ${field.value || "—"}`,
+    field.restart_required ? "applies after restart" : "",
+  ].filter(Boolean).join(" · ");
+  if (input.type === "checkbox") {
+    const label = document.createElement("label");
+    label.className = "panel-choice";
+    label.appendChild(input);
+    appendText(label, fieldLabel(field));
+    const row = document.createElement("div");
+    row.className = "panel-field";
+    row.appendChild(label);
+    appendText(row, help, "span", "panel-help");
+    return row;
+  }
+  return labeledField(fieldLabel(field), input, { help });
 }
 
 function fieldSectionTitle(field) {
@@ -182,50 +190,45 @@ function renderFieldGroup(group) {
   return section;
 }
 
-function renderMissingEnv(containerEl) {
+function renderMessage(containerEl, text, kind = "panel-help") {
   const message = document.createElement("p");
-  message.textContent = ".env is required before operator settings can be edited.";
-  containerEl.replaceChildren(message);
+  message.className = kind;
+  message.textContent = text;
+  containerEl.replaceChildren(renderPanelHeader("Settings"), message);
+}
+
+function renderMissingEnv(containerEl) {
+  renderMessage(containerEl, "Create a .env file (copy .env.example) before operator settings can be edited.", "panel-error");
 }
 
 function renderPanel(containerEl, fields) {
   loadedFields = fields;
   fieldControls = new Map();
 
-  const heading = document.createElement("h2");
   const appearance = createAppearanceControls();
-  heading.textContent = "Settings";
-  heading.tabIndex = -1;
   dirtyEl = document.createElement("p");
+  dirtyEl.className = "panel-help";
   dirtyEl.hidden = true;
   const form = document.createElement("form");
-  const actions = document.createElement("div");
-  const saveButton = document.createElement("button");
-  const closeButton = document.createElement("button");
   const restartState = document.createElement("p");
-  const restartButton = document.createElement("button");
+  restartState.className = "panel-notice";
   statusEl = document.createElement("p");
+  statusEl.setAttribute("aria-live", "polite");
 
   for (const group of groupedFields(fields)) form.appendChild(renderFieldGroup(group));
 
-  saveButton.type = "submit";
-  saveButton.textContent = "Save";
-  closeButton.type = "button";
-  closeButton.textContent = "Close";
-  closeButton.addEventListener("click", closeSettings);
-  restartState.textContent = "Restart required.";
+  restartState.textContent = "Saved changes apply after a backend restart.";
   restartState.hidden = !anyRestartRequired();
-  restartButton.type = "button";
-  restartButton.textContent = "Restart";
-  restartButton.hidden = !anyRestartRequired();
-  restartButton.addEventListener("click", restartBackend);
+  const saveButton = button("Save", { type: "submit", focusKey: "settings:save" });
   saveButton.hidden = operatorRestartRequired();
-  closeButton.hidden = operatorRestartRequired();
-  actions.append(saveButton, closeButton, restartButton);
-  form.appendChild(actions);
+  const restartButton = button("Restart backend", { variant: "primary", focusKey: "settings:restart", onClick: restartBackend });
+  restartButton.hidden = !anyRestartRequired();
+  form.appendChild(buttonRow(saveButton, restartButton));
   form.addEventListener("submit", saveSettings);
 
-  containerEl.replaceChildren(heading, appearance, dirtyEl, restartState, form, statusEl);
+  const children = [renderPanelHeader("Settings"), appearance, dirtyEl, restartState, form, statusEl];
+  if (keeper) keeper.render(...children);
+  else containerEl.replaceChildren(...children);
   updateDirtyState();
 }
 
@@ -234,13 +237,13 @@ async function restartBackend() {
     setStatus("Restart unavailable.");
     return;
   }
-  setStatus("Restarting.");
+  setStatus("Restarting the backend…");
   try {
     await restartHandler();
     clearRestartRequired();
     if (activeContainer) await loadSettings(activeContainer);
   } catch (error) {
-    setStatus("Restart failed.");
+    setStatus(errorMessage(error, "Restart failed."), "error");
   }
 }
 
@@ -259,12 +262,22 @@ async function saveSettings(event) {
   try {
     payload = await writeConfigHandler(fields);
   } catch (error) {
-    setStatus("Save failed.");
+    setStatus(errorMessage(error, "Save failed."), "error");
     return;
   }
+  // The saved values are now the known values, so a re-render shows them rather than the
+  // values that were loaded before the save.
+  const written = new Set(payload.written || []);
+  loadedFields = loadedFields.map((item) => (
+    written.has(item.key) && !item.secret ? { ...item, value: fields[item.key] } : item
+  ));
   // markRestartRequired re-renders, which replaces statusEl, so report the outcome afterwards.
   markRestartRequired("operator");
-  setStatus(`Saved: written ${payload.written?.length ?? 0}; rejected ${payload.rejected?.length ?? 0}.`);
+  const rejected = payload.rejected?.length ?? 0;
+  setStatus(
+    rejected ? `Saved ${written.size}; ${rejected} could not be saved.` : `Saved ${written.size} setting${written.size === 1 ? "" : "s"}.`,
+    rejected ? "error" : "notice",
+  );
 }
 
 function settingsStale(request, containerEl) {
@@ -274,9 +287,7 @@ function settingsStale(request, containerEl) {
 async function loadSettings(containerEl) {
   const request = ++settingsGeneration;
   if (!getConfigHandler) {
-    const message = document.createElement("p");
-    message.textContent = "Settings unavailable.";
-    containerEl.replaceChildren(message);
+    renderMessage(containerEl, "Settings unavailable.", "panel-error");
     return;
   }
   let payload;
@@ -284,9 +295,7 @@ async function loadSettings(containerEl) {
     payload = await getConfigHandler();
   } catch (error) {
     if (settingsStale(request, containerEl)) return;
-    const message = document.createElement("p");
-    message.textContent = "Settings unavailable.";
-    containerEl.replaceChildren(message);
+    renderMessage(containerEl, errorMessage(error, "Settings unavailable."), "panel-error");
     return;
   }
   if (settingsStale(request, containerEl)) return;
@@ -303,15 +312,18 @@ export async function openSettings(containerEl, options = {}) {
   restartRequiredChangeHandler = options.onRestartRequiredChange || restartRequiredChangeHandler;
   getConfigHandler = options.getOperatorConfig || getConfigHandler;
   writeConfigHandler = options.writeOperatorConfig || writeConfigHandler;
+  if (!keeper || keeper.container !== containerEl) keeper = Object.assign(createRenderStateKeeper(containerEl), { container: containerEl });
   containerEl.hidden = false;
-  containerEl.textContent = "Loading settings…";
+  if (!loadedFields.length) renderMessage(containerEl, "Loading settings…");
   notifyRestartRequiredChange();
   await loadSettings(containerEl);
+  keeper.release();
   containerEl.querySelector("h2")?.focus();
 }
 
 export function closeSettings() {
   if (!activeContainer) return;
+  keeper?.retain();
   activeContainer.hidden = true;
   activeContainer.replaceChildren();
   activeContainer = null;

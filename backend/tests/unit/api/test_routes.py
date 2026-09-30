@@ -203,7 +203,8 @@ class _FakeEngine:
         self.barge_in_detector = object()
         self.interruption_audio_chunks = None
 
-    def run_text_turn(self, text: str) -> TurnResult:
+    def run_text_turn(self, text: str, *, origin: str = "api") -> TurnResult:
+        self.last_origin = origin
         return TurnResult(
             turn_id="turn-text",
             session_id="session-test",
@@ -789,6 +790,38 @@ def test_session_create_returns_session_id() -> None:
     assert response.json()["state"] == "IDLE"
 
 
+def test_session_turns_lists_every_interface_turn_after_a_cursor() -> None:
+    from backend.app.artifacts.turn_artifact import TurnArtifact
+
+    client = _client()
+    turns = client.app.state.jarvis_state.session_service._session_manager.turn_artifacts  # type: ignore[attr-defined]
+    turns.extend([
+        TurnArtifact(turn_id="t1", session_id="session-test", input_modality="text", final_state="IDLE",
+                     origin="desktop", transcript="hi", response_text="Hello.",
+                     phase_timestamps={"IDLE": "2026-09-29T10:00:01+00:00", "REASONING": "2026-09-29T10:00:02+00:00"}),
+        TurnArtifact(turn_id="t2", session_id="session-test", input_modality="text", final_state="IDLE",
+                     origin="acp", transcript="tidy", response_text="Done.",
+                     agent={"profile_id": "notes", "display_name": "Notes"},
+                     action_proposals=[{"proposal_id": "p1", "capability_id": "agent-invoke-notes"},
+                                       {"proposal_id": "p2", "capability_id": "extension-write"}],
+                     authorization_decisions=[{"proposal_id": "p2", "outcome": "approval_required"}],
+                     action_execution_results=[{"proposal_id": "p1", "status": "success"}]),
+    ])
+
+    everything = client.get("/session/turns").json()
+    later = client.get("/session/turns", params={"after": "t1"}).json()
+
+    assert [turn["turn_id"] for turn in everything["turns"]] == ["t1", "t2"]
+    assert everything["turns"][0]["started_at"] == "2026-09-29T10:00:01+00:00"
+    assert [turn["turn_id"] for turn in later["turns"]] == ["t2"], "a cursor returns only newer turns"
+    turn = later["turns"][0]
+    assert (turn["origin"], turn["agent"]["display_name"]) == ("acp", "Notes")
+    assert turn["actions"] == [
+        {"proposal_id": "p1", "capability_id": "agent-invoke-notes", "status": "success"},
+        {"proposal_id": "p2", "capability_id": "extension-write", "status": "awaiting_approval"},
+    ]
+
+
 def test_session_status_returns_active_session() -> None:
     client = _client()
     session_id = client.app.state.jarvis_state.session_service.status().session_id  # type: ignore[attr-defined]
@@ -809,6 +842,7 @@ def test_session_status_returns_active_session() -> None:
         "failure_phase": None,
         "active_search": None,
         "active_agent": None,
+        "pending_approval": None,
     }
 
 
@@ -952,13 +986,14 @@ def test_session_close_rejects_unknown_session_id() -> None:
 
 
 def test_text_turn_returns_turn_result() -> None:
-    response = _client().post("/task/text", json={"text": "hello"})
+    response = _client().post("/task/text", json={"text": "hello", "origin": "desktop"})
     payload = response.json()
     assert response.status_code == 200
     assert payload["turn_id"] == "turn-text"
     assert payload["response_text"] == "text response"
     assert payload["active_personality_profile_id"] == "default"
     assert payload["profile_epoch"] == 0
+    assert payload["origin"] == "desktop", "the submitting interface must be recorded with the turn"
 
 
 def test_text_turn_accepts_active_session_id() -> None:

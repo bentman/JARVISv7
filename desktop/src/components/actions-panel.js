@@ -1,14 +1,10 @@
-import { createRenderStateKeeper } from "./render-state.js";
+import { confirmDestructive } from "./ui/confirm.js";
+import { appendText, button, buttonRow, details, facts, field, option } from "./ui/dom.js";
+import { errorMessage, formatTime, humanize, isConflict, statusText } from "./ui/format.js";
+import { createPanelLifecycle, messageRegion, renderPanelHeader, section, sectionState } from "./ui/panel.js";
+import { VERB } from "./ui/vocabulary.js";
 
 const AUDIT_LIMITS = [10, 20, 50, 100];
-
-function errorMessage(error, fallback) {
-  return error?.detail?.message || error?.message || fallback;
-}
-
-function isConflict(error) {
-  return error?.status === 409 || error?.detail?.error === "conflict";
-}
 
 export function actionApprovalEnabled(pending, mutationPending) {
   return Boolean(pending?.proposal_id) && !mutationPending;
@@ -126,15 +122,6 @@ const AUTHORIZATION_TEXT = {
   denied: "Denied",
 };
 
-const STATUS_TEXT = {
-  awaiting_approval: "Waiting for approval",
-  denied: "Denied",
-  success: "Completed",
-  failure: "Failed",
-  cancelled: "Cancelled",
-  outcome_unknown: "Outcome unknown - it may have taken effect; check before repeating it",
-};
-
 // Capability ids are registry keys. Agent invocations and extension operations carry their
 // subject in the id; everything else reads as a sentence once its separators are dropped.
 export function capabilityTitle(capabilityId) {
@@ -166,13 +153,11 @@ export function capabilityReadinessText(capability) {
 }
 
 export function actionStatusText(status) {
-  return STATUS_TEXT[status] || String(status || "Unknown").replaceAll("_", " ");
+  return statusText(status);
 }
 
 export function formatActionTime(value) {
-  if (!value) return "—";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+  return formatTime(value);
 }
 
 function withReason(text, reason) {
@@ -504,96 +489,39 @@ export function createActionsPanelController(handlers, render = () => undefined)
   };
 }
 
-function appendText(parent, text, tagName = "span", className = "") {
-  const node = document.createElement(tagName);
-  node.textContent = text;
-  if (className) node.className = className;
-  parent.appendChild(node);
-  return node;
-}
-
-function formatValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
-}
-
-function labeledValue(parent, label, value) {
-  const field = document.createElement("div");
-  field.className = "actions-field";
-  appendText(field, label, "dt");
-  appendText(field, formatValue(value), "dd");
-  parent.appendChild(field);
-  return field;
-}
-
-function button(text, focusKey, onClick, disabled = false) {
-  const node = document.createElement("button");
-  node.type = "button";
-  node.textContent = text;
-  node.disabled = disabled;
-  if (focusKey) node.dataset.focusKey = focusKey;
-  node.addEventListener("click", onClick);
-  return node;
-}
-
-// Backend identifiers and raw records stay reachable for audit, but only behind an explicit
-// disclosure; the visible row is written for an operator.
-function detailsDisclosure(facts, raw = null) {
-  const details = document.createElement("details");
-  appendText(details, "Details", "summary");
-  const list = document.createElement("dl");
-  list.className = "actions-facts";
-  for (const [label, value] of facts) {
-    if (value !== null && value !== undefined && value !== "") labeledValue(list, label, value);
-  }
-  details.appendChild(list);
-  if (raw !== null && raw !== undefined) appendText(details, JSON.stringify(raw, null, 2), "pre");
-  return details;
-}
-
 function renderArguments(parent, args) {
   const entries = Object.entries(args || {});
   if (!entries.length) return;
-  const list = document.createElement("dl");
-  list.className = "actions-facts";
-  for (const [name, value] of entries) labeledValue(list, name.replaceAll("_", " "), value);
-  parent.appendChild(list);
+  parent.appendChild(facts(entries.map(([name, value]) => [humanize(name), value])));
 }
 
 function renderProposeForm(state, capability) {
   const form = document.createElement("form");
   form.className = "actions-propose";
   const fields = capabilityArgumentFields(capability.input_schema);
-  for (const field of fields) {
-    const label = document.createElement("label");
-    appendText(label, field.required ? `${field.name} *` : field.name);
-    const structured = field.type === "object" || field.type === "array";
+  for (const argument of fields) {
+    const structured = argument.type === "object" || argument.type === "array";
     const control = document.createElement(structured ? "textarea" : "input");
-    control.name = field.name;
+    control.name = argument.name;
     if (structured) {
       control.placeholder = "JSON";
-      control.addEventListener("input", (event) => state.actions.setProposeValue(field.name, event.target.value));
-    } else if (field.type === "boolean") {
+      control.addEventListener("input", (event) => state.actions.setProposeValue(argument.name, event.target.value));
+    } else if (argument.type === "boolean") {
       control.type = "checkbox";
-      control.addEventListener("change", (event) => state.actions.setProposeValue(field.name, event.target.checked));
+      control.addEventListener("change", (event) => state.actions.setProposeValue(argument.name, event.target.checked));
     } else {
-      control.type = field.type === "integer" || field.type === "number" ? "number" : "text";
-      control.addEventListener("input", (event) => state.actions.setProposeValue(field.name, event.target.value));
+      control.type = argument.type === "integer" || argument.type === "number" ? "number" : "text";
+      control.addEventListener("input", (event) => state.actions.setProposeValue(argument.name, event.target.value));
     }
     // Drafts live in controller state and are not re-emitted on input, so typing never
     // re-renders the control out from under the caret.
-    const draft = state.proposeValues[field.name];
-    if (field.type === "boolean") control.checked = Boolean(draft);
+    const draft = state.proposeValues[argument.name];
+    if (argument.type === "boolean") control.checked = Boolean(draft);
     else if (draft !== undefined) control.value = draft;
-    control.dataset.focusKey = `propose:${capability.capability_id}:${field.name}`;
-    label.appendChild(control);
-    form.appendChild(label);
+    control.dataset.focusKey = `propose:${capability.capability_id}:${argument.name}`;
+    form.appendChild(field(argument.required ? `${humanize(argument.name)} *` : humanize(argument.name), control));
   }
 
-  const reasonLabel = document.createElement("label");
-  appendText(reasonLabel, "Reason *");
   const reason = document.createElement("input");
   reason.type = "text";
   reason.name = "reason";
@@ -602,16 +530,14 @@ function renderProposeForm(state, capability) {
   reason.value = state.proposeReason;
   reason.dataset.focusKey = `propose:${capability.capability_id}:$reason`;
   reason.addEventListener("input", (event) => state.actions.setProposeReason(event.target.value));
-  reasonLabel.appendChild(reason);
-  form.appendChild(reasonLabel);
+  form.appendChild(field("Reason *", reason));
 
-  if (state.proposeError) appendText(form, state.proposeError, "p", "actions-error");
+  if (state.proposeError) appendText(form, state.proposeError, "p", "panel-error");
 
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = proposeTriggerLabel(capability) === "Propose" ? "Propose action" : "Run action";
-  submit.disabled = state.mutationPending;
-  form.appendChild(submit);
+  form.appendChild(button(proposeTriggerLabel(capability) === "Propose" ? "Propose action" : "Run action", {
+    type: "submit",
+    disabled: state.mutationPending,
+  }));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     if (!proposeEnabled(capability, state.mutationPending)) return;
@@ -621,64 +547,46 @@ function renderProposeForm(state, capability) {
 }
 
 function renderCapabilities(state) {
-  const section = document.createElement("section");
-  section.className = "actions-section";
-  appendText(section, "Run manually", "h3");
-  appendText(
-    section,
-    "Every registered capability, for audit and as a fallback when no dedicated control exists.",
-    "p",
-    "actions-help",
-  );
-  if (state.capabilitiesLoading) {
-    appendText(section, "Loading capabilities…", "p", "actions-help");
-    return section;
-  }
-  if (state.capabilitiesError) {
-    appendText(section, state.capabilitiesError, "p", "actions-error");
-    return section;
-  }
+  const node = section("Run manually");
+  appendText(node, "Every registered action, for audit and as a fallback when no dedicated control exists.", "p", "panel-help");
+  if (sectionState(node, { loading: state.capabilitiesLoading, error: state.capabilitiesError, thing: "actions" })) return node;
   const problems = state.capabilities?.problems || [];
   if (problems.length) {
-    appendText(section, "Could not load", "h4");
+    appendText(node, "Could not load", "h4");
     for (const problem of problems) {
       const row = document.createElement("div");
       row.className = "actions-pending";
-      appendText(row, `${capabilityTitle(problem.capability_id)}: ${problem.reason}`, "p", "actions-error");
-      row.appendChild(detailsDisclosure([["Capability", problem.capability_id]]));
-      section.appendChild(row);
+      appendText(row, `${capabilityTitle(problem.capability_id)}: ${problem.reason}`, "p", "panel-error");
+      row.appendChild(details([["Capability", problem.capability_id]]));
+      node.appendChild(row);
     }
   }
   const capabilities = state.capabilities?.capabilities || [];
-  if (!capabilities.length) {
-    appendText(section, "No capabilities are registered.", "p", "actions-help");
-    return section;
-  }
+  if (sectionState(node, { empty: !capabilities.length, thing: "actions" })) return node;
   const list = document.createElement("ul");
-  list.className = "actions-list";
+  list.className = "panel-list";
   for (const capability of capabilities) {
     const item = document.createElement("li");
     const status = appendText(item, capabilityTitle(capability.capability_id), "span", "actions-status");
     status.dataset.state = capabilityActivityState(capability);
-    appendText(item, formatCapabilityRisk(capability), "span", "actions-row-meta");
+    appendText(item, formatCapabilityRisk(capability), "span", "panel-help");
     const approvalText = formatCapabilityApproval(capability);
-    if (approvalText) appendText(item, approvalText, "span", "actions-row-meta");
-    if (!capability.executable) appendText(item, "Driven by its own control", "span", "actions-row-meta");
+    if (approvalText) appendText(item, approvalText, "span", "panel-help");
+    if (!capability.executable) appendText(item, "Driven by its own control", "span", "panel-help");
     const readiness = capabilityReadinessText(capability);
-    if (readiness) appendText(item, readiness, "p", "actions-help");
+    if (readiness) appendText(item, readiness, "p", "panel-help");
     if (proposeEnabled(capability, false)) {
       const open = state.proposeCapabilityId === capability.capability_id;
-      const trigger = button(
-        open ? "Close" : proposeTriggerLabel(capability),
-        `capability:${capability.capability_id}`,
-        () => state.actions.selectCapability(capability.capability_id),
-        state.mutationPending,
-      );
+      const trigger = button(open ? "Close" : proposeTriggerLabel(capability), {
+        focusKey: `capability:${capability.capability_id}`,
+        onClick: () => state.actions.selectCapability(capability.capability_id),
+        disabled: state.mutationPending,
+      });
       trigger.setAttribute("aria-expanded", String(open));
-      item.appendChild(trigger);
+      item.appendChild(buttonRow(trigger));
       if (open) item.appendChild(renderProposeForm(state, capability));
     }
-    item.appendChild(detailsDisclosure([
+    item.appendChild(details([
       ["Capability", capability.capability_id],
       ["Effect", capability.effect_class],
       ["Rule", capability.authorization_rule],
@@ -686,199 +594,158 @@ function renderCapabilities(state) {
     ]));
     list.appendChild(item);
   }
-  section.appendChild(list);
-  return section;
+  node.appendChild(list);
+  return node;
 }
 
 function renderPending(state) {
-  const section = document.createElement("section");
-  section.className = "actions-section";
-  appendText(section, "Awaiting approval", "h3");
-  if (state.pendingLoading) {
-    appendText(section, "Loading pending approvals…", "p", "actions-help");
-    return section;
-  }
-  if (state.pendingError) {
-    appendText(section, state.pendingError, "p", "actions-error");
-    return section;
-  }
+  const node = section("Waiting for approval");
+  if (sectionState(node, { loading: state.pendingLoading, error: state.pendingError, thing: "approval requests" })) return node;
   if (!state.pending.length) {
-    appendText(section, "No actions are awaiting approval.", "p", "actions-help");
-    return section;
+    appendText(node, "Nothing is waiting for your approval.", "p", "panel-help");
+    return node;
   }
   for (const pending of state.pending) {
     const row = document.createElement("div");
     row.className = "actions-pending";
-    appendText(row, capabilityTitle(pending.capability_id), "strong");
-    appendText(row, pending.reason, "p", "actions-help");
+    const fromConversation = pending.origin === "conversation";
+    appendText(row, pending.label || capabilityTitle(pending.capability_id), "strong");
+    appendText(row, fromConversation ? `Asked in the conversation · ${pending.reason}` : pending.reason, "p", "panel-help");
     renderArguments(row, pending.arguments);
-    appendText(row, `Expires ${formatActionTime(pending.expires_at)}`, "p", "actions-row-meta");
+    if (pending.expires_at) appendText(row, `Expires ${formatActionTime(pending.expires_at)}`, "p", "panel-help");
 
-    const buttons = document.createElement("div");
-    buttons.className = "actions-buttons";
     const enabled = actionApprovalEnabled(pending, state.mutationPending);
-    for (const [label, outcome] of [["Approve", "approved"], ["Deny", "denied"]]) {
-      buttons.appendChild(button(label, `pending:${pending.proposal_id}:${outcome}`, () => state.actions.decide(pending.proposal_id, outcome), !enabled));
-    }
-    buttons.appendChild(button("Cancel", `pending:${pending.proposal_id}:cancel`, () => state.actions.cancel(pending.proposal_id), !enabled));
-    buttons.appendChild(button("Status", `pending:${pending.proposal_id}:status`, () => state.actions.selectProposal(pending.proposal_id), state.mutationPending));
-    row.appendChild(buttons);
-    row.appendChild(detailsDisclosure([
+    row.appendChild(buttonRow(
+      button(VERB.approve, {
+        variant: "primary",
+        focusKey: `pending:${pending.proposal_id}:approved`,
+        onClick: () => state.actions.decide(pending.proposal_id, "approved"),
+        disabled: !enabled,
+      }),
+      button(VERB.decline, {
+        focusKey: `pending:${pending.proposal_id}:denied`,
+        onClick: () => state.actions.decide(pending.proposal_id, "denied"),
+        disabled: !enabled,
+      }),
+      fromConversation ? null : button("Withdraw", {
+        variant: "danger",
+        focusKey: `pending:${pending.proposal_id}:cancel`,
+        onClick: () => state.actions.cancel(pending.proposal_id),
+        disabled: !enabled,
+      }),
+      button("Status", {
+        variant: "ghost",
+        focusKey: `pending:${pending.proposal_id}:status`,
+        onClick: () => state.actions.selectProposal(pending.proposal_id),
+        disabled: state.mutationPending,
+      }),
+    ));
+    row.appendChild(details([
       ["Capability", pending.capability_id],
       ["Proposal", pending.proposal_id],
       ["Approval", pending.approval_id],
       ["Expires at", pending.expires_at],
     ], pending.arguments));
-    section.appendChild(row);
+    node.appendChild(row);
   }
-  return section;
+  return node;
 }
 
 function renderDetail(state) {
-  const section = document.createElement("section");
-  section.className = "actions-section";
-  appendText(section, "Execution status", "h3");
-  if (state.detailLoading) {
-    appendText(section, "Loading action…", "p", "actions-help");
-    return section;
-  }
-  if (state.detailError) {
-    appendText(section, state.detailError, "p", "actions-error");
-    return section;
-  }
+  const node = section("Action status");
+  if (sectionState(node, { loading: state.detailLoading, error: state.detailError, thing: "the action" })) return node;
   if (!state.detail) {
-    appendText(section, "Select an action to see its status.", "p", "actions-help");
-    return section;
+    appendText(node, "Select an action to see its status.", "p", "panel-help");
+    return node;
   }
   const detail = state.detail;
-  appendText(section, capabilityTitle(detail.capability_id), "strong");
-  const status = appendText(section, actionStatusText(detail.status), "p", "actions-status");
+  appendText(node, capabilityTitle(detail.capability_id), "strong");
+  const status = appendText(node, actionStatusText(detail.status), "p", "actions-status");
   status.dataset.state = executionActivityState(detail.execution || { status: detail.status });
-  const facts = document.createElement("dl");
-  facts.className = "actions-facts";
-  labeledValue(facts, "Reason", detail.reason);
-  labeledValue(facts, "Decision", AUTHORIZATION_TEXT[detail.outcome] || detail.outcome);
-  if (detail.expires_at) labeledValue(facts, "Expires", formatActionTime(detail.expires_at));
+  const entries = [["Reason", detail.reason], ["Decision", AUTHORIZATION_TEXT[detail.outcome] || detail.outcome]];
+  if (detail.expires_at) entries.push(["Expires", formatActionTime(detail.expires_at)]);
   const execution = detail.execution;
   if (execution) {
-    if (execution.error) labeledValue(facts, "Error", execution.error);
-    if (execution.started_at) labeledValue(facts, "Started", formatActionTime(execution.started_at));
-    if (execution.completed_at) labeledValue(facts, "Finished", formatActionTime(execution.completed_at));
+    if (execution.error) entries.push(["Error", execution.error]);
+    if (execution.started_at) entries.push(["Started", formatActionTime(execution.started_at)]);
+    if (execution.completed_at) entries.push(["Finished", formatActionTime(execution.completed_at)]);
   }
-  section.appendChild(facts);
-  renderArguments(section, detail.arguments);
-  section.appendChild(detailsDisclosure([
+  node.appendChild(facts(entries));
+  renderArguments(node, detail.arguments);
+  node.appendChild(details([
     ["Capability", detail.capability_id],
     ["Proposal", detail.proposal_id],
     ["Approval", detail.approval_id],
     ["Status", detail.status],
     ["Outcome", detail.outcome],
   ], execution || null));
-  return section;
+  return node;
 }
 
 function renderAudit(state) {
-  const section = document.createElement("section");
-  section.className = "actions-section";
-  appendText(section, "Audit", "h3");
+  const node = section("Audit");
 
   const form = document.createElement("form");
   form.className = "actions-filters";
-  const label = document.createElement("label");
-  appendText(label, "Records");
   const select = document.createElement("select");
   select.name = "limit";
   select.dataset.focusKey = "audit:limit";
-  for (const limit of AUDIT_LIMITS) {
-    const choice = document.createElement("option");
-    choice.value = String(limit);
-    choice.textContent = String(limit);
-    if (limit === state.auditLimit) choice.selected = true;
-    select.appendChild(choice);
-  }
-  label.appendChild(select);
-  form.appendChild(label);
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Refresh";
-  submit.dataset.focusKey = "audit:refresh";
-  form.appendChild(submit);
+  for (const limit of AUDIT_LIMITS) select.appendChild(option(String(limit), String(limit), limit === state.auditLimit));
+  form.append(field("Records", select), buttonRow(button(VERB.refresh, { type: "submit", focusKey: "audit:refresh" })));
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.actions.refreshAudit(Number(select.value));
   });
-  section.appendChild(form);
+  node.appendChild(form);
 
-  if (state.auditLoading) {
-    appendText(section, "Loading audit…", "p", "actions-help");
-    return section;
-  }
-  if (state.auditError) {
-    appendText(section, state.auditError, "p", "actions-error");
-    return section;
-  }
+  if (sectionState(node, { loading: state.auditLoading, error: state.auditError, thing: "the audit" })) return node;
   const records = state.audit?.records || [];
   if (!records.length) {
-    appendText(section, "No action evidence has been recorded.", "p", "actions-help");
-    return section;
+    appendText(node, "No action evidence has been recorded.", "p", "panel-help");
+    return node;
   }
   const list = document.createElement("ul");
-  list.className = "actions-list";
+  list.className = "panel-list";
   for (const group of groupAuditRecords(records)) {
     const item = document.createElement("li");
     appendText(item, capabilityTitle(group.capabilityId), "strong");
     const steps = document.createElement("ol");
-    steps.className = "actions-audit-steps";
+    steps.className = "audit-steps";
     for (const record of group.records) {
       const step = appendText(steps, `${formatActionTime(record.recorded_at)} · ${describeAuditRecord(record)}`, "li", "actions-status");
       step.dataset.state = auditRecordState(record);
     }
     item.appendChild(steps);
     if (group.proposalId) {
-      item.appendChild(button("Status", `audit:${group.proposalId}:status`, () => state.actions.selectProposal(group.proposalId), state.mutationPending));
+      item.appendChild(buttonRow(button("Status", {
+        variant: "ghost",
+        focusKey: `audit:${group.proposalId}:status`,
+        onClick: () => state.actions.selectProposal(group.proposalId),
+        disabled: state.mutationPending,
+      })));
     }
-    item.appendChild(detailsDisclosure([
-      ["Capability", group.capabilityId],
-      ["Proposal", group.proposalId],
-    ], group.records));
+    item.appendChild(details([["Capability", group.capabilityId], ["Proposal", group.proposalId]], group.records));
     list.appendChild(item);
   }
-  section.appendChild(list);
-  return section;
+  node.appendChild(list);
+  return node;
 }
 
-function renderPanel(keeper, state, actions) {
-  const view = { ...state, actions };
-  const header = document.createElement("div");
-  header.className = "actions-panel-header";
-  const heading = appendText(header, "Actions", "h2");
-  heading.tabIndex = -1;
-
-  const messages = document.createElement("div");
-  messages.setAttribute("aria-live", "polite");
-  for (const message of [state.conflict, state.notice]) {
-    if (message) {
-      appendText(messages, message, "p", message === state.notice ? "actions-notice" : "actions-error");
-    }
-  }
-
-  keeper.render(
-    header,
-    messages,
-    renderPending(view),
-    renderDetail(view),
-    renderAudit(view),
-    renderCapabilities(view),
-  );
+function renderPanel(state) {
+  return [
+    renderPanelHeader("Actions"),
+    messageRegion({ notice: state.notice, error: state.conflict }),
+    renderPending(state),
+    renderDetail(state),
+    renderAudit(state),
+    renderCapabilities(state),
+  ];
 }
 
 export function createActionsPanel(container, handlers, options = {}) {
-  let open = false;
-  const keeper = createRenderStateKeeper(container);
-  const confirmCancel = options.confirmCancel || ((message) => window.confirm(message));
+  const confirmCancel = options.confirmCancel || confirmDestructive;
   let controller;
   const actions = {
-    close: () => close(),
     refreshAudit: (limit) => controller.refreshAudit(limit),
     selectProposal: (proposalId) => controller.selectProposal(proposalId),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
@@ -888,28 +755,12 @@ export function createActionsPanel(container, handlers, options = {}) {
     setProposeReason: (value) => controller.setProposeReason(value),
     submitPropose: (capability) => controller.submitPropose(capability),
   };
-  controller = createActionsPanelController(handlers, (state) => {
-    if (open) renderPanel(keeper, state, actions);
+  const lifecycle = createPanelLifecycle(container, {
+    load: () => controller.load(),
+    render: (state) => renderPanel({ ...state, actions }),
+    cancelPendingReads: () => controller.cancelPendingReads(),
+    onClose: options.onClose,
   });
-
-  async function show() {
-    open = true;
-    container.hidden = false;
-    renderPanel(keeper, controller.snapshot(), actions);
-    await controller.load();
-    keeper.release();
-    container.querySelector("h2")?.focus();
-  }
-
-  function close() {
-    if (!open) return;
-    open = false;
-    controller.cancelPendingReads();
-    keeper.retain();
-    container.hidden = true;
-    container.replaceChildren();
-    options.onClose?.();
-  }
-
-  return { open: show, close, isOpen: () => open, controller };
+  controller = createActionsPanelController(handlers, lifecycle.draw);
+  return { open: lifecycle.open, close: lifecycle.close, isOpen: lifecycle.isOpen, controller };
 }

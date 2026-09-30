@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from functools import lru_cache
@@ -271,6 +272,10 @@ class ActionEvidence:
     executions: list[dict[str, Any]] = field(default_factory=list)
     cancellations: list[dict[str, Any]] = field(default_factory=list)
     delegated_runs: list[dict[str, Any]] = field(default_factory=list)
+    # Receives each proposal, decision, approval, and cancellation as it is recorded, so a turn's
+    # governance evidence also reaches the shared action audit. Execution results are left out:
+    # the capability service records those itself when it runs the action.
+    sink: Callable[[Any], None] | None = field(default=None, repr=False, compare=False)
 
     def record(
         self,
@@ -282,6 +287,8 @@ class ActionEvidence:
         | DelegatedRunRecord,
     ) -> None:
         _EVIDENCE_SINKS[type(record)](self).append(record.to_dict())
+        if self.sink is not None and not isinstance(record, (ExecutionResultRecord, DelegatedRunRecord)):
+            self.sink(record)
 
 
 class CapabilityRegistry:

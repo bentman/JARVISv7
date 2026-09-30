@@ -57,6 +57,29 @@ test("a failed invocation must report as an error", async () => {
   assert.equal(failed.mutationPending, false);
 });
 
+test("deleting an agent must be confirmed, and a conflicting delete must reload the catalog", async () => {
+  const editable = { ...agentProfile, editable: true, fingerprint: "f1" };
+  let listReads = 0;
+  const deletes = [];
+  const conflict = Object.assign(new Error("agent profile changed since it was read"), { status: 409 });
+  const controller = createAgentsPanelController({
+    listAgents: async () => { listReads += 1; return { agents: [editable] }; },
+    deleteAgent: async (...args) => { deletes.push(args); throw conflict; },
+  });
+  await controller.refreshAgents();
+  const prompts = [];
+  await controller.remove("researcher", async (message) => { prompts.push(message); return false; });
+  assert.equal(prompts.length, 1, "deleting must ask first");
+  assert.deepEqual(deletes, [], "a declined confirmation must not delete");
+
+  const readsBefore = listReads;
+  await controller.remove("researcher", async () => true);
+  assert.deepEqual(deletes, [["researcher", "f1"]]);
+  const snapshot = controller.snapshot();
+  assert.match(snapshot.mutationError, /changed since it was read.*reloaded/, "a conflict must say why and that the list was reloaded");
+  assert.ok(listReads > readsBefore, "a conflict must reload the catalog");
+});
+
 test("stale agent responses must not replace a newer catalog", async () => {
   const firstAgents = deferred();
   let agentListCalls = 0;

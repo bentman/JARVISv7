@@ -13,9 +13,10 @@ from backend.app.api.schemas.session import (
     EndHandoffResponse,
     LatestTurnSummary,
     SessionStatusResponse,
+    TurnHistoryResponse,
 )
 from backend.app.services.session_service import SessionService
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter()
 
@@ -61,6 +62,16 @@ def close_session(
 def session_status(session_service: SessionService = Depends(get_session_service)) -> SessionStatusResponse:
     status = session_service.status()
     return build_session_status_response(status)
+
+
+@router.get("/session/turns", response_model=TurnHistoryResponse)
+def session_turns(
+    after: str | None = Query(default=None, max_length=64),
+    limit: int = Query(default=50, ge=1, le=200),
+    session_service: SessionService = Depends(get_session_service),
+) -> TurnHistoryResponse:
+    status = session_service.status()
+    return TurnHistoryResponse(session_id=status.session_id, turns=session_service.turns(after=after, limit=limit))
 
 
 @router.post("/session/search/cancel", response_model=CancelSearchResponse)
@@ -121,4 +132,5 @@ def build_session_status_response(status) -> SessionStatusResponse:
         failure_phase=status.failure_phase,
         active_search=status.active_search,
         active_agent=status.active_agent,
+        pending_approval=status.pending_approval,
     )

@@ -17,7 +17,7 @@
         <div id="turn-status-anchor" class="turn-status-anchor"></div>
         <div class="state-card system-state-card">
           <span class="label">System State</span>
-          <strong id="startup-state">BOOTSTRAP</strong>
+          <strong id="startup-state" data-state="STARTING">Starting</strong>
         </div>
       </header>
 
@@ -61,6 +61,7 @@
             <span id="search-status" role="status" aria-live="polite"></span>
             <button id="search-stop" type="button" hidden>Stop</button>
             <span id="handoff-status" role="status" aria-live="polite"></span>
+            <button id="handoff-open" class="btn-ghost" type="button" hidden>Open in Agents</button>
             <button id="handoff-end" type="button" hidden>Back to JARVIS</button>
           </div>
           <form id="text-form" class="text-form">
@@ -132,19 +133,19 @@
       <div class="advanced-panel-body">
         <nav id="advanced-panel-rail" class="advanced-panel-rail" aria-label="Advanced control categories">
           <button type="button" data-category="providers" aria-selected="false">Providers &amp; Models</button>
-          <button type="button" data-category="settings" aria-selected="false">Operator Settings</button>
+          <button type="button" data-category="settings" aria-selected="false">Settings</button>
           <button type="button" data-category="memory" aria-selected="false">Memory</button>
-          <button type="button" data-category="actions" aria-selected="false">Actions &amp; Capabilities</button>
+          <button type="button" data-category="actions" aria-selected="false">Actions</button>
           <button type="button" data-category="extensions" aria-selected="false">Extensions</button>
           <button type="button" data-category="agents" aria-selected="false">Agents</button>
         </nav>
         <div class="advanced-panel-detail">
-          <section id="providers-panel" class="profile-detail settings-panel" hidden></section>
-          <section id="settings-panel" class="profile-detail settings-panel" hidden></section>
-          <section id="memory-panel" class="profile-detail memory-panel" hidden></section>
-          <section id="actions-panel" class="profile-detail actions-panel" hidden></section>
-          <section id="extensions-panel" class="profile-detail extensions-panel" hidden></section>
-          <section id="agents-panel" class="profile-detail agents-panel" hidden></section>
+          <section id="providers-panel" class="settings-panel" hidden></section>
+          <section id="settings-panel" class="settings-panel" hidden></section>
+          <section id="memory-panel" class="memory-panel" hidden></section>
+          <section id="actions-panel" class="actions-panel" hidden></section>
+          <section id="extensions-panel" class="extensions-panel" hidden></section>
+          <section id="agents-panel" class="agents-panel" hidden></section>
         </div>
       </div>
     </dialog>

@@ -254,6 +254,10 @@ class TurnEngine:
     def prepare_close(self, timeout: float = 10.0) -> None:
         with self._admission_lock:
             self._closing = True
+        if self.capability_service is not None:
+            for pending in (self._pending_tool, getattr(self._pending_agent_tool, "approval", None)):
+                if pending is not None:
+                    self.capability_service.release_turn_approval(pending.proposal.proposal_id)
         self.search_intent.clear()
         for operation in (self._extension_operation, self._agent_operation):
             if operation is not None:
@@ -263,13 +267,13 @@ class TurnEngine:
         if not self._idle.wait(timeout):
             raise RuntimeError("active turn is cancelling; retry session close after it stops")
 
-    def run_text_turn(self, text: str) -> TurnResult:
+    def run_text_turn(self, text: str, *, origin: str = "api") -> TurnResult:
         with self._admit_turn():
-            return self._run_text_turn(text)
+            return self._run_text_turn(text, origin)
 
     def run_extension(self, work: Callable, arguments: dict[str, Any], operation: Any) -> dict[str, Any]:
         with self._admit_turn():
-            context = self._create_context("text")
+            context = self._create_context("text", origin="extension")
             operation.session_id, operation.turn_id = context.session_id, context.turn_id
             self._extension_operation = operation
             result: dict[str, Any] = {}
@@ -286,6 +290,7 @@ class TurnEngine:
                     runs = self.extension_runtime.runs.list() if self.extension_runtime else []
                     self.session_manager.record_turn_artifact(TurnArtifact(
                         turn_id=context.turn_id, session_id=context.session_id, input_modality="text",
+                        origin=context.origin,
                         final_state="FAILED" if failure else "IDLE", transcript=arguments.get("prompt"),
                         active_personality_profile_id=self.personality.profile_id,
                         profile_epoch=self.session_manager.profile_epoch, failure_reason=failure,
@@ -310,6 +315,47 @@ class TurnEngine:
         ended, self._handoff = self._handoff is not None, None
         return ended
 
+    def pending_approval(self) -> dict[str, str] | None:
+        """The approval the conversation is waiting on, if any."""
+        pending = self._pending_tool or getattr(self._pending_agent_tool, "approval", None)
+        if pending is None or self.capability_service is None:
+            return None
+        view = next(
+            (item for item in self.capability_service.pending() if item.proposal_id == pending.proposal.proposal_id),
+            None,
+        )
+        return {
+            "proposal_id": pending.proposal.proposal_id,
+            "capability_id": pending.proposal.capability_id,
+            "label": view.label if view else pending.proposal.capability_id,
+            "reason": pending.proposal.reason,
+        }
+
+    def settle_pending_approval(self, proposal_id: str, approved: bool) -> TurnResult:
+        """Answer the conversation's pending approval from outside the conversation.
+
+        The decision runs as its own turn, as if the user had replied, so it is recorded,
+        executed, and answered exactly as a spoken or typed reply would be.
+        """
+        pending = self._pending_tool or getattr(self._pending_agent_tool, "approval", None)
+        if pending is None or pending.proposal.proposal_id != proposal_id:
+            raise LookupError("the conversation is not waiting on this approval")
+        return self.run_text_turn("Confirm" if approved else "Cancel", origin="panel")
+
+    def _hold_approval(self, pending: PendingToolApproval, label: str) -> None:
+        if self.capability_service is not None:
+            self.capability_service.hold_turn_approval(
+                pending.proposal, pending.approval_id, label=label, settle=self.settle_pending_approval,
+            )
+
+    def _answering_agent(self, context: TurnContext) -> dict[str, str] | None:
+        route = context.runtime_context.get("agent_route")
+        if not isinstance(route, dict) or route.get("outcome") != "selected" or self.agent_registry is None:
+            return None
+        profile = self.agent_registry.get(route["profile_id"])
+        display_name = profile.display_name if profile is not None else route["profile_id"]
+        return {"profile_id": route["profile_id"], "display_name": display_name}
+
     def run_agent(
         self, profile: AgentProfile, prompt: str, *, mode: str = "direct", operation: Any = None
     ) -> AgentInvocationResult:
@@ -324,7 +370,7 @@ class TurnEngine:
                 raise RuntimeError(f"a {mode} agent call must run inside the turn that delegated it")
             return self._delegate_agent(context, profile, prompt, mode, operation)
         with self._admit_turn():
-            context = self._create_context("text")
+            context = self._create_context("text", origin="agent")
             result: AgentInvocationResult | None = None
             try:
                 result = self._delegate_agent(context, profile, prompt, mode, operation)
@@ -336,6 +382,8 @@ class TurnEngine:
                         turn_id=context.turn_id,
                         session_id=context.session_id,
                         input_modality="text",
+                        origin=context.origin,
+                        agent={"profile_id": profile.profile_id, "display_name": profile.display_name},
                         final_state="FAILED" if failure else "IDLE",
                         transcript=prompt,
                         active_personality_profile_id=self.personality.profile_id,
@@ -516,6 +564,7 @@ class TurnEngine:
             self._pending_agent_tool = PendingAgentTool(
                 pending, profile.profile_id, profile.display_name, mode, envelope
             )
+            self._hold_approval(pending, f"{profile.display_name}: run {label}")
             return "awaiting_approval", f"{profile.display_name} wants to run {label}. Reply yes to confirm."
         context.action_evidence.record(decision)
         if decision.outcome != "allowed":
@@ -559,6 +608,7 @@ class TurnEngine:
         if pending is None or self.capability_service is None:
             return None
         approval = pending.approval
+        self.capability_service.release_turn_approval(approval.proposal.proposal_id)
         text = transcript.strip()
         if CONFIRM_REPLY.fullmatch(text) or CANCEL_REPLY.fullmatch(text):
             confirmed = bool(CONFIRM_REPLY.fullmatch(text))
@@ -567,7 +617,7 @@ class TurnEngine:
                 proposal_id=approval.proposal.proposal_id,
                 capability_id=approval.proposal.capability_id,
                 outcome="approved" if confirmed else "denied",
-                decided_by="user",
+                decided_by=_decided_by(context),
                 decided_at=utc_now_iso(),
                 reason=(
                     "the user confirmed the agent's proposed action" if confirmed
@@ -578,6 +628,10 @@ class TurnEngine:
                 return "Cancelled."
             outcome, reply = self._finish_agent_tool(context, approval, pending.envelope, approved=True)
             succeeded = outcome == "success"
+            if succeeded:
+                context.runtime_context["agent_route"] = {
+                    "outcome": "selected", "profile_id": pending.profile_id, "reason": "",
+                }
             response = bound_single_turn_response(reply) if succeeded else ""
             context.action_evidence.record(DelegatedRunRecord(
                 run_id=uuid4().hex,
@@ -608,11 +662,11 @@ class TurnEngine:
         if records:
             context.runtime_context.setdefault("hooks", []).extend(records)
 
-    def _run_text_turn(self, text: str) -> TurnResult:
+    def _run_text_turn(self, text: str, origin: str = "api") -> TurnResult:
         ticket = self.llm_coordinator.register_interactive() if self.llm_coordinator else None
         try:
             transcript = text.strip()
-            context = self._create_context("text")
+            context = self._create_context("text", origin=origin)
             if not transcript:
                 return self._fail(context, transcript=None, response_text=None, reason="text input is empty")
             return self._run_reasoning_path(
@@ -647,7 +701,7 @@ class TurnEngine:
         ticket = interactive_ticket
         if ticket is None and self.llm_coordinator is not None:
             ticket = self.llm_coordinator.register_interactive()
-        context = self._create_context("voice")
+        context = self._create_context("voice", origin="voice")
         voice_turn_started_at = time.perf_counter()
         phase_durations_ms: dict[str, float] = {}
         samples = np.asarray(audio, dtype=np.float32).reshape(-1)
@@ -1061,6 +1115,7 @@ class TurnEngine:
                 extension_id=entry["extension_id"],
                 operation_name=entry["name"],
             )
+            self._hold_approval(self._pending_tool, f"Run {entry['extension_id']} {entry['name']}".strip())
             return (
                 f"May I run {entry['extension_id']} {entry['name']}? Reply yes to confirm."
             ).replace("  ", " ")
@@ -1197,6 +1252,8 @@ class TurnEngine:
         pending, self._pending_tool = self._pending_tool, None
         if pending is None or self.capability_service is None:
             return None
+        self.capability_service.release_turn_approval(pending.proposal.proposal_id)
+        decided_by = _decided_by(context)
         text = transcript.strip()
         if CONFIRM_REPLY.fullmatch(text):
             context.action_evidence.record(ApprovalAuditRecord(
@@ -1204,7 +1261,7 @@ class TurnEngine:
                 proposal_id=pending.proposal.proposal_id,
                 capability_id=pending.proposal.capability_id,
                 outcome="approved",
-                decided_by="user",
+                decided_by=decided_by,
                 decided_at=utc_now_iso(),
                 reason="the user confirmed the proposed action",
             ))
@@ -1212,6 +1269,12 @@ class TurnEngine:
                 return self._start_handoff(context, pending.proposal, pending.approval_id)
             failure = self._execute_tool(context, pending, approved=True)
             if pending.mode is not None:
+                if failure is None:
+                    context.runtime_context["agent_route"] = {
+                        "outcome": "selected",
+                        "profile_id": pending.proposal.capability_id.removeprefix(AGENT_CAPABILITY_PREFIX),
+                        "reason": "",
+                    }
                 return failure or self._agent_reply()
             return failure or ""
         if CANCEL_REPLY.fullmatch(text):
@@ -1220,7 +1283,7 @@ class TurnEngine:
                 proposal_id=pending.proposal.proposal_id,
                 capability_id=pending.proposal.capability_id,
                 outcome="denied",
-                decided_by="user",
+                decided_by=decided_by,
                 decided_at=utc_now_iso(),
                 reason="the user declined the proposed action",
             ))
@@ -1305,6 +1368,11 @@ class TurnEngine:
             extension_id=f"agent:{profile.profile_id}",
             operation_name=profile.display_name,
             mode=mode,
+        )
+        self._hold_approval(
+            self._pending_tool,
+            f"Hand the conversation to {profile.display_name}" if mode == "handoff"
+            else f"Hand this to {profile.display_name}",
         )
 
     def _delegate_in_turn(
@@ -1988,8 +2056,11 @@ class TurnEngine:
         self._record_artifact(context, result, final_prompt_text=None)
         return result
 
-    def _create_context(self, modality: str) -> TurnContext:
+    def _create_context(self, modality: str, *, origin: str = "api") -> TurnContext:
         context = self._new_context(modality)
+        context.origin = origin
+        if self.capability_service is not None:
+            context.action_evidence.sink = self.capability_service.record_turn_evidence
         self._active_context = context
         return context
 
@@ -2037,6 +2108,8 @@ class TurnEngine:
             turn_id=result.turn_id,
             session_id=result.session_id,
             input_modality=context.modality,
+            origin=context.origin,
+            agent=self._answering_agent(context),
             active_personality_profile_id=self.personality.profile_id,
             profile_epoch=self.session_manager.profile_epoch,
             transcript=result.transcript,
@@ -2116,6 +2189,10 @@ class TurnEngine:
             wav_file.setframerate(int(sample_rate))
             wav_file.writeframes(pcm16.tobytes())
         return str(audio_path)
+
+
+def _decided_by(context: TurnContext) -> str:
+    return "operator" if context.origin == "panel" else "user"
 
 
 def timestamp_now() -> str:

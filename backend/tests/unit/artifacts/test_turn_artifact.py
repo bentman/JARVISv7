@@ -126,6 +126,8 @@ def test_turn_schema_fields_are_canonical():
         "phase_timestamps",
         "phase_durations_ms",
         "failure_phase",
+        "origin",
+        "agent",
     )
 
 

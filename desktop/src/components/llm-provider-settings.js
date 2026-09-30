@@ -1,29 +1,33 @@
+import { createRenderStateKeeper } from "./render-state.js";
+import { confirmDestructive } from "./ui/confirm.js";
+import { button, buttonRow, field, option } from "./ui/dom.js";
+import { errorMessage, humanize, statusText } from "./ui/format.js";
+import { renderPanelHeader } from "./ui/panel.js";
+
 const EDITABLE_KINDS = ["ollama", "openai_compatible", "openai", "anthropic"];
 
-function element(tagName, text = "") {
+const KIND_LABELS = {
+  managed_llama_cpp: "Managed llama.cpp",
+  ollama: "Ollama",
+  openai_compatible: "OpenAI-compatible",
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+};
+
+function element(tagName, text = "", className = "") {
   const value = document.createElement(tagName);
   value.textContent = text;
+  if (className) value.className = className;
   return value;
 }
 
-function labeledControl(labelText, control) {
-  const row = document.createElement("div");
-  const label = element("label", labelText);
-  label.appendChild(control);
-  row.appendChild(label);
-  return row;
-}
-
-function option(value, label, selected = false) {
-  const item = document.createElement("option");
-  item.value = value;
-  item.textContent = label;
-  item.selected = selected;
-  return item;
+function setStatus(node, text, kind = "notice") {
+  node.textContent = text;
+  node.className = kind === "error" ? "panel-error" : "panel-notice";
 }
 
 function profileOption(profile, selectedId) {
-  return option(profile.profile_id, `${profile.name} · ${profile.kind}`, profile.profile_id === selectedId);
+  return option(profile.profile_id, `${profile.name} · ${humanize(profile.kind, KIND_LABELS)}`, profile.profile_id === selectedId);
 }
 
 function fillProfileSelect(select, profiles, selectedId, emptyLabel = null) {
@@ -143,24 +147,29 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const profiles = Array.isArray(payload?.profiles) ? payload.profiles : [];
   const selection = payload?.selection || {};
   const section = document.createElement("section");
-  const heading = element("h3", "Model Providers");
+  const heading = element("h3", "Model providers");
   const summary = element(
     "p",
     "Choose the primary model provider, an optional local fallback, and an authorized cloud escalation target.",
+    "panel-help",
   );
   const status = element("p");
+  status.setAttribute("aria-live", "polite");
   const selectionGroup = document.createElement("div");
   const primary = document.createElement("select");
   const fallback = document.createElement("select");
   const escalation = document.createElement("input");
   const cloud = document.createElement("select");
-  const warning = element("p");
-  const saveSelection = element("button", "Save provider selection");
+  const warning = element("p", "", "panel-help");
+  const saveSelection = button("Save provider selection", { variant: "primary", focusKey: "provider:save-selection" });
 
-  section.className = "settings-subsection model-provider-settings";
+  section.className = "model-provider-settings";
   escalation.type = "checkbox";
   escalation.checked = Boolean(selection.cloud_escalation_enabled);
-  saveSelection.type = "button";
+  primary.dataset.draftKey = "provider-selection:primary";
+  fallback.dataset.draftKey = "provider-selection:fallback";
+  escalation.dataset.draftKey = "provider-selection:escalation";
+  cloud.dataset.draftKey = "provider-selection:cloud";
   fillProfileSelect(primary, profiles, selection.primary_profile_id);
   fillProfileSelect(fallback, localProfiles(profiles), selection.local_fallback_profile_id, "No local fallback");
   fillProfileSelect(cloud, cloudProfiles(profiles), selection.cloud_profile_id, "No cloud profile");
@@ -181,32 +190,35 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   });
   renderWarning();
 
+  const escalationLabel = document.createElement("label");
+  escalationLabel.className = "panel-choice";
+  escalationLabel.append(escalation, element("span", "Allow cloud escalation"));
   selectionGroup.append(
-    labeledControl("Primary provider", primary),
-    labeledControl("Local fallback", fallback),
-    labeledControl("Allow cloud escalation", escalation),
-    labeledControl("Cloud provider", cloud),
+    field("Primary provider", primary),
+    field("Local fallback", fallback),
+    escalationLabel,
+    field("Cloud provider", cloud),
     warning,
-    saveSelection,
+    buttonRow(saveSelection),
   );
 
   saveSelection.addEventListener("click", async () => {
-    status.textContent = "Saving provider selection…";
+    setStatus(status, "Saving provider selection…");
     try {
       await handlers.updateLlmSelection(
         providerSelectionPayload(primary.value, fallback.value, escalation.checked, cloud.value),
       );
-      status.textContent = "Provider selection saved. Restart required.";
+      setStatus(status, "Provider selection saved. It applies after a backend restart.");
       callbacks.onRestartRequired?.();
     } catch (error) {
-      status.textContent = `Provider selection failed: ${error.message || error}`;
+      setStatus(status, `Provider selection failed: ${errorMessage(error)}`, "error");
     }
   });
 
   const profileGroup = document.createElement("div");
   const profileHeading = element("h4", "Profiles");
   const profileSelect = document.createElement("select");
-  const newProfile = element("button", "New profile");
+  const newProfile = button("New profile", { focusKey: "provider:new" });
   const name = document.createElement("input");
   const kind = document.createElement("select");
   const endpoint = document.createElement("input");
@@ -216,11 +228,12 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const timeout = document.createElement("input");
   const credential = document.createElement("input");
   const removeCredential = document.createElement("input");
-  const save = element("button", "Save profile");
-  const test = element("button", "Test connection");
-  const remove = element("button", "Delete profile");
-  const rotate = element("button", "Rotate credential-store key");
+  const save = button("Save profile", { variant: "primary", focusKey: "provider:save" });
+  const test = button("Test connection", { focusKey: "provider:test" });
+  const remove = button("Delete profile", { variant: "danger", focusKey: "provider:delete" });
+  const rotate = button("Rotate credential-store key", { variant: "danger", focusKey: "provider:rotate" });
   const profileStatus = element("p");
+  profileStatus.setAttribute("aria-live", "polite");
   const profileNotice = element("p");
   profileNotice.className = "model-provider-notice";
   const controls = { name, kind, endpoint, model, context, timeout, credential, removeCredential, save, test, delete: remove, notice: profileNotice };
@@ -231,7 +244,7 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const managedOption = option("managed_llama_cpp", "managed llama.cpp");
   managedOption.disabled = true;
   kind.appendChild(managedOption);
-  for (const value of EDITABLE_KINDS) kind.appendChild(option(value, value.replaceAll("_", " ")));
+  for (const value of EDITABLE_KINDS) kind.appendChild(option(value, KIND_LABELS[value]));
   modelList.id = "llm-provider-models";
   model.setAttribute("list", modelList.id);
   context.type = "number";
@@ -242,24 +255,36 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   timeout.max = "600";
   credential.type = "password";
   removeCredential.type = "checkbox";
-  for (const button of [newProfile, save, test, remove, rotate]) button.type = "button";
+  // Unsaved edits are keyed to the profile being edited, so a re-render keeps them and switching
+  // profiles never carries one profile's edits into another.
+  const keyFields = () => {
+    const scope = editingProfile?.profile_id || "new";
+    for (const [key, control] of Object.entries({ name, kind, endpoint, model, context, timeout })) {
+      control.dataset.draftKey = `provider:${scope}:${key}`;
+    }
+  };
+  keyFields();
   setProfileFields(editingProfile, controls);
 
   profileSelect.addEventListener("change", () => {
     editingProfile = selectedProfile(profiles, profileSelect.value);
+    callbacks.onEditingProfile?.(editingProfile?.profile_id || null);
+    keyFields();
     setProfileFields(editingProfile, controls);
     profileStatus.textContent = "";
   });
   newProfile.addEventListener("click", () => {
     editingProfile = null;
+    callbacks.onEditingProfile?.(null);
     profileSelect.value = "";
+    keyFields();
     setProfileFields(null, controls);
     name.focus();
   });
   kind.addEventListener("change", () => updateEndpointState(controls));
 
   save.addEventListener("click", async () => {
-    profileStatus.textContent = editingProfile ? "Saving profile…" : "Creating profile…";
+    setStatus(profileStatus, editingProfile ? "Saving profile…" : "Creating profile…");
     try {
       const wasSelected =
         editingProfile &&
@@ -272,64 +297,69 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
       if (wasSelected) callbacks.onRestartRequired?.();
       await callbacks.reload?.({ selectProfileId: saved?.profile_id || editingProfile?.profile_id || null });
     } catch (error) {
-      profileStatus.textContent = `Profile save failed: ${error.message || error}`;
+      setStatus(profileStatus, `Profile save failed: ${errorMessage(error)}`, "error");
     }
   });
 
   test.addEventListener("click", async () => {
     if (!editingProfile) return;
-    profileStatus.textContent = "Testing connection…";
+    setStatus(profileStatus, "Testing connection…");
     try {
       const result = await handlers.testLlmProfile(editingProfile.profile_id);
       modelList.replaceChildren(
         ...(result.models || []).map((item) => option(item.id, item.display_name || item.id)),
       );
-      profileStatus.textContent = `${result.status}: ${result.reason}`;
+      const reachable = ["ready", "configured"].includes(result.status);
+      setStatus(profileStatus, `${statusText(result.status)}: ${result.reason}`, reachable ? "notice" : "error");
     } catch (error) {
-      profileStatus.textContent = `Connection test failed: ${error.message || error}`;
+      setStatus(profileStatus, `Connection test failed: ${errorMessage(error)}`, "error");
     }
   });
 
+  const confirm = callbacks.confirm || confirmDestructive;
   remove.addEventListener("click", async () => {
     if (!editingProfile) return;
-    profileStatus.textContent = "Deleting profile…";
+    if (!(await confirm(`Delete the provider profile "${editingProfile.name}"?`))) return;
+    setStatus(profileStatus, "Deleting profile…");
     try {
       await handlers.deleteLlmProfile(editingProfile.profile_id);
       await callbacks.reload?.({ selectProfileId: null });
     } catch (error) {
-      profileStatus.textContent = `Profile delete failed: ${error.message || error}`;
+      setStatus(profileStatus, `Profile delete failed: ${errorMessage(error)}`, "error");
     }
   });
 
   rotate.addEventListener("click", async () => {
-    profileStatus.textContent = "Rotating credential-store key…";
+    if (!(await confirm("Rotate the credential-store key? Stored credentials are re-encrypted with a new key."))) return;
+    setStatus(profileStatus, "Rotating credential-store key…");
     try {
       await handlers.rotateSecretStoreKey();
-      profileStatus.textContent = "Credential-store key rotated.";
+      setStatus(profileStatus, "Credential-store key rotated.");
     } catch (error) {
-      profileStatus.textContent = `Key rotation failed: ${error.message || error}`;
+      setStatus(profileStatus, `Key rotation failed: ${errorMessage(error)}`, "error");
     }
   });
 
+  const removeCredentialLabel = document.createElement("label");
+  removeCredentialLabel.className = "panel-choice";
+  removeCredentialLabel.append(removeCredential, element("span", "Remove stored credential"));
   profileGroup.append(
     profileHeading,
-    labeledControl("Profile", profileSelect),
-    newProfile,
-    labeledControl("Display name", name),
-    labeledControl("Provider kind", kind),
-    labeledControl("Endpoint", endpoint),
-    labeledControl("Model ID", model),
+    field("Profile", profileSelect),
+    buttonRow(newProfile),
+    field("Display name", name),
+    field("Provider kind", kind),
+    field("Endpoint", endpoint),
+    field("Model ID", model),
     modelList,
-    labeledControl("Context window", context),
-    labeledControl("Timeout seconds", timeout),
-    labeledControl("Credential", credential),
-    labeledControl("Remove stored credential", removeCredential),
-    save,
-    test,
-    remove,
-    rotate,
+    field("Context window", context),
+    field("Timeout seconds", timeout),
+    field("Credential", credential),
+    removeCredentialLabel,
+    buttonRow(save, test, remove),
     profileNotice,
     profileStatus,
+    buttonRow(rotate),
   );
   section.append(heading, summary, selectionGroup, profileGroup, status);
   if (providerRestartDisabled(callbacks.restartScopes)) {
@@ -347,33 +377,30 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
 }
 
 let activeProviderContainer = null;
+let providerKeeper = null;
 let providerGeneration = 0;
 let providerHandlers = null;
 let providerOptions = {};
 let preferredProfileId = null;
 
 function providerUnavailable(containerEl, message) {
-  const notice = element("p", message);
-  containerEl.replaceChildren(notice);
+  containerEl.replaceChildren(renderPanelHeader("Providers & Models"), element("p", message, "panel-error"));
 }
 
 function renderProviderPanel(containerEl, payload) {
-  const heading = element("h2", "Providers & Models");
-  heading.tabIndex = -1;
   const scopes = providerOptions.restartRequiredScopes?.() || [];
-  const restartState = element("p", "Restart required.");
-  const restartButton = element("button", "Restart");
-  restartButton.type = "button";
+  const restartState = element("p", "Saved provider changes apply after a backend restart.", "panel-notice");
+  const restartButton = button("Restart backend", { variant: "primary", focusKey: "provider:restart" });
   restartState.hidden = scopes.length === 0;
   restartButton.hidden = scopes.length === 0;
   restartButton.addEventListener("click", async () => {
-    restartState.textContent = "Restarting.";
+    setStatus(restartState, "Restarting the backend…");
     try {
       await providerOptions.restartBackend?.();
       providerOptions.clearRestartRequired?.();
       await loadProviderSettings(containerEl);
     } catch (error) {
-      restartState.textContent = "Restart failed.";
+      setStatus(restartState, errorMessage(error, "Restart failed."), "error");
     }
   });
 
@@ -388,9 +415,14 @@ function renderProviderPanel(containerEl, payload) {
       if ("selectProfileId" in result) preferredProfileId = result.selectProfileId;
       return loadProviderSettings(containerEl);
     },
+    onEditingProfile: (profileId) => {
+      preferredProfileId = profileId;
+    },
   });
 
-  containerEl.replaceChildren(heading, restartState, restartButton, settings);
+  const children = [renderPanelHeader("Providers & Models"), restartState, buttonRow(restartButton), settings];
+  if (providerKeeper?.container === containerEl) providerKeeper.render(...children);
+  else containerEl.replaceChildren(...children);
 }
 
 async function loadProviderSettings(containerEl) {
@@ -415,16 +447,21 @@ export async function openProviderSettings(containerEl, options = {}) {
   activeProviderContainer = containerEl;
   providerHandlers = options.handlers || providerHandlers;
   providerOptions = { ...providerOptions, ...options };
+  if (providerKeeper?.container !== containerEl) {
+    providerKeeper = Object.assign(createRenderStateKeeper(containerEl), { container: containerEl });
+  }
   containerEl.hidden = false;
-  containerEl.textContent = "Loading providers…";
+  if (!containerEl.childNodes?.length) containerEl.replaceChildren(renderPanelHeader("Providers & Models"), element("p", "Loading providers…", "panel-help"));
   await loadProviderSettings(containerEl);
   if (activeProviderContainer !== containerEl) return;
+  providerKeeper.release();
   containerEl.querySelector("h2")?.focus();
 }
 
 export function closeProviderSettings() {
   if (!activeProviderContainer) return;
   providerGeneration += 1;
+  if (providerKeeper?.container === activeProviderContainer) providerKeeper.retain();
   activeProviderContainer.hidden = true;
   activeProviderContainer.replaceChildren();
   activeProviderContainer = null;

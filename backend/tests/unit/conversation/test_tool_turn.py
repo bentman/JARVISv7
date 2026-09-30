@@ -11,6 +11,7 @@ from backend.app.conversation.session_manager import SessionManager
 from backend.app.personality.loader import load_default_personality
 from backend.app.runtimes.llm.base import LLMBase, ToolCall, ToolCallResult
 from backend.app.services.capability_service import CapabilityService
+from backend.app.services.session_service import turn_summary
 from backend.app.services.llm_execution_coordinator import LLMExecutionCoordinator
 
 pytestmark = [pytest.mark.turn]
@@ -158,7 +159,8 @@ def test_an_allowed_capability_runs_and_grounds_its_result(tmp_path):
 
 
 def test_a_capability_needing_approval_asks_first_and_does_not_run(tmp_path):
-    engine, manager = engine_at(tmp_path, ToolModel(call=ToolCall(WRITE, {})))
+    capabilities = _capabilities()
+    engine, manager = engine_at(tmp_path, ToolModel(call=ToolCall(WRITE, {})), capabilities=capabilities)
 
     turn = engine.run_text_turn("Write something")
 
@@ -167,6 +169,14 @@ def test_a_capability_needing_approval_asks_first_and_does_not_run(tmp_path):
     assert artifact.action_execution_results == []
     assert artifact.authorization_decisions[0]["outcome"] == "approval_required"
     assert artifact.tools_invoked == []
+    # The question is one approval inbox entry, not only conversation text.
+    [pending] = capabilities.pending()
+    proposal_id = artifact.action_proposals[0]["proposal_id"]
+    assert (pending.proposal_id, pending.origin, pending.label) == (proposal_id, "conversation", "Run tool:writer run")
+    assert engine.pending_approval()["proposal_id"] == proposal_id
+    # Its governance evidence reaches the shared audit, not only the turn artifact.
+    kinds = [record["kind"] for record in reversed(capabilities.audit(limit=10).records) if record["proposal_id"] == proposal_id]
+    assert kinds == ["action_proposal", "authorization_decision"]
 
 
 def test_confirming_on_the_next_turn_executes_and_records_the_approval(tmp_path):
@@ -176,6 +186,7 @@ def test_confirming_on_the_next_turn_executes_and_records_the_approval(tmp_path)
     turn = engine.run_text_turn("yes")
 
     artifact = manager.turn_artifacts[1]
+    assert engine.capability_service.pending() == [], "a spoken or typed answer settles the shared entry"
     assert [record["outcome"] for record in artifact.approval_records] == ["approved"]
     assert artifact.action_execution_results[0]["status"] == "success"
     assert artifact.tools_invoked == [WRITE]
@@ -201,8 +212,33 @@ def test_an_unanswered_approval_lapses_at_the_turn_boundary(tmp_path):
     engine.run_text_turn("something else entirely")
 
     artifact = manager.turn_artifacts[1]
+    assert engine.capability_service.pending() == [], "a lapsed approval must leave the shared inbox"
+    assert engine.pending_approval() is None
     assert artifact.action_cancellations[0]["cancelled_by"] == "turn_boundary"
     assert artifact.action_execution_results == []
+
+
+@pytest.mark.parametrize(("outcome", "status", "reply"), [("approved", "success", "Grounded answer."), ("denied", "denied", "Cancelled.")])
+def test_an_approval_the_conversation_asked_for_can_be_decided_from_the_actions_panel(tmp_path, outcome, status, reply):
+    capabilities = _capabilities()
+    engine, manager = engine_at(tmp_path, ToolModel(call=ToolCall(WRITE, {})), capabilities=capabilities)
+    engine.run_text_turn("Write something", origin="desktop")
+    proposal_id = manager.turn_artifacts[0].action_proposals[0]["proposal_id"]
+
+    view = capabilities.decide(proposal_id=proposal_id, outcome=outcome, decided_by="operator_api")
+
+    assert view.status == status
+    decision_turn = manager.turn_artifacts[1]
+    assert (manager.turn_artifacts[0].origin, decision_turn.origin) == ("desktop", "panel")
+    assert decision_turn.response_text == reply, "the decision is answered in the conversation"
+    assert decision_turn.approval_records[0]["decided_by"] == "operator"
+    [settled] = turn_summary(decision_turn)["actions"]
+    assert (settled["proposal_id"], settled["status"]) == (proposal_id, status), (
+        "the history must show the outcome in the turn that settled it"
+    )
+    assert capabilities.pending() == [] and engine.pending_approval() is None
+    with pytest.raises(Exception, match="no pending action"):
+        capabilities.decide(proposal_id=proposal_id, outcome=outcome, decided_by="operator_api")
 
 
 def test_a_failing_capability_is_explained_rather_than_hidden(tmp_path):
@@ -353,6 +389,8 @@ def test_a_routed_agent_that_needs_approval_asks_first_and_answers_on_yes(tmp_pa
     second = manager.turn_artifacts[1]
     assert [record["outcome"] for record in second.approval_records] == ["approved"]
     assert [run["mode"] for run in second.delegated_runs] == ["router_selected"]
+    assert manager.turn_artifacts[0].agent is None, "the question itself comes from the assistant"
+    assert second.agent == {"profile_id": "notes", "display_name": "Notes"}, "the reply is attributed to the agent"
 
 
 def test_an_addressed_agent_that_is_disabled_falls_back_to_the_assistant(tmp_path):
@@ -386,6 +424,8 @@ def test_a_handoff_routes_every_turn_to_the_agent_until_the_user_returns(tmp_pat
     assert handed.response_text == "Agent answer."
     engine.search_service.operation.assert_not_called()
     assert [run["mode"] for run in manager.turn_artifacts[1].delegated_runs] == ["handoff"]
+    assert manager.turn_artifacts[1].agent == {"profile_id": "notes", "display_name": "Notes"}, "a handed-off reply names its agent"
+    assert manager.turn_artifacts[2].agent is None, "back with JARVIS, replies are the assistant's again"
     assert ended.response_text == "Back to JARVIS."
     assert engine.active_handoff() is None
     assert [

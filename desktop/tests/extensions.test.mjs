@@ -6,7 +6,7 @@ import { main, apiClient, memoryPanel, actionsPanel, extensionsPanel, agentsPane
 
 // Returns the control inside the labeled field whose visible label is `text`.
 function field(form, text) {
-  const label = findElement(form, (node) => node.className === "extensions-field-control" && node.children[0]?.textContent === text);
+  const label = findElement(form, (node) => node.className === "panel-field" && node.children[0]?.textContent === text);
   return label ? label.children[1] : null;
 }
 
@@ -65,6 +65,23 @@ test("the extension controller must route invoke, answer, and decide to their ha
   }, () => undefined);
   await failingExtensionController.invoke("mcp:server", "capability", {});
   assert.equal(failingExtensionController.snapshot().detailError, "blocked");
+
+  // A run that asks for input does not return until answered, so the panel must know an
+  // invocation is still out (its poll surfaces the request), and a failure must leave the
+  // selected extension in view.
+  const pendingInvoke = deferred();
+  const waitingController = createExtensionsPanelController({
+    getExtensionDetail: async () => ({ extension_id: "mcp:server", display_name: "Server", family: "mcp" }),
+    invokeExtension: () => pendingInvoke.promise,
+  }, () => undefined);
+  await waitingController.selectExtension("mcp:server");
+  const invocation = waitingController.invoke("mcp:server", "capability", {});
+  assert.equal(waitingController.snapshot().invocationsInFlight, 1, "an unanswered invocation must count as live work");
+  pendingInvoke.reject(new Error("POST /extensions/{extension_id}/invoke failed"));
+  await invocation;
+  const failed = waitingController.snapshot();
+  assert.equal(failed.invocationsInFlight, 0);
+  assert.equal(failed.detail?.extension_id, "mcp:server", "a failed action must not clear the extension it acted on");
 });
 
 test("Invoking an operation such as MCP \"discover\" changes the extension's own runtime detail (health,...", async () => {
@@ -402,7 +419,7 @@ test("A run's id and proposal id are backend correlation identifiers; they must 
   await panel.controller.selectExtension("mcp:weather");
 
   const headings = findElements(container, (node) => node.tagName === "strong");
-  const runHeading = headings.find((node) => node.textContent.startsWith("success"));
+  const runHeading = headings.find((node) => node.textContent.startsWith("Completed"));
   assert.ok(runHeading, "the run must render a status-led heading");
   assert.ok(!runHeading.textContent.includes("extension-deadbeefcafef00d"), "the raw run id must not appear in the run heading");
 
@@ -451,7 +468,7 @@ test("A \"get prompt\" result is a list of role-tagged messages, not the tool-sh
   assert.ok(promptText, "a prompt result must render as role-labeled message text");
 
   assert.ok(findElement(container, (node) => node.tagName === "pre" && node.textContent === "72F and sunny"));
-  assert.ok(findElement(container, (node) => node.tagName === "strong" && node.textContent.startsWith("Weather · forecast · success")));
+  assert.ok(findElement(container, (node) => node.tagName === "strong" && node.textContent.startsWith("Weather · forecast · Completed")));
   assert.ok(findElement(container, (node) => node.tagName === "dd" && node.textContent === "London"));
   assert.ok(findElement(container, (node) => node.tagName === "p" && node.textContent === "Latest event: tool completed"));
   const evidence = findElements(container, (node) => node.tagName === "details");
@@ -669,7 +686,7 @@ test("extension activity state must follow backend readiness", async () => {
 test("extension origin must show family, trust, and version", async () => {
   assert.equal(
     formatExtensionOrigin({ family: "skill", trust: "external", version: "2" }),
-    "skill · external · v2",
+    "Skill · External · v2",
   );
 });
 
@@ -2104,6 +2121,6 @@ test("tool results and run titles must render for the operator", async () => {
   assert.equal(formatToolResult({ content: { content: [{ type: "image", data: "x" }] } }), null, "non-text content must use the generic view");
   assert.equal(formatToolResult({}), null);
   assert.equal(extensionRunTitle({ extension_name: "Weather", operation: "discover", status: "awaiting_input" }),
-    "Weather · Discover tools and resources · awaiting input");
-  assert.equal(extensionRunTitle({ extension_name: "Weather" }), "Weather · unknown");
+    "Weather · Discover tools and resources · Waiting for your answer");
+  assert.equal(extensionRunTitle({ extension_name: "Weather" }), "Weather · Unknown");
 });

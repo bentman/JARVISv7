@@ -78,7 +78,7 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
       `advanced-control detail pane missing mount: ${category}-panel`,
     );
   }
-  for (const label of ["Providers &amp; Models", "Operator Settings", "Actions &amp; Capabilities", "Agents"]) {
+  for (const label of ["Providers &amp; Models", "Settings", "Actions", "Agents"]) {
     assert.ok(index.includes(label), `advanced-control rail missing label: ${label}`);
   }
   assert.ok(main.includes("advancedDialogEl.open"), "the restart badge must reflect whether the advanced surface is showing");
@@ -104,10 +104,10 @@ test("desktop PTT must not capture WebView microphone audio", async () => {
   assert.ok(lib.includes("startup_failure_payload"), "Tauri start_backend failures must return structured diagnostics");
   assert.ok(backend.includes("stdout_tail"), "backend diagnostics failure payload must include stdout tail");
   assert.ok(backend.includes("stderr_tail"), "backend diagnostics failure payload must include stderr tail");
-  assert.ok(desktopSource.includes("barge-in"), "desktop must render resident barge-in status");
-  assert.ok(desktopSource.includes("barge-in-wired"), "desktop must render resident barge-in wiring status");
-  assert.ok(desktopSource.includes("follow-up-listening"), "desktop must render resident follow-up listening status");
-  assert.ok(desktopSource.includes("continuous-active"), "desktop must render resident continuous active status");
+  assert.ok(desktopSource.includes("Interrupt while speaking"), "desktop must render resident barge-in status");
+  assert.ok(desktopSource.includes("status.barge_in_wired"), "desktop must render resident barge-in wiring status");
+  assert.ok(desktopSource.includes("Listening for a follow-up"), "desktop must render resident follow-up listening status");
+  assert.ok(desktopSource.includes("status.continuous_active"), "desktop must render resident continuous active status");
   const settingsRestartPath = main.slice(main.indexOf("async function restartBackendForSettings"), main.indexOf("function updateSettingsRestartRequired"));
   assert.ok(settingsRestartPath.includes("ttsVoicePreferenceRestored = false"), "desktop settings restart must reset TTS voice restore guard");
   assert.ok(

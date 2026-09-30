@@ -65,7 +65,10 @@ class PendingApprovalResponse(StrictActionModel):
     approval_id: str
     arguments: dict[str, Any]
     reason: str
-    expires_at: str
+    expires_at: str | None = None
+    origin: str = "actions"
+    label: str = ""
+    proposed_by: str = "operator"
 
 
 class PendingApprovalListResponse(StrictActionModel):

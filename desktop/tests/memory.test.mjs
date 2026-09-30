@@ -283,7 +283,7 @@ test("an available worker without active work must display idle", async () => {
       duplicate_noops: 1,
       failure_count: 0,
     }),
-    "review_only_candidates_resolved · proposed 3 · pending review 2 · active 0 · rejected 1 · duplicates 1 · reinforced 0 · superseded/disputed 0 · failures 0",
+    "Review only candidates resolved · proposed 3 · pending review 2 · active 0 · rejected 1 · duplicates 1 · reinforced 0 · superseded/disputed 0 · failures 0",
     "desktop curation outcome must render only the structured backend result",
   );
   assert.equal(

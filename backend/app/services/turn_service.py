@@ -17,7 +17,8 @@ def run_text_turn(
     text: str,
     *,
     engine: TurnEngine,
+    origin: str = "api",
 ) -> TurnResult:
     if not text.strip():
         raise ValueError("text must be non-empty")
-    return engine.run_text_turn(text)
+    return engine.run_text_turn(text, origin=origin)

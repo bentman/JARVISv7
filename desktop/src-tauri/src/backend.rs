@@ -396,6 +396,34 @@ pub fn get_session_status(client: &Client, base_url: &str) -> Result<String, Str
     get_json(client, base_url, "/session/status")
 }
 
+/// The desktop's session, when the backend still holds it active. A page reload re-runs startup
+/// against the same backend, and creating a session there would end the conversation in progress.
+pub fn resumable_session(status_body: &str, known_session_id: Option<&str>) -> Option<SessionCreateResponse> {
+    let known = known_session_id?;
+    let status: Value = serde_json::from_str(status_body).ok()?;
+    if status.get("active").and_then(Value::as_bool) != Some(true) {
+        return None;
+    }
+    if status.get("session_id").and_then(Value::as_str) != Some(known) {
+        return None;
+    }
+    Some(SessionCreateResponse {
+        session_id: known.to_string(),
+        state: status.get("state").and_then(Value::as_str).unwrap_or("IDLE").to_string(),
+        turn_count: status.get("turn_count").and_then(Value::as_u64).unwrap_or(0) as usize,
+    })
+}
+
+pub fn get_session_turns(client: &Client, base_url: &str, after: Option<&str>) -> Result<String, String> {
+    let operation = "GET /session/turns";
+    let mut request = client.get(format!("{base_url}/session/turns"));
+    if let Some(after) = after {
+        request = request.query(&[("after", after)]);
+    }
+    let response = request.send().map_err(|error| memory_transport_error(operation, error))?;
+    memory_response(operation, response)
+}
+
 pub fn get_desktop_status(client: &Client, base_url: &str) -> Result<String, String> {
     get_json(client, base_url, "/status/desktop")
 }
@@ -1078,7 +1106,10 @@ pub fn get_extension_runs(client: &Client, base_url: &str) -> Result<String, Str
 
 pub fn invoke_extension(client: &Client, base_url: &str, extension_id: &str, capability_id: &str, arguments: Value) -> Result<String, String> {
     let operation = "POST /extensions/{extension_id}/invoke";
+    // A run can wait on the operator's answer for up to the backend's 60 s operation ceiling
+    // (MAX_TIMEOUT_MS); the client's 30 s default would report a live run as a transport failure.
     let response = client.post(format!("{base_url}/extensions/{extension_id}/invoke"))
+        .timeout(Duration::from_secs(90))
         .json(&json!({"capability_id": capability_id, "arguments": arguments})).send()
         .map_err(|error| memory_transport_error(operation, error))?;
     memory_response(operation, response)
@@ -1178,7 +1209,7 @@ pub fn submit_text_turn(
 ) -> Result<String, String> {
     let response = client
         .post(format!("{base_url}/task/text"))
-        .json(&json!({"text": text, "session_id": session_id}))
+        .json(&json!({"text": text, "session_id": session_id, "origin": "desktop"}))
         .send()
         .map_err(|err| format!("POST /task/text failed: {err}"))?;
     let status = response.status();
@@ -1346,10 +1377,21 @@ pub fn cancel_agent(client: &Client, base_url: &str, profile_id: &str) -> Result
 
 #[cfg(test)]
 mod tests {
-    use super::python_path_for_host;
+    use super::{python_path_for_host, resumable_session};
     #[cfg(target_os = "linux")]
     use super::{BackendProcessManager, Client, Duration};
     use std::path::Path;
+
+    #[test]
+    fn a_reload_resumes_only_the_session_the_backend_still_holds() {
+        let active = r#"{"session_id":"s-1","active":true,"state":"IDLE","turn_count":4}"#;
+        let resumed = resumable_session(active, Some("s-1")).expect("the live session must be resumed");
+        assert_eq!((resumed.session_id.as_str(), resumed.turn_count), ("s-1", 4));
+        assert!(resumable_session(active, None).is_none(), "a first start must create a session");
+        assert!(resumable_session(active, Some("s-0")).is_none(), "another session must not be adopted");
+        let closed = r#"{"session_id":"s-1","active":false,"state":"IDLE","turn_count":4}"#;
+        assert!(resumable_session(closed, Some("s-1")).is_none(), "a closed session must be replaced");
+    }
 
     #[test]
     fn resolves_windows_backend_interpreter_path() {

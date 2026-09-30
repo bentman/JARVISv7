@@ -90,12 +90,12 @@ class _Engine:
         },
     )
 
-    def run_text_turn(self, text: str) -> TurnResult:
+    def run_text_turn(self, text: str, *, origin: str) -> TurnResult:
         return TurnResult(
             turn_id="turn-integration",
             session_id="session-integration",
             transcript=text,
-            response_text="integrated response",
+            response_text=f"integrated response via {origin}",
             final_state=ConversationState.IDLE,
         )
 
@@ -180,7 +180,8 @@ def test_headless_client_can_call_readiness_endpoint() -> None:
 def test_headless_client_can_drive_text_turn_with_stubbed_llm() -> None:
     response = _client().post("/task/text", json={"text": "hello"})
     assert response.status_code == 200
-    assert response.json()["response_text"] == "integrated response"
+    assert response.json()["response_text"] == "integrated response via api"
+    assert response.json()["origin"] == "api", "a headless client's turn must be attributed to the HTTP interface"
 
 
 @pytest.mark.usefixtures("new_manager")

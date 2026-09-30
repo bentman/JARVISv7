@@ -9,26 +9,32 @@ const DEFAULT_PREFS = {
 const PRESETS = {
   fontSize: {
     default: {
-      "--text-sm": "0.78rem",
-      "--text-md": "0.86rem",
-      "--text-lg": "1.12rem",
+      "--text-xs": "0.75rem",
+      "--text-sm": "0.8125rem",
+      "--text-md": "0.875rem",
+      "--text-lg": "1rem",
+      "--text-xl": "1.25rem",
     },
     larger: {
-      "--text-sm": "0.88rem",
-      "--text-md": "0.98rem",
-      "--text-lg": "1.26rem",
+      "--text-xs": "0.8125rem",
+      "--text-sm": "0.875rem",
+      "--text-md": "0.9375rem",
+      "--text-lg": "1.125rem",
+      "--text-xl": "1.375rem",
     },
   },
   density: {
     default: {
-      "--space-2": "6px",
-      "--space-3": "8px",
-      "--space-4": "10px",
+      "--space-1": "4px",
+      "--space-2": "8px",
+      "--space-3": "12px",
+      "--space-4": "16px",
     },
     compact: {
-      "--space-2": "4px",
-      "--space-3": "6px",
-      "--space-4": "8px",
+      "--space-1": "3px",
+      "--space-2": "6px",
+      "--space-3": "8px",
+      "--space-4": "12px",
     },
   },
   accent: {

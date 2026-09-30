@@ -1,3 +1,9 @@
+import { confirmDestructive } from "./ui/confirm.js";
+import { appendText, button, buttonRow, details, facts, field, option, statusBadge } from "./ui/dom.js";
+import { errorMessage, formatTime, humanize, isConflict, statusText } from "./ui/format.js";
+import { createPanelLifecycle, messageRegion, renderPanelHeader, section, sectionState } from "./ui/panel.js";
+import { TEXT } from "./ui/vocabulary.js";
+
 const MEMORY_KINDS = [
   "unclassified",
   "user_preference",
@@ -18,18 +24,11 @@ const MEMORY_STATES = [
   "forgotten",
 ];
 
-function errorMessage(error, fallback) {
-  return error?.detail?.message || error?.message || fallback;
-}
-
-function isConflict(error) {
-  return error?.status === 409 || error?.detail?.error === "conflict";
-}
 
 export function formatCurationResult(result) {
   if (!result) return "";
   return [
-    result.reason_code,
+    humanize(result.reason_code),
     `proposed ${result.candidates_proposed}`,
     `pending review ${result.pending_review_created}`,
     `active ${result.active_records_created}`,
@@ -286,20 +285,6 @@ export function createMemoryPanelController(handlers, render = () => undefined) 
   };
 }
 
-function appendText(parent, text, tagName = "span", className = "") {
-  const element = document.createElement(tagName);
-  element.textContent = text;
-  if (className) element.className = className;
-  parent.appendChild(element);
-  return element;
-}
-
-function formatValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  return String(value);
-}
-
 export function memoryActionsEnabled(record, mutationPending) {
   return Boolean(record) && !mutationPending;
 }
@@ -311,143 +296,106 @@ export function curationActivityState(status) {
   return "idle";
 }
 
-function labeledValue(parent, label, value) {
-  const row = document.createElement("div");
-  row.className = "memory-field";
-  appendText(row, label, "dt");
-  appendText(row, formatValue(value), "dd");
-  parent.appendChild(row);
-}
-
-function option(select, value, label) {
-  const item = document.createElement("option");
-  item.value = value;
-  item.textContent = label;
-  select.appendChild(item);
-}
+const CURATION_TEXT = { blocked: "Unavailable", degraded: "Degraded", running: "Processing", idle: "Idle" };
+const LIFECYCLE_TEXT = { pending_review: "Waiting for review" };
 
 function renderCuration(state) {
-  const section = document.createElement("section");
-  section.className = "memory-section";
-  appendText(section, "Policy & curation", "h3");
+  const node = section("Policy & curation");
 
   if (state.policy) {
     const label = document.createElement("label");
-    label.className = "memory-policy-toggle";
+    label.className = "panel-choice";
     const toggle = document.createElement("input");
     toggle.type = "checkbox";
     toggle.checked = Boolean(state.policy.automatic_curation_enabled);
     toggle.disabled = state.policyPending;
+    toggle.dataset.focusKey = "memory:policy";
     toggle.addEventListener("change", () => state.actions.updatePolicy(toggle.checked));
-    appendText(label, "Automatic retention (opt-in)");
-    label.prepend(toggle);
-    section.appendChild(label);
+    label.append(toggle, document.createTextNode("Automatic retention (opt-in)"));
+    node.appendChild(label);
     appendText(
-      section,
+      node,
       "Model-proposed memories remain application-governed. Enabling this allows automatic review; it does not bypass lifecycle controls.",
       "p",
-      "memory-help",
+      "panel-help",
     );
   } else if (!state.policyError) {
-    appendText(section, "Loading memory policy…", "p", "memory-help");
+    appendText(node, TEXT.loading("memory policy"), "p", "panel-help");
   }
 
   const status = state.curation;
   if (status) {
     const statusName = curationActivityState(status);
-    const badge = appendText(section, statusName, "strong", "memory-status");
-    badge.dataset.state = statusName;
-    const facts = document.createElement("dl");
-    facts.className = "memory-facts";
-    labeledValue(facts, "Pending", status.pending_count);
-    labeledValue(facts, "Processing", status.processing_count);
-    labeledValue(facts, "Failed", status.failed_count);
-    labeledValue(facts, "Current job", status.current_job_id);
-    labeledValue(facts, "Reason", status.degraded_reason || status.last_result_reason);
-    labeledValue(facts, "Processor result", formatCurationResult(status.last_result));
-    labeledValue(facts, "Updated", status.last_updated_at);
-    section.appendChild(facts);
-    if (status.recent_jobs?.length) {
-      const jobs = document.createElement("details");
-      const summary = document.createElement("summary");
-      summary.textContent = `Recent jobs (${status.jobs_returned})`;
-      jobs.appendChild(summary);
-      for (const job of status.recent_jobs) {
-        const row = document.createElement("p");
-        const result = formatCurationResult(job.result);
-        row.textContent = `${job.status} · ${result || job.last_reason || job.blocked_reason || "no reason"} · enqueued ${job.enqueued_at} · started ${formatValue(job.started_at)} · completed ${formatValue(job.completed_at)} · updated ${job.updated_at}`;
-        jobs.appendChild(row);
-      }
-      section.appendChild(jobs);
+    node.appendChild(statusBadge(CURATION_TEXT[statusName], statusName));
+    node.appendChild(facts([
+      ["Pending", status.pending_count],
+      ["Processing", status.processing_count],
+      ["Failed", status.failed_count],
+      ["Reason", humanize(status.degraded_reason || status.last_result_reason)],
+      ["Processor result", formatCurationResult(status.last_result)],
+      ["Updated", formatTime(status.last_updated_at)],
+    ]));
+    const jobs = details([["Current job", status.current_job_id]], null, `Recent jobs (${status.jobs_returned || 0})`);
+    for (const job of status.recent_jobs || []) {
+      const result = formatCurationResult(job.result);
+      appendText(jobs, `${statusText(job.status)} · ${result || humanize(job.last_reason || job.blocked_reason || "no reason")} · queued ${formatTime(job.enqueued_at)} · finished ${formatTime(job.completed_at)}`, "p", "panel-help");
     }
+    node.appendChild(jobs);
   } else if (!state.curationError) {
-    appendText(section, "Loading curation status…", "p", "memory-help");
+    appendText(node, TEXT.loading("curation status"), "p", "panel-help");
   }
-  return section;
+  return node;
 }
 
 function renderContracts(state) {
-  const section = document.createElement("section");
-  section.className = "memory-section";
-  appendText(section, "Layers & retention", "h3");
-  if (state.contractError) {
-    appendText(section, state.contractError, "p", "memory-error");
-    return section;
-  }
+  const node = section("Layers & retention");
+  if (sectionState(node, { error: state.contractError })) return node;
   const layerRows = state.layers?.layers || [];
   if (!layerRows.length && !state.retentionPolicy) {
-    appendText(section, "Loading memory contracts…", "p", "memory-help");
-    return section;
+    appendText(node, TEXT.loading("memory contracts"), "p", "panel-help");
+    return node;
   }
-  const facts = document.createElement("dl");
-  facts.className = "memory-facts";
-  const implemented = layerRows.filter((item) => item.implementation_state === "implemented").length;
-  const defined = layerRows.filter((item) => item.implementation_state === "defined_next").length;
-  const decisions = layerRows.filter((item) => item.implementation_state === "decision_required").length;
-  labeledValue(facts, "Implemented layers", implemented);
-  labeledValue(facts, "Defined next", defined);
-  labeledValue(facts, "Decisions required", decisions);
-  labeledValue(facts, "Artifact owner", state.retentionPolicy?.source_artifact_owner);
-  labeledValue(facts, "Physical erasure", state.retentionPolicy?.physical_erasure_available);
-  section.appendChild(facts);
+  const count = (value) => layerRows.filter((item) => item.implementation_state === value).length;
+  node.appendChild(facts([
+    ["Implemented layers", count("implemented")],
+    ["Defined next", count("defined_next")],
+    ["Decisions required", count("decision_required")],
+    ["Artifact owner", humanize(state.retentionPolicy?.source_artifact_owner)],
+    ["Physical erasure", state.retentionPolicy?.physical_erasure_available],
+  ]));
   if (state.retentionPolicy?.source_artifact_erasure_scope) {
-    appendText(section, state.retentionPolicy.source_artifact_erasure_scope, "p", "memory-help");
+    appendText(node, state.retentionPolicy.source_artifact_erasure_scope, "p", "panel-help");
   }
-  return section;
+  return node;
 }
 
 function renderFilters(state) {
   const form = document.createElement("form");
   form.className = "memory-filters";
-  const searchLabel = document.createElement("label");
-  searchLabel.textContent = "Search";
   const search = document.createElement("input");
   search.type = "search";
   search.maxLength = 240;
   search.value = state.filters.query || "";
-  searchLabel.appendChild(search);
+  search.dataset.draftKey = "memory:search";
 
-  const kindLabel = document.createElement("label");
-  kindLabel.textContent = "Kind";
   const kind = document.createElement("select");
-  option(kind, "", "Default kinds");
-  for (const value of MEMORY_KINDS) option(kind, value, value.replaceAll("_", " "));
+  kind.dataset.draftKey = "memory:kind";
+  kind.appendChild(option("", "Default kinds"));
+  for (const value of MEMORY_KINDS) kind.appendChild(option(value, humanize(value)));
   kind.value = state.filters.kind || "";
-  kindLabel.appendChild(kind);
 
-  const lifecycleLabel = document.createElement("label");
-  lifecycleLabel.textContent = "Lifecycle";
   const lifecycle = document.createElement("select");
-  option(lifecycle, "", "Active + review");
-  for (const value of MEMORY_STATES) option(lifecycle, value, value.replaceAll("_", " "));
+  lifecycle.dataset.draftKey = "memory:lifecycle";
+  lifecycle.appendChild(option("", "Active + review"));
+  for (const value of MEMORY_STATES) lifecycle.appendChild(option(value, humanize(value, LIFECYCLE_TEXT)));
   lifecycle.value = state.filters.lifecycleState || "";
-  lifecycleLabel.appendChild(lifecycle);
 
-  const apply = document.createElement("button");
-  apply.type = "submit";
-  apply.textContent = "Apply";
-  apply.disabled = state.listLoading;
-  form.append(searchLabel, kindLabel, lifecycleLabel, apply);
+  form.append(
+    field("Search", search),
+    field("Kind", kind),
+    field("Lifecycle", lifecycle),
+    buttonRow(button("Apply", { type: "submit", disabled: state.listLoading, focusKey: "memory:apply" })),
+  );
   form.addEventListener("submit", (event) => {
     event.preventDefault();
     state.actions.refreshList({
@@ -461,120 +409,83 @@ function renderFilters(state) {
 }
 
 function renderList(state) {
-  const section = document.createElement("section");
-  section.className = "memory-section";
-  appendText(section, "Records", "h3");
-  section.appendChild(renderFilters(state));
-  if (state.listLoading) appendText(section, "Loading records…", "p", "memory-help");
-  if (state.listError) appendText(section, state.listError, "p", "memory-error");
+  const node = section("Records");
+  node.appendChild(renderFilters(state));
+  if (state.listLoading) appendText(node, TEXT.loading("records"), "p", "panel-help");
+  if (state.listError) appendText(node, state.listError, "p", "panel-error");
   const records = state.list?.records || [];
   if (!state.listLoading && !state.listError && records.length === 0) {
-    appendText(section, "No memories match these bounded filters.", "p", "memory-help");
+    appendText(node, "No memories match these filters.", "p", "panel-help");
   }
   const list = document.createElement("div");
   list.className = "memory-list";
+  list.dataset.scrollKey = "memory:list";
   for (const record of records) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "memory-row";
-    button.dataset.state = record.lifecycle_state;
-    button.setAttribute("aria-pressed", state.detail?.record?.fact_id === record.fact_id ? "true" : "false");
-    appendText(button, record.text, "strong");
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "memory-row";
+    row.dataset.state = record.lifecycle_state;
+    row.dataset.focusKey = `memory:${record.fact_id}`;
+    row.setAttribute("aria-pressed", state.detail?.record?.fact_id === record.fact_id ? "true" : "false");
+    appendText(row, record.text, "strong");
+    appendText(row, `${humanize(record.kind)} · ${humanize(record.evidence_authority)} · ${humanize(record.lifecycle_state, LIFECYCLE_TEXT)}`, "span", "panel-help");
     appendText(
-      button,
-      `${record.kind} · ${record.evidence_authority} · ${record.lifecycle_state}`,
+      row,
+      `Updated ${formatTime(record.updated_at)} · reinforced ${record.reinforcement_count} · ${record.eligible_for_normal_retrieval ? "used in answers" : "not used in answers"}`,
       "span",
-      "memory-row-meta",
+      "panel-help",
     );
-    appendText(
-      button,
-      `updated ${record.updated_at} · reinforced ${record.reinforcement_count} · retrieval ${record.eligible_for_normal_retrieval ? "eligible" : "ineligible"}`,
-      "span",
-      "memory-row-meta",
-    );
-    button.addEventListener("click", () => state.actions.selectMemory(record.fact_id));
-    list.appendChild(button);
+    row.addEventListener("click", () => state.actions.selectMemory(record.fact_id));
+    list.appendChild(row);
   }
-  section.appendChild(list);
+  node.appendChild(list);
   if (state.list?.results_truncated) {
-    appendText(section, "Results were truncated by the bounded backend query.", "p", "memory-help");
+    appendText(node, "More memories match; narrow the filters to see them.", "p", "panel-help");
   }
-  return section;
+  return node;
 }
 
 function renderEvidence(detail) {
   const container = document.createElement("div");
-  const evidence = document.createElement("details");
-  const evidenceSummary = document.createElement("summary");
-  evidenceSummary.textContent = `Evidence (${detail.evidence_returned}/${detail.evidence_total})`;
-  evidence.appendChild(evidenceSummary);
+  const evidence = details([], null, `Evidence (${detail.evidence_returned}/${detail.evidence_total})`);
   for (const item of detail.evidence || []) {
-    const row = document.createElement("p");
-    row.textContent = `${item.authority} · session ${formatValue(item.source_session_id)} · turn ${formatValue(item.source_turn_id)} · field ${formatValue(item.source_field)} · ${item.observed_at}`;
-    evidence.appendChild(row);
+    appendText(evidence, `${humanize(item.authority)} · ${formatTime(item.observed_at)}`, "p", "panel-help");
+    evidence.appendChild(facts([["Session", item.source_session_id], ["Turn", item.source_turn_id], ["Field", item.source_field]]));
   }
-  if (detail.evidence_truncated) appendText(evidence, "Additional evidence is not shown.", "p", "memory-help");
+  if (detail.evidence_truncated) appendText(evidence, "Additional evidence is not shown.", "p", "panel-help");
 
-  const events = document.createElement("details");
-  const eventsSummary = document.createElement("summary");
-  eventsSummary.textContent = `Lifecycle (${detail.events_returned}/${detail.events_total})`;
-  events.appendChild(eventsSummary);
+  const events = details([], null, `Lifecycle (${detail.events_returned}/${detail.events_total})`);
   for (const item of detail.events || []) {
-    const row = document.createElement("p");
-    row.textContent = `${item.event_type}: ${formatValue(item.prior_state)} → ${formatValue(item.resulting_state)} · ${item.reason_code} · related ${formatValue(item.related_fact_id)} · ${item.occurred_at}`;
-    events.appendChild(row);
+    appendText(events, `${humanize(item.event_type)}: ${humanize(item.prior_state, LIFECYCLE_TEXT)} → ${humanize(item.resulting_state, LIFECYCLE_TEXT)} · ${humanize(item.reason_code)} · ${formatTime(item.occurred_at)}`, "p", "panel-help");
   }
-  if (detail.events_truncated) appendText(events, "Additional lifecycle events are not shown.", "p", "memory-help");
+  if (detail.events_truncated) appendText(events, "Additional lifecycle events are not shown.", "p", "panel-help");
   container.append(evidence, events);
   return container;
 }
 
-function renderActions(state, record) {
-  const section = document.createElement("section");
-  section.className = "memory-actions";
-  appendText(section, "Actions", "h4");
-  const pending = state.mutationPending;
-  const actionsEnabled = memoryActionsEnabled(record, pending);
+function renderReview(state, record) {
+  const node = document.createElement("section");
+  node.className = "memory-actions";
+  appendText(node, "Review", "h4");
+  const enabled = memoryActionsEnabled(record, state.mutationPending);
 
-  const confirm = document.createElement("button");
-  confirm.type = "button";
-  confirm.textContent = "Confirm";
-  confirm.disabled = !actionsEnabled;
-  confirm.addEventListener("click", () => state.actions.confirm());
-
-  const dispute = document.createElement("button");
-  dispute.type = "button";
-  dispute.textContent = "Dispute";
-  dispute.disabled = !actionsEnabled;
-  dispute.addEventListener("click", () => state.actions.dispute());
-
-  const forget = document.createElement("button");
-  forget.type = "button";
-  forget.textContent = "Forget";
-  forget.disabled = !actionsEnabled;
-  forget.addEventListener("click", () => state.actions.forget());
-
-  const correction = document.createElement("form");
-  correction.className = "memory-correction";
-  const textLabel = document.createElement("label");
-  textLabel.textContent = "Replacement text";
   const text = document.createElement("textarea");
   text.required = true;
   text.maxLength = 240;
   text.value = record.text || "";
-  textLabel.appendChild(text);
-  const valueLabel = document.createElement("label");
-  valueLabel.textContent = "Replacement value (optional)";
+  text.dataset.draftKey = `memory:${record.fact_id}:replacement-text`;
   const value = document.createElement("input");
   value.type = "text";
   value.maxLength = 160;
   value.value = record.value || "";
-  valueLabel.appendChild(value);
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Correct";
-  submit.disabled = !actionsEnabled;
-  correction.append(textLabel, valueLabel, submit);
+  value.dataset.draftKey = `memory:${record.fact_id}:replacement-value`;
+  const correction = document.createElement("form");
+  correction.className = "memory-correction";
+  correction.append(
+    field("Replacement text", text),
+    field("Replacement value (optional)", value),
+    buttonRow(button("Correct", { type: "submit", disabled: !enabled, focusKey: "memory:correct" })),
+  );
   correction.addEventListener("submit", (event) => {
     event.preventDefault();
     const replacementText = text.value.trim();
@@ -582,91 +493,77 @@ function renderActions(state, record) {
     state.actions.correct({ replacementText, replacementValue: value.value.trim() || null });
   });
 
-  const buttons = document.createElement("div");
-  buttons.className = "memory-action-buttons";
-  buttons.append(confirm, dispute, forget);
-  section.append(buttons, correction);
-  appendText(
-    section,
-    "Forgetting stops use of this semantic record. Source conversation and session artifacts are separate and are not erased by this operation.",
-    "p",
-    "memory-help",
+  node.append(
+    buttonRow(
+      button("Confirm", { variant: "primary", disabled: !enabled, onClick: () => state.actions.confirm(), focusKey: "memory:confirm" }),
+      button("Dispute", { disabled: !enabled, onClick: () => state.actions.dispute(), focusKey: "memory:dispute" }),
+      button("Forget", { variant: "danger", disabled: !enabled, onClick: () => state.actions.forget(), focusKey: "memory:forget" }),
+    ),
+    correction,
   );
-  return section;
+  appendText(
+    node,
+    "Forgetting stops use of this memory. The conversations it came from are separate and are not erased by this operation.",
+    "p",
+    "panel-help",
+  );
+  return node;
 }
 
 function renderDetail(state) {
-  const section = document.createElement("section");
-  section.className = "memory-section memory-detail";
-  appendText(section, "Detail", "h3");
-  if (state.detailLoading) appendText(section, "Loading detail…", "p", "memory-help");
-  if (state.detailError) appendText(section, state.detailError, "p", "memory-error");
+  const node = section("Memory detail");
+  if (state.detailLoading) appendText(node, TEXT.loading("the memory"), "p", "panel-help");
+  if (state.detailError) appendText(node, state.detailError, "p", "panel-error");
   const detail = state.detail;
   if (!detail) {
-    if (!state.detailLoading && !state.detailError) appendText(section, "Select a memory to inspect it.", "p", "memory-help");
-    return section;
+    if (!state.detailLoading && !state.detailError) appendText(node, "Select a memory to review it.", "p", "panel-help");
+    return node;
   }
   const record = detail.record;
-  appendText(section, record.text, "p", "memory-claim");
-  const facts = document.createElement("dl");
-  facts.className = "memory-facts";
-  labeledValue(facts, "Value", record.value);
-  labeledValue(facts, "Kind", record.kind);
-  labeledValue(facts, "Authority", record.evidence_authority);
-  labeledValue(facts, "State", record.lifecycle_state);
-  labeledValue(facts, "Retrieval", record.eligible_for_normal_retrieval ? "eligible" : "ineligible");
-  labeledValue(facts, "Confidence", record.confidence);
-  labeledValue(facts, "Importance", record.importance);
-  labeledValue(facts, "Reinforcement", record.reinforcement_count);
-  labeledValue(facts, "Revision", record.revision);
-  labeledValue(facts, "Created", record.created_at);
-  labeledValue(facts, "Updated", record.updated_at);
-  labeledValue(facts, "Confirmed", record.confirmed_at);
-  labeledValue(facts, "Expires", record.expires_at);
-  labeledValue(facts, "Replacement", record.superseded_by_fact_id);
-  section.append(facts, renderEvidence(detail), renderActions(state, record));
-  if (detail.forgetting_scope) {
-    appendText(section, detail.forgetting_scope, "p", "memory-help");
-  }
+  appendText(node, record.text, "p", "memory-claim");
+  node.appendChild(facts([
+    ["Value", record.value],
+    ["Kind", humanize(record.kind)],
+    ["Authority", humanize(record.evidence_authority)],
+    ["State", humanize(record.lifecycle_state, LIFECYCLE_TEXT)],
+    ["Used in answers", record.eligible_for_normal_retrieval],
+    ["Confidence", record.confidence],
+    ["Importance", record.importance],
+    ["Reinforcement", record.reinforcement_count],
+    ["Created", formatTime(record.created_at)],
+    ["Updated", formatTime(record.updated_at)],
+    ["Confirmed", formatTime(record.confirmed_at)],
+    ["Expires", formatTime(record.expires_at)],
+  ]));
+  node.appendChild(details([["Memory", record.fact_id], ["Revision", record.revision], ["Replaced by", record.superseded_by_fact_id]]));
+  node.append(renderEvidence(detail), renderReview(state, record));
+  if (detail.forgetting_scope) appendText(node, detail.forgetting_scope, "p", "panel-help");
   if (state.correction) {
-    appendText(
-      section,
-      `${state.correction.relation}: ${state.correction.original.fact_id} → ${state.correction.replacement.fact_id}`,
-      "p",
-      "memory-notice",
-    );
+    appendText(node, `${humanize(state.correction.relation)}: the corrected memory replaces the original.`, "p", "panel-notice");
+    node.appendChild(details([
+      ["Original", state.correction.original.fact_id],
+      ["Replacement", state.correction.replacement.fact_id],
+    ]));
   }
-  return section;
+  return node;
 }
 
-function renderPanel(container, state, actions) {
-  const view = { ...state, actions };
-  const header = document.createElement("div");
-  header.className = "memory-panel-header";
-  const heading = appendText(header, "Memory", "h2");
-  heading.tabIndex = -1;
-
-  const messages = document.createElement("div");
-  messages.setAttribute("aria-live", "polite");
-  for (const message of [state.conflict, state.policyError, state.contractError, state.curationError, state.notice]) {
-    if (message) appendText(messages, message, "p", message === state.notice ? "memory-notice" : "memory-error");
-  }
-  container.replaceChildren(
-    header,
-    messages,
-    renderContracts(view),
-    renderCuration(view),
-    renderList(view),
-    renderDetail(view),
-  );
+function renderPanel(state) {
+  const errors = [state.conflict, state.policyError, state.contractError, state.curationError].filter(Boolean).join(" ");
+  return [
+    renderPanelHeader("Memory"),
+    messageRegion({ notice: state.notice, error: errors }),
+    renderContracts(state),
+    renderCuration(state),
+    renderList(state),
+    renderDetail(state),
+  ];
 }
 
 export function createMemoryPanel(container, handlers, options = {}) {
-  let open = false;
-  const confirmForget = options.confirmForget || ((message) => window.confirm(message));
+  const confirmForget = options.confirmForget || confirmDestructive;
   let controller;
   const actions = {
-    close: () => close(),
     refreshList: (filters) => controller.refreshList(filters),
     selectMemory: (factId) => controller.selectMemory(factId),
     updatePolicy: (enabled) => controller.updatePolicy(enabled),
@@ -675,26 +572,12 @@ export function createMemoryPanel(container, handlers, options = {}) {
     dispute: () => controller.dispute(),
     forget: () => controller.forget(confirmForget),
   };
-  controller = createMemoryPanelController(handlers, (state) => {
-    if (open) renderPanel(container, state, actions);
+  const lifecycle = createPanelLifecycle(container, {
+    load: () => controller.load(),
+    render: (state) => renderPanel({ ...state, actions }),
+    cancelPendingReads: () => controller.cancelPendingReads(),
+    onClose: options.onClose,
   });
-
-  async function show() {
-    open = true;
-    container.hidden = false;
-    renderPanel(container, controller.snapshot(), actions);
-    await controller.load();
-    container.querySelector("h2")?.focus();
-  }
-
-  function close() {
-    if (!open) return;
-    open = false;
-    controller.cancelPendingReads();
-    container.hidden = true;
-    container.replaceChildren();
-    options.onClose?.();
-  }
-
-  return { open: show, close, isOpen: () => open, controller };
+  controller = createMemoryPanelController(handlers, lifecycle.draw);
+  return { open: lifecycle.open, close: lifecycle.close, isOpen: lifecycle.isOpen, controller };
 }

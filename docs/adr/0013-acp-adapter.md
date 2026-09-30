@@ -2,7 +2,7 @@
 
 Date: 2026-09-14
 Status: Accepted
-Related: 0002, 0005, 0006, 0007, 0009
+Related: 0002, 0005, 0006, 0007, 0009, 0014
 
 ## Context and Problem Statement
 
@@ -58,7 +58,7 @@ ACP work enters `TurnEngine.run_extension` admission and records delegated-run e
 
 ### Inbound
 
-`backend/app/extensions/acp_server.py` implements a persistent local JSON-RPC bridge over loopback TCP, with tracked sessions, limits, timeouts, and requests routed through `TurnEngine.run_text_turn`. `backend/app/api/routes/acp_server.py` exposes start, stop, status, and session listing. Its lifecycle is implemented; its handshake and message shapes still require ACP v2 alignment.
+`backend/app/extensions/acp_server.py` implements a persistent local JSON-RPC bridge over loopback TCP, with tracked sessions, limits, timeouts, and requests routed through `TurnEngine.run_text_turn` with origin `acp`, so its turns appear in the operator's conversation under ADR 0014's continuity contract. `backend/app/api/routes/acp_server.py` exposes start, stop, status, and session listing. Its lifecycle is implemented; its handshake and message shapes still require ACP v2 alignment.
 
 ### Boundaries owned elsewhere
 

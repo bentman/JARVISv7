@@ -1,8 +1,8 @@
 # 0008 - Operator Experience
 
 Date: 2026-09-07
-Status: Accepted
-Related: 0005, 0006, 0007, 0010, 0011, 0013
+Status: Implemented
+Related: 0005, 0006, 0007, 0010, 0011, 0013, 0014
 
 ## Context and Problem Statement
 
@@ -47,9 +47,9 @@ The advanced-control panel contains categories for:
 | Category | Current source |
 |---|---|
 | Providers & Models | `llm-provider-settings.js`: primary/fallback/cloud selection, profile CRUD, connection test, credential rotation |
-| Operator Settings | Operator-config fields and `appearance-controls.js` |
+| Settings | Operator-config fields and `appearance-controls.js` |
 | Memory | `memory-panel.js` |
-| Actions & Capabilities | `actions-panel.js` |
+| Actions | `actions-panel.js` |
 | Extensions | `extensions-panel.js` |
 | Agents | `agents-panel.js` |
 
@@ -82,7 +82,7 @@ Negative:
 
 ## Implementation
 
-This ADR is implemented in code and contract tests; native operator validation remains open.
+This ADR is implemented in code and contract tests and confirmed in native operator validation.
 
 Layout:
 - `desktop/src/index.html` keeps Backend, Readiness, and Services in the left status sidebar and adds a single `#advanced-controls-trigger` button, with the `#settings-restart-required` badge, in an `.operator-actions` section directly below Services.
@@ -140,6 +140,8 @@ This ADR owns the operator presentation of every family whose behavior another A
 
 Native `invoke_extension` is async and dispatches the blocking backend request through `tauri::async_runtime::spawn_blocking`.
 
+ADR 0014 owns the visual language, shared panel primitives, operator vocabulary, and the conversation's continuity with these surfaces; this ADR owns which surfaces exist and what each exposes.
+
 Advanced Controls stays operator-facing: Providers use profile and credential language; Memory uses review, confirm, correct, and forget language; Actions is an audit/debug view; Extensions uses ADR 0006 family workflows; Agents uses ADR 0007 and ADR 0013 workflows. Internal registry words - capability ID, proposal, authorization rule, fingerprint, local ID, raw definition - stay behind explicit detail views.
 
 ### Native validation ownership
@@ -187,10 +189,11 @@ Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_backend.py unit` when provider or action classification changes
 - Native visible-session validation on `windows-amd64` through `npm --prefix desktop run dev`, with results recorded under `reports/validation/`
 
-Native validation has covered the shell layout and sizing, Close, backdrop, focus return, per-category scroll retention, the Extensions split, the provider-profile create/select/error/delete workflow, ACP definition add/edit/remove, the agent workflows (definition picker, Test connection, invocation, a permission request answered from the Agents panel, in-flight cancellation, last-run output), and the readable action audit with its Details disclosures. The items under Follow-up remain open.
+Native validation has covered the shell layout and sizing, Close, backdrop, focus return, per-category scroll retention, the Extensions split, the provider-profile create/select/error/delete workflow, ACP definition add/edit/remove, the agent workflows (definition picker, Test connection, invocation, a permission request answered from the Agents panel, in-flight cancellation, last-run output), and the readable action audit with its Details disclosures. It has also covered Escape dismissal by physical keypress; a model-proposed approval raised in a conversation turn and decided from the Actions panel and from the conversation card; MCP invocation, elicitation answered from the Extensions panel, confirmed cancellation, Disconnect, and reconnection after the server process was killed mid-call and after a call outlived its deadline; and ADR 0014's surface - one visual language across the shell and all six categories, a `POST /task/text` turn from another client appearing with its origin, a handoff reply attributed to its agent, and the conversation surviving a page reload. Which MCP call paths report `outcome_unknown` is ADR 0010's; the operator presentation of that status is covered by `desktop/tests/actions.test.mjs` and `desktop/tests/extensions.test.mjs`.
 
 ## Follow-up
 
-- Confirm Escape dismissal of the Advanced Controls dialog with a physical keypress in the native window; injected Escape did not reach the window during automated validation.
-- Obtain native evidence for a model-proposed approval-required action decided from the Actions panel.
-- Verify MCP extension invocation, nested elicitation, answering input, cancellation, Disconnect, and session failure (`outcome_unknown`) recovery in the native application against a configured MCP server.
+None for this ADR.
+
+Future operator-surface work should update this ADR when it preserves the same architecture,
+or create/supersede an ADR when it changes the architecture.

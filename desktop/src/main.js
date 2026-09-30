@@ -12,11 +12,13 @@ import { createMemoryPanel } from "./components/memory-panel.js";
 import { createActionsPanel } from "./components/actions-panel.js";
 import { createExtensionsPanel } from "./components/extensions-panel.js";
 import { createAgentsPanel, createHandoffStatus } from "./components/agents-panel.js";
+import { errorMessage } from "./components/ui/format.js";
 import { createAdvancedPanelCoordinator } from "./components/advanced-panel.js";
 import { createDesktopState } from "./components/desktop-state.js";
 import { renderWakeStatus } from "./components/wake-indicator.js";
 import { createDesktopPolling } from "./components/desktop-polling.js";
-import { createSearchStatus, renderSearchEvidence } from "./components/search-evidence.js";
+import { createSearchStatus } from "./components/search-evidence.js";
+import { createConversation } from "./components/conversation.js";
 
 const healthEl = document.querySelector("#backend-health");
 const sessionEl = document.querySelector("#session-id");
@@ -67,6 +69,8 @@ const searchStatus = createSearchStatus({
 const handoffStatus = createHandoffStatus({
   label: document.querySelector("#handoff-status"),
   endButton: document.querySelector("#handoff-end"),
+  openButton: document.querySelector("#handoff-open"),
+  openAgent: (profileId) => openAdvancedFocused("agents", () => agentsPanel.controller.selectAgent(profileId)),
   endHandoff: (sessionId) => api.endHandoff(sessionId),
   onEnded: () => refreshSessionStatus(),
   onError: (error) => showError(String(error)),
@@ -236,6 +240,21 @@ async function openAdvancedCategory(categoryId) {
     if (advancedDetailEl) advancedDetailEl.scrollTop = advancedScrollPositions.get(opened) || 0;
   }
   renderAdvancedRail();
+  return opened;
+}
+
+// Opens Advanced Controls on one category, then points that panel at the item the operator
+// followed a link for.
+async function openAdvancedFocused(categoryId, focus) {
+  if (!advancedDialogEl.open) {
+    advancedDialogEl.showModal();
+    updateSettingsRestartRequired(restartRequiredScopes().length > 0);
+  }
+  try {
+    if (await openAdvancedCategory(categoryId)) await focus();
+  } catch (error) {
+    showError(errorMessage(error));
+  }
 }
 
 const presenceByProfile = {
@@ -258,25 +277,26 @@ function clearError() {
   desktopState.clearError();
 }
 
-function appendMessage(role, text, metadata = {}) {
-  const entry = document.createElement("article");
-  const stampEl = document.createElement("span");
-  const roleEl = document.createElement("strong");
-  const bodyEl = document.createElement("p");
-  entry.className = `message ${role}`;
-  if (metadata.profileId) {
-    entry.dataset.profileId = metadata.profileId;
-    entry.dataset.profileEpoch = String(metadata.profileEpoch ?? 0);
-    entry.title = `profile=${metadata.profileId}; epoch=${metadata.profileEpoch ?? 0}`;
-  }
-  stampEl.className = "stamp";
-  stampEl.textContent = new Date().toLocaleTimeString();
-  roleEl.textContent = role;
-  bodyEl.textContent = text || "(no text returned)";
-  entry.append(stampEl, roleEl, bodyEl);
-  renderSearchEvidence(entry, metadata.search, (url) => api.openSearchSource(url), (error) => showError(String(error)));
-  logEl.appendChild(entry);
-  logEl.scrollTop = logEl.scrollHeight;
+const personalityNames = new Map();
+const conversation = createConversation({
+  logEl,
+  speakerName: (profileId) => personalityNames.get(profileId || activePersonalityId) || "JARVIS",
+  openSearchSource: (url) => api.openSearchSource(url),
+  onError: (error) => showError(errorMessage(error)),
+  onOpenAction: (proposalId) => openAdvancedFocused("actions", () => actionsPanel.controller.selectProposal(proposalId)),
+  onOpenAgent: (profileId) => openAdvancedFocused("agents", () => agentsPanel.controller.selectAgent(profileId)),
+  getTurns: (after) => api.getSessionTurns(after),
+  decide: async (proposalId, outcome) => {
+    await api.decideAction(proposalId, outcome);
+    await refreshSessionStatus();
+  },
+});
+// A local text turn renders from its own response; the feed waits so it cannot render it twice.
+let localTurnPending = false;
+let lastSeenTurnCount = null;
+
+function appendMessage(role, text) {
+  conversation.note(role, text);
 }
 
 function setTextEntryEnabled(enabled) {
@@ -319,6 +339,7 @@ const residentVoice = createResidentVoicePresenter({
   setState: (state) => desktopState?.renderTurnStatus(state),
   showError,
   appendMessage,
+  syncConversation: () => conversation.sync(),
 });
 
 desktopState = createDesktopState(document.querySelector(".shell"), turnStatusAnchorEl, errorEl);
@@ -335,6 +356,11 @@ function renderReadiness(readiness) {
 function renderSessionStatus(status) {
   sessionEl.textContent = status.session_id || "not active";
   if (turnCountEl) turnCountEl.textContent = String(status.turn_count ?? 0);
+  conversation.renderPending(status.pending_approval || null);
+  if (!localTurnPending && status.turn_count !== lastSeenTurnCount) {
+    lastSeenTurnCount = status.turn_count;
+    conversation.sync();
+  }
   renderConversationDebug(status, voiceDetailEl);
   residentVoice.renderResidentVoiceStatus(status);
   if (desktopState) desktopState.renderTurnStatus(status.state);
@@ -539,6 +565,7 @@ async function refreshPersonalityProfiles() {
   let selectedProfile = null;
   personalitySelectEl.innerHTML = "";
   for (const profile of payload.profiles || []) {
+    personalityNames.set(profile.profile_id, profile.display_name || profile.profile_id);
     const option = document.createElement("option");
     option.value = profile.profile_id;
     option.textContent = `${profile.display_name} (${profile.profile_id})`;
@@ -621,6 +648,7 @@ async function startDesktop() {
     let personalityPayload = await refreshPersonalityProfiles();
     personalityPayload = await applyStoredPersonalityIfAvailable(personalityPayload);
     personalityPayload = await refreshPersonalityProfiles();
+    await conversation.sync();
     appendMessage("system", "Backend started and readiness loaded.");
     appendMessage("system", `Active personality confirmed: ${personalityPayload.active_profile_id || activePersonalityId}.`);
     setTextEntryEnabled(true);
@@ -679,6 +707,7 @@ async function submitText(text) {
   desktopState?.setPendingState("REASONING");
   appendPresence("reasoning");
   sendButton.disabled = true;
+  localTurnPending = true;
 
   try {
     const response = await api.submitText(text);
@@ -686,16 +715,22 @@ async function submitText(text) {
     if (response.failure_reason) {
       showError(response.failure_reason);
     }
-    appendMessage("assistant", response.response_text || response.failure_reason, {
-      profileId: response.active_personality_profile_id,
-      profileEpoch: response.profile_epoch,
-      search: response.search,
-    });
+    conversation.renderTurn(
+      {
+        ...response,
+        transcript: text,
+        input_modality: "text",
+        personality_profile_id: response.active_personality_profile_id,
+      },
+      { transcriptShown: true },
+    );
+    localTurnPending = false;
     await refreshSessionStatus();
   } catch (error) {
     desktopState?.renderTurnStatus("FAILED");
-    showError(String(error));
+    showError(errorMessage(error));
   } finally {
+    localTurnPending = false;
     sendButton.disabled = personalitySelectionPending;
     inputEl.focus();
   }
@@ -780,10 +815,9 @@ if (wakeToggleEl) {
   });
 }
 
+// A reload keeps the backend and its session; closing the window shuts both down natively.
 window.addEventListener("beforeunload", () => {
   stopAllPolling();
-  api?.stopWakeMonitor().catch(() => undefined);
-  api?.stopBackend().catch(() => undefined);
 });
 
 async function startApp() {

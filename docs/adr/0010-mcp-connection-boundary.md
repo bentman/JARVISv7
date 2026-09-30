@@ -95,4 +95,8 @@ Protocol conformance gaps against the 2026-07-28 specification, each verified ag
 - Per-page cache metadata is collapsed to the first page. The specification makes each page independently cacheable with its own freshness clock.
 - `_list_all_optional` swallows every exception for resource templates, turning an authorization or transport failure into an empty list with no descriptor-problem evidence.
 
+Call outcome classification:
+
+- No MCP tool-call path reports `outcome_unknown`, although `SessionCallOutcomeUnknownError` (ADR 0009) exists for calls that may have run. A call that outlives its operation deadline is recorded as `cancelled`, because the operation's own deadline check raises `ActionCancelledError` before the session timeout fires. A server that dies mid-call is recorded as `failure`, because `ExtensionRuntimeService._mcp` converts `SessionResourceDiedError` to `ValueError`. The SDK reports a peer that died before the request was sent and one that died while it was in flight with the same `CONNECTION_CLOSED` error, and `test_a_tool_call_against_a_killed_process_evicts_the_connection_instead_of_wedging_it` pins the former as `failure`. Separating the two needs a decision on how liveness is established before a tool call.
+
 Operator-facing MCP presentation is owned by ADR 0008.

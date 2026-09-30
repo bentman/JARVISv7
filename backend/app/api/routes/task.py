@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException
 router = APIRouter()
 
 
-def text_turn_response(result: TurnResult) -> TextTurnResponse:
+def text_turn_response(result: TurnResult, *, origin: str = "api", agent: dict[str, str] | None = None) -> TextTurnResponse:
     return TextTurnResponse(
         turn_id=result.turn_id,
         session_id=result.session_id,
@@ -21,6 +21,8 @@ def text_turn_response(result: TurnResult) -> TextTurnResponse:
         active_personality_profile_id=result.active_personality_profile_id,
         profile_epoch=result.profile_epoch,
         search=result.search,
+        origin=origin,
+        agent=agent,
     )
 
 
@@ -28,9 +30,10 @@ def text_turn_response(result: TurnResult) -> TextTurnResponse:
 def text_turn(request: TextTurnRequest, session_service: SessionService = Depends(get_session_service)) -> TextTurnResponse:
     try:
         session_service.assert_active_session(request.session_id)
-        result = turn_service.run_text_turn(request.text, engine=session_service.engine())
+        result = turn_service.run_text_turn(request.text, engine=session_service.engine(), origin=request.origin)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return text_turn_response(result)
+    summary = session_service.turn_summary(result.turn_id)
+    return text_turn_response(result, origin=request.origin, agent=summary["agent"] if summary else None)

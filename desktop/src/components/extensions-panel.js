@@ -1,13 +1,11 @@
-import { createRenderStateKeeper } from "./render-state.js";
-import { appendRunControls } from "./run-request.js";
+import { ACTIVE_RUN_STATUSES, appendRunControls } from "./run-request.js";
+import { confirmDestructive } from "./ui/confirm.js";
+import { appendText, buttonRow, field, labeledValue } from "./ui/dom.js";
+import { errorMessage, humanize, isConflict, statusText } from "./ui/format.js";
+import { createPanelLifecycle, messageRegion, renderPanelHeader } from "./ui/panel.js";
+import { VERB } from "./ui/vocabulary.js";
 
-function errorMessage(error, fallback) {
-  return error?.detail?.message || error?.message || fallback;
-}
-
-function isConflict(error) {
-  return error?.status === 409 || error?.detail?.error === "conflict";
-}
+const FAMILY_TEXT = { mcp: "MCP", acp: "External agent" };
 
 export function extensionStateEnabled(extension, mutationPending) {
   // The backend owns which transitions are legal; the renderer only avoids double-submits
@@ -26,7 +24,7 @@ export function extensionActivityState(extension) {
 
 export function formatExtensionOrigin(extension) {
   if (!extension) return "";
-  return `${extension.family} · ${extension.trust} · v${extension.version}`;
+  return `${humanize(extension.family, FAMILY_TEXT)} · ${humanize(extension.trust)} · v${extension.version}`;
 }
 
 export function requestedCapabilities(extension) {
@@ -153,7 +151,7 @@ export function formatToolResult(result) {
 export function extensionRunTitle(run) {
   const operation = { name: run.operation || "" };
   const label = operationShortLabel(operation);
-  return [run.extension_name, label, String(run.status || "unknown").replaceAll("_", " ")]
+  return [run.extension_name, label, statusText(run.status || "unknown")]
     .filter(Boolean).join(" · ");
 }
 
@@ -180,6 +178,8 @@ export function createExtensionsPanelController(handlers, render = () => undefin
     errorsLoading: false,
     detailLoading: false,
     mutationPending: false,
+    // Invocations still waiting on the backend; their run may already be asking for input.
+    invocationsInFlight: 0,
     catalogError: "",
     errorsError: "",
     detailError: "",
@@ -292,6 +292,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       return payload;
     } catch (error) {
       if (request !== detailSequence) return null;
+      state.detail = null;
       state.detailError = errorMessage(error, "That extension is unavailable.");
       return null;
     } finally {
@@ -303,6 +304,7 @@ export function createExtensionsPanelController(handlers, render = () => undefin
   }
 
   async function invoke(extensionId, capabilityId, argumentsValue) {
+    state.invocationsInFlight += 1;
     try {
       const result = await handlers.invokeExtension(extensionId, capabilityId, argumentsValue);
       // outcome_unknown means a timeout or cancellation left the backend unable to tell
@@ -328,7 +330,13 @@ export function createExtensionsPanelController(handlers, render = () => undefin
       }
       emit();
       return result;
-    } catch (error) { state.detailError = errorMessage(error, "Extension invocation failed."); emit(); return null; }
+    } catch (error) {
+      state.detailError = errorMessage(error, "Extension invocation failed.");
+      emit();
+      return null;
+    } finally {
+      state.invocationsInFlight -= 1;
+    }
   }
 
   async function answer(runId, requestId, answerValue) {
@@ -859,7 +867,11 @@ export function createExtensionsPanelController(handlers, render = () => undefin
   }
 
   async function decide(proposalId, outcome) {
-    await handlers.decideAction(proposalId, outcome);
+    try {
+      await handlers.decideAction(proposalId, outcome);
+    } catch (error) {
+      state.detailError = errorMessage(error, "That decision was not applied.");
+    }
     await refreshRuns();
     // An approval-gated run (every stdio MCP "discover", any other privileged_execution
     // operation) resolves here, outside invoke()'s own post-invocation refresh above - without
@@ -876,9 +888,13 @@ export function createExtensionsPanelController(handlers, render = () => undefin
   async function cancel(proposalId, confirmCancel) {
     // Cancelling a run is not reversible, so it is confirmed the way the actions panel
     // confirms its own cancellations.
-    const confirmed = confirmCancel ? await confirmCancel(`Cancel run ${proposalId}?`) : true;
+    const confirmed = confirmCancel ? await confirmCancel("Cancel this run?") : true;
     if (!confirmed) return;
-    await handlers.cancelAction(proposalId);
+    try {
+      await handlers.cancelAction(proposalId);
+    } catch (error) {
+      state.detailError = errorMessage(error, "The run could not be cancelled.");
+    }
     await refreshRuns();
   }
 
@@ -1032,65 +1048,27 @@ export function createExtensionsPanelController(handlers, render = () => undefin
   };
 }
 
-function appendText(parent, text, tagName = "span", className = "") {
-  const node = document.createElement(tagName);
-  node.textContent = text;
-  if (className) node.className = className;
-  parent.appendChild(node);
-  return node;
-}
-
-function formatValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  return String(value);
-}
-
 export function formatRunStarted(startedAt) {
   if (!startedAt) return "—";
   const date = new Date(startedAt);
   return Number.isNaN(date.getTime()) ? String(startedAt) : date.toLocaleTimeString();
 }
 
-function labeledValue(parent, label, value) {
-  const field = document.createElement("div");
-  field.className = "extensions-field";
-  appendText(field, label, "dt");
-  appendText(field, formatValue(value), "dd");
-  parent.appendChild(field);
-  return field;
-}
-
-function labeled(text, control) {
-  const label = document.createElement("label");
-  label.className = "extensions-field-control";
-  appendText(label, text);
-  label.appendChild(control);
-  return label;
-}
-
-function buttonRow(...buttons) {
-  const row = document.createElement("div");
-  row.className = "extensions-buttons";
-  row.append(...buttons);
-  return row;
-}
-
 // The command and process boundary fields shared by stdio MCP connections, local tools, and
 // external agents.
 function processFields({ command, argvAllowlist, envPassthrough, workingRoot }) {
   return [
-    labeled("Command", command),
-    labeled("Allowed executables", argvAllowlist),
-    labeled("Environment passthrough", envPassthrough),
-    labeled("Working root", workingRoot),
+    field("Command", command),
+    field("Allowed executables", argvAllowlist),
+    field("Environment passthrough", envPassthrough),
+    field("Working root", workingRoot),
   ];
 }
 
 function renderCancelAdd(state) {
   const cancel = document.createElement("button");
   cancel.type = "button";
-  cancel.textContent = "Cancel";
+  cancel.textContent = VERB.discard;
   cancel.addEventListener("click", () => state.actions.cancelAdd());
   return cancel;
 }
@@ -1103,7 +1081,7 @@ function appendCredentialRefField(form, prefix, value = "") {
   credentialRef.placeholder = "Optional, e.g. weather-api-key";
   credentialRef.dataset.draftKey = `${prefix}:credential-ref`;
   credentialRef.value = value || "";
-  form.appendChild(labeled("Credential reference", credentialRef));
+  form.appendChild(field("Credential reference", credentialRef));
   return credentialRef;
 }
 
@@ -1146,12 +1124,12 @@ function appendOauthFieldset(form, prefix, oauth = {}) {
   const oauthFields = document.createElement("fieldset");
   appendText(oauthFields, "OAuth (optional)", "legend");
   oauthFields.append(
-    labeled("Client ID", oauthClientId),
-    labeled("Authorization URL", oauthAuthorizationUrl),
-    labeled("Token URL", oauthTokenUrl),
-    labeled("Scopes", oauthScopes),
-    labeled("Redirect port", oauthRedirectPort),
-    labeled("Resource URL", oauthResource),
+    field("Client ID", oauthClientId),
+    field("Authorization URL", oauthAuthorizationUrl),
+    field("Token URL", oauthTokenUrl),
+    field("Scopes", oauthScopes),
+    field("Redirect port", oauthRedirectPort),
+    field("Resource URL", oauthResource),
   );
   form.appendChild(oauthFields);
   return {
@@ -1201,7 +1179,7 @@ function renderAddMcpConnection(state) {
   }
   transport.value = state.addConnectionTransport;
   transport.addEventListener("change", () => state.actions.setAddConnectionTransport(transport.value));
-  form.append(labeled("Name", name), labeled("Connection ID", localId), labeled("Transport", transport));
+  form.append(field("Name", name), field("Connection ID", localId), field("Transport", transport));
 
   const httpFields = document.createElement("div");
   httpFields.hidden = isStdio;
@@ -1210,7 +1188,7 @@ function renderAddMcpConnection(state) {
   url.placeholder = "https://server.example/mcp";
   url.required = !isStdio;
   url.dataset.draftKey = "add-mcp:url";
-  httpFields.appendChild(labeled("Server URL", url));
+  httpFields.appendChild(field("Server URL", url));
   const oauthFields = appendOauthFieldset(httpFields, "add-mcp");
   form.appendChild(httpFields);
 
@@ -1247,7 +1225,7 @@ function renderAddMcpConnection(state) {
   const promptAllowlist = document.createElement("input");
   promptAllowlist.placeholder = "Comma-separated, optional";
   promptAllowlist.dataset.draftKey = "add-mcp:prompt-allowlist";
-  form.append(labeled("Allowed tools", toolAllowlist), labeled("Allowed resources", resourceAllowlist), labeled("Allowed prompts", promptAllowlist));
+  form.append(field("Allowed tools", toolAllowlist), field("Allowed resources", resourceAllowlist), field("Allowed prompts", promptAllowlist));
   const credentialRef = appendCredentialRefField(form, "add-mcp");
   const submit = document.createElement("button");
   submit.type = "submit";
@@ -1304,7 +1282,7 @@ function renderImportSkill(state) {
   submit.textContent = "Import skill";
   submit.disabled = state.importSkillPending;
   submit.dataset.focusKey = "import-skill:submit";
-  form.append(labeled("Skill ID", localId), labeled("Skill file", body), buttonRow(submit, renderCancelAdd(state)));
+  form.append(field("Skill ID", localId), field("Skill file", body), buttonRow(submit, renderCancelAdd(state)));
   if (state.importSkillError) appendText(form, state.importSkillError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1394,8 +1372,8 @@ function renderAddLocalTool(state, family = "tool") {
   submit.disabled = state.addToolPending;
   submit.dataset.focusKey = `add-${family}:submit`;
   form.append(
-    labeled("Name", name),
-    labeled(labels.idLabel, localId),
+    field("Name", name),
+    field(labels.idLabel, localId),
     ...processFields({ command, argvAllowlist, envPassthrough, workingRoot }),
     buttonRow(submit, renderCancelAdd(state)),
   );
@@ -1438,7 +1416,7 @@ function renderEditMcpConnection(state) {
     name.required = true;
   name.dataset.draftKey = `edit-mcp:${info.extension_id}:name`;
   name.value = info.name;
-  form.appendChild(labeled("Name", name));
+  form.appendChild(field("Name", name));
 
   let url = null;
   let oauthFields = null;
@@ -1478,7 +1456,7 @@ function renderEditMcpConnection(state) {
     url.required = true;
     url.dataset.draftKey = `edit-mcp:${info.extension_id}:url`;
     url.value = info.definition.url || "";
-    form.appendChild(labeled("Server URL", url));
+    form.appendChild(field("Server URL", url));
   }
 
   const toolAllowlist = document.createElement("input");
@@ -1493,7 +1471,7 @@ function renderEditMcpConnection(state) {
   promptAllowlist.placeholder = "Comma-separated, optional";
   promptAllowlist.dataset.draftKey = `edit-mcp:${info.extension_id}:prompt-allowlist`;
   promptAllowlist.value = (info.definition.prompt_allowlist || []).join(", ");
-  form.append(labeled("Allowed tools", toolAllowlist), labeled("Allowed resources", resourceAllowlist), labeled("Allowed prompts", promptAllowlist));
+  form.append(field("Allowed tools", toolAllowlist), field("Allowed resources", resourceAllowlist), field("Allowed prompts", promptAllowlist));
   const credentialRef = appendCredentialRefField(form, `edit-mcp:${info.extension_id}`, info.definition.credential_ref);
   if (!isStdio) oauthFields = appendOauthFieldset(form, `edit-mcp:${info.extension_id}`, info.definition.oauth);
   const submit = document.createElement("button");
@@ -1572,7 +1550,7 @@ function renderEditLocalTool(state) {
   submit.disabled = state.editToolPending;
   submit.dataset.focusKey = `edit-tool-submit:${info.extension_id}`;
   form.append(
-    labeled("Name", name),
+    field("Name", name),
     ...processFields({ command, argvAllowlist, envPassthrough, workingRoot }),
     buttonRow(submit, renderCancelEdit(state, `edit-tool-cancel:${info.extension_id}`)),
   );
@@ -1629,12 +1607,12 @@ function renderCatalog(state) {
     for (const [family, count] of [["", extensions.length], ...families]) {
       const option = document.createElement("option");
       option.value = family;
-      option.textContent = family ? `${family} (${count})` : `All (${count})`;
+      option.textContent = family ? `${humanize(family, FAMILY_TEXT)} (${count})` : `All (${count})`;
       option.selected = state.familyFilter === family;
       filter.appendChild(option);
     }
     filter.addEventListener("change", () => state.actions.filterFamily(filter.value));
-    section.appendChild(labeled("Show", filter));
+    section.appendChild(field("Show", filter));
   }
 
   const list = document.createElement("ul");
@@ -1672,26 +1650,25 @@ function renderDetail(state) {
     appendText(section, "Loading extension…", "p", "extensions-help");
     return section;
   }
-  if (state.detailError) {
-    appendText(section, state.detailError, "p", "extensions-error");
-    return section;
-  }
+  // Without a detail the error is why it could not load; with one, an action on it failed and
+  // the detail stays in view so the operator can see and retry.
+  if (state.detailError) appendText(section, state.detailError, "p", "extensions-error");
   if (!state.detail) {
-    appendText(section, "Select an extension to inspect it.", "p", "extensions-help");
+    if (!state.detailError) appendText(section, "Select an extension to inspect it.", "p", "extensions-help");
     return section;
   }
   const detail = state.detail;
   appendText(section, detail.display_name || detail.extension_id, "strong");
-  const status = appendText(section, detail.state, "p", "extensions-status");
+  const status = appendText(section, statusText(detail.state), "p", "extensions-status");
   status.dataset.state = extensionActivityState(detail);
 
   const facts = document.createElement("dl");
   facts.className = "extensions-facts";
-  labeledValue(facts, "Family", detail.family);
+  labeledValue(facts, "Family", humanize(detail.family, FAMILY_TEXT));
   labeledValue(facts, "Version", detail.version);
-  labeledValue(facts, "Trust", detail.trust);
-  labeledValue(facts, "Readiness", detail.readiness);
-  labeledValue(facts, "Availability", detail.availability);
+  labeledValue(facts, "Trust", humanize(detail.trust));
+  labeledValue(facts, "Readiness", statusText(detail.readiness));
+  labeledValue(facts, "Availability", humanize(detail.availability));
   section.appendChild(facts);
 
   // Identifier, provenance, source (a raw file/module path), and revision (an
@@ -1740,7 +1717,8 @@ function renderDetail(state) {
     const button = document.createElement("button");
     button.type = "button";
     button.dataset.focusKey = `state:${detail.extension_id}:${next}`;
-    button.textContent = next === "retired" ? "Retire" : `Set ${next}`;
+    button.textContent = next === "retired" ? "Retire" : next === "enabled" ? "Enable" : "Disable";
+    if (next === "retired") button.className = "btn-danger";
     button.disabled = !enabled;
     button.addEventListener("click", () => state.actions.setState(detail.extension_id, next));
     buttons.appendChild(button);
@@ -1780,7 +1758,7 @@ function renderDetail(state) {
           const json = document.createElement("textarea");
           json.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:$json`;
           json.required = true;
-          form.appendChild(labeled("Arguments (JSON)", json));
+          form.appendChild(field("Arguments (JSON)", json));
           inputs.push(["$json", json, { type: "json" }]);
         }
         for (const [name, schema] of complex ? [] : Object.entries(fields)) {
@@ -1788,13 +1766,15 @@ function renderDetail(state) {
           input.dataset.draftKey = `${detail.extension_id}:${operation.capability_id}:${name}`;
           input.name = name;
           input.required = (operation.input_schema?.required || []).includes(name);
-          if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(labeled(name, select)); continue; }
+          if (Array.isArray(schema.enum)) { const select = document.createElement("select"); select.dataset.draftKey = input.dataset.draftKey; for (const value of schema.enum) { const option = document.createElement("option"); option.value = value; option.textContent = value; select.appendChild(option); } inputs.push([name, select, schema]); form.appendChild(field(name, select)); continue; }
           input.type = schema.type === "boolean" ? "checkbox" : schema.type === "number" || schema.type === "integer" ? "number" : "text";
-          form.appendChild(labeled(name, input));
+          form.appendChild(field(name, input));
           inputs.push([name, input, schema]);
         }
         const submit = document.createElement("button");
         submit.type = "submit";
+        // One per discovered operation; a column of accent buttons would drown the primary actions.
+        submit.className = "btn-secondary";
         submit.textContent = operationSubmitLabel(operation);
         submit.disabled = !operation.available;
         submit.dataset.focusKey = `operation-submit:${detail.extension_id}:${operation.capability_id}`;
@@ -1829,7 +1809,7 @@ function renderDetail(state) {
     save.type = "submit";
     save.textContent = "Store credential";
     save.dataset.focusKey = `credential-submit:${detail.extension_id}`;
-    credential.append(labeled("Name", name), labeled("Secret", secret), buttonRow(save));
+    credential.append(field("Name", name), field("Secret", secret), buttonRow(save));
     credential.addEventListener("submit", (event) => {
       event.preventDefault();
       state.actions.credential(detail.extension_id, name.value, secret.value);
@@ -1867,6 +1847,7 @@ function renderDetail(state) {
       remove.type = "button";
       remove.dataset.focusKey = `remove-connection:${detail.extension_id}`;
       remove.textContent = "Remove connection";
+    remove.className = "btn-danger";
       remove.disabled = state.mutationPending;
       remove.addEventListener("click", () => state.actions.removeMcpConnection(detail.local_id));
       manage.appendChild(remove);
@@ -1904,7 +1885,7 @@ function renderDetail(state) {
         const submit = document.createElement("button");
         submit.type = "submit";
         submit.textContent = "Complete authorization";
-        finish.append(labeled("Authorization code", code), buttonRow(submit));
+        finish.append(field("Authorization code", code), buttonRow(submit));
         finish.addEventListener("submit", (event) => {
           event.preventDefault();
           state.actions.completeOauth(detail.extension_id, code.value);
@@ -1954,6 +1935,7 @@ function renderDetail(state) {
     remove.type = "button";
     remove.dataset.focusKey = `remove-${detail.family}:${detail.extension_id}`;
     remove.textContent = `Remove ${commandFamily.noun}`;
+    remove.className = "btn-danger";
     remove.disabled = state.mutationPending;
     remove.addEventListener("click", () => state.actions.removeLocalTool(detail.local_id, detail.family));
     manage.appendChild(remove);
@@ -1980,9 +1962,10 @@ function renderDetail(state) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.textContent = "Remove skill";
+    remove.className = "btn-danger";
     remove.disabled = state.mutationPending;
     remove.addEventListener("click", () => state.actions.removeSkill(detail.local_id));
-    editor.append(labeled("Skill file", body), buttonRow(save, remove));
+    editor.append(field("Skill file", body), buttonRow(save, remove));
     editor.addEventListener("submit", (event) => {
       event.preventDefault();
       state.actions.saveSkill(detail.local_id, body.value);
@@ -2100,53 +2083,39 @@ function renderErrors(state) {
   return section;
 }
 
-function renderPanel(keeper, state, actions) {
-  const view = { ...state, actions };
-  const header = document.createElement("div");
-  header.className = "extensions-panel-header";
-  const heading = appendText(header, "Extensions", "h2");
-  heading.tabIndex = -1;
-
-  const messages = document.createElement("div");
-  messages.setAttribute("aria-live", "polite");
-  for (const message of [state.conflict, state.notice]) {
-    if (message) {
-      appendText(
-        messages,
-        message,
-        "p",
-        message === state.notice ? "extensions-notice" : "extensions-error",
-      );
-    }
-  }
+function renderPanel(state) {
   const layout = document.createElement("div");
   layout.className = "extensions-panel-layout";
   const listColumn = document.createElement("div");
   listColumn.className = "extensions-panel-list";
   listColumn.dataset.scrollKey = "list";
-  listColumn.append(renderCatalog(view), renderErrors(view));
+  listColumn.append(renderCatalog(state), renderErrors(state));
   const detailColumn = document.createElement("div");
   detailColumn.className = "extensions-panel-detail";
   detailColumn.dataset.scrollKey = "detail";
-  detailColumn.appendChild(state.adding ? renderAddForm(view) : renderDetail(view));
+  detailColumn.appendChild(state.adding ? renderAddForm(state) : renderDetail(state));
   layout.append(listColumn, detailColumn);
-
-  keeper.render(header, messages, layout);
+  return [
+    renderPanelHeader("Extensions"),
+    messageRegion({ notice: state.notice, error: state.conflict }),
+    layout,
+  ];
 }
 
 export function createExtensionsPanel(container, handlers, options = {}) {
-  let open = false;
   let controller;
-  const keeper = createRenderStateKeeper(container);
-  const confirmCancel = options.confirmCancel || ((message) => window.confirm(message));
+  const confirm = options.confirmCancel || confirmDestructive;
+  // Removing, retiring, or forgetting cannot be undone, so each asks first.
+  const confirmed = (message, run) => async (...args) => ((await confirm(message)) ? run(...args) : null);
   const actions = {
-    close: () => close(),
     selectExtension: (extensionId) => controller.selectExtension(extensionId),
     loadBody: (extensionId) => controller.loadBody(extensionId),
     loadDefinition: (extensionId) => controller.loadDefinition(extensionId),
     cancelDefinitionEdit: () => controller.cancelDefinitionEdit(),
     setAddConnectionTransport: (transport) => controller.setAddConnectionTransport(transport),
-    setState: (extensionId, next) => controller.setState(extensionId, next),
+    setState: (extensionId, next) => (next === "retired"
+      ? confirmed("Retire this extension? It stops being offered anywhere.", () => controller.setState(extensionId, next))()
+      : controller.setState(extensionId, next)),
     filterFamily: (family) => controller.filterFamily(family),
     startAdd: (kind) => controller.startAdd(kind),
     cancelAdd: () => controller.cancelAdd(),
@@ -2155,50 +2124,40 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     credential: (extensionId, name, secret) => controller.credential(extensionId, name, secret),
     importSkill: (localId, body) => controller.importSkill(localId, body),
     saveSkill: (localId, body) => controller.saveSkill(localId, body),
-    removeSkill: (localId) => controller.removeSkill(localId),
+    removeSkill: confirmed("Remove this skill?", (localId) => controller.removeSkill(localId)),
     addMcpConnection: (payload) => controller.addMcpConnection(payload),
     updateMcpConnection: (payload) => controller.updateMcpConnection(payload),
-    removeMcpConnection: (localId) => controller.removeMcpConnection(localId),
+    removeMcpConnection: confirmed("Remove this connection?", (localId) => controller.removeMcpConnection(localId)),
     addLocalTool: (payload) => controller.addLocalTool(payload),
     updateLocalTool: (payload) => controller.updateLocalTool(payload),
-    removeLocalTool: (localId, family) => controller.removeLocalTool(localId, family),
+    removeLocalTool: (localId, family) => confirmed(
+      `Remove this ${COMMAND_FAMILIES[family || "tool"].noun}?`,
+      () => controller.removeLocalTool(localId, family),
+    )(),
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
-    forgetOauth: (extensionId) => controller.forgetOauth(extensionId),
+    forgetOauth: confirmed("Forget the stored authorization?", (extensionId) => controller.forgetOauth(extensionId)),
     disconnect: (extensionId) => controller.disconnect(extensionId),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
-    cancel: (proposalId) => controller.cancel(proposalId, confirmCancel),
+    cancel: (proposalId) => controller.cancel(proposalId, confirm),
     notice: (message) => controller.notice(message),
   };
-  controller = createExtensionsPanelController(handlers, (state) => {
-    if (open) renderPanel(keeper, state, actions);
+  const lifecycle = createPanelLifecycle(container, {
+    load: () => controller.load(),
+    render: (state) => renderPanel({ ...state, actions }),
+    cancelPendingReads: () => controller.cancelPendingReads(),
+    onClose: options.onClose,
+    // Runs stream progress and may stop to ask for input; follow them only while one is live.
+    // An invocation that has not returned counts: its run is not listed yet, and it may be
+    // waiting on the very input request only this poll can surface.
+    poll: {
+      active: () => {
+        const snapshot = controller.snapshot();
+        return snapshot.invocationsInFlight > 0 || snapshot.runs.some((run) => ACTIVE_RUN_STATUSES.includes(run.status));
+      },
+      run: () => controller.refreshRuns(),
+    },
   });
-
-  async function show() {
-    open = true;
-    container.hidden = false;
-    renderPanel(keeper, controller.snapshot(), actions);
-    await controller.load();
-    keeper.release();
-    polling = window.setInterval(() => {
-      const active = document.activeElement;
-      if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
-      controller.refreshRuns();
-    }, 1000);
-    container.querySelector("h2")?.focus();
-  }
-
-  function close() {
-    if (!open) return;
-    open = false;
-    controller.cancelPendingReads();
-    if (polling) { window.clearInterval(polling); polling = null; }
-    keeper.retain();
-    container.hidden = true;
-    container.replaceChildren();
-    options.onClose?.();
-  }
-
-  let polling = null;
-  return { open: show, close, isOpen: () => open, controller };
+  controller = createExtensionsPanelController(handlers, lifecycle.draw);
+  return { open: lifecycle.open, close: lifecycle.close, isOpen: lifecycle.isOpen, controller };
 }

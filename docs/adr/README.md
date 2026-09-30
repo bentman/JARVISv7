@@ -17,12 +17,13 @@ Evidence lives in each ADR's Confirmation section; recorded validation runs live
 | [0005](0005-governed-ability-to-act.md) | Governed Ability to Act | Implemented | Effect-class risk model, capability contract, execution, audit | Met |
 | [0006](0006-ways-to-extend-assistant-ability-to-act.md) | Ways to Extend Assistant Ability to Act | Implemented | Extension taxonomy, catalog, governed operations, skills, local tools | Met |
 | [0007](0007-extend-assistant-when-stable.md) | Extend Assistant When Stable | Implemented | Agent identity, invocation modes, agent scope | Met |
-| [0008](0008-operator-experience.md) | Operator Experience | Accepted | Advanced Controls shell, all operator surfaces, native validation | Native desktop session validation |
+| [0008](0008-operator-experience.md) | Operator Experience | Implemented | Advanced Controls shell, all operator surfaces, native validation | Met |
 | [0009](0009-shared-session-lifecycle.md) | Shared Session Lifecycle | Implemented | Connection reuse, teardown confirmation, shutdown | Met |
-| [0010](0010-mcp-connection-boundary.md) | MCP Connection Boundary | Accepted | MCP transport, discovery, cache freshness, effect classification | 2026-07-28 conformance gaps in Follow-up |
+| [0010](0010-mcp-connection-boundary.md) | MCP Connection Boundary | Accepted | MCP transport, discovery, cache freshness, effect classification | 2026-07-28 conformance gaps and call-outcome classification in Follow-up |
 | [0011](0011-mcp-authorization.md) | MCP Authorization | Accepted | MCP OAuth discovery, tokens, refresh, forget | RFC 9207/8414 conformance gaps in Follow-up |
 | [0012](0012-hooks-and-plugins.md) | Hooks and Plugins | Proposed | Hook and plugin contracts | Decision not yet made; blocks nothing |
 | [0013](0013-acp-adapter.md) | ACP Adapter | Accepted | Outbound and inbound Agent Client Protocol | ACP v2 conformance |
+| [0014](0014-unified-operator-experience.md) | Unified Operator Experience | Implemented | Design system, operator vocabulary, turn origin and history, shared approval inbox | Met |
 
 ## Ownership boundaries worth knowing
 

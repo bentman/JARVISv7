@@ -189,7 +189,7 @@ class TestSessionManagement:
         assert "result" in result
         assert result["result"]["turn_id"] == "turn-1"
         assert result["result"]["response"] == "world"
-        engine.run_text_turn.assert_called_once_with("hello")
+        engine.run_text_turn.assert_called_once_with("hello", origin="acp")
 
     def test_handle_message_appends_turn_id(self) -> None:
         fake_turn = SimpleNamespace(turn_id="t-42", response_text="ok", final_state="IDLE")

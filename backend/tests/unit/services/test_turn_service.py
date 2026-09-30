@@ -9,9 +9,11 @@ from backend.app.services.turn_service import run_text_turn, run_voice_turn
 
 def test_run_text_turn_delegates_to_engine():
     expected = object()
-    engine = SimpleNamespace(run_text_turn=lambda text: expected)
+    calls = []
+    engine = SimpleNamespace(run_text_turn=lambda text, origin: calls.append(origin) or expected)
 
-    assert run_text_turn("hello", engine=engine) is expected  # type: ignore[arg-type]
+    assert run_text_turn("hello", engine=engine, origin="desktop") is expected  # type: ignore[arg-type]
+    assert calls == ["desktop"], "the submitting interface must reach the engine"
 
 
 def test_run_voice_turn_delegates_to_engine():

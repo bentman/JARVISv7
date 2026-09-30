@@ -1,7 +1,9 @@
+import { formatTime, formatValue } from "./ui/format.js";
+
 function statusKind(value) {
   const normalized = String(value ?? "").trim().toLowerCase();
-  if (["true", "yes", "running", "enabled", "ready", "reachable"].includes(normalized)) return "positive";
-  if (["false", "no", "stopped", "disabled", "unavailable", "failed"].includes(normalized)) return "negative";
+  if (["yes", "running", "enabled", "ready", "reachable"].includes(normalized)) return "positive";
+  if (["no", "stopped", "disabled", "unavailable", "failed"].includes(normalized)) return "negative";
   return "neutral";
 }
 
@@ -31,9 +33,9 @@ export function renderWakeStatus(wakePayload, containerEl) {
   const available = Boolean(wakePayload?.available);
   const active = Boolean(wakePayload?.active || wakePayload?.enabled);
   const monitoring = Boolean(wakePayload?.monitoring);
-  const reason = wakePayload?.reason || "not provided";
+  const reason = wakePayload?.reason || "";
   const detectionCount = Number(wakePayload?.detection_count || 0);
-  const lastDetected = wakePayload?.last_detected || "none";
+  const lastDetected = wakePayload?.last_detected ? formatTime(wakePayload.last_detected) : "Never";
   const lastScore = wakePayload?.last_score;
   const threshold = wakePayload?.threshold;
   const scoreText = `${formatDiagnostic(lastScore)} / ${formatDiagnostic(threshold)}`;
@@ -50,14 +52,14 @@ export function renderWakeStatus(wakePayload, containerEl) {
 
   const fields = document.createElement("div");
   fields.className = "wake-indicator-fields";
-  appendField(fields, "provider", provider);
-  appendField(fields, "available", String(available));
-  appendField(fields, "active", String(active));
-  appendField(fields, "monitoring", String(monitoring));
-  appendField(fields, "detections", String(detectionCount));
-  appendField(fields, "last detected", lastDetected);
-  appendField(fields, "score", scoreText);
-  appendField(fields, "reason", reason);
+  appendField(fields, "Provider", provider);
+  appendField(fields, "Available", formatValue(available));
+  appendField(fields, "Enabled", formatValue(active));
+  appendField(fields, "Listening", formatValue(monitoring));
+  appendField(fields, "Detections", String(detectionCount));
+  appendField(fields, "Last detected", lastDetected);
+  appendField(fields, "Score / threshold", scoreText);
+  if (reason) appendField(fields, "Reason", reason);
 
   containerEl.dataset.available = String(available);
   containerEl.dataset.active = String(active);

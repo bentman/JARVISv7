@@ -108,7 +108,12 @@ class PendingApprovalView:
     approval_id: str
     arguments: dict[str, Any]
     reason: str
-    expires_at: str
+    expires_at: str | None
+    # "actions" for a proposal made through the actions API, "conversation" for one a turn
+    # asked the user about; a conversation approval is settled by a turn, so it has no expiry.
+    origin: str = "actions"
+    label: str = ""
+    proposed_by: str = "operator"
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,6 +133,28 @@ class _PendingProposal:
     execution: dict[str, Any] | None = None
 
 
+@dataclass(slots=True)
+class _HeldTurnApproval:
+    """An approval a conversation turn asked the user for, held by the turn engine.
+
+    `settle(proposal_id, approved)` answers it through a conversation turn, so the decision
+    and its result read the same whether it came from a reply, the conversation card, or a panel.
+    """
+
+    proposal: ModelActionProposal
+    approval_id: str
+    label: str
+    settle: Callable[[str, bool], Any]
+
+
+_TURN_EVIDENCE_KINDS: dict[type, str] = {
+    ModelActionProposal: "action_proposal",
+    AuthorizationDecision: "authorization_decision",
+    ApprovalAuditRecord: "approval_record",
+    ActionCancellationRecord: "action_cancellation",
+}
+
+
 class CapabilityService:
     def __init__(
         self,
@@ -144,6 +171,7 @@ class CapabilityService:
         self._lock = threading.RLock()
         self._registry = CapabilityRegistry()
         self._pending: dict[str, _PendingProposal] = {}
+        self._held: dict[str, _HeldTurnApproval] = {}
         self._audit: deque[dict[str, Any]] = deque(maxlen=MAX_AUDIT_RECORDS)
         self._active: dict[str, ActionOperation] = {}
         self._extension_bindings: Callable[[], list[tuple[CapabilityDescriptor, CapabilityHandler]]] | None = None
@@ -405,6 +433,62 @@ class CapabilityService:
             )
         return self._execute(proposal, descriptor, decision)
 
+    def hold_turn_approval(
+        self,
+        proposal: ModelActionProposal,
+        approval_id: str,
+        *,
+        label: str,
+        settle: Callable[[str, bool], Any],
+    ) -> None:
+        """List an approval a conversation turn is waiting on in the shared pending inbox."""
+        with self._lock:
+            self._held[proposal.proposal_id] = _HeldTurnApproval(proposal, approval_id, label, settle)
+
+    def release_turn_approval(self, proposal_id: str) -> None:
+        with self._lock:
+            self._held.pop(proposal_id, None)
+
+    def record_turn_evidence(self, record: Any) -> None:
+        """Mirror a turn's governance record into the shared action audit."""
+        kind = _TURN_EVIDENCE_KINDS.get(type(record))
+        if kind is not None:
+            self._record(kind, record, record.capability_id)
+
+    def _settle_held(self, held: _HeldTurnApproval, approved: bool) -> ActionProposalView:
+        proposal = held.proposal
+        try:
+            held.settle(proposal.proposal_id, approved)
+        except LookupError as exc:
+            raise CapabilityServiceError(
+                409, "already_decided", "this action was already settled in the conversation"
+            ) from exc
+        except RuntimeError as exc:
+            with self._lock:
+                self._held.setdefault(proposal.proposal_id, held)
+            raise CapabilityServiceError(
+                409, "conversation_busy", "the conversation is answering a turn; try again when it finishes"
+            ) from exc
+        with self._lock:
+            execution = next(
+                (
+                    record["record"] for record in reversed(self._audit)
+                    if record.get("proposal_id") == proposal.proposal_id and record["kind"] == "execution_result"
+                ),
+                None,
+            )
+        status = execution["status"] if execution else ("success" if approved else "denied")
+        return ActionProposalView(
+            proposal_id=proposal.proposal_id,
+            capability_id=proposal.capability_id,
+            status=status,
+            outcome="allowed" if approved else "denied",
+            reason="settled in the conversation",
+            arguments=mask_arguments(proposal.capability_id, proposal.arguments),
+            approval_id=held.approval_id,
+            execution=execution,
+        )
+
     def decide(
         self,
         *,
@@ -413,6 +497,10 @@ class CapabilityService:
         decided_by: str,
         reason: str | None = None,
     ) -> ActionProposalView:
+        with self._lock:
+            held = self._held.pop(proposal_id, None)
+        if held is not None:
+            return self._settle_held(held, outcome == "approved")
         with self._lock:
             self._evict_expired()
             pending = self._pending.get(proposal_id)
@@ -480,6 +568,17 @@ class CapabilityService:
     def status(self, proposal_id: str) -> ActionProposalView:
         with self._lock:
             self._evict_expired()
+            held = self._held.get(proposal_id)
+            if held is not None:
+                return ActionProposalView(
+                    proposal_id=proposal_id,
+                    capability_id=held.proposal.capability_id,
+                    status="awaiting_approval",
+                    outcome="approval_required",
+                    reason=held.proposal.reason,
+                    arguments=mask_arguments(held.proposal.capability_id, held.proposal.arguments),
+                    approval_id=held.approval_id,
+                )
             pending = self._pending.get(proposal_id)
             if pending is not None:
                 return self._view_proposal(
@@ -500,6 +599,12 @@ class CapabilityService:
         raise CapabilityServiceError(404, "unknown_proposal", "no action matches this identifier")
 
     def cancel(self, proposal_id: str) -> bool:
+        with self._lock:
+            held = self._held.pop(proposal_id, None)
+        if held is not None:
+            # Cancelling an approval the conversation asked for is declining it there.
+            self._settle_held(held, False)
+            return True
         with self._lock:
             operation = self._active.get(proposal_id)
             if operation is not None:
@@ -535,9 +640,23 @@ class CapabilityService:
                     arguments=mask_arguments(item.proposal.capability_id, item.proposal.arguments),
                     reason=item.proposal.reason,
                     expires_at=item.expires_at,
+                    proposed_by=item.proposal.proposed_by,
                 )
                 for proposal_id, item in sorted(self._pending.items())
                 if not item.decided
+            ] + [
+                PendingApprovalView(
+                    proposal_id=proposal_id,
+                    capability_id=held.proposal.capability_id,
+                    approval_id=held.approval_id,
+                    arguments=mask_arguments(held.proposal.capability_id, held.proposal.arguments),
+                    reason=held.proposal.reason,
+                    expires_at=None,
+                    origin="conversation",
+                    label=held.label,
+                    proposed_by=held.proposal.proposed_by,
+                )
+                for proposal_id, held in sorted(self._held.items())
             ]
 
     def audit(self, *, limit: int = 20) -> ActionAuditView:

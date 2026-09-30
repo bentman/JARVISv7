@@ -52,6 +52,7 @@ class SessionStatus:
     failure_phase: str | None = None
     active_search: dict[str, object] | None = None
     active_agent: dict[str, str] | None = None
+    pending_approval: dict[str, str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,7 +227,29 @@ class SessionService:
             failure_phase=self._failure_phase,
             active_search=self._engine.search_service.snapshot() if self._active and self._engine.search_service else None,
             active_agent=self._active_agent(),
+            pending_approval=self._pending_approval(),
         )
+
+    def _pending_approval(self) -> dict[str, str] | None:
+        pending_approval = getattr(self._engine, "pending_approval", None)
+        return pending_approval() if self._active and pending_approval else None
+
+    def turns(self, *, after: str | None = None, limit: int = 50) -> list[dict[str, object]]:
+        """The active session's turns, oldest first, after `after` when given."""
+        if not self._active:
+            return []
+        artifacts = list(self._session_manager.turn_artifacts)
+        if after is not None:
+            index = next((i for i, item in enumerate(artifacts) if item.turn_id == after), None)
+            artifacts = artifacts[index + 1:] if index is not None else artifacts
+        return [turn_summary(item) for item in artifacts[:limit]]
+
+    def turn_summary(self, turn_id: str) -> dict[str, object] | None:
+        artifact = next(
+            (item for item in reversed(self._session_manager.turn_artifacts) if item.turn_id == turn_id),
+            None,
+        )
+        return turn_summary(artifact) if artifact is not None else None
 
     def _active_agent(self) -> dict[str, str] | None:
         active_handoff = getattr(self._engine, "active_handoff", None)
@@ -358,6 +381,52 @@ class SessionService:
 
     def process_wake_chunks(self, wake_runtime: WakeRuntime, audio_chunks: Iterable[np.ndarray]) -> WakeMonitorStatus:
         return self._wake_status_store.process_chunks(wake_runtime, audio_chunks)
+
+def turn_summary(artifact) -> dict[str, object]:
+    """What any interface needs to show a turn: who said what, where it came from, what it did."""
+    executed = {record["proposal_id"]: record["status"] for record in artifact.action_execution_results}
+    cancelled = {record["proposal_id"] for record in artifact.action_cancellations}
+    decided = {record["proposal_id"]: record["outcome"] for record in artifact.authorization_decisions}
+    for record in artifact.approval_records:
+        if record.get("outcome") == "denied":
+            decided[record["proposal_id"]] = "denied"
+    # A turn lists what it proposed and what it settled: a confirm or cancel turn approves,
+    # executes, declines, or withdraws a proposal an earlier turn made.
+    touched: dict[str, str] = {}
+    for record in (
+        *artifact.action_proposals, *artifact.authorization_decisions, *artifact.approval_records,
+        *artifact.action_execution_results, *artifact.action_cancellations,
+    ):
+        touched.setdefault(record["proposal_id"], record.get("capability_id", ""))
+    actions = []
+    for proposal_id, capability_id in touched.items():
+        if proposal_id in executed:
+            status = executed[proposal_id]
+        elif proposal_id in cancelled:
+            status = "cancelled"
+        elif decided.get(proposal_id) == "denied":
+            status = "denied"
+        elif decided.get(proposal_id) == "approval_required":
+            status = "awaiting_approval"
+        else:
+            status = "allowed"
+        actions.append({"proposal_id": proposal_id, "capability_id": capability_id, "status": status})
+    started = min(artifact.phase_timestamps.values()) if artifact.phase_timestamps else None
+    return {
+        "turn_id": artifact.turn_id,
+        "origin": artifact.origin,
+        "input_modality": artifact.input_modality,
+        "transcript": artifact.transcript,
+        "response_text": artifact.response_text,
+        "agent": artifact.agent,
+        "final_state": artifact.final_state,
+        "failure_reason": artifact.failure_reason,
+        "started_at": started,
+        "personality_profile_id": artifact.active_personality_profile_id,
+        "search": artifact.search,
+        "actions": actions,
+    }
+
 
 def _turn_artifact_display_path(turns_base_dir: Path, session_id: str, turn_id: str) -> Path:
     artifact_path = turns_base_dir / session_id / f"{turn_id}.json"

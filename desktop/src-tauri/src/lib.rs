@@ -48,7 +48,8 @@ use backend::{
     get_operator_config as backend_operator_config,
     get_personality_list as backend_personality_list,
     get_resident_voice_status as backend_resident_voice_status,
-    get_session_status as backend_session_status, get_wake_status as backend_wake_status,
+    get_session_status as backend_session_status, get_session_turns as backend_session_turns,
+    get_wake_status as backend_wake_status,
     invoke_resident_ptt as backend_invoke_resident_ptt, list_memories as backend_list_memories,
     rotate_secret_store_key as backend_rotate_secret_store_key,
     select_personality as backend_select_personality,
@@ -123,7 +124,18 @@ fn start_backend(state: State<'_, DesktopState>) -> Result<String, String> {
         return Err(manager.startup_failure_payload(&err));
     }
 
-    let session = create_session(&state.http_client, &base_url)?;
+    let known_session = state
+        .session_id
+        .lock()
+        .map_err(|_| "session lock poisoned".to_string())?
+        .clone();
+    let resumed = backend::get_session_status(&state.http_client, &base_url)
+        .ok()
+        .and_then(|body| backend::resumable_session(&body, known_session.as_deref()));
+    let session = match resumed {
+        Some(session) => session,
+        None => create_session(&state.http_client, &base_url)?,
+    };
     {
         let mut active_session = state
             .session_id
@@ -194,6 +206,12 @@ fn get_readiness(state: State<'_, DesktopState>) -> Result<String, String> {
 fn get_session_status(state: State<'_, DesktopState>) -> Result<String, String> {
     let base_url = backend_base_url(&state)?;
     backend_session_status(&state.http_client, &base_url)
+}
+
+#[tauri::command]
+fn get_session_turns(after: Option<String>, state: State<'_, DesktopState>) -> Result<String, String> {
+    let base_url = backend_base_url(&state)?;
+    backend_session_turns(&state.http_client, &base_url, after.as_deref())
 }
 
 #[tauri::command]
@@ -1012,6 +1030,7 @@ pub fn run() {
             stop_backend,
             get_readiness,
             get_session_status,
+            get_session_turns,
             get_desktop_status,
             invoke_resident_ptt,
             get_wake_status,

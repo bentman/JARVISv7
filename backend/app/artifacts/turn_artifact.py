@@ -14,7 +14,7 @@ TURN_ARTIFACT_FIELDS: tuple[str, ...] = (
     "reasoning_trace_metadata", "response_text", "audio_output_path",
     "interruption_events", "final_state", "failure_reason", "tts_degraded",
     "tts_degraded_reason", "tts_output_device", "runtime_context", "phase_timestamps",
-    "phase_durations_ms", "failure_phase",
+    "phase_durations_ms", "failure_phase", "origin", "agent",
 )
 
 
@@ -53,6 +53,10 @@ class TurnArtifact:
     phase_timestamps: dict[str, str] = field(default_factory=dict)
     phase_durations_ms: dict[str, float] = field(default_factory=dict)
     failure_phase: str | None = None
+    # Which interface admitted the turn (desktop, api, acp, voice, panel, extension, agent).
+    origin: str = "api"
+    # The agent that answered the turn, as {profile_id, display_name}, or None for the assistant.
+    agent: dict[str, str] | None = None
 
 
 

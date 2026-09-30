@@ -113,6 +113,7 @@ test("operator settings must render sections, choices, and advanced fields from 
     const select = findElements(container, (node) => node.tagName === "SELECT" && node.name === "USE_DDGS")[0];
     assert.deepEqual(select.children.map((option) => option.value), ["true", "false"], "choices must come from backend options");
     assert.equal(select.value, "false");
+    assert.equal(select.dataset.draftKey, "setting:USE_DDGS", "an unsaved edit must survive a re-render");
     const advanced = findElements(container, (node) => node.tagName === "DETAILS")[0];
     assert.ok(findElements(advanced, (node) => node.name === "SEARCH_TIMEOUT_S").length === 1, "advanced fields must sit behind a disclosure");
     closeSettings();
@@ -130,7 +131,7 @@ test("the provider section must offer escalation, connection testing, and creden
       selection: { primary_profile_id: "lab" },
     }, {});
     const texts = findElements(section, (node) => typeof node.textContent === "string").map((node) => node.textContent);
-    for (const label of ["Model Providers", "Allow cloud escalation", "Test connection", "Remove stored credential"]) {
+    for (const label of ["Model providers", "Allow cloud escalation", "Test connection", "Remove stored credential"]) {
       assert.ok(texts.includes(label), `the provider section must render ${label}`);
     }
     assert.equal(typeof openProviderSettings, "function", "Providers & Models must be mountable as its own category");

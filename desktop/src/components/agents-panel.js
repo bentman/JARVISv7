@@ -1,12 +1,12 @@
 import { capabilityTitle, describeAuditRecord, auditRecordState, formatActionTime, groupAuditRecords } from "./actions-panel.js";
-import { createRenderStateKeeper } from "./render-state.js";
 import { ACTIVE_RUN_STATUSES, appendRunControls } from "./run-request.js";
+import { confirmDestructive } from "./ui/confirm.js";
+import { appendText, button, buttonRow, details, facts, field, option, statusBadge } from "./ui/dom.js";
+import { errorMessage, isConflict, statusState, statusText } from "./ui/format.js";
+import { createPanelLifecycle, messageRegion, renderPanelHeader, section, sectionState } from "./ui/panel.js";
+import { VERB } from "./ui/vocabulary.js";
 
 const AGENT_CAPABILITY_PREFIX = "agent-invoke-";
-
-function errorMessage(error, fallback) {
-  return error?.detail?.message || error?.message || fallback;
-}
 
 export function agentRunProfileId(record) {
   const capabilityId = String(record?.capability_id || "");
@@ -227,8 +227,12 @@ export function handoffStatusText(activeAgent) {
   return activeAgent ? `Talking to ${activeAgent.display_name || activeAgent.profile_id}` : "";
 }
 
-export function createHandoffStatus({ label, endButton, endHandoff, onEnded, onError }) {
+export function createHandoffStatus({ label, endButton, openButton = null, openAgent = null, endHandoff, onEnded, onError }) {
   let sessionId = "";
+  let agentId = "";
+  openButton?.addEventListener("click", () => {
+    if (agentId) openAgent?.(agentId);
+  });
   endButton.addEventListener("click", async () => {
     if (!sessionId) return;
     endButton.disabled = true;
@@ -246,6 +250,8 @@ export function createHandoffStatus({ label, endButton, endHandoff, onEnded, onE
       sessionId = activeAgent ? status.session_id || "" : "";
       label.textContent = handoffStatusText(activeAgent);
       endButton.hidden = !activeAgent;
+      agentId = activeAgent?.profile_id || "";
+      if (openButton) openButton.hidden = !activeAgent || !openAgent;
       endButton.disabled = false;
     },
   };
@@ -450,6 +456,11 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
       return payload;
     } catch (error) {
       state.mutationError = errorMessage(error, "That agent request could not be completed.");
+      if (isConflict(error)) {
+        // Someone else changed the profile since it was read; show what is current now.
+        state.mutationError = `${state.mutationError} The agent list was reloaded.`;
+        await refreshAgents();
+      }
       return null;
     } finally {
       state.mutationPending = false;
@@ -494,7 +505,8 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     }
   }
 
-  async function cancel(profileId) {
+  async function cancel(profileId, confirm = async () => true) {
+    if (!(await confirm("Cancel this agent run?"))) return null;
     const proposalId = state.activeRun?.profileId === profileId ? state.activeRun.proposalId : "";
     if (proposalId && handlers.cancelAction) {
       return mutate(() => handlers.cancelAction(proposalId), (payload) => agentCancelNotice(payload));
@@ -525,8 +537,9 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     emit();
   }
 
-  async function cancelLinkedRun(proposalId) {
+  async function cancelLinkedRun(proposalId, confirm = async () => true) {
     if (!handlers.cancelAction) return null;
+    if (!(await confirm("Cancel this external agent run?"))) return null;
     return mutate(() => handlers.cancelAction(proposalId), agentCancelNotice);
   }
 
@@ -668,9 +681,10 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
     return payload;
   }
 
-  async function remove(profileId) {
+  async function remove(profileId, confirm = async () => true) {
     const agent = agentById(profileId);
     if (!agent?.editable) return null;
+    if (!(await confirm(`Delete the agent "${agent.display_name || profileId}"? This can't be undone.`))) return null;
     return mutate(
       () => handlers.deleteAgent(profileId, agent.fingerprint),
       () => "Agent profile deleted.",
@@ -731,56 +745,16 @@ export function createAgentsPanelController(handlers, render = () => undefined) 
   };
 }
 
-function appendText(parent, text, tagName = "span", className = "") {
-  const node = document.createElement(tagName);
-  node.textContent = text;
-  if (className) node.className = className;
-  parent.appendChild(node);
-  return node;
-}
-
-function formatValue(value) {
-  if (value === null || value === undefined || value === "") return "—";
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
-  if (typeof value === "boolean") return value ? "yes" : "no";
-  return String(value);
-}
-
-function labeledValue(parent, label, value) {
-  const field = document.createElement("div");
-  field.className = "agents-field";
-  appendText(field, label, "dt");
-  appendText(field, formatValue(value), "dd");
-  parent.appendChild(field);
-  return field;
-}
-
-function detailsDisclosure(facts, raw = null) {
-  const details = document.createElement("details");
-  appendText(details, "Details", "summary");
-  const list = document.createElement("dl");
-  list.className = "agents-facts";
-  for (const [label, value] of facts) {
-    if (value !== null && value !== undefined && value !== "") labeledValue(list, label, value);
-  }
-  details.appendChild(list);
-  if (raw !== null && raw !== undefined) appendText(details, JSON.stringify(raw, null, 2), "pre");
-  return details;
-}
-
-function actionButton(text, focusKey, onClick, disabled = false) {
-  const button = document.createElement("button");
-  button.type = "button";
-  button.textContent = text;
-  button.disabled = disabled;
-  button.dataset.focusKey = focusKey;
-  button.addEventListener("click", onClick);
-  return button;
-}
-
 function acpDefinition(state, adapterId) {
   return state.acpDefinitions.find((extension) => acpDefinitionId(extension) === adapterId) || null;
 }
+
+const RUN_CONTROL_ACTIONS = (state) => ({
+  answer: (runId, requestId, answerValue) => state.actions.answer(runId, requestId, answerValue),
+  decide: (proposalId, outcome) => state.actions.decide(proposalId, outcome),
+  cancel: (proposalId) => state.actions.cancelLinkedRun(proposalId),
+  notice: (message) => state.actions.notice(message),
+});
 
 function renderExternalAgent(state, agent) {
   const adapterId = agent.runtime.adapter_id;
@@ -789,59 +763,61 @@ function renderExternalAgent(state, agent) {
   const block = document.createElement("div");
   block.className = "agents-external";
   appendText(block, "External agent", "h4");
-  const facts = document.createElement("dl");
-  facts.className = "agents-facts";
-  labeledValue(facts, "Definition", extension?.display_name || adapterId);
-  labeledValue(facts, "Status", acpDefinitionStatus(extension, runtime));
-  if (runtime && !runtime.error) labeledValue(facts, "Connected now", runtime.connected === true);
-  block.appendChild(facts);
-  if (state.acpError) appendText(block, state.acpError, "p", "agents-error");
-  if (runtime?.error) appendText(block, runtime.error, "p", "agents-error");
+  const entries = [["Definition", extension?.display_name || adapterId], ["Status", acpDefinitionStatus(extension, runtime)]];
+  if (runtime && !runtime.error) entries.push(["Connected now", runtime.connected === true]);
+  block.appendChild(facts(entries));
+  if (state.acpError) appendText(block, state.acpError, "p", "panel-error");
+  if (runtime?.error) appendText(block, runtime.error, "p", "panel-error");
   const testing = state.test?.adapterId === adapterId ? state.test : null;
-  block.appendChild(actionButton(
-    testing?.pending ? "Testing…" : "Test connection",
-    `agent:${agent.profile_id}:test`,
-    () => state.actions.testConnection(adapterId),
-    Boolean(testing?.pending) || !extension,
-  ));
-  if (testing?.message) appendText(block, testing.message, "p", testing.ok ? "agents-notice" : "agents-error");
+  block.appendChild(buttonRow(button(testing?.pending ? "Testing…" : "Test connection", {
+    focusKey: `agent:${agent.profile_id}:test`,
+    onClick: () => state.actions.testConnection(adapterId),
+    disabled: Boolean(testing?.pending) || !extension,
+  })));
+  if (testing?.message) appendText(block, testing.message, "p", testing.ok ? "panel-notice" : "panel-error");
 
   const runs = state.extensionRuns.filter((run) => run.extension_id === `acp:${adapterId}`).slice(0, 3);
   for (const run of runs) {
     const item = document.createElement("div");
-    item.className = "agents-linked-run";
-    const status = appendText(item, `${formatActionTime(run.started_at)} · ${String(run.status || "unknown").replaceAll("_", " ")}`, "span", "agents-status");
-    status.dataset.state = agentRunActivityState({ record: { status: run.status } });
+    item.className = "panel-inset";
+    item.appendChild(statusBadge(`${formatActionTime(run.started_at)} · ${statusText(run.status)}`, statusState(run.status)));
     const text = acpMessageText(run.events);
-    if (text) appendText(item, text, "p", "agents-help");
-    if (run.error) appendText(item, run.error, "p", "agents-error");
-    appendRunControls(item, run, {
-      answer: (runId, requestId, answerValue) => state.actions.answer(runId, requestId, answerValue),
-      decide: (proposalId, outcome) => state.actions.decide(proposalId, outcome),
-      cancel: (proposalId) => state.actions.cancelLinkedRun(proposalId),
-      notice: (message) => state.actions.notice(message),
-    });
-    item.appendChild(detailsDisclosure([["Run", run.run_id], ["Proposal", run.proposal_id]], { events: run.events, result: run.result }));
+    if (text) appendText(item, text, "p", "agents-output");
+    if (run.error) appendText(item, run.error, "p", "panel-error");
+    appendRunControls(item, run, RUN_CONTROL_ACTIONS(state));
+    item.appendChild(details([["Run", run.run_id], ["Proposal", run.proposal_id]], { events: run.events, result: run.result }));
     block.appendChild(item);
   }
   return block;
 }
 
-function renderPendingApprovals(state) {
+// The approvals an agent is waiting on: its own invocation, or an action it proposed itself.
+export function agentPendingApprovals(pending, profileId) {
+  return (pending || []).filter((item) => item.capability_id === `${AGENT_CAPABILITY_PREFIX}${profileId}`
+    || item.proposed_by === `agent:${profileId}`);
+}
+
+function renderPendingApprovals(state, approvals) {
   const block = document.createElement("div");
   block.className = "agents-approvals";
   appendText(block, "Waiting for your approval", "h4");
-  for (const pending of state.pendingApprovals) {
+  for (const pending of approvals) {
     const row = document.createElement("div");
-    appendText(row, `${capabilityTitle(pending.capability_id)}: ${pending.reason}`, "p", "agents-help");
-    const buttons = document.createElement("div");
-    buttons.className = "agents-buttons";
-    buttons.append(
-      actionButton("Approve", `approval:${pending.proposal_id}:approved`, () => state.actions.decide(pending.proposal_id, "approved"), state.mutationPending),
-      actionButton("Decline", `approval:${pending.proposal_id}:denied`, () => state.actions.decide(pending.proposal_id, "denied"), state.mutationPending),
-    );
-    row.appendChild(buttons);
-    row.appendChild(detailsDisclosure([["Capability", pending.capability_id], ["Proposal", pending.proposal_id]], pending.arguments));
+    appendText(row, `${pending.label || capabilityTitle(pending.capability_id)}: ${pending.reason}`, "p", "panel-help");
+    row.appendChild(buttonRow(
+      button(VERB.approve, {
+        variant: "primary",
+        focusKey: `approval:${pending.proposal_id}:approved`,
+        onClick: () => state.actions.decide(pending.proposal_id, "approved"),
+        disabled: state.mutationPending,
+      }),
+      button(VERB.decline, {
+        focusKey: `approval:${pending.proposal_id}:denied`,
+        onClick: () => state.actions.decide(pending.proposal_id, "denied"),
+        disabled: state.mutationPending,
+      }),
+    ));
+    row.appendChild(details([["Capability", pending.capability_id], ["Proposal", pending.proposal_id]], pending.arguments));
     block.appendChild(row);
   }
   return block;
@@ -858,8 +834,8 @@ function renderLastResult(state, agent) {
   status.dataset.state = agentRunActivityState({ record: { status: payload.status } });
   const text = agentOutputText(payload, linked);
   if (text) appendText(block, text, "p", "agents-output");
-  if (payload.error) appendText(block, payload.error, "p", "agents-error");
-  block.appendChild(detailsDisclosure([
+  if (payload.error) appendText(block, payload.error, "p", "panel-error");
+  block.appendChild(details([
     ["Agent", agent.profile_id],
     ["Proposal", result.proposalId],
     ["Turn", payload.turn_id],
@@ -873,35 +849,23 @@ function selectedAgent(state) {
 }
 
 function renderCatalog(state) {
-  const section = document.createElement("section");
-  section.className = "agents-section";
-  appendText(section, "Agents", "h3");
-  const create = document.createElement("button");
-  create.type = "button";
-  create.textContent = "New agent";
-  create.disabled = state.mutationPending || Boolean(state.editing);
-  create.addEventListener("click", () => state.actions.startCreate());
-  section.appendChild(create);
-  if (state.agentsLoading) {
-    appendText(section, "Loading agents…", "p", "agents-help");
-    return section;
-  }
-  if (state.agentsError) {
-    appendText(section, state.agentsError, "p", "agents-error");
-    return section;
-  }
+  const node = section("Agents");
+  node.appendChild(buttonRow(button("New agent", {
+    variant: "primary",
+    focusKey: "agents:new",
+    onClick: () => state.actions.startCreate(),
+    disabled: state.mutationPending || Boolean(state.editing),
+  })));
+  if (sectionState(node, { loading: state.agentsLoading, error: state.agentsError, thing: "agents" })) return node;
   for (const problem of state.problems) {
     const row = document.createElement("div");
-    appendText(row, `Could not load ${capabilityTitle(problem.capability_id).replace(/^Run agent /, "")}: ${problem.reason}`, "p", "agents-error");
-    row.appendChild(detailsDisclosure([["Capability", problem.capability_id]]));
-    section.appendChild(row);
+    appendText(row, `Could not load ${capabilityTitle(problem.capability_id).replace(/^Run agent /, "")}: ${problem.reason}`, "p", "panel-error");
+    row.appendChild(details([["Capability", problem.capability_id]]));
+    node.appendChild(row);
   }
-  if (!state.agents.length) {
-    appendText(section, "No agent profiles are registered.", "p", "agents-help");
-    return section;
-  }
+  if (sectionState(node, { empty: !state.agents.length, thing: "agents" })) return node;
   const list = document.createElement("ul");
-  list.className = "agents-list";
+  list.className = "panel-list";
   for (const agent of state.agents) {
     const item = document.createElement("li");
     const row = document.createElement("button");
@@ -910,49 +874,44 @@ function renderCatalog(state) {
     row.dataset.focusKey = `agent:${agent.profile_id}`;
     row.setAttribute("aria-pressed", agent.profile_id === state.selectedProfileId ? "true" : "false");
     appendText(row, agent.display_name || agent.profile_id, "strong");
-    appendText(row, agent.purpose, "span", "agents-row-meta");
-    appendText(row, agentModesSummary(agent.invocation_modes), "span", "agents-row-meta");
-    if (agent.enabled === false) appendText(row, "disabled", "span", "agents-row-meta");
+    appendText(row, agent.purpose, "span", "panel-help");
+    appendText(row, agentModesSummary(agent.invocation_modes), "span", "panel-help");
+    if (agent.enabled === false) appendText(row, "Disabled", "span", "panel-help");
     row.addEventListener("click", () => state.actions.selectAgent(agent.profile_id));
     item.appendChild(row);
     list.appendChild(item);
   }
-  section.appendChild(list);
-  return section;
+  node.appendChild(list);
+  return node;
 }
 
 function renderDetail(state) {
-  const section = document.createElement("section");
-  section.className = "agents-section";
-  appendText(section, "Agent detail", "h3");
+  const node = section("Agent detail");
   const agent = selectedAgent(state);
   if (!agent) {
-    appendText(section, "Select an agent to see its contract.", "p", "agents-help");
-    return section;
+    appendText(node, "Select an agent to see what it does and how it runs.", "p", "panel-help");
+    return node;
   }
-  appendText(section, agent.display_name || agent.profile_id, "strong");
-  appendText(section, agent.purpose, "p", "agents-help");
-  const facts = document.createElement("dl");
-  facts.className = "agents-facts";
-  labeledValue(facts, "Reached by", agentModesSummary(agent.invocation_modes));
-  labeledValue(facts, "Approval", APPROVAL_LABELS[agent.approval_class] || agent.approval_class);
-  labeledValue(facts, "Memory it can read", MEMORY_SCOPE_LABELS[agent.memory_scope] || agent.memory_scope);
-  labeledValue(facts, "Tools it may use", agent.capability_ids?.length ? `${agent.capability_ids.length} allowed` : "None");
-  labeledValue(facts, "Can be stopped", agent.cancellable);
-  labeledValue(facts, "Runs in", agentRuntimeLabel(agent.runtime, acpDefinition(state, agent.runtime?.adapter_id)));
-  labeledValue(facts, "Owner", agent.editable ? "You (editable)" : "Built in (duplicate it to change it)");
-  labeledValue(facts, "Enabled", agent.enabled !== false);
-  section.appendChild(facts);
+  appendText(node, agent.display_name || agent.profile_id, "strong");
+  appendText(node, agent.purpose, "p", "panel-help");
+  node.appendChild(facts([
+    ["Reached by", agentModesSummary(agent.invocation_modes)],
+    ["Approval", APPROVAL_LABELS[agent.approval_class] || agent.approval_class],
+    ["Memory it can read", MEMORY_SCOPE_LABELS[agent.memory_scope] || agent.memory_scope],
+    ["Tools it may use", agent.capability_ids?.length ? `${agent.capability_ids.length} allowed` : "None"],
+    ["Can be stopped", agent.cancellable],
+    ["Runs in", agentRuntimeLabel(agent.runtime, acpDefinition(state, agent.runtime?.adapter_id))],
+    ["Owner", agent.editable ? "You (editable)" : "Built in (duplicate it to change it)"],
+    ["Enabled", agent.enabled !== false],
+  ]));
 
   if (agent.enabled === false) {
-    appendText(section, "This agent is disabled. Enable it to invoke it.", "p", "agents-help");
+    appendText(node, "This agent is disabled. Enable it to run it.", "p", "panel-help");
   } else if (!agent.invocation_modes?.includes("direct")) {
-    appendText(section, "This agent is not invocable directly from the operator surface.", "p", "agents-help");
+    appendText(node, "This agent can't be run directly from this panel.", "p", "panel-help");
   } else {
     const form = document.createElement("form");
     form.className = "agents-invoke";
-    const label = document.createElement("label");
-    appendText(label, "Prompt");
     const prompt = document.createElement("textarea");
     prompt.name = "prompt";
     prompt.required = true;
@@ -961,67 +920,60 @@ function renderDetail(state) {
     // The prompt draft lives in controller state so a run refresh does not discard it, and it is
     // not re-emitted on input so typing never re-renders the textarea out from under the caret.
     prompt.addEventListener("input", (event) => state.actions.setPrompt(event.target.value));
-    label.appendChild(prompt);
-    form.appendChild(label);
-    const submit = document.createElement("button");
-    submit.type = "submit";
-    submit.textContent = state.invokePending ? "Running…" : "Invoke agent";
-    submit.disabled = state.invokePending;
-    submit.dataset.focusKey = `agent:${agent.profile_id}:invoke`;
-    form.appendChild(submit);
+    form.appendChild(field("Prompt", prompt));
+    form.appendChild(buttonRow(button(state.invokePending ? "Running…" : "Invoke agent", {
+      type: "submit",
+      focusKey: `agent:${agent.profile_id}:invoke`,
+      disabled: state.invokePending,
+    })));
     form.addEventListener("submit", (event) => {
       event.preventDefault();
       if (!agentInvokeEnabled(agent, prompt.value, state.invokePending)) return;
       state.actions.setPrompt(prompt.value);
       state.actions.invoke(agent.profile_id, prompt.value);
     });
-    section.appendChild(form);
+    node.appendChild(form);
   }
-  if (state.lastResult?.profileId === agent.profile_id) section.appendChild(renderLastResult(state, agent));
-  if (state.pendingApprovals.length) section.appendChild(renderPendingApprovals(state));
-  if (agent.runtime?.kind === "acp") section.appendChild(renderExternalAgent(state, agent));
+  if (state.lastResult?.profileId === agent.profile_id) node.appendChild(renderLastResult(state, agent));
+  const approvals = agentPendingApprovals(state.pendingApprovals, agent.profile_id);
+  if (approvals.length) node.appendChild(renderPendingApprovals(state, approvals));
+  if (agent.runtime?.kind === "acp") node.appendChild(renderExternalAgent(state, agent));
 
-  const buttons = document.createElement("div");
-  buttons.className = "agents-buttons";
-  const cancelButton = document.createElement("button");
-  cancelButton.type = "button";
-  cancelButton.textContent = "Cancel run";
-  cancelButton.dataset.focusKey = `agent:${agent.profile_id}:cancel`;
-  cancelButton.disabled = !agent.cancellable || state.mutationPending
-    || (state.invokePending && state.activeRun?.profileId !== agent.profile_id);
-  if (!agent.cancellable) cancelButton.title = "This agent profile is not cancellable.";
-  cancelButton.addEventListener("click", () => state.actions.cancel(agent.profile_id));
-  buttons.appendChild(cancelButton);
   const enabled = agent.enabled !== false;
-  const toggle = document.createElement("button");
-  toggle.type = "button";
-  toggle.textContent = enabled ? "Disable" : "Enable";
-  toggle.disabled = state.mutationPending || state.invokePending;
-  toggle.addEventListener("click", () => state.actions.setEnabled(agent.profile_id, !enabled));
-  buttons.appendChild(toggle);
-  if (agent.editable) {
-    const edit = document.createElement("button");
-    edit.type = "button";
-    edit.textContent = "Edit profile";
-    edit.disabled = state.mutationPending || Boolean(state.editing);
-    edit.addEventListener("click", () => state.actions.startEdit(agent.profile_id));
-    buttons.appendChild(edit);
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Delete profile";
-    remove.disabled = state.mutationPending || state.invokePending;
-    remove.addEventListener("click", () => state.actions.remove(agent.profile_id));
-    buttons.appendChild(remove);
-  } else {
-    const duplicate = document.createElement("button");
-    duplicate.type = "button";
-    duplicate.textContent = "Duplicate as my agent";
-    duplicate.disabled = state.mutationPending || Boolean(state.editing);
-    duplicate.addEventListener("click", () => state.actions.startDuplicate(agent.profile_id));
-    buttons.appendChild(duplicate);
-  }
-  section.appendChild(buttons);
-  return section;
+  node.appendChild(buttonRow(
+    button(VERB.cancelRun, {
+      focusKey: `agent:${agent.profile_id}:cancel`,
+      onClick: () => state.actions.cancel(agent.profile_id),
+      disabled: !agent.cancellable || state.mutationPending
+        || (state.invokePending && state.activeRun?.profileId !== agent.profile_id),
+      title: agent.cancellable ? "" : "This agent profile is not cancellable.",
+    }),
+    button(enabled ? VERB.disable : VERB.enable, {
+      focusKey: `agent:${agent.profile_id}:toggle`,
+      onClick: () => state.actions.setEnabled(agent.profile_id, !enabled),
+      disabled: state.mutationPending || state.invokePending,
+    }),
+    agent.editable
+      ? button("Edit profile", {
+        focusKey: `agent:${agent.profile_id}:edit`,
+        onClick: () => state.actions.startEdit(agent.profile_id),
+        disabled: state.mutationPending || Boolean(state.editing),
+      })
+      : button("Duplicate as my agent", {
+        focusKey: `agent:${agent.profile_id}:duplicate`,
+        onClick: () => state.actions.startDuplicate(agent.profile_id),
+        disabled: state.mutationPending || Boolean(state.editing),
+      }),
+    agent.editable
+      ? button(VERB.delete, {
+        variant: "danger",
+        focusKey: `agent:${agent.profile_id}:delete`,
+        onClick: () => state.actions.remove(agent.profile_id),
+        disabled: state.mutationPending || state.invokePending,
+      })
+      : null,
+  ));
+  return node;
 }
 
 function agentRuntimeLabel(runtime, definition = null) {
@@ -1030,12 +982,7 @@ function agentRuntimeLabel(runtime, definition = null) {
 }
 
 function formField(parent, labelText, control, help = "") {
-  const label = document.createElement("label");
-  label.className = "agents-field-control";
-  appendText(label, labelText);
-  label.appendChild(control);
-  if (help) appendText(label, help, "span", "agents-help");
-  parent.appendChild(label);
+  parent.appendChild(field(labelText, control, { help }));
   return control;
 }
 
@@ -1045,6 +992,7 @@ function textControl(state, name, { multiline = false, rows = 3 } = {}) {
   else control.type = "text";
   control.name = name;
   control.value = state.form[name];
+  control.dataset.focusKey = `agent-form:${name}`;
   control.addEventListener("input", (event) => state.actions.setField(name, event.target.value));
   return control;
 }
@@ -1052,13 +1000,8 @@ function textControl(state, name, { multiline = false, rows = 3 } = {}) {
 function selectControl(state, name, labels, { rerender = false } = {}) {
   const control = document.createElement("select");
   control.name = name;
-  for (const [value, text] of Object.entries(labels)) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = text;
-    option.selected = state.form[name] === value;
-    control.appendChild(option);
-  }
+  control.dataset.focusKey = `agent-form:${name}`;
+  for (const [value, text] of Object.entries(labels)) control.appendChild(option(value, text, state.form[name] === value));
   control.addEventListener("change", (event) => state.actions.setField(name, event.target.value, { rerender }));
   return control;
 }
@@ -1066,6 +1009,7 @@ function selectControl(state, name, labels, { rerender = false } = {}) {
 function acpDefinitionPicker(state) {
   const control = document.createElement("select");
   control.name = "adapter_id";
+  control.dataset.focusKey = "agent-form:adapter_id";
   const choices = [["", "Choose a definition…"]];
   for (const extension of state.acpDefinitions) {
     choices.push([acpDefinitionId(extension), `${extension.display_name || acpDefinitionId(extension)} (${acpDefinitionStatus(extension)})`]);
@@ -1073,20 +1017,27 @@ function acpDefinitionPicker(state) {
   // A saved definition that no longer exists stays selectable, so an edit never drops it silently.
   const current = state.form.adapter_id;
   if (current && !choices.some(([value]) => value === current)) choices.push([current, `${current} (${acpDefinitionStatus(null)})`]);
-  for (const [value, text] of choices) {
-    const option = document.createElement("option");
-    option.value = value;
-    option.textContent = text;
-    option.selected = current === value;
-    control.appendChild(option);
-  }
+  for (const [value, text] of choices) control.appendChild(option(value, text, current === value));
   control.addEventListener("change", (event) => state.actions.setField("adapter_id", event.target.value));
   return control;
 }
 
+function choice(name, checked, text, onChange) {
+  const label = document.createElement("label");
+  label.className = "panel-choice";
+  const box = document.createElement("input");
+  box.type = "checkbox";
+  box.name = name;
+  box.checked = checked;
+  box.dataset.focusKey = `agent-form:${name}`;
+  box.addEventListener("change", (event) => onChange(event.target.checked));
+  label.append(box, document.createTextNode(text));
+  return label;
+}
+
 function renderToolChoices(state) {
   const tools = document.createElement("fieldset");
-  tools.className = "agents-choices";
+  tools.className = "panel-choices";
   appendText(tools, "Tools it may use", "legend");
   const known = new Set(state.tools.map((tool) => tool.capability_id));
   // A tool already allowed but no longer offered stays listed, so saving never drops it silently.
@@ -1096,32 +1047,27 @@ function renderToolChoices(state) {
       .filter((id) => !known.has(id))
       .map((id) => ({ capability_id: id, label: id, needs_approval: false, available: false })),
   ];
-  if (state.toolsError) appendText(tools, state.toolsError, "p", "agents-error");
+  if (state.toolsError) appendText(tools, state.toolsError, "p", "panel-error");
   if (!choices.length) {
-    appendText(tools, "No tools are available. Add them in Extensions.", "p", "agents-help");
+    appendText(tools, "No tools are available. Add them in Extensions.", "p", "panel-help");
     return tools;
   }
   for (const tool of choices) {
-    const option = document.createElement("label");
-    option.className = "agents-choice";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.name = `tool-${tool.capability_id}`;
-    box.checked = state.form.capability_ids.includes(tool.capability_id);
-    box.addEventListener("change", (event) => state.actions.setTool(tool.capability_id, event.target.checked));
-    option.append(box, document.createTextNode(agentToolLabel(tool)));
-    tools.appendChild(option);
+    tools.appendChild(choice(
+      `tool-${tool.capability_id}`,
+      state.form.capability_ids.includes(tool.capability_id),
+      agentToolLabel(tool),
+      (checked) => state.actions.setTool(tool.capability_id, checked),
+    ));
   }
   return tools;
 }
 
 function renderEditor(state) {
   const form = state.form;
-  const section = document.createElement("section");
-  section.className = "agents-section";
-  appendText(section, state.editing === "new" ? "New agent" : `Edit ${form.display_name}`, "h3");
+  const node = section(state.editing === "new" ? "New agent" : `Edit ${form.display_name}`);
   const element = document.createElement("form");
-  element.className = "agents-form";
+  element.className = "panel-form";
 
   formField(element, "Name", textControl(state, "display_name"));
   if (state.editing === "new") {
@@ -1133,18 +1079,10 @@ function renderEditor(state) {
   formField(element, "How it should work", textControl(state, "instructions", { multiline: true, rows: 5 }));
 
   const modes = document.createElement("fieldset");
-  modes.className = "agents-choices";
+  modes.className = "panel-choices";
   appendText(modes, "How it can be reached", "legend");
   for (const [mode, text] of Object.entries(INVOCATION_MODE_LABELS)) {
-    const option = document.createElement("label");
-    option.className = "agents-choice";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.name = `mode-${mode}`;
-    box.checked = form.modes.includes(mode);
-    box.addEventListener("change", (event) => state.actions.setMode(mode, event.target.checked));
-    option.append(box, document.createTextNode(text));
-    modes.appendChild(option);
+    modes.appendChild(choice(`mode-${mode}`, form.modes.includes(mode), text, (checked) => state.actions.setMode(mode, checked)));
   }
   element.appendChild(modes);
 
@@ -1162,6 +1100,7 @@ function renderEditor(state) {
   timeout.min = "1";
   timeout.max = "600";
   timeout.value = String(form.timeout_seconds);
+  timeout.dataset.focusKey = "agent-form:timeout_seconds";
   timeout.addEventListener("input", (event) => state.actions.setField("timeout_seconds", event.target.value));
   formField(element, "Time limit (seconds)", timeout);
   formField(
@@ -1177,59 +1116,34 @@ function renderEditor(state) {
       acpDefinitionPicker(state),
       state.acpDefinitions.length ? "Definitions are added and edited in Extensions." : "No external agent definitions exist yet. Add one in Extensions.",
     );
-    if (state.acpError) appendText(element, state.acpError, "p", "agents-error");
+    if (state.acpError) appendText(element, state.acpError, "p", "panel-error");
   } else {
-    const stop = document.createElement("label");
-    stop.className = "agents-choice";
-    const box = document.createElement("input");
-    box.type = "checkbox";
-    box.name = "cancellable";
-    box.checked = form.cancellable;
-    box.addEventListener("change", (event) => state.actions.setField("cancellable", event.target.checked));
-    stop.append(box, document.createTextNode("Can be stopped while it runs"));
-    element.appendChild(stop);
+    element.appendChild(choice("cancellable", form.cancellable, "Can be stopped while it runs",
+      (checked) => state.actions.setField("cancellable", checked)));
   }
 
-  const buttons = document.createElement("div");
-  buttons.className = "agents-buttons";
-  const save = document.createElement("button");
-  save.type = "submit";
-  save.textContent = "Save agent";
-  save.disabled = state.mutationPending;
-  buttons.appendChild(save);
-  const discard = document.createElement("button");
-  discard.type = "button";
-  discard.textContent = "Discard changes";
-  discard.addEventListener("click", () => state.actions.cancelEdit());
-  buttons.appendChild(discard);
-  element.appendChild(buttons);
+  element.appendChild(buttonRow(
+    button("Save agent", { type: "submit", disabled: state.mutationPending, focusKey: "agent-form:save" }),
+    button(VERB.discard, { onClick: () => state.actions.cancelEdit(), focusKey: "agent-form:discard" }),
+  ));
   element.addEventListener("submit", (event) => {
     event.preventDefault();
     state.actions.save();
   });
-  section.appendChild(element);
-  return section;
+  node.appendChild(element);
+  return node;
 }
 
 function renderRuns(state) {
-  const section = document.createElement("section");
-  section.className = "agents-section";
-  appendText(section, "Runs", "h3");
-  if (state.runsLoading) {
-    appendText(section, "Loading agent runs…", "p", "agents-help");
-    return section;
-  }
-  if (state.runsError) {
-    appendText(section, state.runsError, "p", "agents-error");
-    return section;
-  }
+  const node = section("Runs");
+  if (sectionState(node, { loading: state.runsLoading, error: state.runsError, thing: "agent runs" })) return node;
   if (!state.runs.length) {
-    appendText(section, "No agent evidence has been recorded.", "p", "agents-help");
-    return section;
+    appendText(node, "No agent runs have been recorded.", "p", "panel-help");
+    return node;
   }
   const names = new Map(state.agents.map((agent) => [agent.profile_id, agent.display_name || agent.profile_id]));
   const list = document.createElement("ul");
-  list.className = "agents-list";
+  list.className = "panel-list";
   for (const group of groupAuditRecords(state.runs)) {
     const item = document.createElement("li");
     const profileId = agentRunProfileId({ capability_id: group.capabilityId });
@@ -1241,88 +1155,56 @@ function renderRuns(state) {
       step.dataset.state = auditRecordState(record);
     }
     item.appendChild(steps);
-    item.appendChild(detailsDisclosure([["Capability", group.capabilityId], ["Proposal", group.proposalId]], group.records));
+    item.appendChild(details([["Capability", group.capabilityId], ["Proposal", group.proposalId]], group.records));
     list.appendChild(item);
   }
-  section.appendChild(list);
-  return section;
+  node.appendChild(list);
+  return node;
 }
 
-function renderPanel(keeper, state, actions) {
-  const view = { ...state, actions };
-  const header = document.createElement("div");
-  header.className = "agents-panel-header";
-  const heading = appendText(header, "Agents", "h2");
-  heading.tabIndex = -1;
-
-  const messages = document.createElement("div");
-  messages.setAttribute("aria-live", "polite");
-  if (state.notice) appendText(messages, state.notice, "p", "agents-notice");
-  if (state.mutationError) appendText(messages, state.mutationError, "p", "agents-error");
-
-  const sections = [renderCatalog(view)];
-  sections.push(state.editing ? renderEditor(view) : renderDetail(view));
-  keeper.render(header, messages, ...sections, renderRuns(view));
+function renderPanel(state) {
+  return [
+    renderPanelHeader("Agents"),
+    messageRegion({ notice: state.notice, error: state.mutationError }),
+    renderCatalog(state),
+    state.editing ? renderEditor(state) : renderDetail(state),
+    renderRuns(state),
+  ];
 }
 
 export function createAgentsPanel(container, handlers, options = {}) {
-  let open = false;
-  let polling = null;
+  const confirm = options.confirmDestructive || confirmDestructive;
   let controller;
-  const keeper = createRenderStateKeeper(container);
   const actions = {
-    close: () => close(),
     selectAgent: (profileId) => controller.selectAgent(profileId),
     setPrompt: (value) => controller.setPrompt(value),
     invoke: (profileId, prompt) => controller.invoke(profileId, prompt),
-    cancel: (profileId) => controller.cancel(profileId),
+    cancel: (profileId) => controller.cancel(profileId, confirm),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
     answer: (runId, requestId, answerValue) => controller.answer(runId, requestId, answerValue),
-    cancelLinkedRun: (proposalId) => controller.cancelLinkedRun(proposalId),
+    cancelLinkedRun: (proposalId) => controller.cancelLinkedRun(proposalId, confirm),
     notice: (message) => controller.notice(message),
     testConnection: (adapterId) => controller.testConnection(adapterId),
     startCreate: () => controller.startCreate(),
     startDuplicate: (profileId) => controller.startDuplicate(profileId),
     startEdit: (profileId) => controller.startEdit(profileId),
-    setField: (name, value, options) => controller.setField(name, value, options),
+    setField: (name, value, fieldOptions) => controller.setField(name, value, fieldOptions),
     setMode: (mode, checked) => controller.setMode(mode, checked),
     setTool: (capabilityId, checked) => controller.setTool(capabilityId, checked),
     cancelEdit: () => controller.cancelEdit(),
     save: () => controller.save(),
-    remove: (profileId) => controller.remove(profileId),
+    remove: (profileId) => controller.remove(profileId, confirm),
     setEnabled: (profileId, enabled) => controller.setEnabled(profileId, enabled),
   };
-  controller = createAgentsPanelController(handlers, (state) => {
-    if (open) renderPanel(keeper, state, actions);
+  // A live run streams progress and may stop to ask for permission or input, so the panel
+  // follows it while one is in flight.
+  const lifecycle = createPanelLifecycle(container, {
+    load: () => controller.load(),
+    render: (state) => renderPanel({ ...state, actions }),
+    cancelPendingReads: () => controller.cancelPendingReads(),
+    onClose: options.onClose,
+    poll: { active: () => controller.hasLiveRun(), run: () => controller.poll() },
   });
-
-  async function show() {
-    open = true;
-    container.hidden = false;
-    renderPanel(keeper, controller.snapshot(), actions);
-    await controller.load();
-    keeper.release();
-    // A live run streams progress and may stop to ask for permission or input, so the panel
-    // follows it while one is in flight; a focused field is left alone so typing is not disturbed.
-    polling = window.setInterval(() => {
-      if (!controller.hasLiveRun()) return;
-      const active = document.activeElement;
-      if (active && ["INPUT", "TEXTAREA", "SELECT"].includes(active.tagName)) return;
-      controller.poll();
-    }, 1000);
-    container.querySelector("h2")?.focus();
-  }
-
-  function close() {
-    if (!open) return;
-    open = false;
-    controller.cancelPendingReads();
-    if (polling) { window.clearInterval(polling); polling = null; }
-    keeper.retain();
-    container.hidden = true;
-    container.replaceChildren();
-    options.onClose?.();
-  }
-
-  return { open: show, close, isOpen: () => open, controller };
+  controller = createAgentsPanelController(handlers, lifecycle.draw);
+  return { open: lifecycle.open, close: lifecycle.close, isOpen: lifecycle.isOpen, controller };
 }

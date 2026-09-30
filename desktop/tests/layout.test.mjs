@@ -77,9 +77,21 @@ test("desktop markup must not use inline styles", async () => {
     ".extensions-panel-detail",
     ".agents-panel",
     "--color-backdrop",
+    ".btn-primary",
+    ".btn-danger",
+    ".btn-ghost",
+    "button:focus-visible",
+    ".message.approval",
+    ".chip",
   ]) {
     assert.ok(style.includes(selector), `advanced-control style contract missing: ${selector}`);
   }
+  assert.match(style, /\[hidden\]\s*{\s*display:\s*none\s*!important;/, "styled controls must stay hidden when the shell hides them");
+  const defined = new Set([...style.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
+  const undefinedTokens = [...new Set([...style.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]))].filter((name) => !defined.has(name));
+  assert.deepEqual(undefinedTokens, [], "every token a rule reads must be defined");
+  const rawSizes = [...outsideTokens.matchAll(/font-size:\s*([^;]+);/g)].map((match) => match[1]).filter((value) => !value.startsWith("var(--text-"));
+  assert.deepEqual(rawSizes, [], "type sizes outside the token section must come from the scale");
 });
 
 test("Personality must share the operator-panel selector sizing once it moves to the right sidebar", async () => {

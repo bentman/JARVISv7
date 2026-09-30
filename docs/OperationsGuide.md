@@ -96,7 +96,7 @@ backend/.venv/bin/python scripts/provision.py dry-run
 
 ## Model Providers
 
-Open **Settings -> Model Providers** in the desktop app.
+Open **Advanced Controls -> Providers & Models** in the desktop app.
 
 1. Create or select a profile.
 2. Enter endpoint, model ID, context window, timeout, and credential when applicable.

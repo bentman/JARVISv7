@@ -178,6 +178,7 @@ export function desktopResponses() {
     },
     select_personality: (args) => ({ active: { profile_id: args.profileId, locale: "en", description: "Short answers." } }),
     get_session_status: session,
+    get_session_turns: { session_id: "session-1", turns: [] },
     get_desktop_status: { session, resident_voice: residentVoice, wake },
     get_wake_status: wake,
     start_wake_monitor: { ...wake, monitoring: true, active: true },
