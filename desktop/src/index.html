@@ -22,6 +22,9 @@
       </header>
 
       <section id="error-panel" class="error-panel hidden" aria-live="polite"></section>
+      <div id="error-actions" class="error-actions hidden">
+        <button id="retry-start-backend" type="button" class="btn-primary">Retry Starting Backend</button>
+      </div>
 
       <section class="grid">
         <aside class="panel status-panel" aria-label="Runtime status">
@@ -72,18 +75,20 @@
             <button id="ptt-button" type="button" aria-pressed="false" data-capture-state="idle">Start Voice</button>
             <span id="voice-status">Voice idle</span>
           </div>
-          <details class="voice-debug">
-            <summary>Conversation debug details</summary>
-            <pre id="voice-detail" class="voice-detail" aria-live="polite"></pre>
-          </details>
-          <details class="voice-debug backend-diagnostics">
-            <summary>Backend diagnostics</summary>
-            <pre id="backend-diagnostics" class="voice-detail" aria-live="polite"></pre>
-          </details>
-          <details id="degraded-detail" class="voice-debug degraded-detail" hidden>
-            <summary>Degraded list detail</summary>
-            <div id="degraded-conditions" class="degraded-conditions" aria-live="polite"></div>
-          </details>
+          <div class="conversation-diagnostics">
+            <details class="voice-debug">
+              <summary>Conversation debug details</summary>
+              <pre id="voice-detail" class="voice-detail" aria-live="polite"></pre>
+            </details>
+            <details class="voice-debug backend-diagnostics">
+              <summary>Backend diagnostics</summary>
+              <pre id="backend-diagnostics" class="voice-detail" aria-live="polite"></pre>
+            </details>
+            <details id="degraded-detail" class="voice-debug degraded-detail" hidden>
+              <summary>Degraded list detail</summary>
+              <div id="degraded-conditions" class="degraded-conditions" aria-live="polite"></div>
+            </details>
+          </div>
         </section>
         <aside class="panel operator-panel" aria-label="Operator controls">
           <div class="operator-header">

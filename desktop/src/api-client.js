@@ -27,6 +27,25 @@ function backendStartupError(error) {
   return wrapped;
 }
 
+function formatApiDetail(detail) {
+  if (!detail) return null;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail
+      .map((item) => {
+        if (!item) return "";
+        if (typeof item === "string") return item;
+        const loc = Array.isArray(item.loc) ? item.loc.filter((part) => part !== "body").join(".") : "";
+        const msg = item.msg || item.message || "";
+        return loc && msg ? `${loc}: ${msg}` : msg || loc || JSON.stringify(item);
+      })
+      .filter(Boolean);
+    if (messages.length) return messages.join("; ");
+  }
+  if (typeof detail === "object") return detail.message || null;
+  return null;
+}
+
 function memoryApiError(error) {
   const message = String(error?.message || error || "Backend operation failed.");
   let payload;
@@ -37,8 +56,7 @@ function memoryApiError(error) {
   }
   const detail = payload.body?.detail;
   const bodyMessage =
-    (detail && typeof detail === "object" ? detail.message : null) ||
-    (typeof detail === "string" ? detail : null) ||
+    formatApiDetail(detail) ||
     payload.body?.message;
   const wrapped = new Error(bodyMessage || payload.message || "Backend operation failed.");
   wrapped.status = payload.status ?? null;

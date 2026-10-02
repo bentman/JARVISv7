@@ -408,3 +408,37 @@ test("testing an external agent connection must report the reply or a readable f
   assert.equal(await unpromptable.testConnection("coder"), false);
   assert.match(unpromptable.snapshot().test.message, /cannot be prompted/, "a definition with no prompt operation must say why");
 });
+
+test("agent form fields must have dataset.draftKey to preserve operator drafts across panel switches", async () => {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = { createElement, createTextNode: (text) => ({ textContent: text, children: [], dataset: {} }) };
+  globalThis.window = { setInterval: () => 0, clearInterval() {} };
+  try {
+    const container = createElement("div");
+    const panel = createAgentsPanel(container, {
+      listAgents: async () => ({ agents: [{ ...agentProfile, editable: true }] }),
+      listAgentRuns: async () => ({ records: [] }),
+      listAgentTools: async () => ({ tools: [{ capability_id: "tool-1", label: "Tool 1" }] }),
+    });
+    await panel.open();
+    await panel.controller.startEdit("researcher");
+
+    const nameInput = findElement(container, (node) => node.tagName === "input" && node.name === "display_name");
+    assert.ok(nameInput);
+    assert.equal(nameInput.dataset.draftKey, "agent-form:display_name");
+
+    const purposeInput = findElement(container, (node) => node.tagName === "input" && node.name === "purpose");
+    assert.ok(purposeInput);
+    assert.equal(purposeInput.dataset.draftKey, "agent-form:purpose");
+
+    const instructionsInput = findElement(container, (node) => node.tagName === "textarea" && node.name === "instructions");
+    assert.ok(instructionsInput);
+    assert.equal(instructionsInput.dataset.draftKey, "agent-form:instructions");
+
+    panel.close();
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});

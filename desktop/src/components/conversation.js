@@ -54,11 +54,20 @@ export function createConversation({
   let feedCursor = null;
   let syncing = null;
   let approvalCard = null;
+  let pendingKeydownHandler = null;
+
+  function removePendingKeydownListener() {
+    if (pendingKeydownHandler && typeof window !== "undefined" && typeof window.removeEventListener === "function") {
+      window.removeEventListener("keydown", pendingKeydownHandler);
+      pendingKeydownHandler = null;
+    }
+  }
 
   function place(article) {
+    const isNearBottom = (logEl.scrollHeight - logEl.scrollTop - logEl.clientHeight) < 60;
     if (approvalCard?.parentNode === logEl) logEl.insertBefore(article, approvalCard);
     else logEl.appendChild(article);
-    logEl.scrollTop = logEl.scrollHeight;
+    if (isNearBottom) logEl.scrollTop = logEl.scrollHeight;
     return article;
   }
 
@@ -169,11 +178,13 @@ export function createConversation({
   // The approval the conversation is waiting on, answerable here as well as by reply or panel.
   function renderPending(pending) {
     if (!pending) {
+      removePendingKeydownListener();
       approvalCard?.remove();
       approvalCard = null;
       return;
     }
     if (approvalCard?.dataset.proposalId === pending.proposal_id) return;
+    removePendingKeydownListener();
     approvalCard?.remove();
     const card = entry("approval", { speaker: "Approval needed", text: pending.label || capabilityTitle(pending.capability_id) });
     card.dataset.proposalId = pending.proposal_id;
@@ -190,12 +201,34 @@ export function createConversation({
         for (const control of buttons.querySelectorAll("button")) control.disabled = false;
       }
     };
-    buttons.append(
-      button(VERB.approve, { variant: "primary", onClick: settle("approved"), disabled: !decide }),
-      button(VERB.decline, { onClick: settle("denied"), disabled: !decide }),
-    );
+    const approveBtn = button(VERB.approve, { variant: "primary", onClick: settle("approved"), disabled: !decide, title: "Approve (Ctrl+Enter or Alt+A)" });
+    const declineBtn = button(VERB.decline, { onClick: settle("denied"), disabled: !decide, title: "Decline (Esc or Alt+D)" });
+    buttons.append(approveBtn, declineBtn);
     if (onOpenAction) buttons.appendChild(button("Details", { variant: "ghost", onClick: () => onOpenAction(pending.proposal_id) }));
     card.appendChild(buttons);
+
+    if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
+      pendingKeydownHandler = (event) => {
+        if (!approvalCard || approvalCard.dataset.proposalId !== pending.proposal_id) {
+          removePendingKeydownListener();
+          return;
+        }
+        const active = document.activeElement;
+        const tag = (active?.tagName || "").toUpperCase();
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) {
+          return;
+        }
+        if ((event.ctrlKey && event.key === "Enter") || (event.altKey && (event.key === "a" || event.key === "A"))) {
+          event.preventDefault();
+          if (!approveBtn.disabled) approveBtn.click();
+        } else if ((event.altKey && (event.key === "d" || event.key === "D")) || (event.key === "Escape" && !document.querySelector("dialog[open]"))) {
+          event.preventDefault();
+          if (!declineBtn.disabled) declineBtn.click();
+        }
+      };
+      window.addEventListener("keydown", pendingKeydownHandler);
+    }
+
     logEl.appendChild(card);
     logEl.scrollTop = logEl.scrollHeight;
     approvalCard = card;

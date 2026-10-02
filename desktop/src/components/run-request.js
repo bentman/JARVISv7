@@ -3,14 +3,9 @@
 // be stopped. `actions` supplies answer(runId, requestId, answer), decide(proposalId, outcome),
 // cancel(proposalId), and notice(message).
 
-export const ACTIVE_RUN_STATUSES = ["running", "awaiting_input", "awaiting_approval"];
+import { button, buttonRow } from "./ui/dom.js";
 
-function button(text, type = "button") {
-  const node = document.createElement("button");
-  node.type = type;
-  node.textContent = text;
-  return node;
-}
+export const ACTIVE_RUN_STATUSES = ["running", "awaiting_input", "awaiting_approval"];
 
 function renderPermissionRequest(form, run, request, actions) {
   const options = document.createElement("select");
@@ -21,7 +16,7 @@ function renderPermissionRequest(form, run, request, actions) {
     entry.textContent = `${option.name} (${option.kind})`;
     options.appendChild(entry);
   }
-  const accept = button("Accept", "submit");
+  const accept = button("Accept", { type: "submit", variant: "primary" });
   const decline = button("Decline");
   decline.addEventListener("click", () => actions.answer(run.run_id, request.request_id, { action: "decline" }));
   form.append(options, accept, decline);
@@ -66,9 +61,10 @@ function renderInputRequest(form, run, request, actions) {
     form.appendChild(input);
     inputs.push([name, input, item]);
   }
-  const submit = button("Send", "submit");
-  const decline = button("Cancel");
-  decline.addEventListener("click", () => actions.answer(run.run_id, request.request_id, { action: "decline" }));
+  const submit = button("Send", { type: "submit", variant: "primary" });
+  const decline = button("Cancel", {
+    onClick: () => actions.answer(run.run_id, request.request_id, { action: "decline" }),
+  });
   form.append(submit, decline);
   form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -94,15 +90,19 @@ export function appendRunControls(block, run, actions) {
     block.appendChild(form);
   }
   if (run.status === "awaiting_approval" && run.proposal_id) {
-    const approve = button("Approve");
-    approve.addEventListener("click", () => actions.decide(run.proposal_id, "approved"));
-    const decline = button("Decline");
-    decline.addEventListener("click", () => actions.decide(run.proposal_id, "denied"));
+    const approve = button("Approve", {
+      variant: "primary",
+      onClick: () => actions.decide(run.proposal_id, "approved"),
+    });
+    const decline = button("Decline", {
+      onClick: () => actions.decide(run.proposal_id, "denied"),
+    });
     block.append(approve, decline);
   }
   if (ACTIVE_RUN_STATUSES.includes(run.status) && run.proposal_id) {
-    const cancel = button("Cancel");
-    cancel.addEventListener("click", () => actions.cancel(run.proposal_id));
+    const cancel = button("Cancel", {
+      onClick: () => actions.cancel(run.proposal_id),
+    });
     block.appendChild(cancel);
   }
 }

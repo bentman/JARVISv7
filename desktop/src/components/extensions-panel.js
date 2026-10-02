@@ -1,6 +1,6 @@
 import { ACTIVE_RUN_STATUSES, appendRunControls } from "./run-request.js";
 import { confirmDestructive } from "./ui/confirm.js";
-import { appendText, buttonRow, field, labeledValue } from "./ui/dom.js";
+import { appendText, button, buttonRow, field, labeledValue } from "./ui/dom.js";
 import { errorMessage, humanize, isConflict, statusText } from "./ui/format.js";
 import { createPanelLifecycle, messageRegion, renderPanelHeader } from "./ui/panel.js";
 import { VERB } from "./ui/vocabulary.js";
@@ -1066,11 +1066,9 @@ function processFields({ command, argvAllowlist, envPassthrough, workingRoot }) 
 }
 
 function renderCancelAdd(state) {
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.textContent = VERB.discard;
-  cancel.addEventListener("click", () => state.actions.cancelAdd());
-  return cancel;
+  return button(VERB.discard, {
+    onClick: () => state.actions.cancelAdd(),
+  });
 }
 
 // Shared by every MCP connection field set (Add/Edit, streamable_http/stdio) so `credential_ref`
@@ -1227,11 +1225,12 @@ function renderAddMcpConnection(state) {
   promptAllowlist.dataset.draftKey = "add-mcp:prompt-allowlist";
   form.append(field("Allowed tools", toolAllowlist), field("Allowed resources", resourceAllowlist), field("Allowed prompts", promptAllowlist));
   const credentialRef = appendCredentialRefField(form, "add-mcp");
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Add connection";
-  submit.disabled = state.addConnectionPending;
-  submit.dataset.focusKey = "add-mcp:submit";
+  const submit = button("Add connection", {
+    type: "submit",
+    variant: "primary",
+    disabled: state.addConnectionPending,
+    focusKey: "add-mcp:submit",
+  });
   form.appendChild(buttonRow(submit, renderCancelAdd(state)));
   if (state.addConnectionError) appendText(form, state.addConnectionError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
@@ -1277,11 +1276,12 @@ function renderImportSkill(state) {
   body.placeholder = "---\nname: Changelog Writer\n---\nInstructions go here.";
   body.required = true;
   body.dataset.draftKey = "import-skill:body";
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Import skill";
-  submit.disabled = state.importSkillPending;
-  submit.dataset.focusKey = "import-skill:submit";
+  const submit = button("Import skill", {
+    type: "submit",
+    variant: "primary",
+    disabled: state.importSkillPending,
+    focusKey: "import-skill:submit",
+  });
   form.append(field("Skill ID", localId), field("Skill file", body), buttonRow(submit, renderCancelAdd(state)));
   if (state.importSkillError) appendText(form, state.importSkillError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
@@ -1366,11 +1366,12 @@ function renderAddLocalTool(state, family = "tool") {
     option.textContent = root;
     workingRoot.appendChild(option);
   }
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = `Add ${labels.noun}`;
-  submit.disabled = state.addToolPending;
-  submit.dataset.focusKey = `add-${family}:submit`;
+  const submit = button(`Add ${labels.noun}`, {
+    type: "submit",
+    variant: "primary",
+    disabled: state.addToolPending,
+    focusKey: `add-${family}:submit`,
+  });
   form.append(
     field("Name", name),
     field(labels.idLabel, localId),
@@ -1394,12 +1395,10 @@ function renderAddLocalTool(state, family = "tool") {
 }
 
 function renderCancelEdit(state, focusKey) {
-  const cancel = document.createElement("button");
-  cancel.type = "button";
-  cancel.dataset.focusKey = focusKey;
-  cancel.textContent = "Cancel edit";
-  cancel.addEventListener("click", () => state.actions.cancelDefinitionEdit());
-  return cancel;
+  return button("Cancel edit", {
+    focusKey,
+    onClick: () => state.actions.cancelDefinitionEdit(),
+  });
 }
 
 // Rendered only once a definition has actually loaded, so unlike a form that renders
@@ -1474,11 +1473,12 @@ function renderEditMcpConnection(state) {
   form.append(field("Allowed tools", toolAllowlist), field("Allowed resources", resourceAllowlist), field("Allowed prompts", promptAllowlist));
   const credentialRef = appendCredentialRefField(form, `edit-mcp:${info.extension_id}`, info.definition.credential_ref);
   if (!isStdio) oauthFields = appendOauthFieldset(form, `edit-mcp:${info.extension_id}`, info.definition.oauth);
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = "Save connection";
-  submit.disabled = state.editConnectionPending;
-  submit.dataset.focusKey = `edit-mcp-submit:${info.extension_id}`;
+  const submit = button("Save connection", {
+    type: "submit",
+    variant: "primary",
+    disabled: state.editConnectionPending,
+    focusKey: `edit-mcp-submit:${info.extension_id}`,
+  });
   form.append(buttonRow(submit, renderCancelEdit(state, `edit-mcp-cancel:${info.extension_id}`)));
   if (state.editConnectionError) appendText(form, state.editConnectionError, "p", "extensions-error");
   form.addEventListener("submit", (event) => {
@@ -1544,11 +1544,12 @@ function renderEditLocalTool(state) {
     workingRoot.appendChild(option);
   }
   workingRoot.value = info.definition.process?.working_root || STORAGE_ROOTS[0];
-  const submit = document.createElement("button");
-  submit.type = "submit";
-  submit.textContent = `Save ${labels.noun}`;
-  submit.disabled = state.editToolPending;
-  submit.dataset.focusKey = `edit-tool-submit:${info.extension_id}`;
+  const submit = button(`Save ${labels.noun}`, {
+    type: "submit",
+    variant: "primary",
+    disabled: state.editToolPending,
+    focusKey: `edit-tool-submit:${info.extension_id}`,
+  });
   form.append(
     field("Name", name),
     ...processFields({ command, argvAllowlist, envPassthrough, workingRoot }),
@@ -1577,13 +1578,12 @@ function renderCatalog(state) {
   const add = document.createElement("div");
   add.className = "extensions-buttons";
   for (const [kind, text] of ADD_FORMS) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.textContent = text;
-    button.dataset.focusKey = `add:${kind}`;
-    button.setAttribute("aria-pressed", String(state.adding === kind));
-    button.addEventListener("click", () => state.actions.startAdd(kind));
-    add.appendChild(button);
+    const btn = button(text, {
+      focusKey: `add:${kind}`,
+      onClick: () => state.actions.startAdd(kind),
+    });
+    btn.setAttribute("aria-pressed", String(state.adding === kind));
+    add.appendChild(btn);
   }
   section.appendChild(add);
   if (state.catalogLoading) {
@@ -1771,13 +1771,13 @@ function renderDetail(state) {
           form.appendChild(field(name, input));
           inputs.push([name, input, schema]);
         }
-        const submit = document.createElement("button");
-        submit.type = "submit";
+        const submit = button(operationSubmitLabel(operation), {
+          type: "submit",
+          disabled: !operation.available,
+          focusKey: `operation-submit:${detail.extension_id}:${operation.capability_id}`,
+        });
         // One per discovered operation; a column of accent buttons would drown the primary actions.
         submit.className = "btn-secondary";
-        submit.textContent = operationSubmitLabel(operation);
-        submit.disabled = !operation.available;
-        submit.dataset.focusKey = `operation-submit:${detail.extension_id}:${operation.capability_id}`;
         form.appendChild(submit);
         form.addEventListener("submit", (event) => {
           event.preventDefault();
@@ -1805,10 +1805,11 @@ function renderDetail(state) {
     const secret = document.createElement("input");
     secret.type = "password";
     secret.required = true;
-    const save = document.createElement("button");
-    save.type = "submit";
-    save.textContent = "Store credential";
-    save.dataset.focusKey = `credential-submit:${detail.extension_id}`;
+    const save = button("Store credential", {
+      type: "submit",
+      variant: "primary",
+      focusKey: `credential-submit:${detail.extension_id}`,
+    });
     credential.append(field("Name", name), field("Secret", secret), buttonRow(save));
     credential.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -1822,34 +1823,31 @@ function renderDetail(state) {
     // distinct from "Remove connection" (deletes the definition) and "Forget
     // authorization" (clears a stored OAuth token) below. Safe to click regardless of
     // current connection state; disconnecting an already-closed connection is a no-op.
-    const disconnect = document.createElement("button");
-    disconnect.type = "button";
-    disconnect.dataset.focusKey = `disconnect:${detail.extension_id}`;
-    disconnect.textContent = "Disconnect";
-    disconnect.disabled = state.mutationPending;
-    disconnect.addEventListener("click", () => state.actions.disconnect(detail.extension_id));
+    const disconnect = button("Disconnect", {
+      focusKey: `disconnect:${detail.extension_id}`,
+      disabled: state.mutationPending,
+      onClick: () => state.actions.disconnect(detail.extension_id),
+    });
     manage.appendChild(disconnect);
     if (detail.definition_available) {
       if (state.definition?.extension_id === detail.extension_id) {
         runtime.appendChild(renderEditMcpConnection(state));
       } else {
-        const edit = document.createElement("button");
-        edit.type = "button";
-        edit.dataset.focusKey = `edit-connection:${detail.extension_id}`;
-        edit.textContent = "Edit connection";
-        edit.disabled = state.mutationPending;
-        edit.addEventListener("click", () => state.actions.loadDefinition(detail.extension_id));
+        const edit = button("Edit connection", {
+          focusKey: `edit-connection:${detail.extension_id}`,
+          disabled: state.mutationPending,
+          onClick: () => state.actions.loadDefinition(detail.extension_id),
+        });
         manage.appendChild(edit);
       }
     }
     if (isOperatorOwnedProvenance(detail)) {
-      const remove = document.createElement("button");
-      remove.type = "button";
-      remove.dataset.focusKey = `remove-connection:${detail.extension_id}`;
-      remove.textContent = "Remove connection";
-    remove.className = "btn-danger";
-      remove.disabled = state.mutationPending;
-      remove.addEventListener("click", () => state.actions.removeMcpConnection(detail.local_id));
+      const remove = button("Remove connection", {
+        variant: "danger",
+        focusKey: `remove-connection:${detail.extension_id}`,
+        disabled: state.mutationPending,
+        onClick: () => state.actions.removeMcpConnection(detail.local_id),
+      });
       manage.appendChild(remove);
     }
     // snapshot.health is a cached fact from the last discover call, not a live read - a
@@ -1882,9 +1880,12 @@ function renderDetail(state) {
         const finish = document.createElement("form");
         const code = document.createElement("input");
         code.required = true;
-        const submit = document.createElement("button");
-        submit.type = "submit";
-        submit.textContent = "Complete authorization";
+        code.dataset.focusKey = `oauth:${detail.extension_id}:code`;
+        code.dataset.draftKey = `oauth:${detail.extension_id}:code`;
+        const submit = button("Complete authorization", {
+          type: "submit",
+          variant: "primary",
+        });
         finish.append(field("Authorization code", code), buttonRow(submit));
         finish.addEventListener("submit", (event) => {
           event.preventDefault();
@@ -1892,22 +1893,20 @@ function renderDetail(state) {
         });
         oauth.appendChild(finish);
       } else {
-        const connect = document.createElement("button");
-        connect.type = "button";
-        connect.textContent = state.oauthStatus.authorized ? "Reconnect" : "Connect";
-        connect.disabled = state.mutationPending;
-        connect.addEventListener("click", () => state.actions.startOauth(detail.extension_id));
+        const connect = button(state.oauthStatus.authorized ? "Reconnect" : "Connect", {
+          disabled: state.mutationPending,
+          onClick: () => state.actions.startOauth(detail.extension_id),
+        });
         oauth.appendChild(connect);
         if (state.oauthStatus.authorized) {
           // "Forget authorization" clears the client's own stored token; the MCP
           // authorization specification defines no revocation flow this needs to call, and
           // is a distinct concept from Disconnect (ending an active connection), which does
           // not yet exist as a separate action.
-          const forget = document.createElement("button");
-          forget.type = "button";
-          forget.textContent = "Forget authorization";
-          forget.disabled = state.mutationPending;
-          forget.addEventListener("click", () => state.actions.forgetOauth(detail.extension_id));
+          const forget = button("Forget authorization", {
+            disabled: state.mutationPending,
+            onClick: () => state.actions.forgetOauth(detail.extension_id),
+          });
           oauth.appendChild(forget);
         }
       }
@@ -1922,22 +1921,20 @@ function renderDetail(state) {
       if (state.definition?.extension_id === detail.extension_id) {
         runtime.appendChild(renderEditLocalTool(state));
       } else {
-        const edit = document.createElement("button");
-        edit.type = "button";
-        edit.dataset.focusKey = `edit-${detail.family}:${detail.extension_id}`;
-        edit.textContent = `Edit ${commandFamily.noun}`;
-        edit.disabled = state.mutationPending;
-        edit.addEventListener("click", () => state.actions.loadDefinition(detail.extension_id));
+        const edit = button(`Edit ${commandFamily.noun}`, {
+          focusKey: `edit-${detail.family}:${detail.extension_id}`,
+          disabled: state.mutationPending,
+          onClick: () => state.actions.loadDefinition(detail.extension_id),
+        });
         manage.appendChild(edit);
       }
     }
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.dataset.focusKey = `remove-${detail.family}:${detail.extension_id}`;
-    remove.textContent = `Remove ${commandFamily.noun}`;
-    remove.className = "btn-danger";
-    remove.disabled = state.mutationPending;
-    remove.addEventListener("click", () => state.actions.removeLocalTool(detail.local_id, detail.family));
+    const remove = button(`Remove ${commandFamily.noun}`, {
+      variant: "danger",
+      focusKey: `remove-${detail.family}:${detail.extension_id}`,
+      disabled: state.mutationPending,
+      onClick: () => state.actions.removeLocalTool(detail.local_id, detail.family),
+    });
     manage.appendChild(remove);
   }
   if (detail.family === "skill" && String(detail.provenance || "").startsWith("data/extensions")) {
@@ -1955,16 +1952,16 @@ function renderDetail(state) {
     if (state.body) body.dataset.draftKey = `${detail.extension_id}:skill-body`;
     body.value = state.body || "";
     body.required = true;
-    const save = document.createElement("button");
-    save.type = "submit";
-    save.textContent = "Save skill";
-    save.disabled = state.mutationPending;
-    const remove = document.createElement("button");
-    remove.type = "button";
-    remove.textContent = "Remove skill";
-    remove.className = "btn-danger";
-    remove.disabled = state.mutationPending;
-    remove.addEventListener("click", () => state.actions.removeSkill(detail.local_id));
+    const save = button("Save skill", {
+      type: "submit",
+      variant: "primary",
+      disabled: state.mutationPending,
+    });
+    const remove = button("Remove skill", {
+      variant: "danger",
+      disabled: state.mutationPending,
+      onClick: () => state.actions.removeSkill(detail.local_id),
+    });
     editor.append(field("Skill file", body), buttonRow(save, remove));
     editor.addEventListener("submit", (event) => {
       event.preventDefault();
@@ -2106,7 +2103,7 @@ export function createExtensionsPanel(container, handlers, options = {}) {
   let controller;
   const confirm = options.confirmCancel || confirmDestructive;
   // Removing, retiring, or forgetting cannot be undone, so each asks first.
-  const confirmed = (message, run) => async (...args) => ((await confirm(message)) ? run(...args) : null);
+  const confirmed = (message, run, confirmOptions) => async (...args) => ((await confirm(message, confirmOptions)) ? run(...args) : null);
   const actions = {
     selectExtension: (extensionId) => controller.selectExtension(extensionId),
     loadBody: (extensionId) => controller.loadBody(extensionId),
@@ -2137,7 +2134,11 @@ export function createExtensionsPanel(container, handlers, options = {}) {
     startOauth: (extensionId) => controller.startOauth(extensionId),
     completeOauth: (extensionId, code) => controller.completeOauth(extensionId, code),
     forgetOauth: confirmed("Forget the stored authorization?", (extensionId) => controller.forgetOauth(extensionId)),
-    disconnect: (extensionId) => controller.disconnect(extensionId),
+    disconnect: confirmed(
+      "Disconnect this connection? In-flight operations will terminate.",
+      (extensionId) => controller.disconnect(extensionId),
+      { confirmLabel: "Disconnect" },
+    ),
     decide: (proposalId, outcome) => controller.decide(proposalId, outcome),
     cancel: (proposalId) => controller.cancel(proposalId, confirm),
     notice: (message) => controller.notice(message),

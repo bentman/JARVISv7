@@ -48,6 +48,8 @@ const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
 const errorEl = document.querySelector("#error-panel");
+const errorActionsEl = document.querySelector("#error-actions");
+const retryStartButton = document.querySelector("#retry-start-backend");
 const logEl = document.querySelector("#conversation-log");
 const turnStatusAnchorEl = document.querySelector("#turn-status-anchor");
 const formEl = document.querySelector("#text-form");
@@ -229,6 +231,21 @@ function renderAdvancedRail() {
   const active = advancedPanel.activeCategoryId();
   for (const button of advancedRailEl.querySelectorAll("button[data-category]")) {
     button.setAttribute("aria-selected", button.dataset.category === active ? "true" : "false");
+    const category = button.dataset.category;
+    if (category === "settings") {
+      let badge = button.querySelector(".rail-badge");
+      const needsRestart = restartRequiredScopes().length > 0;
+      if (needsRestart) {
+        if (!badge) {
+          badge = document.createElement("span");
+          badge.className = "rail-badge badge-warning";
+          button.appendChild(badge);
+        }
+        badge.textContent = "Restart";
+      } else if (badge) {
+        badge.remove();
+      }
+    }
   }
 }
 
@@ -271,10 +288,15 @@ function setState(value, degraded = false) {
 function showError(message, systemState = null) {
   desktopState.showError(message, systemState);
   if (systemState) document.body.dataset.degraded = "false";
+  if (errorActionsEl) {
+    if (systemState === "BACKEND_UNAVAILABLE") errorActionsEl.classList.remove("hidden");
+    else errorActionsEl.classList.add("hidden");
+  }
 }
 
 function clearError() {
   desktopState.clearError();
+  if (errorActionsEl) errorActionsEl.classList.add("hidden");
 }
 
 const personalityNames = new Map();
@@ -563,7 +585,7 @@ async function refreshPersonalityProfiles() {
   const payload = await api.getPersonalityList();
   activePersonalityId = payload.active_profile_id || "default";
   let selectedProfile = null;
-  personalitySelectEl.innerHTML = "";
+  personalitySelectEl.replaceChildren();
   for (const profile of payload.profiles || []) {
     personalityNames.set(profile.profile_id, profile.display_name || profile.profile_id);
     const option = document.createElement("option");
@@ -700,6 +722,7 @@ async function invokeResidentPtt() {
 async function submitText(text) {
   if (personalitySelectionPending) {
     appendMessage("system", "Profile selection is still applying; try again once it is confirmed.");
+    if (!inputEl.value) inputEl.value = text;
     return;
   }
   clearError();
@@ -729,12 +752,50 @@ async function submitText(text) {
   } catch (error) {
     desktopState?.renderTurnStatus("FAILED");
     showError(errorMessage(error));
+    if (!inputEl.value) {
+      inputEl.value = text;
+    }
   } finally {
     localTurnPending = false;
     sendButton.disabled = personalitySelectionPending;
     inputEl.focus();
   }
 }
+
+const promptHistory = [];
+let promptHistoryIndex = -1;
+let promptHistoryDraft = "";
+
+inputEl.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowUp") {
+    if (!promptHistory.length) return;
+    if (promptHistoryIndex === -1 && inputEl.selectionStart !== 0 && inputEl.value) return;
+    if (promptHistoryIndex === -1) {
+      promptHistoryDraft = inputEl.value;
+      promptHistoryIndex = promptHistory.length - 1;
+    } else if (promptHistoryIndex > 0) {
+      promptHistoryIndex -= 1;
+    }
+    inputEl.value = promptHistory[promptHistoryIndex];
+    event.preventDefault();
+  } else if (event.key === "ArrowDown") {
+    if (promptHistoryIndex === -1) return;
+    if (promptHistoryIndex < promptHistory.length - 1) {
+      promptHistoryIndex += 1;
+      inputEl.value = promptHistory[promptHistoryIndex];
+    } else {
+      promptHistoryIndex = -1;
+      inputEl.value = promptHistoryDraft;
+    }
+    event.preventDefault();
+  }
+});
+
+inputEl.addEventListener("input", () => {
+  if (promptHistoryIndex !== -1 && inputEl.value !== promptHistory[promptHistoryIndex]) {
+    promptHistoryIndex = -1;
+  }
+});
 
 formEl.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -744,6 +805,11 @@ formEl.addEventListener("submit", (event) => {
   }
   const text = inputEl.value.trim();
   if (!text) return;
+  if (!promptHistory.length || promptHistory[promptHistory.length - 1] !== text) {
+    promptHistory.push(text);
+  }
+  promptHistoryIndex = -1;
+  promptHistoryDraft = "";
   inputEl.value = "";
   submitText(text);
 });
@@ -814,6 +880,78 @@ if (wakeToggleEl) {
       .catch((error) => showError(String(error)));
   });
 }
+
+if (retryStartButton) {
+  retryStartButton.addEventListener("click", () => {
+    clearError();
+    startDesktop();
+  });
+}
+
+if (settingsRestartRequiredEl) {
+  settingsRestartRequiredEl.setAttribute("role", "button");
+  settingsRestartRequiredEl.setAttribute("tabindex", "0");
+  settingsRestartRequiredEl.title = "Click to restart backend now";
+  const triggerRestart = () => {
+    restartBackendForSettings().catch((error) => showError(String(error)));
+  };
+  settingsRestartRequiredEl.addEventListener("click", triggerRestart);
+  settingsRestartRequiredEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      triggerRestart();
+    }
+  });
+}
+
+const systemStateCardEl = document.querySelector(".system-state-card");
+if (systemStateCardEl) {
+  systemStateCardEl.title = "View degraded/diagnostic details";
+  systemStateCardEl.setAttribute("role", "button");
+  systemStateCardEl.setAttribute("tabindex", "0");
+  const openDiagnostics = () => {
+    const startupState = document.getElementById("startup-state");
+    const stateVal = startupState?.dataset.state;
+    if (stateVal === "DEGRADED" || document.body.dataset.degraded === "true") {
+      const degradedDetail = document.querySelector(".degraded-detail");
+      if (degradedDetail) {
+        degradedDetail.open = true;
+        if (typeof degradedDetail.scrollIntoView === "function") {
+          degradedDetail.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+    } else if (stateVal === "FAILED" || stateVal === "BACKEND_UNAVAILABLE") {
+      const backendDiag = document.querySelector(".backend-diagnostics");
+      if (backendDiag) {
+        backendDiag.open = true;
+        if (typeof backendDiag.scrollIntoView === "function") {
+          backendDiag.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
+    }
+  };
+  systemStateCardEl.addEventListener("click", openDiagnostics);
+  systemStateCardEl.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDiagnostics();
+    }
+  });
+}
+
+if (pttButton) {
+  pttButton.title = "Push to talk (Ctrl+Space)";
+}
+
+window.addEventListener("keydown", (event) => {
+  if (event.ctrlKey && event.code === "Space") {
+    const active = document.activeElement;
+    const tag = (active?.tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active?.isContentEditable) return;
+    event.preventDefault();
+    invokeResidentPtt();
+  }
+});
 
 // A reload keeps the backend and its session; closing the window shuts both down natively.
 window.addEventListener("beforeunload", () => {

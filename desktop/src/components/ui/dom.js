@@ -20,11 +20,12 @@ export function option(value, label, selected = false) {
 const VARIANT_CLASSES = { primary: "btn-primary", danger: "btn-danger", ghost: "btn-ghost" };
 
 // Plain buttons are secondary; `variant` selects primary, danger, or ghost.
-export function button(text, { variant = "", focusKey = "", onClick = null, disabled = false, type = "button", title = "" } = {}) {
+export function button(text, { variant = "", focusKey = "", onClick = null, disabled = false, loading = false, loadingText = "", type = "button", title = "" } = {}) {
   const node = document.createElement("button");
   node.type = type;
-  node.textContent = text;
-  node.disabled = disabled;
+  node.textContent = loading && loadingText ? loadingText : text;
+  node.disabled = disabled || loading;
+  if (loading) node.setAttribute("aria-busy", "true");
   if (VARIANT_CLASSES[variant]) node.className = VARIANT_CLASSES[variant];
   if (focusKey) node.dataset.focusKey = focusKey;
   if (title) node.title = title;

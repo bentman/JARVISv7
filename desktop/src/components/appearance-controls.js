@@ -29,12 +29,16 @@ const PRESETS = {
       "--space-2": "8px",
       "--space-3": "12px",
       "--space-4": "16px",
+      "--space-5": "24px",
+      "--space-6": "32px",
     },
     compact: {
       "--space-1": "3px",
       "--space-2": "6px",
       "--space-3": "8px",
       "--space-4": "12px",
+      "--space-5": "18px",
+      "--space-6": "24px",
     },
   },
   accent: {

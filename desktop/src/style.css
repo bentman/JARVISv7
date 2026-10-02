@@ -437,6 +437,13 @@ textarea:disabled {
   justify-self: stretch;
   text-align: right;
   box-sizing: border-box;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: opacity var(--motion-fast);
+}
+
+.system-state-card:hover {
+  opacity: 0.85;
 }
 
 .label,
@@ -486,6 +493,13 @@ dd {
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: var(--tracking-label);
+  cursor: pointer;
+  transition: background-color var(--motion-fast), border-color var(--motion-fast);
+}
+
+#settings-restart-required:hover {
+  background-color: var(--color-bg-hover);
+  border-color: var(--color-accent);
 }
 
 #personality-select,
@@ -645,6 +659,14 @@ dd {
   margin-bottom: var(--space-3);
   white-space: pre-wrap;
   font-size: var(--text-sm);
+}
+
+.error-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-3);
+  margin-top: calc(-1 * var(--space-3));
+  margin-bottom: var(--space-3);
 }
 
 /* ---------- Status widgets ---------- */
@@ -1131,11 +1153,30 @@ button.chip:hover:not(:disabled) {
   display: none;
 }
 
+.conversation-diagnostics {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.voice-debug {
+  font-size: var(--text-xs);
+}
+
+.voice-debug > summary {
+  color: var(--color-text-muted);
+  user-select: none;
+}
+
+.voice-debug > summary:hover {
+  color: var(--color-text-secondary);
+}
+
 .voice-detail {
-  height: 8.5rem;
-  max-height: 11rem;
+  max-height: 8rem;
   overflow: auto;
-  margin: var(--space-2) 0 0;
+  margin: var(--space-1) 0 0;
   padding: var(--space-2);
   color: var(--color-text-primary);
   background: var(--color-bg-sunken);
@@ -1146,7 +1187,7 @@ button.chip:hover:not(:disabled) {
 }
 
 .degraded-detail .degraded-conditions {
-  margin-top: var(--space-2);
+  margin-top: var(--space-1);
   font-size: var(--text-xs);
 }
 
@@ -1165,8 +1206,47 @@ button.chip:hover:not(:disabled) {
   box-shadow: var(--shadow-dialog);
 }
 
-.advanced-panel::backdrop {
+.advanced-panel::backdrop,
+.confirm-dialog::backdrop {
   background: var(--color-backdrop);
+}
+
+.confirm-dialog {
+  width: min(440px, 90vw);
+  max-width: none;
+  max-height: none;
+  padding: 0;
+  border: var(--border-width) solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-panel);
+  color: var(--color-text-primary);
+  box-shadow: var(--shadow-dialog);
+}
+
+.confirm-dialog[open] {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.confirm-dialog-header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--color-text-primary);
+}
+
+.confirm-dialog-body p {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--color-text-secondary);
+  line-height: var(--leading-base);
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
 }
 
 .advanced-panel[open] {
@@ -1224,6 +1304,35 @@ button.chip:hover:not(:disabled) {
   background: var(--color-accent-soft);
   border-color: var(--color-accent);
   font-weight: var(--weight-semibold);
+}
+
+.rail-badge {
+  display: inline-block;
+  font-size: var(--text-xs);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  margin-left: auto;
+  line-height: var(--leading-tight);
+}
+
+.rail-badge.badge-warning {
+  background: var(--color-degraded);
+  color: var(--color-text-inverse);
+  font-weight: var(--weight-bold);
+}
+
+.rail-badge.badge-notice {
+  background: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-weight: var(--weight-semibold);
+}
+
+.tool-filter-input {
+  width: 100%;
+  margin-bottom: var(--space-2);
+  box-sizing: border-box;
 }
 
 .advanced-panel-detail {

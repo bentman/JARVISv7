@@ -1209,6 +1209,7 @@ pub fn submit_text_turn(
 ) -> Result<String, String> {
     let response = client
         .post(format!("{base_url}/task/text"))
+        .timeout(Duration::from_secs(600))
         .json(&json!({"text": text, "session_id": session_id, "origin": "desktop"}))
         .send()
         .map_err(|err| format!("POST /task/text failed: {err}"))?;

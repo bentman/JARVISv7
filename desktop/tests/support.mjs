@@ -52,6 +52,13 @@ export function createElement(tagName) {
     parentElement: null,
     listeners: {},
     addEventListener(name, callback) { this.listeners[name] = callback; },
+    click() { return this.listeners.click?.(); },
+    remove() {
+      if (this.parentElement) {
+        this.parentElement.children = this.parentElement.children.filter((child) => child !== this);
+        this.parentElement = null;
+      }
+    },
     appendChild(child) {
       child.parentElement = this;
       this.children.push(child);

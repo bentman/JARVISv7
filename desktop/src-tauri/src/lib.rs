@@ -1013,6 +1013,8 @@ pub fn run() {
     let backend =
         BackendProcessManager::new().expect("failed to initialize backend process manager");
     let http_client = Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(3))
         .build()
         .expect("failed to initialize desktop HTTP client");
     tauri::Builder::default()

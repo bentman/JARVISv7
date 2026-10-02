@@ -52,12 +52,16 @@ export function createDesktopPolling({
     pollTimer = window.setTimeout(pollDesktopStatus, delay);
   }
 
-  document.addEventListener("visibilitychange", rescheduleForVisibility);
-
   function startAllPolling() {
     if (pollTimer) window.clearTimeout(pollTimer);
     isPollingRunning = true;
     lastStatusPollAt = 0;
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+      document.removeEventListener("visibilitychange", rescheduleForVisibility);
+    }
+    if (typeof document !== "undefined" && typeof document.addEventListener === "function") {
+      document.addEventListener("visibilitychange", rescheduleForVisibility);
+    }
     pollDesktopStatus();
   }
 
@@ -66,6 +70,9 @@ export function createDesktopPolling({
     if (pollTimer) {
       window.clearTimeout(pollTimer);
       pollTimer = null;
+    }
+    if (typeof document !== "undefined" && typeof document.removeEventListener === "function") {
+      document.removeEventListener("visibilitychange", rescheduleForVisibility);
     }
   }
 

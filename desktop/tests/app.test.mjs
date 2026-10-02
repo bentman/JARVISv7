@@ -319,3 +319,54 @@ test("Advanced Controls must open one dialog, switch categories through the rail
     app.close();
   }
 });
+
+test("prompt draft must be restored on submit_text failure, and prompt history recalls prior entries", async () => {
+  let shouldFail = false;
+  const app = await started({
+    responses: {
+      submit_text: () => {
+        if (shouldFail) throw new Error("IPC transport timeout");
+        return { final_state: "IDLE", response_text: "Done", active_personality_profile_id: "default", profile_epoch: 1 };
+      },
+    },
+  });
+  try {
+    const input = app.$("#text-input");
+    const form = app.$("#text-form");
+
+    // Successful submission adds to history
+    input.value = "prompt one";
+    form.dispatchEvent(new app.window.Event("submit", { cancelable: true }));
+    await app.until(() => !app.$("#send-button").disabled, "the first turn to settle");
+    assert.equal(input.value, "", "input is emptied on successful turn");
+
+    input.value = "prompt two";
+    form.dispatchEvent(new app.window.Event("submit", { cancelable: true }));
+    await app.until(() => !app.$("#send-button").disabled, "the second turn to settle");
+    assert.equal(input.value, "", "input is emptied on successful turn");
+
+    // First ArrowUp recalls latest history item
+    input.dispatchEvent(new app.window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    assert.equal(input.value, "prompt two", "first ArrowUp recalls the latest prompt");
+
+    // Consecutive ArrowUp navigates further back
+    input.dispatchEvent(new app.window.KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true }));
+    assert.equal(input.value, "prompt one", "consecutive ArrowUp navigates further back");
+
+    // ArrowDown navigates forward
+    input.dispatchEvent(new app.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    assert.equal(input.value, "prompt two", "ArrowDown navigates forward");
+
+    input.dispatchEvent(new app.window.KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    assert.equal(input.value, "", "final ArrowDown restores draft");
+
+    // Failed submission restores prompt draft
+    shouldFail = true;
+    input.value = "important unsent draft";
+    form.dispatchEvent(new app.window.Event("submit", { cancelable: true }));
+    await app.until(() => text(app, "#error-panel").includes("IPC transport timeout"), "turn failure");
+    assert.equal(input.value, "important unsent draft", "failed turn restores the unsent draft");
+  } finally {
+    app.close();
+  }
+});

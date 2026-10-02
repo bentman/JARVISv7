@@ -155,6 +155,7 @@ function formFromDocument(document, overrides = {}) {
     cancellable: document.cancellable !== false,
     runtime_kind: document.runtime?.kind || "internal",
     adapter_id: document.runtime?.adapter_id || "",
+    tool_filter: "",
     base: document,
     ...overrides,
   };
@@ -993,6 +994,7 @@ function textControl(state, name, { multiline = false, rows = 3 } = {}) {
   control.name = name;
   control.value = state.form[name];
   control.dataset.focusKey = `agent-form:${name}`;
+  control.dataset.draftKey = `agent-form:${name}`;
   control.addEventListener("input", (event) => state.actions.setField(name, event.target.value));
   return control;
 }
@@ -1001,6 +1003,7 @@ function selectControl(state, name, labels, { rerender = false } = {}) {
   const control = document.createElement("select");
   control.name = name;
   control.dataset.focusKey = `agent-form:${name}`;
+  control.dataset.draftKey = `agent-form:${name}`;
   for (const [value, text] of Object.entries(labels)) control.appendChild(option(value, text, state.form[name] === value));
   control.addEventListener("change", (event) => state.actions.setField(name, event.target.value, { rerender }));
   return control;
@@ -1010,6 +1013,7 @@ function acpDefinitionPicker(state) {
   const control = document.createElement("select");
   control.name = "adapter_id";
   control.dataset.focusKey = "agent-form:adapter_id";
+  control.dataset.draftKey = "agent-form:adapter_id";
   const choices = [["", "Choose a definition…"]];
   for (const extension of state.acpDefinitions) {
     choices.push([acpDefinitionId(extension), `${extension.display_name || acpDefinitionId(extension)} (${acpDefinitionStatus(extension)})`]);
@@ -1030,6 +1034,7 @@ function choice(name, checked, text, onChange) {
   box.name = name;
   box.checked = checked;
   box.dataset.focusKey = `agent-form:${name}`;
+  box.dataset.draftKey = `agent-form:${name}`;
   box.addEventListener("change", (event) => onChange(event.target.checked));
   label.append(box, document.createTextNode(text));
   return label;
@@ -1052,13 +1057,40 @@ function renderToolChoices(state) {
     appendText(tools, "No tools are available. Add them in Extensions.", "p", "panel-help");
     return tools;
   }
+  const activeQuery = String(state.form?.tool_filter || "").toLowerCase();
+  if (choices.length > 5) {
+    const filterInput = document.createElement("input");
+    filterInput.type = "search";
+    filterInput.placeholder = "Filter tools…";
+    filterInput.className = "tool-filter-input";
+    filterInput.setAttribute("aria-label", "Filter tools");
+    filterInput.dataset.focusKey = "agent-form:tool-filter";
+    filterInput.dataset.draftKey = "agent-form:tool-filter";
+    filterInput.value = state.form?.tool_filter || "";
+    filterInput.addEventListener("input", (event) => {
+      const query = String(event.target.value || "").toLowerCase();
+      state.actions.setField("tool_filter", event.target.value);
+      const children = Array.isArray(tools.children) ? tools.children : Array.from(tools.children || []);
+      for (const item of children) {
+        if (!item || item.tagName === "INPUT" || item.tagName === "LEGEND" || item.tagName === "P") continue;
+        const text = String(item.textContent || "").toLowerCase();
+        item.hidden = Boolean(query && !text.includes(query));
+      }
+    });
+    tools.appendChild(filterInput);
+  }
   for (const tool of choices) {
-    tools.appendChild(choice(
+    const label = agentToolLabel(tool);
+    const item = choice(
       `tool-${tool.capability_id}`,
       state.form.capability_ids.includes(tool.capability_id),
-      agentToolLabel(tool),
+      label,
       (checked) => state.actions.setTool(tool.capability_id, checked),
-    ));
+    );
+    if (activeQuery) {
+      item.hidden = !label.toLowerCase().includes(activeQuery);
+    }
+    tools.appendChild(item);
   }
   return tools;
 }
@@ -1101,6 +1133,7 @@ function renderEditor(state) {
   timeout.max = "600";
   timeout.value = String(form.timeout_seconds);
   timeout.dataset.focusKey = "agent-form:timeout_seconds";
+  timeout.dataset.draftKey = "agent-form:timeout_seconds";
   timeout.addEventListener("input", (event) => state.actions.setField("timeout_seconds", event.target.value));
   formField(element, "Time limit (seconds)", timeout);
   formField(

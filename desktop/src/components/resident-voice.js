@@ -39,7 +39,7 @@ export function createResidentVoicePresenter(options) {
       ["hands-free", true],
       ["continuous", true],
     ];
-    residentModeEl.innerHTML = "";
+    residentModeEl.replaceChildren();
     for (const [value, available] of options) {
       const option = document.createElement("option");
       option.value = value;
