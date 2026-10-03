@@ -50,7 +50,7 @@ test("desktop markup must not use inline styles", async () => {
   const textForm = index.match(/<form id="text-form"[\s\S]*?<\/form>/)?.[0] || "";
   assert.ok(textForm.includes('id="text-input"') && textForm.includes('id="send-button"'));
   assert.ok(!textForm.includes('id="search-status"') && !textForm.includes('id="search-stop"'), "search progress must not occupy composer grid cells");
-  assert.ok(style.includes("grid-template-columns: minmax(220px, 280px) minmax(320px, 1fr) minmax(260px, 340px);"));
+  assert.ok(style.includes("grid-template-columns: minmax(200px, 240px) minmax(360px, 1fr) minmax(220px, 260px);"));
   for (const selector of [
     ".status-panel",
     ".conversation-panel",
@@ -64,7 +64,7 @@ test("desktop markup must not use inline styles", async () => {
     assert.ok(style.includes(selector), `desktop layout contract missing: ${selector}`);
   }
   assert.match(style, /\.status-panel\s*{\s*overflow-y:\s*auto;/);
-  assert.match(style, /\.operator-panel\s*{[\s\S]*overflow:\s*hidden;/);
+  assert.match(style, /\.operator-panel\s*{[\s\S]*overflow-y:\s*auto;/);
   assert.ok(style.includes("@media (max-width: 820px)"));
   for (const selector of [
     ".advanced-panel",

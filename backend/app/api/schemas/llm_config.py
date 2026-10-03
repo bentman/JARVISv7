@@ -59,6 +59,16 @@ class LLMDiscoveredModel(BaseModel):
     context_window: int | None = None
 
 
+class LLMProviderTestRequest(BaseModel):
+    name: str | None = None
+    kind: str | None = None
+    endpoint: str | None = None
+    model: str | None = None
+    context_window: int | None = None
+    timeout_seconds: float | None = None
+    api_key: str | None = None
+
+
 class LLMProviderTestResponse(BaseModel):
     status: str
     reason: str

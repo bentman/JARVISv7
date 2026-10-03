@@ -49,6 +49,9 @@ def _write_file(path: Path, content: bytes = b"x") -> Path:
     return path
 
 
+_REAL_REAP_FOR_BINARY = local_llm_sidecar._reap_processes_for_binary
+
+
 @pytest.fixture(autouse=True)
 def _default_unhealthy_endpoint_probe(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
@@ -59,7 +62,7 @@ def _default_unhealthy_endpoint_probe(monkeypatch: pytest.MonkeyPatch) -> None:
         "backend.app.services.local_llm_sidecar._probe_endpoint_healthy",
         lambda base_url, target_model_id=None: (False, f"endpoint unavailable:{base_url}"),
     )
-    monkeypatch.setattr(local_llm_sidecar, "_reap_processes_for_binary", lambda *args: None)
+    monkeypatch.setattr(local_llm_sidecar, "_reap_processes_for_binary", lambda *args, **kwargs: None)
     monkeypatch.setattr(local_llm_sidecar, "_reap_processes_on_port", lambda *args: None)
 
 
@@ -682,6 +685,47 @@ def test_endpoint_adoption_does_not_spawn_when_endpoint_already_healthy(
     assert status.health_reason is not None
     assert "adopted existing endpoint" in status.health_reason
     assert len(calls) == 0  # No spawn occurred
+
+
+def test_start_reaps_only_orphaned_servers_of_its_own_binary_before_adopting(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    resolution = _resolution(tmp_path)
+    reaped: list[Path] = []
+    service = LocalLLMSidecarService(
+        process_factory=lambda argv: _FakeProcess(),
+        orphan_reaper=lambda path, timeout: reaped.append(path),
+    )
+    monkeypatch.setattr(
+        local_llm_sidecar,
+        "_probe_endpoint_healthy",
+        lambda base_url, target_model_id=None: (True, "external"),
+    )
+    service.start(resolution)
+    assert reaped == [resolution.binary_path]
+
+    class _Proc:
+        def __init__(self, parent, binary):
+            self._parent, self.info = parent, {"pid": id(self), "exe": str(binary)}
+            self.terminated = False
+
+        def parent(self):
+            return self._parent
+
+        def terminate(self):
+            self.terminated = True
+
+        def kill(self):
+            self.terminated = True
+
+    orphan = _Proc(None, resolution.binary_path)
+    owned = _Proc(object(), resolution.binary_path)
+    foreign = _Proc(None, tmp_path / "other-server.exe")
+    monkeypatch.setattr(local_llm_sidecar.psutil, "process_iter", lambda attrs: [orphan, owned, foreign])
+    monkeypatch.setattr(local_llm_sidecar.psutil, "wait_procs", lambda procs, timeout: ([], []))
+    monkeypatch.setattr(local_llm_sidecar, "_reap_processes_for_binary", _REAL_REAP_FOR_BINARY)
+    local_llm_sidecar._reap_orphaned_processes_for_binary(resolution.binary_path, 1.0)
+    assert (orphan.terminated, owned.terminated, foreign.terminated) == (True, False, False)
 
 
 def test_endpoint_adoption_status_remains_running_while_endpoint_is_healthy(

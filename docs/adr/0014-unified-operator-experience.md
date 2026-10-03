@@ -76,6 +76,7 @@ Backend:
 
 Desktop:
 - `desktop/src-tauri/src/backend.rs` and `desktop/src-tauri/src/lib.rs` add the `get_session_turns` command and send origin `desktop`; `desktop/src/api-client.js` exposes `getSessionTurns`. `start_backend` resumes the tracked session through `resumable_session`, and an extension invocation outlasts the backend's 60 s operation ceiling so a run waiting on operator input is not reported as a transport failure.
+- The Backend panel carries ARCH and the endpoint with a compact Restart control that starts or restarts the backend; the session id sits in the Conversation header; Readiness lists model families followed by cloud escalation. Settings places Display Language beside Appearance and pairs each search service toggle with its configuration; the Redis cache fields stay out of the Settings panel.
 - `desktop/src/style.css` holds the tokens, control states, generic panel classes, and conversation entry, chip, and approval-card styles.
 - `desktop/src/components/ui/` holds the shared primitives; the Actions, Agents, Extensions, Memory, Settings, and Providers panels are built on them.
 - `desktop/src/components/conversation.js` renders turns, notes, and the approval card; `desktop/src/main.js` feeds it from session status and `get_session_turns`, and opens Advanced Controls on a linked action or agent. `desktop/src/components/resident-voice.js` hands completed voice turns to the same feed. The resident-voice and wake widgets render readable labels and values.

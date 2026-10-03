@@ -296,6 +296,21 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         "required": ["profile_id"],
         "additionalProperties": False,
     }
+    profile_test_schema = {
+        "type": "object",
+        "properties": {
+            "profile_id": _PROFILE_ID,
+            "name": {"type": ["string", "null"], "maxLength": 80},
+            "kind": {"type": ["string", "null"], "maxLength": 40},
+            "endpoint": {"type": ["string", "null"], "maxLength": 2048},
+            "model": {"type": ["string", "null"], "maxLength": 240},
+            "context_window": {"type": ["integer", "null"], "minimum": 512, "maximum": 2_000_000},
+            "timeout_seconds": {"type": ["number", "null"], "minimum": 1, "maximum": 600},
+            "api_key": {"type": ["string", "null"], "maxLength": 512},
+        },
+        "required": ["profile_id"],
+        "additionalProperties": False,
+    }
     return (
         _capability(
             PROVIDER_PROFILE_WRITE,
@@ -316,9 +331,9 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
                     "type": "object",
                     "properties": {
                         "primary_profile_id": _PROFILE_ID,
-                        "local_fallback_profile_id": {"type": "string", "maxLength": 128},
+                        "local_fallback_profile_id": {"type": ["string", "null"], "maxLength": 128},
                         "cloud_escalation_enabled": {"type": "boolean"},
-                        "cloud_profile_id": {"type": "string", "maxLength": 128},
+                        "cloud_profile_id": {"type": ["string", "null"], "maxLength": 128},
                     },
                     "required": ["primary_profile_id", "cloud_escalation_enabled"],
                     "additionalProperties": False,
@@ -336,7 +351,7 @@ def _provider(observation: CapabilityObservation) -> tuple[CapabilityDescriptor,
         _capability(
             PROVIDER_CONNECTIVITY_TEST,
             "external_read",
-            **{**common, "input_schema": profile_ref},
+            **{**common, "input_schema": profile_test_schema},
         ),
     )
 

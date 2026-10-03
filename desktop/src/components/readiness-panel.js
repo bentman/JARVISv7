@@ -10,25 +10,19 @@ const FAMILY_LABELS = {
 
 const FAILED_REASON_TOKENS = ["MISSING", "unavailable"];
 
-function appendFactList(payload, containerEl) {
-  const facts = document.createElement("dl");
-  facts.className = "facts readiness-summary";
-
-  for (const [label, value] of [
-    ["Arch", payload?.arch],
-    ["Profile", payload?.profile_id],
-    ["LLM", payload?.active_llm_provider || payload?.active_llm_runtime],
-    ["Model profile", payload?.active_llm_profile_id],
-    ["Cloud escalation", payload?.cloud_escalation_enabled ? "enabled" : "disabled"],
-  ]) {
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const detail = document.createElement("dd");
-    detail.textContent = value || "unknown";
-    facts.append(term, detail);
-  }
-
-  containerEl.appendChild(facts);
+function appendCloudEscalation(payload, containerEl) {
+  const escalation = document.createElement("div");
+  escalation.className = "readiness-escalation";
+  const escalationLabel = document.createElement("span");
+  escalationLabel.className = "readiness-escalation-label";
+  escalationLabel.textContent = "Cloud escalation";
+  const escalationValue = document.createElement("span");
+  escalationValue.className = "readiness-escalation-value status-value";
+  const isEnabled = Boolean(payload?.cloud_escalation_enabled);
+  escalationValue.dataset.status = isEnabled ? "positive" : "neutral";
+  escalationValue.textContent = isEnabled ? "enabled" : "disabled";
+  escalation.append(escalationLabel, escalationValue);
+  containerEl.appendChild(escalation);
 }
 
 function orderedFamilies(families) {
@@ -114,12 +108,11 @@ export function renderReadiness(readinessPayload, containerEl) {
     return;
   }
 
-  appendFactList(readinessPayload, containerEl);
-
   const list = document.createElement("ul");
   list.className = "families readiness-family-list";
   for (const family of readinessRows(readinessPayload.families)) {
     appendFamilyRow(family, list, readinessPayload);
   }
   containerEl.appendChild(list);
+  appendCloudEscalation(readinessPayload, containerEl);
 }

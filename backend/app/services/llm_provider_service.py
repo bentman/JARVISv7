@@ -17,6 +17,7 @@ from backend.app.runtimes.llm.provider_runtime import (
 )
 from backend.app.services.llm_provider_profiles import (
     LLMProviderProfileStore,
+    ProviderConfigError,
     ProviderProfile,
     ProviderSelection,
     SecretStoreLockedError,
@@ -133,9 +134,14 @@ def prepare_llm_providers(
     )
 
 
-def _profile_runtime(store: LLMProviderProfileStore, profile: ProviderProfile) -> LLMBase:
+def _profile_runtime(
+    store: LLMProviderProfileStore,
+    profile: ProviderProfile,
+    api_key: str | None = None,
+) -> LLMBase:
     try:
-        api_key = None if profile.builtin else store.read_secret(profile.profile_id, "api_key")
+        if api_key is None:
+            api_key = None if profile.builtin else store.read_secret(profile.profile_id, "api_key")
     except SecretStoreLockedError as exc:
         return UnavailableProviderLLM(profile.kind, str(exc), profile.context_window)
     if profile.kind in {"openai", "anthropic"} and not api_key:
@@ -178,8 +184,50 @@ def _http_provider_runtime(
     )
 
 
-def provider_model_discovery(store: LLMProviderProfileStore, profile: ProviderProfile) -> list[dict[str, object]]:
-    runtime = _profile_runtime(store, profile)
+def resolve_provider_test_target(
+    store: LLMProviderProfileStore,
+    profile_id: str,
+    draft: dict[str, object] | None = None,
+) -> tuple[ProviderProfile, str | None]:
+    """Return the profile to probe and the credential to probe it with.
+
+    A saved profile is probed as stored, and a built-in profile is never overridden. Draft fields
+    overlay a saved profile or stand alone for an unsaved one. A stored credential follows the
+    profile only while its kind and endpoint are unchanged, so it is never sent to a new endpoint.
+    """
+    fields = {key: value for key, value in (draft or {}).items() if value is not None}
+    try:
+        saved: ProviderProfile | None = store.get_profile(profile_id)
+    except ProviderConfigError:
+        saved = None
+    if saved is None and not fields:
+        raise ProviderConfigError("provider profile not found")
+    if saved is not None and (saved.builtin or not fields):
+        return saved, None
+    kind = str(fields.get("kind") or (saved.kind if saved else "openai_compatible"))
+    endpoint = fields.get("endpoint") or (saved.endpoint if saved else None)
+    inherits_credential = saved is not None and (kind, endpoint) == (saved.kind, saved.endpoint)
+    api_key = fields.get("api_key") or (None if inherits_credential else "")
+    profile = ProviderProfile(
+        profile_id=saved.profile_id if saved else "draft:test",
+        name=str(fields.get("name") or (saved.name if saved else "Draft")),
+        kind=kind,
+        endpoint=endpoint,
+        model=str(fields.get("model") or (saved.model if saved else None) or "default"),
+        context_window=int(fields.get("context_window") or (saved.context_window if saved else 8192)),
+        timeout_seconds=float(fields.get("timeout_seconds") or (saved.timeout_seconds if saved else 60.0)),
+        has_secret=bool(api_key) or bool(inherits_credential and saved.has_secret),
+        builtin=False,
+    )
+    return profile, api_key
+
+
+def provider_model_discovery(
+    store: LLMProviderProfileStore,
+    profile: ProviderProfile,
+    api_key: str | None = None,
+) -> list[dict[str, object]]:
+    runtime = _profile_runtime(store, profile, api_key=api_key)
     if isinstance(runtime, UnavailableProviderLLM):
         raise RuntimeError(runtime.reason)
     if isinstance(runtime, OllamaLLM):

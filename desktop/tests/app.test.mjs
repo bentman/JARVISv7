@@ -31,9 +31,12 @@ test("startup must render backend readiness, session, personality, and voice con
     assert.equal(text(app, "#session-id"), "session-1");
     assert.equal(text(app, "#session-turn-count"), "0");
     assert.equal(text(app, "#startup-state"), "Ready", "System State must come from readiness");
+    assert.equal(text(app, "#backend-arch"), "amd64", "backend summary must show Arch");
     const readiness = text(app, "#readiness-panel");
-    for (const fact of ["Arch", "amd64", "Profile", "profile-1", "LLM"]) assert.ok(readiness.includes(fact), `readiness must show ${fact}`);
+    assert.ok(readiness.includes("LLM"), "readiness must show LLM family");
+    assert.ok(readiness.includes("Cloud escalation"), "readiness must show Cloud escalation");
     assert.ok(!readiness.includes("Status"), "readiness must not repeat the status fact");
+    assert.ok(!readiness.includes("Profile"), "readiness must not include removed Profile fact");
     assert.equal(app.$("#degraded-conditions").hidden, true, "a ready host must not show degraded rows");
     await app.until(() => app.commands().includes("get_desktop_status"), "the consolidated status poll");
     assert.ok(text(app, "#voice-detail").includes("state: LISTENING"), "conversation debug must render from session status");

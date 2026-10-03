@@ -48,7 +48,6 @@ const readinessEl = document.querySelector("#readiness-panel");
 const degradedEl = document.querySelector("#degraded-conditions");
 const serviceStatusEl = document.querySelector("#service-status");
 const errorEl = document.querySelector("#error-panel");
-const errorActionsEl = document.querySelector("#error-actions");
 const retryStartButton = document.querySelector("#retry-start-backend");
 const logEl = document.querySelector("#conversation-log");
 const turnStatusAnchorEl = document.querySelector("#turn-status-anchor");
@@ -288,15 +287,10 @@ function setState(value, degraded = false) {
 function showError(message, systemState = null) {
   desktopState.showError(message, systemState);
   if (systemState) document.body.dataset.degraded = "false";
-  if (errorActionsEl) {
-    if (systemState === "BACKEND_UNAVAILABLE") errorActionsEl.classList.remove("hidden");
-    else errorActionsEl.classList.add("hidden");
-  }
 }
 
 function clearError() {
   desktopState.clearError();
-  if (errorActionsEl) errorActionsEl.classList.add("hidden");
 }
 
 const personalityNames = new Map();
@@ -370,6 +364,10 @@ function renderReadiness(readiness) {
   renderReadinessPanel(readiness, readinessEl);
   renderDegradedList(readiness, degradedEl);
   renderServiceStatus(readiness.services, serviceStatusEl);
+  const archEl = document.querySelector("#backend-arch");
+  if (archEl && readiness?.arch) {
+    archEl.textContent = readiness.arch;
+  }
   const selectedPathDegraded = selectedFamilyBlockers(readiness).length > 0;
   const degraded = readiness.status !== "ready" || readiness.requires_degraded_mode || selectedPathDegraded;
   desktopState.renderSystemState(degraded ? "DEGRADED" : "READY", degraded);
@@ -881,10 +879,21 @@ if (wakeToggleEl) {
   });
 }
 
+async function restartOrStartBackend() {
+  clearError();
+  const startupState = document.getElementById("startup-state");
+  const stateVal = startupState?.dataset.state;
+  if (stateVal === "FAILED" || stateVal === "BACKEND_UNAVAILABLE") {
+    await startDesktop();
+  } else {
+    await restartBackendForSettings();
+  }
+}
+
 if (retryStartButton) {
-  retryStartButton.addEventListener("click", () => {
-    clearError();
-    startDesktop();
+  retryStartButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    restartOrStartBackend().catch((error) => showError(String(error)));
   });
 }
 

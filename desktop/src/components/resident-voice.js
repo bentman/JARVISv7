@@ -66,16 +66,14 @@ export function createResidentVoicePresenter(options) {
     };
     const degradedReasons = Array.isArray(status.degraded_reasons) ? status.degraded_reasons : [];
     const rows = [
-      ["Mode", modeLabels[status.mode] || status.mode || "Unknown"],
-      ["Available", boolText(status.available)],
       ["Audio stream", stream.present ? (stream.running ? "Running" : "Stopped") : "Not started"],
-      ["Listeners", String(stream.subscribers ?? 0)],
-      ["Dropped audio", String(stream.dropped_chunks ?? 0)],
       ["Speech detection", boolText(status.vad_configured)],
       ["Interrupt while speaking", status.barge_in_supported ? (status.barge_in_wired ? "Yes" : "Supported, not wired") : "No"],
-      ["Listening for a follow-up", boolText(status.follow_up_listening)],
-      ["Continuous", boolText(status.continuous_active)],
     ];
+    if (stream.subscribers > 0) rows.push(["Listeners", String(stream.subscribers)]);
+    if (stream.dropped_chunks > 0) rows.push(["Dropped audio", String(stream.dropped_chunks)]);
+    if (status.follow_up_listening) rows.push(["Listening for a follow-up", boolText(status.follow_up_listening)]);
+    if (status.continuous_active) rows.push(["Continuous", boolText(status.continuous_active)]);
     if (status.follow_up_listening && status.follow_up_source) rows.push(["Follow-up after", humanize(status.follow_up_source)]);
     if (degradedReasons.length > 0) {
       rows.push(["Degraded", degradedReasons.join("; ")]);

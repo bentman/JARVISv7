@@ -482,11 +482,12 @@ test("the readiness panel must render family readiness", async () => {
       }
     }, container);
     
+    const escalation = findElement(container, (n) => String(n.className).includes("readiness-escalation"));
+    assert.ok(escalation, "readiness panel must render cloud escalation");
+    const escalationLabel = findElement(escalation, (n) => String(n.className).includes("readiness-escalation-label"));
+    assert.ok(escalationLabel && escalationLabel.textContent.includes("Cloud escalation"), "cloud escalation label must be present");
     const labels = findElements(container, (n) => n.tagName === "dt").map(n => n.textContent);
-    assert.ok(labels.includes("Arch"), "readiness panel must render Arch fact");
-    assert.ok(labels.includes("Profile"), "readiness panel must render Profile fact");
-    assert.ok(labels.includes("LLM"), "readiness panel must render LLM fact");
-    assert.ok(!labels.includes("Status"), "readiness panel must not render Status fact");
+    assert.equal(labels.length, 0, "readiness panel must not render legacy dl facts");
     
     const familyRows = findElements(container, (n) => String(n.className).includes("readiness-family"));
     assert.ok(familyRows.length >= 2, "readiness panel must render family rows");

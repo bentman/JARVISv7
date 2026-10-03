@@ -550,13 +550,16 @@ function renderDetail(state) {
 
 function renderPanel(state) {
   const errors = [state.conflict, state.policyError, state.contractError, state.curationError].filter(Boolean).join(" ");
+  const layout = document.createElement("div");
+  layout.className = "memory-panel-layout";
+  layout.append(renderList(state), renderDetail(state));
+
   return [
     renderPanelHeader("Memory"),
     messageRegion({ notice: state.notice, error: errors }),
     renderContracts(state),
     renderCuration(state),
-    renderList(state),
-    renderDetail(state),
+    layout,
   ];
 }
 

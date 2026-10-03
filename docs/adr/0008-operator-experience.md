@@ -46,7 +46,7 @@ The advanced-control panel contains categories for:
 
 | Category | Current source |
 |---|---|
-| Providers & Models | `llm-provider-settings.js`: primary/fallback/cloud selection, profile CRUD, connection test, credential rotation |
+| Provider Model Profiles | `llm-provider-settings.js`: routing and escalation selection, profile CRUD from provider-type presets, profile duplication, connection test with model discovery, credential rotation |
 | Settings | Operator-config fields and `appearance-controls.js` |
 | Memory | `memory-panel.js` |
 | Actions | `actions-panel.js` |
@@ -123,10 +123,12 @@ Action audit:
 - Capability, proposal, and approval IDs, the execution owner, raw arguments, and raw records appear only inside explicit Details disclosures. Descriptor problems are grouped under Could not load. The generic runner remains as Run manually for audit and fallback use.
 
 Provider and settings state:
-- `desktop/src/components/llm-provider-settings.js` exposes the `openProviderSettings` / `closeProviderSettings` mount for the Providers & Models category. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
+- Provider type presets (Unsloth, llama.cpp, Ollama, vLLM, OpenAI, Anthropic, Custom OpenAI-compatible) fill the endpoint, model, context window, and timeout of a new profile; models found by a connection test populate a selector that also sets the context window. A profile that holds the primary, fallback, or cloud role cannot be deleted. Provider Model Profiles lays routing and escalation beside profile editing.
+- Stopping a backend the desktop spawned requests `POST /daemon/shutdown` and waits for the process to exit before falling back to a kill, so the server lifespan stops the managed llama.cpp sidecar. `/daemon/shutdown` raises an in-process `SIGINT`, which runs that lifespan on Windows.
+- `desktop/src/components/llm-provider-settings.js` exposes the `openProviderSettings` / `closeProviderSettings` mount for the Provider Model Profiles category. `defaultEditingProfile` prefers the acted-on profile, then the first editable profile, before falling back to the selected or first profile. `builtinProfileNotice` renders an explicit read-only explanation for built-in profiles. The acted-on profile id is threaded through create and update reloads and cleared on delete, so a just-created or just-edited profile stays selected.
 - `desktop/src/components/settings-panel.js` replaces its boolean `restartRequired` with a `restartScopes` set of `operator` and `provider`. The badge, restart notice, and Restart button reflect the union; operator fields are disabled only by the operator scope and provider controls only by the provider scope. Provider controls remain enabled after unrelated operator-config saves. Both mounts carry a generation guard so a resolved load cannot repopulate a container that was switched away.
 
-No backend route or API-client route change was made, and no Tauri command was added; `invoke_agent` changed only from a synchronous to an async command. `backend/app/api/app.py` installs one `CapabilityServiceError` handler, so a direct operator request its capability refuses - for example a provider profile timeout below the argument schema minimum - returns the capability service's status and readable message instead of a 500. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
+`invoke_agent` changed only from a synchronous to an async command. `POST /config/llm/profiles/{profile_id}/test` accepts an optional draft body so a new or edited profile is tested before it is saved; `resolve_provider_test_target` in `backend/app/services/llm_provider_service.py` resolves it for the route and for the `provider-connectivity-test` capability alike. A built-in managed profile is tested by id and reports its readiness without discovery, and a stored credential is used only while the draft keeps the saved profile's kind and endpoint. The Tauri `test_llm_profile` command forwards the optional draft. `backend/app/api/app.py` installs one `CapabilityServiceError` handler, so a direct operator request its capability refuses - for example a provider profile timeout below the argument schema minimum - returns the capability service's status and readable message instead of a 500. `backend/app/actions/catalog.py` classifies provider profile writes and provider selection changes as direct `allow` local writes, and `CapabilityService.execute_operator_action` records approval evidence only for direct operator requests whose capability rule actually requires approval.
 
 ### Family workflow surfaces
 
@@ -182,7 +184,8 @@ Test coverage:
 - `desktop/tests/shell.test.mjs` for client commands matching registered Tauri commands and bridge calls matching backend routes
 - `desktop/tests/app.test.mjs` for the rendered desktop shell described under Rendered shell evidence, including per-category scroll restoration and an unsent draft surviving a category switch
 - `desktop/src-tauri/src/backend.rs` and `desktop/src-tauri/src/lib.rs` unit tests for backend launch, shutdown drain, port-owner safety, and citation destinations
-- `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions; `test_llm_config_routes.py` also covers a refused profile write returning its readable reason
+- `backend/tests/unit/services/test_capability_service.py`, `backend/tests/unit/api/test_llm_config_routes.py`, and `backend/tests/unit/services/test_llm_provider_profiles.py` for provider profile writes as direct local actions; `test_llm_config_routes.py` also covers a refused profile write returning its readable reason, selection updates passing capability validation, and draft connection tests for new, overridden, and built-in profiles
+- `backend/tests/unit/api/test_routes.py` for the default daemon shutdown raising an in-process signal
 
 Validation commands:
 - `backend/.venv/Scripts/python scripts/validate_desktop.py regression` (runs `npm --prefix desktop test` and `cargo test --manifest-path desktop/src-tauri/Cargo.toml`)

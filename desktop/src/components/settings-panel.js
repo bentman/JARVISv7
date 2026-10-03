@@ -102,7 +102,7 @@ function notifyRestartRequiredChange() {
   }
 }
 
-function renderField(field) {
+function renderField(field, { hideDescription = false } = {}) {
   const input = Array.isArray(field.options) && field.options.length > 0 ? document.createElement("select") : document.createElement("input");
 
   input.name = field.key;
@@ -150,7 +150,8 @@ function renderField(field) {
     appendText(row, help, "span", "panel-help");
     return row;
   }
-  return labeledField(fieldLabel(field), input, { help });
+  const labelText = hideDescription ? "" : fieldLabel(field);
+  return labeledField(labelText, input, { help });
 }
 
 function fieldSectionTitle(field) {
@@ -202,7 +203,8 @@ function renderMissingEnv(containerEl) {
 }
 
 function renderPanel(containerEl, fields) {
-  loadedFields = fields;
+  const visibleFields = (fields || []).filter((f) => !f.key.startsWith("REDIS_"));
+  loadedFields = visibleFields;
   fieldControls = new Map();
 
   const appearance = createAppearanceControls();
@@ -215,7 +217,109 @@ function renderPanel(containerEl, fields) {
   statusEl = document.createElement("p");
   statusEl.setAttribute("aria-live", "polite");
 
-  for (const group of groupedFields(fields)) form.appendChild(renderFieldGroup(group));
+  const langField = visibleFields.find((f) => f.key === "JARVIS_LANGUAGE");
+  const searxngEnable = visibleFields.find((f) => f.key === "USE_SEARXNG");
+  const searxngPort = visibleFields.find((f) => f.key === "SEARXNG_PORT");
+  const searxngUrl = visibleFields.find((f) => f.key === "SEARXNG_BASE_URL");
+  const ddgsEnable = visibleFields.find((f) => f.key === "USE_DDGS");
+  const tavilyEnable = visibleFields.find((f) => f.key === "USE_TAVILY");
+  const tavilyKey = visibleFields.find((f) => f.key === "TAVILY_API_KEY");
+
+  const isOperatorServicesLayout = Boolean(langField || searxngEnable || ddgsEnable || tavilyEnable);
+
+  if (isOperatorServicesLayout) {
+    const row1 = document.createElement("div");
+    row1.className = "settings-row-2col";
+
+    const langSection = document.createElement("section");
+    langSection.className = "settings-subsection";
+    const langHeading = document.createElement("h3");
+    langHeading.textContent = "Display Language";
+    langSection.appendChild(langHeading);
+    if (langField) {
+      langSection.appendChild(renderField(langField, { hideDescription: true }));
+    }
+    row1.append(langSection, appearance);
+    form.appendChild(row1);
+
+    if (searxngEnable || ddgsEnable || tavilyEnable || searxngPort || tavilyKey) {
+      const searchHeading = document.createElement("h3");
+      searchHeading.className = "settings-heading-separator";
+      searchHeading.textContent = "Search Services";
+      form.appendChild(searchHeading);
+
+      if (searxngEnable || searxngPort) {
+        const row3 = document.createElement("div");
+        row3.className = "settings-service-row";
+        const leftCol = document.createElement("div");
+        leftCol.className = "settings-service-col";
+        if (searxngEnable) leftCol.appendChild(renderField(searxngEnable));
+        const rightCol = document.createElement("div");
+        rightCol.className = "settings-service-col";
+        if (searxngPort) rightCol.appendChild(renderField(searxngPort));
+        if (searxngUrl) {
+          const details = document.createElement("details");
+          const summary = document.createElement("summary");
+          summary.textContent = "Advanced URL";
+          details.appendChild(summary);
+          details.appendChild(renderField(searxngUrl));
+          rightCol.appendChild(details);
+        }
+        row3.append(leftCol, rightCol);
+        form.appendChild(row3);
+      }
+
+      if (ddgsEnable) {
+        const row4 = document.createElement("div");
+        row4.className = "settings-service-row";
+        const leftCol = document.createElement("div");
+        leftCol.className = "settings-service-col";
+        leftCol.appendChild(renderField(ddgsEnable));
+        const rightCol = document.createElement("div");
+        rightCol.className = "settings-service-col settings-no-config";
+        const noConfigText = document.createElement("span");
+        noConfigText.textContent = "No configuration required";
+        rightCol.appendChild(noConfigText);
+        row4.append(leftCol, rightCol);
+        form.appendChild(row4);
+      }
+
+      if (tavilyEnable || tavilyKey) {
+        const row5 = document.createElement("div");
+        row5.className = "settings-service-row";
+        const leftCol = document.createElement("div");
+        leftCol.className = "settings-service-col";
+        if (tavilyEnable) leftCol.appendChild(renderField(tavilyEnable));
+        const rightCol = document.createElement("div");
+        rightCol.className = "settings-service-col";
+        if (tavilyKey) rightCol.appendChild(renderField(tavilyKey));
+        row5.append(leftCol, rightCol);
+        form.appendChild(row5);
+      }
+    }
+
+    const handledKeys = new Set([
+      "JARVIS_LANGUAGE",
+      "USE_SEARXNG",
+      "SEARXNG_PORT",
+      "SEARXNG_BASE_URL",
+      "USE_DDGS",
+      "USE_TAVILY",
+      "TAVILY_API_KEY",
+    ]);
+    const otherFields = visibleFields.filter((f) => !handledKeys.has(f.key));
+    if (otherFields.length > 0) {
+      const grid = document.createElement("div");
+      grid.className = "settings-grid";
+      for (const group of groupedFields(otherFields)) grid.appendChild(renderFieldGroup(group));
+      form.appendChild(grid);
+    }
+  } else {
+    const grid = document.createElement("div");
+    grid.className = "settings-grid";
+    for (const group of groupedFields(visibleFields)) grid.appendChild(renderFieldGroup(group));
+    form.append(appearance, grid);
+  }
 
   restartState.textContent = "Saved changes apply after a backend restart.";
   restartState.hidden = !anyRestartRequired();
@@ -226,7 +330,7 @@ function renderPanel(containerEl, fields) {
   form.appendChild(buttonRow(saveButton, restartButton));
   form.addEventListener("submit", saveSettings);
 
-  const children = [renderPanelHeader("Settings"), appearance, dirtyEl, restartState, form, statusEl];
+  const children = [renderPanelHeader("Settings"), dirtyEl, restartState, form, statusEl];
   if (keeper) keeper.render(...children);
   else containerEl.replaceChildren(...children);
   updateDirtyState();

@@ -124,12 +124,14 @@ class LocalLLMSidecarService:
         health_probe: HealthProbe | None = None,
         process_reaper: ProcessReaper | None = None,
         port_reaper: PortReaper | None = None,
+        orphan_reaper: ProcessReaper | None = None,
         stop_timeout_seconds: float = 5.0,
     ) -> None:
         self._process_factory = process_factory or _default_process_factory
         self._health_probe = health_probe
         self._process_reaper = process_reaper or _reap_processes_for_binary
         self._port_reaper = port_reaper or _reap_processes_on_port
+        self._orphan_reaper = orphan_reaper or _reap_orphaned_processes_for_binary
         self._stop_timeout_seconds = stop_timeout_seconds
         self._process: SidecarProcess | None = None
         self._last_resolution: LLMServeProfileResolution | None = None
@@ -187,6 +189,12 @@ class LocalLLMSidecarService:
             self._restart_required = True
             self._last_error = "restart-required"
             return self._status(state="restart-required", running=True, restart_required=True)
+
+        # A server left by a backend that no longer exists would otherwise be adopted and outlive
+        # every later stop; a server owned by a live process stays adoptable.
+        if resolution.binary_path is not None:
+            with suppress(Exception):
+                self._orphan_reaper(resolution.binary_path, self._stop_timeout_seconds)
 
         # Check if endpoint is already served by an existing llama-server process
         base_url = resolution.base_url.rstrip("/")
@@ -508,15 +516,31 @@ def _default_process_factory(argv: list[str]) -> SidecarProcess:
     return subprocess.Popen(argv, cwd=cwd)
 
 
-def _reap_processes_for_binary(binary_path: Path, timeout_seconds: float) -> None:
+def _reap_orphaned_processes_for_binary(binary_path: Path, timeout_seconds: float) -> None:
+    _reap_processes_for_binary(binary_path, timeout_seconds, orphans_only=True)
+
+
+def _reap_processes_for_binary(
+    binary_path: Path,
+    timeout_seconds: float,
+    *,
+    orphans_only: bool = False,
+) -> None:
     resolved_binary = _normalized_path(binary_path)
     matches: list[psutil.Process] = []
     current_pid = psutil.Process().pid
     for process in psutil.process_iter(["pid", "exe", "cmdline", "name"]):
         if process.info.get("pid") == current_pid:
             continue
-        if _process_matches_binary(process, resolved_binary):
-            matches.append(process)
+        if not _process_matches_binary(process, resolved_binary):
+            continue
+        if orphans_only:
+            try:
+                if process.parent() is not None:
+                    continue
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+        matches.append(process)
 
     if not matches:
         return

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import { strict as assert } from "node:assert";
 import { clearRestartRequired, markRestartRequired, restartRequiredScopes, restartScopeDisables, closeSettings, openSettings } from "../src/components/settings-panel.js";
 import { createAppearanceControls } from "../src/components/appearance-controls.js";
-import { builtinProfileNotice, defaultEditingProfile, providerChoiceGroups, providerRestartDisabled, providerSelectionPayload, createLlmProviderSettings, openProviderSettings } from "../src/components/llm-provider-settings.js";
+import { builtinProfileNotice, defaultEditingProfile, providerChoiceGroups, providerRestartDisabled, providerSelectionPayload, createLlmProviderSettings, openProviderSettings, PROVIDER_TYPES, profileToProviderType } from "../src/components/llm-provider-settings.js";
 import { style, createElement, findElements } from "./support.mjs";
 
 test("the provider editor must open on an editable profile instead of a read-only built-in", async () => {
@@ -139,3 +139,133 @@ test("the provider section must offer escalation, connection testing, and creden
     globalThis.document = previousDocument;
   }
 });
+
+test("provider types must include Unsloth defaulting to port 4444 and support profile duplication and deletion guard", async () => {
+  assert.ok(PROVIDER_TYPES.unsloth, "Unsloth provider type must exist");
+  assert.equal(PROVIDER_TYPES.unsloth.endpoint, "http://127.0.0.1:4444/v1", "Unsloth must default to port 4444");
+  assert.equal(PROVIDER_TYPES.unsloth.kind, "openai_compatible", "Unsloth must map to openai_compatible");
+
+  assert.equal(profileToProviderType({ kind: "openai_compatible", endpoint: "http://127.0.0.1:4444/v1" }), "unsloth");
+  assert.equal(profileToProviderType({ kind: "openai_compatible", endpoint: "http://127.0.0.1:8080/v1" }), "llama_cpp");
+  assert.equal(profileToProviderType({ kind: "ollama" }), "ollama");
+
+  const previousDocument = globalThis.document;
+  globalThis.document = { createElement };
+  try {
+    const primaryProfile = { profile_id: "primary-1", name: "Primary Local", kind: "openai_compatible", endpoint: "http://127.0.0.1:4444/v1", context_window: 8192, timeout_seconds: 60 };
+    const unusedProfile = { profile_id: "custom-2", name: "Custom Extra", kind: "openai_compatible", endpoint: "http://127.0.0.1:8080/v1", context_window: 4096, timeout_seconds: 30 };
+    const section = createLlmProviderSettings({
+      profiles: [primaryProfile, unusedProfile],
+      selection: { primary_profile_id: "primary-1" },
+    }, {});
+
+    const buttons = findElements(section, (n) => n.tagName === "button");
+    const duplicateBtn = buttons.find((n) => n.textContent === "Duplicate");
+    assert.ok(duplicateBtn, "Duplicate button must be rendered in profile toolbar");
+
+    const newBtn = buttons.find((n) => n.textContent === "New profile");
+    assert.ok(newBtn, "New profile button must be rendered");
+
+    // Primary profile is active, so delete button must be guarded/disabled
+    const deleteBtn = buttons.find((n) => n.textContent === "Delete profile");
+    assert.ok(deleteBtn, "Delete profile button must exist");
+    assert.equal(deleteBtn.disabled, true, "active primary profile must not be deletable");
+
+    // Verify Provider type options are alphabetized
+    const selects = findElements(section, (n) => n.tagName === "select");
+    const profileSelect = selects.find((s) => s.parentElement?.children?.[0]?.textContent === "Profile");
+    const typeSelect = selects.find((s) => s.parentElement?.children?.[0]?.textContent === "Provider type");
+    assert.ok(typeSelect, "Provider type selector must exist");
+    const optionLabels = typeSelect.children.map((o) => o.textContent);
+    const sortedOptionLabels = [...optionLabels].sort((a, b) => a.localeCompare(b));
+    assert.deepEqual(optionLabels, sortedOptionLabels, "Provider type options must be alphabetized");
+
+    // Verify Provider type field appears before Display name in fields list
+    const labels = findElements(section, (n) => n.tagName === "label");
+    const labelTexts = labels.map((l) => l.children?.[0]?.textContent).filter(Boolean);
+    const typeIdx = labelTexts.indexOf("Provider type");
+    const nameIdx = labelTexts.indexOf("Display name");
+    assert.ok(typeIdx !== -1 && nameIdx !== -1 && typeIdx < nameIdx, "Provider type must appear before Display name in fields list");
+
+    // Clicking New Profile must populate standard primary local defaults (llama.cpp)
+    newBtn.click();
+    const inputs = findElements(section, (n) => n.tagName === "input");
+    const endpointInput = inputs.find((n) => n.value === "http://127.0.0.1:8080/v1");
+    assert.ok(endpointInput, "New profile must populate primary local default endpoint");
+    const nameInput = inputs.find((n) => n.parentElement?.children?.[0]?.textContent === "Display name");
+    assert.equal(nameInput.value, "llama.cpp Local", "New profile must default Display name to llama.cpp Local");
+
+    // Changing Provider type must automatically adjust Display name and Model defaults
+    const modelInput = inputs.find((n) => n.list === "llm-provider-models");
+    typeSelect.value = "unsloth";
+    typeSelect.listeners.change?.();
+    assert.equal(nameInput.value, "Unsloth Local", "Display name must adjust to Unsloth Local");
+    assert.equal(endpointInput.value, "http://127.0.0.1:4444/v1", "Endpoint must adjust to Unsloth port 4444");
+
+    typeSelect.value = "ollama";
+    typeSelect.listeners.change?.();
+    assert.equal(nameInput.value, "Ollama Local", "Display name must adjust with Provider type");
+    assert.equal(modelInput.value, "llama3.2", "Model must adjust with Ollama Provider type");
+
+    typeSelect.value = "anthropic";
+    typeSelect.listeners.change?.();
+    assert.equal(nameInput.value, "Anthropic Cloud", "Display name must adjust with Provider type");
+    assert.equal(modelInput.value, "claude-sonnet-5-5", "Model must adjust with Anthropic Provider type");
+
+    typeSelect.value = "llama_cpp";
+    typeSelect.listeners.change?.();
+    assert.equal(nameInput.value, "llama.cpp Local", "Display name must adjust back to llama.cpp Local");
+    assert.equal(modelInput.value, "default", "Model must reset back to default, not stuck on Anthropic");
+
+    // Clicking Duplicate on custom-2 must clone into editable copy
+    profileSelect.value = "custom-2";
+    profileSelect.listeners.change?.();
+    duplicateBtn.click();
+    assert.equal(nameInput.value, "Custom Extra (Copy)", "Duplicate must create an editable draft with (Copy) suffix");
+
+    // Test connection must be enabled on new/draft profiles and send draft payload
+    let testCall = null;
+    const testHandlers = {
+      testLlmProfile: async (id, payload) => {
+        testCall = { id, payload };
+        return {
+          status: "ready",
+          reason: "provider models endpoint reachable",
+          models: [{ id: "nemotron-3-nano:4b" }, { id: "omnicoder-9b:q6_k" }],
+        };
+      },
+    };
+    const draftSection = createLlmProviderSettings({
+      profiles: [primaryProfile],
+      selection: { primary_profile_id: "primary-1" },
+    }, testHandlers);
+    const draftButtons = findElements(draftSection, (n) => n.tagName === "button");
+    const draftNewBtn = draftButtons.find((n) => n.textContent === "New profile");
+    const draftTestBtn = draftButtons.find((n) => n.textContent === "Test connection");
+    const draftSelects = findElements(draftSection, (n) => n.tagName === "select");
+    const draftTypeSelect = draftSelects.find((s) => s.parentElement?.children?.[0]?.textContent === "Provider type");
+
+    draftNewBtn.click();
+    assert.equal(draftTestBtn.disabled, false, "Test connection must be enabled for new profile drafts");
+    draftTypeSelect.value = "ollama";
+    draftTypeSelect.listeners.change?.();
+
+    await draftTestBtn.listeners.click?.();
+    assert.ok(testCall, "Test connection must invoke testLlmProfile handler");
+    assert.equal(testCall.id, "new", "draft profile id must be new");
+    assert.equal(testCall.payload.kind, "ollama", "test payload kind must match selected Provider type");
+    assert.equal(testCall.payload.endpoint, "http://127.0.0.1:11434", "test payload endpoint must match selected Provider type");
+
+    // A built-in managed profile is tested by id alone, without a draft payload.
+    const managedSection = createLlmProviderSettings({
+      profiles: [{ profile_id: "builtin:managed-llama-cpp", name: "managed llama.cpp", kind: "managed_llama_cpp", builtin: true }],
+      selection: { primary_profile_id: "builtin:managed-llama-cpp" },
+    }, testHandlers);
+    testCall = null;
+    await findElements(managedSection, (n) => n.tagName === "button" && n.textContent === "Test connection")[0].listeners.click?.();
+    assert.deepEqual(testCall, { id: "builtin:managed-llama-cpp", payload: null });
+  } finally {
+    globalThis.document = previousDocument;
+  }
+});
+

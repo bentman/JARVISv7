@@ -78,7 +78,7 @@ Session state is observable through backend routes:
 - `/readiness`
 - `/daemon/status`
 
-The backend is the daemon boundary for this loop. `scripts/run_backend.py` acquires same-repo ownership for the configured loopback endpoint before serving and writes ephemeral discovery metadata to `cache/daemon/backend.json` with an adjacent lock file. `/daemon/status` exposes public daemon identity without exposing the local token, and `/daemon/shutdown` accepts only the token from local metadata. Desktop startup reads the same cache metadata, connects to a healthy same-repo daemon when present, and otherwise starts `scripts/run_backend.py`.
+The backend is the daemon boundary for this loop. `scripts/run_backend.py` acquires same-repo ownership for the configured loopback endpoint before serving and writes ephemeral discovery metadata to `cache/daemon/backend.json` with an adjacent lock file. `/daemon/status` exposes public daemon identity without exposing the local token, and `/daemon/shutdown` accepts only the token from local metadata and ends the process through the server lifespan, which stops the managed local LLM sidecar. Desktop startup reads the same cache metadata, connects to a healthy same-repo daemon when present, and otherwise starts `scripts/run_backend.py`.
 
 Artifacts preserve loop evidence and form the shared memory ingestion boundary. `TurnArtifact` records modality, transcript, prompt, retrieved memory, invoked search providers, reserved action/approval/delegated-run fields, search evidence, response, raw audio path, interruptions, final state, degradation, runtime context, phase timings, and failure phase. `SessionArtifact` and `SessionTimeline` preserve session-level evidence.
 

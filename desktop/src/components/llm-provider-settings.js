@@ -4,7 +4,84 @@ import { button, buttonRow, field, option } from "./ui/dom.js";
 import { errorMessage, humanize, statusText } from "./ui/format.js";
 import { renderPanelHeader } from "./ui/panel.js";
 
-const EDITABLE_KINDS = ["ollama", "openai_compatible", "openai", "anthropic"];
+export const PROVIDER_TYPES = {
+  unsloth: {
+    label: "Unsloth (Local)",
+    kind: "openai_compatible",
+    endpoint: "http://127.0.0.1:4444/v1",
+    context_window: 8192,
+    timeout_seconds: 60,
+    model: "default",
+    fixedEndpoint: false,
+    defaultName: "Unsloth Local",
+  },
+  llama_cpp: {
+    label: "llama.cpp (Local)",
+    kind: "openai_compatible",
+    endpoint: "http://127.0.0.1:8080/v1",
+    context_window: 8192,
+    timeout_seconds: 60,
+    model: "default",
+    fixedEndpoint: false,
+    defaultName: "llama.cpp Local",
+  },
+  ollama: {
+    label: "Ollama (Local)",
+    kind: "ollama",
+    endpoint: "http://127.0.0.1:11434",
+    context_window: 8192,
+    timeout_seconds: 60,
+    model: "llama3.2",
+    fixedEndpoint: false,
+    defaultName: "Ollama Local",
+  },
+  vllm: {
+    label: "vLLM (Local)",
+    kind: "openai_compatible",
+    endpoint: "http://127.0.0.1:8000/v1",
+    context_window: 8192,
+    timeout_seconds: 60,
+    model: "default",
+    fixedEndpoint: false,
+    defaultName: "vLLM Local",
+  },
+  openai_compatible: {
+    label: "Custom OpenAI-compatible",
+    kind: "openai_compatible",
+    endpoint: "http://127.0.0.1:8080/v1",
+    context_window: 8192,
+    timeout_seconds: 60,
+    model: "custom",
+    fixedEndpoint: false,
+    defaultName: "Custom OpenAI-compatible",
+  },
+  openai: {
+    label: "OpenAI (Cloud)",
+    kind: "openai",
+    endpoint: "https://api.openai.com/v1",
+    context_window: 128000,
+    timeout_seconds: 60,
+    model: "gpt-4o-mini",
+    fixedEndpoint: true,
+    defaultName: "OpenAI Cloud",
+  },
+  anthropic: {
+    label: "Anthropic (Cloud)",
+    kind: "anthropic",
+    endpoint: "https://api.anthropic.com/v1",
+    context_window: 200000,
+    timeout_seconds: 60,
+    model: "claude-sonnet-5-5",
+    fixedEndpoint: true,
+    defaultName: "Anthropic Cloud",
+  },
+};
+
+const KNOWN_DEFAULT_NAMES = new Set([
+  ...Object.values(PROVIDER_TYPES).map((p) => p.defaultName),
+  ...Object.values(PROVIDER_TYPES).map((p) => p.label),
+  "",
+]);
 
 const KIND_LABELS = {
   managed_llama_cpp: "Managed llama.cpp",
@@ -13,6 +90,24 @@ const KIND_LABELS = {
   openai: "OpenAI",
   anthropic: "Anthropic",
 };
+
+let pendingProfileFeedback = null;
+
+export function profileToProviderType(profile) {
+  if (!profile) return "llama_cpp";
+  if (profile.kind === "managed_llama_cpp") return "llama_cpp";
+  if (profile.kind === "ollama") return "ollama";
+  if (profile.kind === "openai") return "openai";
+  if (profile.kind === "anthropic") return "anthropic";
+  if (profile.kind === "openai_compatible") {
+    const ep = String(profile.endpoint || "");
+    if (ep.includes(":4444")) return "unsloth";
+    if (ep.includes(":8080")) return "llama_cpp";
+    if (ep.includes(":8000")) return "vllm";
+    return "openai_compatible";
+  }
+  return "openai_compatible";
+}
 
 function element(tagName, text = "", className = "") {
   const value = document.createElement(tagName);
@@ -26,8 +121,18 @@ function setStatus(node, text, kind = "notice") {
   node.className = kind === "error" ? "panel-error" : "panel-notice";
 }
 
+function profileActiveStatus(profile, selection) {
+  if (!profile) return null;
+  if (profile.profile_id === selection?.primary_profile_id) return "Primary provider";
+  if (profile.profile_id === selection?.local_fallback_profile_id) return "Local fallback";
+  if (profile.profile_id === selection?.cloud_profile_id) return "Cloud provider";
+  return null;
+}
+
 function profileOption(profile, selectedId) {
-  return option(profile.profile_id, `${profile.name} · ${humanize(profile.kind, KIND_LABELS)}`, profile.profile_id === selectedId);
+  const typeKey = profileToProviderType(profile);
+  const typeLabel = PROVIDER_TYPES[typeKey]?.label || humanize(profile.kind, KIND_LABELS);
+  return option(profile.profile_id, `${profile.name} · ${typeLabel}`, profile.profile_id === selectedId);
 }
 
 function fillProfileSelect(select, profiles, selectedId, emptyLabel = null) {
@@ -53,13 +158,14 @@ function cloudProfiles(profiles) {
 }
 
 function profilePayload(controls) {
+  const selectedType = PROVIDER_TYPES[controls.type.value] || PROVIDER_TYPES.openai_compatible;
   return {
     name: controls.name.value.trim(),
-    kind: controls.kind.value,
-    endpoint: controls.endpoint.value.trim() || null,
+    kind: selectedType.kind,
+    endpoint: selectedType.fixedEndpoint ? selectedType.endpoint : controls.endpoint.value.trim() || null,
     model: controls.model.value.trim() || null,
-    context_window: Number(controls.context.value),
-    timeout_seconds: Number(controls.timeout.value),
+    context_window: Number(controls.context.value) || selectedType.context_window,
+    timeout_seconds: Number(controls.timeout.value) || selectedType.timeout_seconds,
     api_key: controls.credential.value.trim() || null,
     clear_api_key: controls.removeCredential.checked,
   };
@@ -87,7 +193,7 @@ export function defaultEditingProfile(profiles, selection, preferredProfileId = 
 
 export function builtinProfileNotice(profile) {
   return profile?.builtin
-    ? "This built-in profile is managed by the backend and cannot be edited. Use New profile to create an editable one."
+    ? "This built-in profile is managed by the backend and cannot be edited. Use 'New profile' or 'Duplicate' to create an editable one."
     : "";
 }
 
@@ -102,21 +208,37 @@ export function providerChoiceGroups(profiles) {
   };
 }
 
-function setProfileFields(profile, controls) {
+function updateEndpointState(controls, builtin = false) {
+  const selectedType = PROVIDER_TYPES[controls.type.value] || PROVIDER_TYPES.openai_compatible;
+  const isFixed = selectedType.fixedEndpoint;
+  controls.endpoint.disabled = builtin || isFixed;
+  controls.endpoint.placeholder = isFixed
+    ? "Provider endpoint is fixed"
+    : selectedType.endpoint;
+  if (!builtin && isFixed) {
+    controls.endpoint.value = selectedType.endpoint;
+  }
+}
+
+function setProfileFields(profile, controls, selection = null) {
   const editable = Boolean(profile && !profile.builtin);
-  controls.name.value = profile?.name || "";
-  controls.kind.value = profile?.kind === "managed_llama_cpp" ? "openai_compatible" : profile?.kind || "openai_compatible";
-  controls.endpoint.value = profile?.endpoint || "";
-  controls.model.value = profile?.model || "";
-  controls.context.value = String(profile?.context_window || 8192);
-  controls.timeout.value = String(profile?.timeout_seconds || 60);
+  const typeKey = profileToProviderType(profile);
+  const typePreset = PROVIDER_TYPES[typeKey] || PROVIDER_TYPES.llama_cpp;
+
+  controls.type.value = typeKey;
+  controls.name.value = profile?.name || typePreset.defaultName;
+  controls.endpoint.value = profile?.endpoint || (profile ? "" : typePreset.endpoint);
+  controls.model.value = profile?.model || (profile ? "" : typePreset.model);
+  controls.context.value = String(profile?.context_window || typePreset.context_window);
+  controls.timeout.value = String(profile?.timeout_seconds || typePreset.timeout_seconds);
   controls.credential.value = "";
   controls.credential.placeholder = profile?.has_secret ? "Stored; enter replacement" : "Optional bearer or API key";
   controls.removeCredential.checked = false;
   controls.removeCredential.disabled = !editable || !profile?.has_secret;
+
   for (const control of [
     controls.name,
-    controls.kind,
+    controls.type,
     controls.endpoint,
     controls.model,
     controls.context,
@@ -125,45 +247,76 @@ function setProfileFields(profile, controls) {
   ]) {
     control.disabled = !editable && Boolean(profile);
   }
-  if (controls.notice) controls.notice.textContent = builtinProfileNotice(profile);
+
+  const activeRole = profileActiveStatus(profile, selection);
+  if (controls.activeBadge) {
+    if (activeRole) {
+      controls.activeBadge.textContent = `Active: ${activeRole}`;
+      controls.activeBadge.className = "profile-status-badge active-role-badge";
+      controls.activeBadge.hidden = false;
+    } else if (profile?.builtin) {
+      controls.activeBadge.textContent = "Built-in";
+      controls.activeBadge.className = "profile-status-badge builtin-badge";
+      controls.activeBadge.hidden = false;
+    } else {
+      controls.activeBadge.textContent = "";
+      controls.activeBadge.hidden = true;
+    }
+  }
+
+  if (controls.notice) {
+    controls.notice.textContent = builtinProfileNotice(profile);
+    controls.notice.hidden = !profile?.builtin;
+  }
+
   controls.save.textContent = profile ? "Save profile" : "Create profile";
   controls.save.disabled = Boolean(profile?.builtin);
-  controls.delete.disabled = !profile || profile.builtin;
-  controls.test.disabled = !profile;
-  updateEndpointState(controls, profile?.builtin === true);
-}
 
-function updateEndpointState(controls, builtin = false) {
-  const fixedEndpoint = ["openai", "anthropic"].includes(controls.kind.value);
-  controls.endpoint.disabled = builtin || fixedEndpoint;
-  controls.endpoint.placeholder = fixedEndpoint
-    ? "Provider endpoint is fixed"
-    : controls.kind.value === "ollama"
-      ? "http://127.0.0.1:11434"
-      : "http://127.0.0.1:8080/v1";
+  const isProtectedActive = Boolean(activeRole);
+  controls.delete.disabled = !profile || profile.builtin || isProtectedActive;
+  if (isProtectedActive) {
+    controls.delete.title = `Cannot delete: currently active as ${activeRole}. Change provider selection first.`;
+  } else if (profile?.builtin) {
+    controls.delete.title = "Built-in profiles cannot be deleted.";
+  } else {
+    controls.delete.title = "Delete this profile";
+  }
+
+  controls.test.disabled = false;
+  updateEndpointState(controls, profile?.builtin === true);
 }
 
 export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const profiles = Array.isArray(payload?.profiles) ? payload.profiles : [];
   const selection = payload?.selection || {};
   const section = document.createElement("section");
+  section.className = "model-provider-settings";
+
   const heading = element("h3", "Model providers");
   const summary = element(
     "p",
-    "Choose the primary model provider, an optional local fallback, and an authorized cloud escalation target.",
+    "Model providers · Configure active routing, fallback, and cloud escalation across profiles.",
     "panel-help",
   );
   const status = element("p");
   status.setAttribute("aria-live", "polite");
+
   const selectionGroup = document.createElement("div");
+  selectionGroup.className = "model-provider-selection-column";
+  const selectionHeading = element("h4", "Provider Routing & Escalation");
+  const selectionSubtext = element(
+    "p",
+    "Assign the active primary model provider, optional local fallback, and authorized cloud escalation target.",
+    "panel-help",
+  );
+
   const primary = document.createElement("select");
   const fallback = document.createElement("select");
   const escalation = document.createElement("input");
   const cloud = document.createElement("select");
   const warning = element("p", "", "panel-help");
-  const saveSelection = button("Save provider selection", { variant: "primary", focusKey: "provider:save-selection" });
+  const saveSelection = button("Save routing selection", { variant: "primary", focusKey: "provider:save-selection" });
 
-  section.className = "model-provider-settings";
   escalation.type = "checkbox";
   escalation.checked = Boolean(selection.cloud_escalation_enabled);
   primary.dataset.draftKey = "provider-selection:primary";
@@ -193,7 +346,10 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const escalationLabel = document.createElement("label");
   escalationLabel.className = "panel-choice";
   escalationLabel.append(escalation, element("span", "Allow cloud escalation"));
+
   selectionGroup.append(
+    selectionHeading,
+    selectionSubtext,
     field("Primary provider", primary),
     field("Local fallback", fallback),
     escalationLabel,
@@ -216,13 +372,37 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   });
 
   const profileGroup = document.createElement("div");
-  const profileHeading = element("h4", "Profiles");
+  profileGroup.className = "model-provider-profile-column";
+  const profileHeading = element("h4", "Provider Profiles");
+  const profileSubtext = element(
+    "p",
+    "Configure local model servers (Unsloth, llama.cpp, Ollama, vLLM) and cloud API endpoints.",
+    "panel-help",
+  );
   const profileSelect = document.createElement("select");
   const newProfile = button("New profile", { focusKey: "provider:new" });
+  const duplicate = button("Duplicate", { focusKey: "provider:duplicate" });
+  duplicate.title = "Clone currently selected profile into an editable new profile";
+
+  const activeBadge = document.createElement("span");
+  activeBadge.className = "profile-status-badge";
+  activeBadge.hidden = true;
+
   const name = document.createElement("input");
-  const kind = document.createElement("select");
+  const typeSelect = document.createElement("select");
+  const sortedTypes = Object.entries(PROVIDER_TYPES).sort((a, b) =>
+    a[1].label.localeCompare(b[1].label),
+  );
+  for (const [key, preset] of sortedTypes) {
+    typeSelect.appendChild(option(key, preset.label));
+  }
+
   const endpoint = document.createElement("input");
   const model = document.createElement("input");
+  const modelSelect = document.createElement("select");
+  modelSelect.className = "model-select-dropdown hidden";
+  modelSelect.id = "llm-provider-model-select";
+  modelSelect.setAttribute("aria-label", "Discovered Model ID");
   const modelList = document.createElement("datalist");
   const context = document.createElement("input");
   const timeout = document.createElement("input");
@@ -236,15 +416,28 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   profileStatus.setAttribute("aria-live", "polite");
   const profileNotice = element("p");
   profileNotice.className = "model-provider-notice";
-  const controls = { name, kind, endpoint, model, context, timeout, credential, removeCredential, save, test, delete: remove, notice: profileNotice };
-  let editingProfile = defaultEditingProfile(profiles, selection, callbacks.preferredProfileId);
 
+  const controls = {
+    name,
+    type: typeSelect,
+    kind: typeSelect,
+    endpoint,
+    model,
+    context,
+    timeout,
+    credential,
+    removeCredential,
+    save,
+    test,
+    delete: remove,
+    notice: profileNotice,
+    activeBadge,
+  };
+
+  let editingProfile = defaultEditingProfile(profiles, selection, callbacks.preferredProfileId);
   fillProfileSelect(profileSelect, profiles, editingProfile?.profile_id);
   profileSelect.value = editingProfile?.profile_id || "";
-  const managedOption = option("managed_llama_cpp", "managed llama.cpp");
-  managedOption.disabled = true;
-  kind.appendChild(managedOption);
-  for (const value of EDITABLE_KINDS) kind.appendChild(option(value, KIND_LABELS[value]));
+
   modelList.id = "llm-provider-models";
   model.setAttribute("list", modelList.id);
   context.type = "number";
@@ -255,33 +448,124 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   timeout.max = "600";
   credential.type = "password";
   removeCredential.type = "checkbox";
-  // Unsaved edits are keyed to the profile being edited, so a re-render keeps them and switching
-  // profiles never carries one profile's edits into another.
+
+  const populateModelSelect = (models) => {
+    if (Array.isArray(models) && models.length > 0) {
+      modelSelect.replaceChildren(
+        option("", `Select from ${models.length} discovered model${models.length === 1 ? "" : "s"}…`),
+        ...models.map((item) => {
+          const ctxText = item.context_window ? ` (${item.context_window} ctx)` : "";
+          const opt = option(item.id, `${item.display_name || item.id}${ctxText}`);
+          if (item.context_window) opt.dataset.contextWindow = String(item.context_window);
+          return opt;
+        }),
+        option("__custom__", "Custom / manual Model ID…"),
+      );
+      modelSelect.classList.remove("hidden");
+      if (models.some((item) => item.id === model.value)) {
+        modelSelect.value = model.value;
+      }
+    } else {
+      modelSelect.replaceChildren();
+      modelSelect.classList.add("hidden");
+    }
+  };
+
+  modelSelect.addEventListener("change", () => {
+    if (modelSelect.value && modelSelect.value !== "__custom__") {
+      model.value = modelSelect.value;
+      const selectedOpt = modelSelect.options[modelSelect.selectedIndex];
+      if (selectedOpt?.dataset?.contextWindow) {
+        context.value = selectedOpt.dataset.contextWindow;
+      }
+      model.dispatchEvent(new Event("input", { bubbles: true }));
+    } else if (modelSelect.value === "__custom__") {
+      model.focus();
+    }
+  });
+
+  model.addEventListener("input", () => {
+    if (modelSelect.options?.length) {
+      modelSelect.value = [...modelSelect.options].some((opt) => opt.value === model.value) ? model.value : "";
+    }
+  });
+
   const keyFields = () => {
     const scope = editingProfile?.profile_id || "new";
-    for (const [key, control] of Object.entries({ name, kind, endpoint, model, context, timeout })) {
+    for (const [key, control] of Object.entries({ name, type: typeSelect, endpoint, model, context, timeout })) {
       control.dataset.draftKey = `provider:${scope}:${key}`;
     }
   };
   keyFields();
-  setProfileFields(editingProfile, controls);
+  setProfileFields(editingProfile, controls, selection);
+
+  if (pendingProfileFeedback) {
+    setStatus(profileStatus, pendingProfileFeedback.text, pendingProfileFeedback.kind);
+    pendingProfileFeedback = null;
+  }
 
   profileSelect.addEventListener("change", () => {
     editingProfile = selectedProfile(profiles, profileSelect.value);
     callbacks.onEditingProfile?.(editingProfile?.profile_id || null);
     keyFields();
-    setProfileFields(editingProfile, controls);
+    setProfileFields(editingProfile, controls, selection);
+    modelSelect.replaceChildren();
+    modelSelect.classList.add("hidden");
     profileStatus.textContent = "";
   });
+
   newProfile.addEventListener("click", () => {
     editingProfile = null;
     callbacks.onEditingProfile?.(null);
     profileSelect.value = "";
     keyFields();
-    setProfileFields(null, controls);
-    name.focus();
+    setProfileFields(null, controls, selection);
+
+    modelSelect.replaceChildren();
+    modelSelect.classList.add("hidden");
+    setStatus(profileStatus, 'New profile draft. Edit settings and click "Create profile".');
+    typeSelect.focus();
   });
-  kind.addEventListener("change", () => updateEndpointState(controls));
+
+  duplicate.addEventListener("click", () => {
+    const sourceProfile = editingProfile || profiles[0];
+    if (!sourceProfile) return;
+    editingProfile = null;
+    callbacks.onEditingProfile?.(null);
+    profileSelect.value = "";
+    keyFields();
+
+    setProfileFields(null, controls, selection);
+    controls.name.value = `${sourceProfile.name} (Copy)`;
+    const typeKey = profileToProviderType(sourceProfile);
+    controls.type.value = typeKey;
+    updateEndpointState(controls);
+    if (sourceProfile.endpoint) controls.endpoint.value = sourceProfile.endpoint;
+    if (sourceProfile.model) controls.model.value = sourceProfile.model;
+    controls.context.value = String(sourceProfile.context_window || 8192);
+    controls.timeout.value = String(sourceProfile.timeout_seconds || 60);
+
+    modelSelect.replaceChildren();
+    modelSelect.classList.add("hidden");
+    setStatus(profileStatus, `Cloned from "${sourceProfile.name}". Adjust parameters and click "Create profile".`);
+    controls.name.focus();
+  });
+
+  typeSelect.addEventListener("change", () => {
+    const preset = PROVIDER_TYPES[typeSelect.value] || PROVIDER_TYPES.llama_cpp;
+    updateEndpointState(controls);
+    if (!controls.endpoint.disabled) {
+      controls.endpoint.value = preset.endpoint;
+    }
+    controls.model.value = preset.model;
+    controls.context.value = String(preset.context_window);
+    controls.timeout.value = String(preset.timeout_seconds);
+    if (!editingProfile || KNOWN_DEFAULT_NAMES.has(controls.name.value.trim())) {
+      controls.name.value = preset.defaultName || preset.label;
+    }
+    modelSelect.replaceChildren();
+    modelSelect.classList.add("hidden");
+  });
 
   save.addEventListener("click", async () => {
     setStatus(profileStatus, editingProfile ? "Saving profile…" : "Creating profile…");
@@ -291,9 +575,19 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
         [selection.primary_profile_id, selection.local_fallback_profile_id, selection.cloud_profile_id].includes(
           editingProfile.profile_id,
         );
+      const isNew = !editingProfile;
+      const profileName = controls.name.value.trim() || "Profile";
       const saved = editingProfile
         ? await handlers.updateLlmProfile(editingProfile.profile_id, profilePayload(controls))
         : await handlers.createLlmProfile(profilePayload(controls));
+
+      pendingProfileFeedback = {
+        text: isNew
+          ? `Profile "${profileName}" created successfully.`
+          : `Profile "${profileName}" saved successfully.${wasSelected ? " Restart backend to apply to active turns." : ""}`,
+        kind: "notice",
+      };
+
       if (wasSelected) callbacks.onRestartRequired?.();
       await callbacks.reload?.({ selectProfileId: saved?.profile_id || editingProfile?.profile_id || null });
     } catch (error) {
@@ -302,15 +596,19 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   });
 
   test.addEventListener("click", async () => {
-    if (!editingProfile) return;
     setStatus(profileStatus, "Testing connection…");
     try {
-      const result = await handlers.testLlmProfile(editingProfile.profile_id);
+      const payload = editingProfile?.builtin ? null : profilePayload(controls);
+      const profileId = editingProfile?.profile_id || "new";
+      const result = await handlers.testLlmProfile(profileId, payload);
+      const models = result.models || [];
       modelList.replaceChildren(
-        ...(result.models || []).map((item) => option(item.id, item.display_name || item.id)),
+        ...models.map((item) => option(item.id, item.display_name || item.id)),
       );
+      populateModelSelect(models);
       const reachable = ["ready", "configured"].includes(result.status);
-      setStatus(profileStatus, `${statusText(result.status)}: ${result.reason}`, reachable ? "notice" : "error");
+      const modelCountText = models.length > 0 ? ` (${models.length} model${models.length === 1 ? "" : "s"} discovered)` : "";
+      setStatus(profileStatus, `${statusText(result.status)}: ${result.reason}${modelCountText}`, reachable ? "notice" : "error");
     } catch (error) {
       setStatus(profileStatus, `Connection test failed: ${errorMessage(error)}`, "error");
     }
@@ -323,6 +621,10 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
     setStatus(profileStatus, "Deleting profile…");
     try {
       await handlers.deleteLlmProfile(editingProfile.profile_id);
+      pendingProfileFeedback = {
+        text: `Profile "${editingProfile.name}" deleted.`,
+        kind: "notice",
+      };
       await callbacks.reload?.({ selectProfileId: null });
     } catch (error) {
       setStatus(profileStatus, `Profile delete failed: ${errorMessage(error)}`, "error");
@@ -343,14 +645,24 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
   const removeCredentialLabel = document.createElement("label");
   removeCredentialLabel.className = "panel-choice";
   removeCredentialLabel.append(removeCredential, element("span", "Remove stored credential"));
+  const modelWrapper = document.createElement("div");
+  modelWrapper.append(modelSelect, model);
+  const modelField = field("Model ID", modelWrapper);
+
+  const profileToolbar = document.createElement("div");
+  profileToolbar.className = "model-provider-toolbar";
+  profileToolbar.append(newProfile, duplicate);
+
   profileGroup.append(
     profileHeading,
+    profileSubtext,
     field("Profile", profileSelect),
-    buttonRow(newProfile),
+    profileToolbar,
+    activeBadge,
+    field("Provider type", typeSelect),
     field("Display name", name),
-    field("Provider kind", kind),
     field("Endpoint", endpoint),
-    field("Model ID", model),
+    modelField,
     modelList,
     field("Context window", context),
     field("Timeout seconds", timeout),
@@ -361,14 +673,17 @@ export function createLlmProviderSettings(payload, handlers, callbacks = {}) {
     profileStatus,
     buttonRow(rotate),
   );
-  section.append(heading, summary, selectionGroup, profileGroup, status);
+
+  const layout = document.createElement("div");
+  layout.className = "model-provider-layout";
+  layout.append(selectionGroup, profileGroup);
+  section.append(heading, summary, layout, status);
+
   if (providerRestartDisabled(callbacks.restartScopes)) {
-    // A pending provider restart freezes provider writes only. Browsing profiles and testing a
-    // connection stay available because both are read-only.
     for (const control of [
-      saveSelection, save, remove, rotate, newProfile,
+      saveSelection, save, remove, rotate, newProfile, duplicate,
       primary, fallback, escalation, cloud,
-      name, kind, endpoint, model, context, timeout, credential, removeCredential,
+      name, typeSelect, endpoint, model, context, timeout, credential, removeCredential,
     ]) {
       control.disabled = true;
     }
@@ -384,7 +699,7 @@ let providerOptions = {};
 let preferredProfileId = null;
 
 function providerUnavailable(containerEl, message) {
-  containerEl.replaceChildren(renderPanelHeader("Providers & Models"), element("p", message, "panel-error"));
+  containerEl.replaceChildren(renderPanelHeader("Provider Model Profiles"), element("p", message, "panel-error"));
 }
 
 function renderProviderPanel(containerEl, payload) {
@@ -420,7 +735,7 @@ function renderProviderPanel(containerEl, payload) {
     },
   });
 
-  const children = [renderPanelHeader("Providers & Models"), restartState, buttonRow(restartButton), settings];
+  const children = [renderPanelHeader("Provider Model Profiles"), restartState, buttonRow(restartButton), settings];
   if (providerKeeper?.container === containerEl) providerKeeper.render(...children);
   else containerEl.replaceChildren(...children);
 }
@@ -451,7 +766,7 @@ export async function openProviderSettings(containerEl, options = {}) {
     providerKeeper = Object.assign(createRenderStateKeeper(containerEl), { container: containerEl });
   }
   containerEl.hidden = false;
-  if (!containerEl.childNodes?.length) containerEl.replaceChildren(renderPanelHeader("Providers & Models"), element("p", "Loading providers…", "panel-help"));
+  if (!containerEl.childNodes?.length) containerEl.replaceChildren(renderPanelHeader("Provider Model Profiles"), element("p", "Loading providers…", "panel-help"));
   await loadProviderSettings(containerEl);
   if (activeProviderContainer !== containerEl) return;
   providerKeeper.release();

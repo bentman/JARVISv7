@@ -1116,13 +1116,17 @@ def build_capability_handlers(
         def connectivity_test(
             arguments: dict[str, Any], _operation: ActionOperation
         ) -> dict[str, Any]:
-            from backend.app.services.llm_provider_service import provider_model_discovery
+            from backend.app.services.llm_provider_service import (
+                provider_model_discovery,
+                resolve_provider_test_target,
+            )
 
             store = provider_store_factory()
-            profile = store.get_profile(arguments["profile_id"])
+            draft = {key: value for key, value in arguments.items() if key != "profile_id"}
+            profile, api_key = resolve_provider_test_target(store, arguments["profile_id"], draft)
             if profile.kind == "managed_llama_cpp":
                 return {"status": "configured", "models": []}
-            models = provider_model_discovery(store, profile)
+            models = provider_model_discovery(store, profile, api_key=api_key)
             return {"status": "ready", "models": [item.get("id") for item in models]}
 
         handlers[catalog.PROVIDER_PROFILE_WRITE] = profile_write

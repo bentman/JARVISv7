@@ -22,24 +22,24 @@
       </header>
 
       <section id="error-panel" class="error-panel hidden" aria-live="polite"></section>
-      <div id="error-actions" class="error-actions hidden">
-        <button id="retry-start-backend" type="button" class="btn-primary">Retry Starting Backend</button>
-      </div>
 
       <section class="grid">
         <aside class="panel status-panel" aria-label="Runtime status">
           <section class="panel-section">
-            <h2>Backend</h2>
+            <div class="backend-header">
+              <h2>Backend</h2>
+              <button id="retry-start-backend" type="button" class="btn-restart-compact" title="Restart backend">Restart</button>
+            </div>
             <dl class="facts">
-              <dt>Health</dt>
-              <dd id="backend-health">starting</dd>
-              <dt>Session</dt>
-              <dd id="session-id">not created</dd>
-              <dt>Turns</dt>
-              <dd id="session-turn-count">0</dd>
+              <dt>Arch</dt>
+              <dd id="backend-arch">unknown</dd>
               <dt>Endpoint</dt>
               <dd>127.0.0.1:8765</dd>
             </dl>
+            <div hidden>
+              <span id="backend-health">starting</span>
+              <span id="session-turn-count">0</span>
+            </div>
           </section>
           <section class="panel-section">
             <h2>Readiness</h2>
@@ -58,6 +58,7 @@
         <section class="panel conversation-panel">
           <div class="conversation-header">
             <h2>Conversation</h2>
+            <span class="session-header-label">Session: <span id="session-id">not created</span></span>
           </div>
           <div id="conversation-log" class="conversation-log" aria-live="polite"></div>
           <div class="search-controls">
@@ -137,7 +138,7 @@
       </div>
       <div class="advanced-panel-body">
         <nav id="advanced-panel-rail" class="advanced-panel-rail" aria-label="Advanced control categories">
-          <button type="button" data-category="providers" aria-selected="false">Providers &amp; Models</button>
+          <button type="button" data-category="providers" aria-selected="false" title="Providers &amp; Models">Provider Model Profiles</button>
           <button type="button" data-category="settings" aria-selected="false">Settings</button>
           <button type="button" data-category="memory" aria-selected="false">Memory</button>
           <button type="button" data-category="actions" aria-selected="false">Actions</button>

@@ -513,7 +513,10 @@ def test_daemon_status_returns_public_identity_without_token(tmp_path: Path) -> 
     assert "token" not in payload
 
 
-def test_daemon_shutdown_requires_local_token(tmp_path: Path) -> None:
+def test_daemon_shutdown_requires_local_token(tmp_path: Path, monkeypatch) -> None:
+    import signal
+
+    from backend.app.api.routes import daemon
     from backend.app.services.daemon_registry import DaemonRegistry
 
     client = _client()
@@ -534,6 +537,13 @@ def test_daemon_shutdown_requires_local_token(tmp_path: Path) -> None:
     assert accepted.status_code == 200
     assert accepted.json() == {"accepted": True, "service": "jarvisv7-backend"}
     assert shutdown_calls == ["shutdown"]
+
+    # The default shutdown raises an in-process signal so the server lifespan runs and stops the
+    # managed LLM sidecar; os.kill with SIGINT is an unconditional TerminateProcess on Windows.
+    raised: list[int] = []
+    monkeypatch.setattr(signal, "raise_signal", raised.append)
+    daemon._default_shutdown()
+    assert raised == [signal.SIGINT]
 
 
 def test_readiness_returns_family_readiness() -> None:

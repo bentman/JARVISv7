@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import signal
 
 from backend.app.api.schemas.daemon import DaemonShutdownResponse, DaemonStatusResponse
@@ -11,7 +10,7 @@ router = APIRouter(prefix="/daemon")
 
 
 def _default_shutdown() -> None:
-    os.kill(os.getpid(), signal.SIGINT)
+    signal.raise_signal(signal.SIGINT)
 
 
 def _registry(request: Request) -> DaemonRegistry:

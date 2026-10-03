@@ -9,6 +9,7 @@ from backend.app.api.schemas.llm_config import (
     LLMProviderProfileWrite,
     LLMProviderSelectionResponse,
     LLMProviderSelectionWrite,
+    LLMProviderTestRequest,
     LLMProviderTestResponse,
     SecretRotationResponse,
 )
@@ -20,7 +21,7 @@ from backend.app.services.llm_provider_profiles import (
     ProviderSelection,
     SecretStoreLockedError,
 )
-from backend.app.services.llm_provider_service import provider_model_discovery
+from backend.app.services.llm_provider_service import provider_model_discovery, resolve_provider_test_target
 from fastapi import APIRouter, Depends, HTTPException
 
 router = APIRouter()
@@ -161,15 +162,18 @@ def delete_llm_profile(
 @router.post("/config/llm/profiles/{profile_id}/test", response_model=LLMProviderTestResponse)
 def test_llm_profile(
     profile_id: str,
+    payload: LLMProviderTestRequest | None = None,
     actions: CapabilityService | None = Depends(get_optional_capability_service),
 ) -> LLMProviderTestResponse:
     store = _store()
 
+    draft = payload.model_dump(exclude_none=True) if payload else {}
+
     def run() -> LLMProviderTestResponse:
-        profile = store.get_profile(profile_id)
+        profile, api_key = resolve_provider_test_target(store, profile_id, draft)
         if profile.kind == "managed_llama_cpp":
             return LLMProviderTestResponse(status="configured", reason="managed profile readiness is reported by /readiness")
-        models = provider_model_discovery(store, profile)
+        models = provider_model_discovery(store, profile, api_key=api_key)
         return LLMProviderTestResponse(
             status="ready",
             reason="provider models endpoint reachable",
@@ -180,7 +184,7 @@ def test_llm_profile(
         return execute_operator_action(
             actions,
             catalog.PROVIDER_CONNECTIVITY_TEST,
-            {"profile_id": profile_id},
+            {"profile_id": profile_id, **draft},
             run,
         )
     except Exception as exc:
@@ -202,7 +206,12 @@ def update_llm_selection(
         selection = execute_operator_action(
             actions,
             catalog.PROVIDER_SELECTION_UPDATE,
-            {"primary_profile_id": request.primary_profile_id},
+            {
+                "primary_profile_id": request.primary_profile_id,
+                "local_fallback_profile_id": request.local_fallback_profile_id,
+                "cloud_escalation_enabled": request.cloud_escalation_enabled,
+                "cloud_profile_id": request.cloud_profile_id,
+            },
             lambda: _store().set_selection(
                 primary_profile_id=request.primary_profile_id,
                 local_fallback_profile_id=request.local_fallback_profile_id,

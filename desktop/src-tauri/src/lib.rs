@@ -364,10 +364,14 @@ fn delete_llm_profile(
 }
 
 #[tauri::command]
-fn test_llm_profile(profile_id: String, state: State<'_, DesktopState>) -> Result<String, String> {
+fn test_llm_profile(
+    profile_id: String,
+    payload: Option<Value>,
+    state: State<'_, DesktopState>,
+) -> Result<String, String> {
     let profile_id = required_profile_id(profile_id)?;
     let base_url = backend_base_url(&state)?;
-    backend_test_llm_profile(&state.http_client, &base_url, &profile_id)
+    backend_test_llm_profile(&state.http_client, &base_url, &profile_id, payload)
 }
 
 #[tauri::command]

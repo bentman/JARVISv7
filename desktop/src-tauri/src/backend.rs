@@ -14,6 +14,8 @@ use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+const GRACEFUL_EXIT_WAIT: Duration = Duration::from_secs(20);
+
 #[derive(Debug, Serialize)]
 pub struct BackendDiagnostics {
     pub python_path: String,
@@ -176,6 +178,7 @@ impl BackendProcessManager {
 
     pub fn shutdown_or_kill(&mut self, client: &Client) -> Result<(), String> {
         if self.child.is_some() {
+            self.request_graceful_exit(client);
             self.kill_backend();
             return Ok(());
         }
@@ -192,6 +195,41 @@ impl BackendProcessManager {
             return Err(format!("POST /daemon/shutdown returned {}", response.status()));
         }
         Ok(())
+    }
+
+    /// Asks a backend this manager spawned to exit through its own lifespan, which stops the managed
+    /// LLM sidecar. A hard kill skips that cleanup and orphans the sidecar process.
+    fn request_graceful_exit(&mut self, client: &Client) {
+        if self.child.is_none() {
+            return;
+        }
+        // The spawned child can be the venv launcher, so its pid differs from the server's.
+        let token = match self.read_daemon_metadata() {
+            Ok(Some(metadata)) if same_path(Path::new(&metadata.repo_root), &self.repo_root) => {
+                metadata.token
+            }
+            _ => None,
+        };
+        let Some(token) = token else {
+            return;
+        };
+        let accepted = client
+            .post(format!("{}/daemon/shutdown", self.base_url()))
+            .header("X-JARVIS-DAEMON-TOKEN", token)
+            .timeout(Duration::from_secs(5))
+            .send()
+            .map(|response| response.status().is_success())
+            .unwrap_or(false);
+        if !accepted {
+            return;
+        }
+        let deadline = Instant::now() + GRACEFUL_EXIT_WAIT;
+        while Instant::now() < deadline {
+            match self.child.as_mut().map(Child::try_wait) {
+                Some(Ok(None)) => std::thread::sleep(Duration::from_millis(100)),
+                _ => return,
+            }
+        }
     }
 
     pub fn exited_status(&mut self) -> Result<Option<String>, String> {
@@ -668,11 +706,13 @@ pub fn test_llm_profile(
     client: &Client,
     base_url: &str,
     profile_id: &str,
+    payload: Option<Value>,
 ) -> Result<String, String> {
     let operation = "POST /config/llm/profiles/test";
+    let body = payload.unwrap_or_else(|| json!({}));
     let response = client
         .post(format!("{base_url}/config/llm/profiles/{profile_id}/test"))
-        .json(&json!({}))
+        .json(&body)
         .send()
         .map_err(|error| memory_transport_error(operation, error))?;
     memory_response(operation, response)
@@ -1417,6 +1457,15 @@ mod tests {
         assert!(source.contains(".timeout(Duration::from_secs(10))"));
         assert!(source.contains(".post(format!(\"{base_url}/memory/curation/drain\"))"));
         assert!(!source.contains(".get(format!(\"{base_url}/memory/curation/drain\"))"));
+    }
+
+    #[test]
+    fn spawned_backend_exits_through_daemon_shutdown_before_kill() {
+        let source = include_str!("backend.rs");
+        assert!(source.contains(
+            "self.request_graceful_exit(client);
+            self.kill_backend();"
+        ));
     }
 
     #[test]

@@ -70,6 +70,7 @@ Readiness owns selected runtime paths:
 - TTS can select CUDA, DirectML, QNN, or CPU based on the same shared evidence.
 - Wake is CPU-only and reports unavailable when `openwakeword` is missing.
 - LLM local sidecar readiness is catalog/profile driven and reports unavailable or degraded when the selected local runtime path cannot be proven.
+- Startup adopts a healthy server already on the sidecar endpoint and never stops one it adopted. Before adopting, it terminates servers of its own `llama-server` binary whose parent process no longer exists, so a server orphaned by an earlier backend is replaced by an owned one while a server of another binary or a live parent stays untouched.
 - Operator-configured LLM providers can supersede managed local-sidecar catalog readiness; readiness reports that configuration state rather than pretending the catalog applies.
 
 Model catalogs in `config/models/llm.yaml`, `config/models/stt.yaml`, `config/models/tts.yaml`, and `config/models/wake.yaml` carry `validation_status` values such as `validated`, `declared-not-validated`, and `declared-degraded`. Validation claims remain narrower than configuration: a path is validated only after observable evidence exists for that host class/device path.

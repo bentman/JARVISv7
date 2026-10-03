@@ -108,7 +108,8 @@ export function createApiClient(invoke) {
     updateLlmProfile: (profileId, profile) =>
       invokeMemory(invoke, "update_llm_profile", { profileId, profile }),
     deleteLlmProfile: (profileId) => invokeMemory(invoke, "delete_llm_profile", { profileId }),
-    testLlmProfile: (profileId) => invokeMemory(invoke, "test_llm_profile", { profileId }),
+    testLlmProfile: (profileId, payload = null) =>
+      invokeMemory(invoke, "test_llm_profile", { profileId, payload }),
     updateLlmSelection: (selection) => invokeMemory(invoke, "update_llm_selection", { selection }),
     rotateSecretStoreKey: () => invokeMemory(invoke, "rotate_secret_store_key"),
     getMemoryPolicy: () => invokeMemory(invoke, "get_memory_policy"),
