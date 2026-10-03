@@ -31,6 +31,7 @@ from backend.app.actions.contracts import (
     ExecutionResultRecord,
     ExecutionStatus,
     ModelActionProposal,
+    capability_title,
 )
 from backend.app.actions.sessions import SessionCallOutcomeUnknownError
 from backend.app.artifacts.storage import append_action_event
@@ -80,6 +81,7 @@ class CapabilityView:
     timeout_policy: dict[str, Any]
     cancellation_policy: dict[str, Any]
     executable: bool
+    label: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -924,6 +926,7 @@ class CapabilityService:
             timeout_policy=descriptor.timeout_policy,
             cancellation_policy=descriptor.cancellation_policy,
             executable=descriptor.capability_id in self._handlers,
+            label=descriptor.label or capability_title(descriptor.capability_id),
         )
 
     def _view_proposal(

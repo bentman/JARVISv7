@@ -23,6 +23,7 @@ class CapabilityResponse(StrictActionModel):
     timeout_policy: dict[str, Any]
     cancellation_policy: dict[str, Any]
     executable: bool
+    label: str = ""
 
 
 class CapabilityProblemResponse(StrictActionModel):

@@ -120,7 +120,7 @@ Agents:
 
 Action audit:
 - `desktop/src/components/actions-panel.js` presents capabilities, pending approvals, execution status, and audit in operator language: `capabilityTitle`, `formatCapabilityRisk`, `capabilityReadinessText` (including degraded and unavailable readiness), `actionStatusText`, and `describeAuditRecord`, which reads the nested record of each kind - proposal, authorization decision, approval, execution result (including failure error and `outcome_unknown`), and cancellation. `groupAuditRecords` renders one timeline per proposal.
-- Capability, proposal, and approval IDs, the execution owner, raw arguments, and raw records appear only inside explicit Details disclosures. Descriptor problems are grouped under Could not load. The generic runner remains as Run manually for audit and fallback use.
+- Capability, proposal, and approval IDs, the execution owner, raw arguments, and raw records appear only inside explicit Details disclosures. Descriptor problems are grouped under Could not load. The generic runner remains for audit and fallback use behind a collapsed Advanced: run a registered action disclosure. Titles come from the capability catalog's `label` where a registration provides one, so extension operations read as their extension and operation instead of a generated id.
 
 Provider and settings state:
 - Provider type presets (Unsloth, llama.cpp, Ollama, vLLM, OpenAI, Anthropic, Custom OpenAI-compatible) fill the endpoint, model, context window, and timeout of a new profile; models found by a connection test populate a selector that also sets the context window. A profile that holds the primary, fallback, or cloud role cannot be deleted. Provider Model Profiles lays routing and escalation beside profile editing.

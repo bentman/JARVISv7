@@ -54,7 +54,7 @@ class ExtensionObservation:
     skills: tuple[SkillManifest, ...] = ()
     skill_errors: tuple[SkillError, ...] = ()
     executable_skills: tuple[str, ...] = ()
-    capabilities: tuple[tuple[str, str, str], ...] = ()
+    capabilities: tuple[tuple[str, str, str, str], ...] = ()
     definitions: tuple[DefinitionManifest, ...] = ()
     definition_errors: tuple[DefinitionError, ...] = ()
     definition_runtime: tuple[DefinitionRuntime, ...] = ()
@@ -242,14 +242,14 @@ def _capabilities(observation: ExtensionObservation) -> list[ObservedRecord]:
     return [
         ObservedRecord(
             local_id=capability_id,
-            display_name=capability_id,
+            display_name=label or capability_id,
             source="backend/app/actions/catalog.py",
             provenance="application",
             readiness=readiness,
             availability=availability,
             unavailable_explanation="" if availability == "available" else CAPABILITY_UNAVAILABLE,
         )
-        for capability_id, readiness, availability in observation.capabilities
+        for capability_id, readiness, availability, label in observation.capabilities
     ]
 
 

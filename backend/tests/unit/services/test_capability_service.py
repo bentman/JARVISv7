@@ -268,6 +268,7 @@ def test_an_agent_capability_outside_a_turn_runs_as_its_own_direct_turn() -> Non
     instance = _agent_service(profile, engine)
 
     assert capability(instance.catalog(), "agent-invoke-summarizer").executable is True
+    assert capability(instance.catalog(), "agent-invoke-summarizer").label == "Run agent summarizer"
     view = instance.propose(
         capability_id="agent-invoke-summarizer",
         arguments={"prompt": "summarize this"},

@@ -113,7 +113,7 @@ def test_every_built_descriptor_registers_without_collision() -> None:
             settings=(("USE_DDGS", "primary"),),
             personalities=(("default", "Morgan", True, "p.yaml"),),
             search_providers=(("ddgs", True),),
-            capabilities=(("search-public-web", "ready", "available"),),
+            capabilities=(("search-public-web", "ready", "available", "Search public web"),),
         )
     )
     catalog = ExtensionCatalog()
@@ -123,6 +123,7 @@ def test_every_built_descriptor_registers_without_collision() -> None:
     assert catalog.families() == {
         "capability": 1, "personality": 1, "search_provider": 1, "setting": 1,
     }
+    assert [item.display_name for item in built if item.family == "capability"] == ["Search public web"]
 
 
 def test_generic_definition_records_keep_source_and_operator_provenance() -> None:

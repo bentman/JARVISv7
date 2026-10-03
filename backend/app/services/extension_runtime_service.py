@@ -210,6 +210,7 @@ class ExtensionRuntimeService:
                         result_schema={"type": "object"}, artifact_evidence={"records": True},
                         unavailable_explanation="" if manifest.declared_enabled else "Extension is disabled.",
                         boundaries=boundary,
+                        label=f"{manifest.display_name}: {name.replace(':', ' ')}",
                         metadata_claims={"definition": {"sha256": hashlib.sha256(fingerprint.encode()).hexdigest(), "trusted": False}},
                     )
                     bindings.append((descriptor, self._handler(manifest, name, handler)))

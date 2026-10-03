@@ -81,6 +81,8 @@ def test_operator_invocation_executes_directly_without_a_second_approval_step(
     runtime = _runtime(tmp_path, monkeypatch)
     _write_tool_definition(runtime.config_dir)
     capability_id = _operation_id(runtime, "tool:writer")
+    labels = {descriptor.capability_id: descriptor.label for descriptor, _handler in runtime.bindings()}
+    assert labels[capability_id] == "Test writer: run", "an operation's label names its extension, not its hashed id"
 
     runtime.overlay.set_state(extension_id="tool:writer", state="disabled", expected_revision=None)
     denied = runtime.invoke("tool:writer", capability_id, {})

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
@@ -77,6 +78,14 @@ class ModelActionProposal:
         return _deep_asdict(self)
 
 
+def capability_title(capability_id: str) -> str:
+    """Operator-facing name for a capability id whose registration supplies no label."""
+    if capability_id.startswith("agent-invoke-"):
+        return f"Run agent {capability_id[len('agent-invoke-'):]}"
+    words = re.sub(r"[-_:]+", " ", capability_id).strip()
+    return words[:1].upper() + words[1:]
+
+
 @dataclass(frozen=True, slots=True)
 class CapabilityDescriptor:
     capability_id: str
@@ -96,6 +105,7 @@ class CapabilityDescriptor:
     metadata_claims: dict[str, Any] = field(default_factory=dict)
     approval_mode: ApprovalMode = "same_turn"
     boundaries: dict[str, Any] = field(default_factory=dict)
+    label: str = ""
 
     def __post_init__(self) -> None:
         for name in (

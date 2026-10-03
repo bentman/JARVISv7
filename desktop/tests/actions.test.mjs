@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { strict as assert } from "node:assert";
-import { actionApprovalEnabled, capabilityActivityState, capabilityArgumentFields, capabilityReadinessText, capabilityTitle, coerceArguments, createActionsPanel, createActionsPanelController, describeAuditRecord, groupAuditRecords, proposeEnabled, proposeTriggerLabel, executionActivityState, formatCapabilityApproval, formatCapabilityRisk } from "../src/components/actions-panel.js";
+import { actionApprovalEnabled, capabilityActivityState, capabilityArgumentFields, capabilityReadinessText, capabilityTitle, coerceArguments, setCapabilityLabels, createActionsPanel, createActionsPanelController, describeAuditRecord, groupAuditRecords, proposeEnabled, proposeTriggerLabel, executionActivityState, formatCapabilityApproval, formatCapabilityRisk } from "../src/components/actions-panel.js";
 import { apiClient, actionsPanel, backend, createElement, deferred, findElement, findElements } from "./support.mjs";
 
 function insideDetails(node) {
@@ -323,6 +323,10 @@ test("capability risk, readiness, and title must read as operator language", asy
   assert.equal(capabilityTitle("agent-invoke-coder"), "Run agent coder");
   assert.equal(capabilityTitle("extension-0a1b2c"), "Extension operation");
   assert.equal(capabilityTitle("memory-record-forget"), "Memory record forget");
+  setCapabilityLabels([{ capability_id: "extension-0a1b2c", label: "github: tool create_issue" }, { capability_id: "x", label: "" }]);
+  assert.equal(capabilityTitle("extension-0a1b2c"), "github: tool create_issue", "a catalog label names an extension operation");
+  assert.equal(capabilityTitle("x"), "X", "an empty label falls back to the id");
+  setCapabilityLabels([]);
 });
 
 test("every audit record kind must read as what happened, grouped into one timeline per action", async () => {

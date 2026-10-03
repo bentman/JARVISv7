@@ -299,10 +299,28 @@ export function curationActivityState(status) {
 const CURATION_TEXT = { blocked: "Unavailable", degraded: "Degraded", running: "Processing", idle: "Idle" };
 const LIFECYCLE_TEXT = { pending_review: "Waiting for review" };
 
+// A panel re-render replaces its DOM, so a disclosure's open state is kept here.
+const openDisclosures = new Set();
+
+function rememberOpen(node, key) {
+  node.open = openDisclosures.has(key);
+  node.addEventListener("toggle", () => {
+    if (node.open) openDisclosures.add(key);
+    else openDisclosures.delete(key);
+  });
+  return node;
+}
+
 function renderCuration(state) {
-  const node = section("Policy & curation");
+  const node = section("Policy");
 
   if (state.policy) {
+    appendText(
+      node,
+      "Model-proposed memories remain application-governed. Enabling this allows automatic review; it does not bypass lifecycle controls.",
+      "p",
+      "panel-help",
+    );
     const label = document.createElement("label");
     label.className = "panel-choice";
     const toggle = document.createElement("input");
@@ -313,12 +331,6 @@ function renderCuration(state) {
     toggle.addEventListener("change", () => state.actions.updatePolicy(toggle.checked));
     label.append(toggle, document.createTextNode("Automatic retention (opt-in)"));
     node.appendChild(label);
-    appendText(
-      node,
-      "Model-proposed memories remain application-governed. Enabling this allows automatic review; it does not bypass lifecycle controls.",
-      "p",
-      "panel-help",
-    );
   } else if (!state.policyError) {
     appendText(node, TEXT.loading("memory policy"), "p", "panel-help");
   }
@@ -327,28 +339,44 @@ function renderCuration(state) {
   if (status) {
     const statusName = curationActivityState(status);
     node.appendChild(statusBadge(CURATION_TEXT[statusName], statusName));
-    node.appendChild(facts([
+    const result = status.last_result;
+    const rows = facts([
+      ["Updated", formatTime(status.last_updated_at)],
       ["Pending", status.pending_count],
       ["Processing", status.processing_count],
       ["Failed", status.failed_count],
-      ["Reason", humanize(status.degraded_reason || status.last_result_reason)],
-      ["Processor result", formatCurationResult(status.last_result)],
-      ["Updated", formatTime(status.last_updated_at)],
-    ]));
-    const jobs = details([["Current job", status.current_job_id]], null, `Recent jobs (${status.jobs_returned || 0})`);
-    for (const job of status.recent_jobs || []) {
-      const result = formatCurationResult(job.result);
-      appendText(jobs, `${statusText(job.status)} · ${result || humanize(job.last_reason || job.blocked_reason || "no reason")} · queued ${formatTime(job.enqueued_at)} · finished ${formatTime(job.completed_at)}`, "p", "panel-help");
+      ["Results", humanize(status.degraded_reason || status.last_result_reason)],
+    ]);
+    if (result) {
+      const results = rows.lastElementChild;
+      results.title = formatCurationResult(result).split(" · ").slice(1).join(" · ");
+      results.lastElementChild.classList.add("panel-hint");
     }
-    node.appendChild(jobs);
+    node.appendChild(rows);
   } else if (!state.curationError) {
     appendText(node, TEXT.loading("curation status"), "p", "panel-help");
   }
   return node;
 }
 
+function renderJobs(state) {
+  const status = state.curation;
+  if (!status) return null;
+  const node = section("");
+  const jobs = rememberOpen(
+    details([["Current job", status.current_job_id]], null, `Recent jobs (${status.jobs_returned || 0})`),
+    "jobs",
+  );
+  for (const job of status.recent_jobs || []) {
+    const jobResult = formatCurationResult(job.result);
+    appendText(jobs, `${statusText(job.status)} · ${jobResult || humanize(job.last_reason || job.blocked_reason || "no reason")} · queued ${formatTime(job.enqueued_at)} · finished ${formatTime(job.completed_at)}`, "p", "panel-help");
+  }
+  node.appendChild(jobs);
+  return node;
+}
+
 function renderContracts(state) {
-  const node = section("Layers & retention");
+  const node = section("Layers");
   if (sectionState(node, { error: state.contractError })) return node;
   const layerRows = state.layers?.layers || [];
   if (!layerRows.length && !state.retentionPolicy) {
@@ -356,6 +384,9 @@ function renderContracts(state) {
     return node;
   }
   const count = (value) => layerRows.filter((item) => item.implementation_state === value).length;
+  if (state.retentionPolicy?.source_artifact_erasure_scope) {
+    appendText(node, state.retentionPolicy.source_artifact_erasure_scope, "p", "panel-help");
+  }
   node.appendChild(facts([
     ["Implemented layers", count("implemented")],
     ["Defined next", count("defined_next")],
@@ -363,9 +394,6 @@ function renderContracts(state) {
     ["Artifact owner", humanize(state.retentionPolicy?.source_artifact_owner)],
     ["Physical erasure", state.retentionPolicy?.physical_erasure_available],
   ]));
-  if (state.retentionPolicy?.source_artifact_erasure_scope) {
-    appendText(node, state.retentionPolicy.source_artifact_erasure_scope, "p", "panel-help");
-  }
   return node;
 }
 
@@ -408,14 +436,26 @@ function renderFilters(state) {
   return form;
 }
 
-function renderList(state) {
+function renderRecords(state) {
   const node = section("Records");
   node.appendChild(renderFilters(state));
-  if (state.listLoading) appendText(node, TEXT.loading("records"), "p", "panel-help");
-  if (state.listError) appendText(node, state.listError, "p", "panel-error");
-  const records = state.list?.records || [];
+  return node;
+}
+
+function renderList(state) {
+  const node = section("");
+  const body = rememberOpen(
+    details([], null, `Recent memories (${state.list?.records?.length || 0})`),
+    "memories",
+  );
+  node.appendChild(body);
+  if (state.listLoading) appendText(body, TEXT.loading("records"), "p", "panel-help");
+  if (state.listError) appendText(body, state.listError, "p", "panel-error");
+  const records = [...(state.list?.records || [])].sort(
+    (a, b) => String(b.updated_at || "").localeCompare(String(a.updated_at || "")),
+  );
   if (!state.listLoading && !state.listError && records.length === 0) {
-    appendText(node, "No memories match these filters.", "p", "panel-help");
+    appendText(body, "No memories match these filters.", "p", "panel-help");
   }
   const list = document.createElement("div");
   list.className = "memory-list";
@@ -428,19 +468,18 @@ function renderList(state) {
     row.dataset.focusKey = `memory:${record.fact_id}`;
     row.setAttribute("aria-pressed", state.detail?.record?.fact_id === record.fact_id ? "true" : "false");
     appendText(row, record.text, "strong");
-    appendText(row, `${humanize(record.kind)} · ${humanize(record.evidence_authority)} · ${humanize(record.lifecycle_state, LIFECYCLE_TEXT)}`, "span", "panel-help");
     appendText(
       row,
-      `Updated ${formatTime(record.updated_at)} · reinforced ${record.reinforcement_count} · ${record.eligible_for_normal_retrieval ? "used in answers" : "not used in answers"}`,
+      `Time: ${formatTime(record.updated_at)} · ${humanize(record.kind)} · ${humanize(record.lifecycle_state, LIFECYCLE_TEXT)}`,
       "span",
       "panel-help",
     );
     row.addEventListener("click", () => state.actions.selectMemory(record.fact_id));
     list.appendChild(row);
   }
-  node.appendChild(list);
+  body.appendChild(list);
   if (state.list?.results_truncated) {
-    appendText(node, "More memories match; narrow the filters to see them.", "p", "panel-help");
+    appendText(body, "More memories match; narrow the filters to see them.", "p", "panel-help");
   }
   return node;
 }
@@ -516,7 +555,7 @@ function renderDetail(state) {
   if (state.detailError) appendText(node, state.detailError, "p", "panel-error");
   const detail = state.detail;
   if (!detail) {
-    if (!state.detailLoading && !state.detailError) appendText(node, "Select a memory to review it.", "p", "panel-help");
+    if (!state.detailLoading && !state.detailError) appendText(node, "Select a memory below to view it.", "p", "panel-help");
     return node;
   }
   const record = detail.record;
@@ -550,17 +589,21 @@ function renderDetail(state) {
 
 function renderPanel(state) {
   const errors = [state.conflict, state.policyError, state.contractError, state.curationError].filter(Boolean).join(" ");
+  const overview = document.createElement("div");
+  overview.className = "memory-panel-overview";
+  overview.append(renderCuration(state), renderContracts(state));
   const layout = document.createElement("div");
   layout.className = "memory-panel-layout";
-  layout.append(renderList(state), renderDetail(state));
+  layout.append(renderRecords(state), renderDetail(state));
 
   return [
     renderPanelHeader("Memory"),
     messageRegion({ notice: state.notice, error: errors }),
-    renderContracts(state),
-    renderCuration(state),
+    overview,
+    renderJobs(state),
     layout,
-  ];
+    renderList(state),
+  ].filter(Boolean);
 }
 
 export function createMemoryPanel(container, handlers, options = {}) {

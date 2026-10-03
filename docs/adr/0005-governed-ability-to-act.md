@@ -54,7 +54,7 @@ Negative:
 
 ### Capability contract and registry
 
-`backend/app/actions/contracts.py` defines capability descriptors, proposals, authorization decisions, approval records, execution results, cancellation records, and the capability registry. Registration validates schemas, availability, effect classes, execution boundaries, metadata trust, and duplicate identities. `APPROVAL_EFFECT_CLASSES` supplies the default authorization posture; private-context search, executable plugin installation, and server-declared MCP tool effects use explicit approval rules.
+`backend/app/actions/contracts.py` defines capability descriptors, proposals, authorization decisions, approval records, execution results, cancellation records, and the capability registry. Registration validates schemas, availability, effect classes, execution boundaries, metadata trust, and duplicate identities. A descriptor may carry an operator-facing `label` for registrations whose identity is generated; extension operations are labelled with their extension's display name and operation. The capability catalog always reports a label, falling back to `capability_title`, and the extension catalog's Capability entries use it as their display name. `APPROVAL_EFFECT_CLASSES` supplies the default authorization posture; private-context search, executable plugin installation, and server-declared MCP tool effects use explicit approval rules.
 
 ### Authorization and execution
 
@@ -96,7 +96,7 @@ Test coverage:
 - `backend/tests/unit/actions/test_process_execution.py`
 - `backend/tests/unit/services/test_capability_service.py`
 - `backend/tests/unit/artifacts/test_turn_artifact.py`
-- `backend/tests/integration/test_extension_runtime.py` for operator-versus-model authorization through application services
+- `backend/tests/integration/test_extension_runtime.py` for operator-versus-model authorization through application services and extension operation labels
 - `backend/tests/fixtures/search_providers.py` and `backend/tests/fixtures/action_governance.py` supply deterministic action-path fixtures
 
 Validation commands:

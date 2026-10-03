@@ -122,11 +122,22 @@ const AUTHORIZATION_TEXT = {
   denied: "Denied",
 };
 
+// The capability catalog carries a readable label for registrations whose id does not name them.
+const capabilityLabels = new Map();
+
+export function setCapabilityLabels(capabilities) {
+  capabilityLabels.clear();
+  for (const capability of capabilities || []) {
+    if (capability.label) capabilityLabels.set(capability.capability_id, capability.label);
+  }
+}
+
 // Capability ids are registry keys. Agent invocations and extension operations carry their
 // subject in the id; everything else reads as a sentence once its separators are dropped.
 export function capabilityTitle(capabilityId) {
   const id = String(capabilityId || "");
   if (!id) return "Action";
+  if (capabilityLabels.has(id)) return capabilityLabels.get(id);
   if (id.startsWith("agent-invoke-")) return `Run agent ${id.slice("agent-invoke-".length)}`;
   if (/^extension-[0-9a-f]+$/.test(id)) return "Extension operation";
   const words = id.replaceAll(/[-_:]+/g, " ").trim();
@@ -278,6 +289,7 @@ export function createActionsPanelController(handlers, render = () => undefined)
       const payload = await handlers.getActionCapabilities();
       if (request !== capabilitiesSequence) return null;
       state.capabilities = payload;
+      setCapabilityLabels(payload?.capabilities);
       return payload;
     } catch (error) {
       if (request !== capabilitiesSequence) return null;
@@ -546,10 +558,19 @@ function renderProposeForm(state, capability) {
   return form;
 }
 
+// A panel re-render replaces its DOM, so the disclosure's open state is kept here.
+let runManuallyOpen = false;
+
 function renderCapabilities(state) {
-  const node = section("Run manually");
-  appendText(node, "Every registered action, for audit and as a fallback when no dedicated control exists.", "p", "panel-help");
-  if (sectionState(node, { loading: state.capabilitiesLoading, error: state.capabilitiesError, thing: "actions" })) return node;
+  const outer = section("");
+  const node = details([], null, "Advanced: run a registered action");
+  node.open = runManuallyOpen;
+  node.addEventListener("toggle", () => {
+    runManuallyOpen = node.open;
+  });
+  outer.appendChild(node);
+  appendText(node, "Registered actions that can be run directly, for audit and as a fallback when no dedicated control exists.", "p", "panel-help");
+  if (sectionState(node, { loading: state.capabilitiesLoading, error: state.capabilitiesError, thing: "actions" })) return outer;
   const problems = state.capabilities?.problems || [];
   if (problems.length) {
     appendText(node, "Could not load", "h4");
@@ -562,7 +583,7 @@ function renderCapabilities(state) {
     }
   }
   const capabilities = state.capabilities?.capabilities || [];
-  if (sectionState(node, { empty: !capabilities.length, thing: "actions" })) return node;
+  if (sectionState(node, { empty: !capabilities.length, thing: "actions" })) return outer;
   const list = document.createElement("ul");
   list.className = "panel-list";
   for (const capability of capabilities) {
@@ -595,7 +616,7 @@ function renderCapabilities(state) {
     list.appendChild(item);
   }
   node.appendChild(list);
-  return node;
+  return outer;
 }
 
 function renderPending(state) {

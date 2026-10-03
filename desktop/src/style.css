@@ -1638,7 +1638,7 @@ label.panel-choice,
 }
 
 .memory-list {
-  max-height: 16rem;
+  max-height: calc(5 * 3.75rem + 4 * var(--space-2));
   overflow-y: auto;
 }
 
@@ -1681,6 +1681,13 @@ label.panel-choice,
 .agents-row strong,
 .memory-row strong {
   font-weight: var(--weight-semibold);
+}
+
+.memory-row > * {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .panel-help,
@@ -1798,6 +1805,7 @@ label.panel-choice,
 
 .extensions-panel-layout,
 .model-provider-layout,
+.memory-panel-overview,
 .memory-panel-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.45fr) minmax(0, 0.55fr);
@@ -1805,10 +1813,26 @@ label.panel-choice,
   min-height: 0;
 }
 
+.memory-panel-overview,
+.memory-panel-layout {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.panel-hint {
+  cursor: help;
+  text-decoration: underline dotted var(--color-text-muted);
+  text-underline-offset: 3px;
+}
+
+.panel-field-row:hover > .panel-hint {
+  color: var(--color-accent);
+}
+
 .extensions-panel-list,
 .extensions-panel-detail,
 .model-provider-selection-column,
 .model-provider-profile-column,
+.memory-panel-overview > section,
 .memory-panel-layout > section {
   display: grid;
   align-content: start;
@@ -1935,6 +1959,7 @@ label.panel-choice,
 
   .extensions-panel-layout,
   .model-provider-layout,
+  .memory-panel-overview,
   .memory-panel-layout,
   .settings-grid,
   .settings-row-2col,

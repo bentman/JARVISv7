@@ -331,12 +331,12 @@ def observe_extensions(
         except Exception:
             providers = ()
 
-    capabilities: tuple[tuple[str, str, str], ...] = ()
+    capabilities: tuple[tuple[str, str, str, str], ...] = ()
     if capability_service_provider is not None:
         service = capability_service_provider()
         if service is not None:
             capabilities = tuple(
-                (item.capability_id, item.readiness, item.availability)
+                (item.capability_id, item.readiness, item.availability, item.label)
                 for item in service.catalog().capabilities
             )
 
