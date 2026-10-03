@@ -1,4 +1,4 @@
-# Repository Placement Guide
+# Repository Placement Guide  
 
 `repo_tree.md` answers one question: **where should repository content live?**
 
